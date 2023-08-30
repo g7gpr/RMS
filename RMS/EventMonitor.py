@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-""" Automatically uploads data files based on search specification information given on a website. """
+
 
 from __future__ import print_function, division, absolute_import
 
