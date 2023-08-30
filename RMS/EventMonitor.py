@@ -15,50 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# A full event definition is shown below
-
-
-
-"""
-
-# Reference event
-
-# Required
-EventTime                : 20230821_110845	#Time as YYYYMMDD_HHMMSS
-TimeTolerance (s)        : 20			    #Width of time to take
-EventLat (deg +N)        : -33			    #Event start latitude
-EventLon (deg +E)        : 116.0		    #Event start longitude
-EventHt (km)             : 100			    #Event height in km
-CloseRadius(km)          : 10			    #Radius of stations to trajectory which must upload information for time
-FarRadius (km)           : 1000			    #Radius of stations to trajectory which must upload if trajectory passed through field of view
-
-#Either
-EventLat2Std (deg)       : 1.0			    #Event end latitude standard deviation
-EventLon2 (deg +E)       : 116.0		    #Event end longitude
-EventHt2 (km)            : 90			    #Event height standard deviation
-
-#Or
-EventAzim                : 45			    #Azimuth from North +E from point of view of object
-EventElev		         : 20			    #Elevation as perceived by observer on ground, hence always +ve
-
-#Optional
-EventCartStd		     : 10000		    #Event start cartesian standard deviation (m)
-EventCart2Std		     : 10000		    #Event end cartesian standard deviation (m)
-
-
-#Optional - not preferred as sensitive to different latitudes
-EventLatStd (deg)	     : 1.0			    #Event start latitude polar standard deviation
-EventLonStd (deg)	     : 1.0		        #Event start longitude polar standard deviation
-EventLat2 (deg +N)       : -31			    #Event end latitude
-EventLon2Std (deg)	     : 1.0			    #Event end longitude standard deviation
-
-
-END						                    #Event delimiter - everything after this is associated with a new event
-
-"""
-
 """ Automatically uploads data files based on search specification information given on a website. """
-
 
 from __future__ import print_function, division, absolute_import
 
@@ -343,27 +300,17 @@ class EventContainer(object):
         """
         Apply random number from normal distribution to each component of a 3 dimension vector
 
-        If this fails, just return the point.
-
-
         arguments:
             pt: [vector] vector
             std: [float] sigma to apply
 
         """
-
-        try:
-            return pt + np.random.normal(scale=std, size=3)
-        except:
-            return pt
-
+        return pt + np.random.normal(scale=std, size=3)
 
     def applyCartesianSD(self, population):
 
         """
         Apply standard deviation to the Cartesian coordinate of a population of trajectories
-
-        Take the absolute value, in case a negative value was passed
 
         arguments:
             population: [list] population of events
@@ -376,10 +323,8 @@ class EventContainer(object):
         ecef_vector = self.eventToECEFVector()
         if self.hasCartSD():
             for tr in population:
-
-                start_vect = self.applyCartesianSDToPoint(ecef_vector[0], abs(self.cart_std))
-                end_vect = self.applyCartesianSDToPoint(ecef_vector[1], abs(self.cart2_std))
-
+                start_vect = self.applyCartesianSDToPoint(ecef_vector[0], self.cart_std)
+                end_vect = self.applyCartesianSDToPoint(ecef_vector[1], self.cart2_std)
                 tr.lat, tr.lon, tr.ht = ecefV2LatLonAlt(start_vect)
                 tr.lat2, tr.lon2, tr.ht2 = ecefV2LatLonAlt(end_vect)
 
@@ -389,8 +334,6 @@ class EventContainer(object):
 
         """
         Apply standard deviation to the Polar coordinates of a population of trajectories
-
-        This function can handle negative standard deviations
 
         arguments:
             population: [list] of events
@@ -420,8 +363,7 @@ class EventContainer(object):
         Arguments:
 
         Returns: [bool]
-
-            True if end point latitudes or longitudes or heights are not zero
+            True if end point lats or lons or heights are not zero
 
         """
 
@@ -439,7 +381,7 @@ class EventContainer(object):
 
         Arguments
             min_elev_hard: [float] minimum elevation considered reasonable
-            min_elev: [float] minimum elevation considered correct
+            min_elev: [float] minimum elevation conisdered correct
     `       prob_elev: [float] set any unreasonable elevations
             max_elev: [float] maximum elevation considered reasonable
 
@@ -710,6 +652,7 @@ class EventMonitor(multiprocessing.Process):
         # The path to the event monitor database
         self.event_monitor_db_path = os.path.join(os.path.abspath(self.syscon.data_dir),
                                                   self.syscon.event_monitor_db_name)
+        log.info("Using {} as database".format(self.event_monitor_db_path))
         self.createDB()
 
         # Load the event monitor database. Any problems, delete and recreate.
@@ -718,9 +661,8 @@ class EventMonitor(multiprocessing.Process):
         self.exit = multiprocessing.Event()
 
         log.info("EventMonitor is starting")
-
-        log.info("Monitoring {} ".format(self.syscon.event_monitor_webpage))
-        log.info("At {:3.2f} minute intervals".format(self.syscon.event_monitor_check_interval))
+        log.info("Monitoring {} at {:3.2f} minute intervals".format(self.syscon.event_monitor_webpage, self.syscon.event_monitor_check_interval))
+        log.info("Local db path name {}".format(self.syscon.event_monitor_db_name))
         log.info("Reporting data to {}/{}".format(self.syscon.hostname, self.syscon.event_monitor_remote_dir))
 
     def createDB(self):
@@ -975,8 +917,7 @@ class EventMonitor(multiprocessing.Process):
 
         Remove old record from the database, notional time of 14 days selected.
         The deletion is made on the criteria of when the record was added to the database, not the event date
-
-        If the event is still listed on the website, then it will be added, and uploaded.
+        If the event is is still listed on the website, then it will be added, and uploaded.
 
         """
 
@@ -1379,12 +1320,7 @@ class EventMonitor(multiprocessing.Process):
     def findEventFiles(self, event, directory_list, file_extension_list):
 
         """Take an event, directory list and an extension list and return paths to files
-
-
            For .fits files always return at least the closest previous event
-           This is a pretty ugly process, where the previous file compared to the event time is held in a variable.
-           If the file being compared is the first file after the event time, put the previous file into the list,
-           if it is not already there.
 
            Arguments:
                 event: [event] Event of interest
@@ -1399,8 +1335,7 @@ class EventMonitor(multiprocessing.Process):
         except:
             event_time = convertGMNTimeToPOSIX(event.dt)
 
-
-        seeking_first_fits_after_event = True # to prevent warning of possibly uninitialised variable
+        seeking_first_fits_after_event = True # to prevent warning of uninitialised
         file_list = []
         # Iterate through the directory list, appending files with the correct extension
 
@@ -1649,8 +1584,7 @@ class EventMonitor(multiprocessing.Process):
              root_dir = os.path.join(event_monitor_directory,upload_filename)
              archive_name = shutil.make_archive(base_name, 'bztar', root_dir, logger=log)
             else:
-
-             log.info("Not making an archive of {}, not sensible.".format(os.path.join(event_monitor_directory)))
+             log.info("Not making an archive of {}, not sensible.".format(os.path.join(event_monitor_directory, upload_filename)))
 
         # Remove the directory where the files were assembled
         if not keep_files:
@@ -1858,17 +1792,8 @@ class EventMonitor(multiprocessing.Process):
     def start(self):
         """ Starts the event monitor. """
 
-
-
-
-        if testIndividuals():
-            log.info("EventMonitor function test success")
-            super(EventMonitor, self).start()
-            log.info("EventMonitor was started")
-        else:
-            log.error("EventMonitor function test fail - not starting EventMonitor")
-
-
+        super(EventMonitor, self).start()
+        log.info("EventMonitor was started")
 
     def stop(self):
         """ Stops the event monitor. """
@@ -1921,9 +1846,8 @@ class EventMonitor(multiprocessing.Process):
         Call to start the event monitor loop. If the loop has been accelerated following a match
         then this loop slows it down by multiplying the check interval by 1.1.
 
-
-        The time between checks is the sum of the delay interval, and the time to perform the check and upload.
-        No further randomisation is applied, as this is a congestion, not contention problem.
+        The time between checks is the sum of the delay interval, and the time to perform the check.
+        No further randomisation is applied.
 
         """
 
@@ -1956,9 +1880,7 @@ def latLonAlt2ECEFDeg(lat, lon, h):
 
 def angularSeparationVectDeg(vect1, vect2):
     """ Calculates angle between vectors in radians.
-
-        Uses library function, in radians , but converts return to degrees
-        This function is to reduce inline conversion calls """
+        Uses library function, but converts return to degrees"""
 
     return np.degrees(angularSeparationVect(vect1,vect2))
 
