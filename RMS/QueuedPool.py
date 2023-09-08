@@ -416,6 +416,7 @@ class QueuedPool(object):
                     self.printAndLog('Active worker threads:', self.active_workers.value())
                     self.printAndLog('Idle worker threads:', self.available_workers.value())
                     self.printAndLog('Total jobs:', self.total_jobs.value())
+                    self.printAndLog('Queued jobs:', self.total_jobs.value() - self.output_queue.qsize())
                     self.printAndLog('Finished jobs:', self.output_queue.qsize())
 
 
@@ -589,6 +590,7 @@ class QueuedPool(object):
 
             # Track the total number of jobs received
             self.total_jobs.increment()
+            self.total_jobs
 
         # Sometimes the pipe gets broken, so try handling it gracefully
         except broken_pipe_exception as exc:
@@ -613,6 +615,7 @@ class QueuedPool(object):
 
 
         time.sleep(wait_time)
+        time.sleep(self.total_jobs.value() - self.output_queue.qsize())
 
 
     def allDone(self):
