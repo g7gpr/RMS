@@ -615,6 +615,9 @@ class QueuedPool(object):
 
 
         time.sleep(wait_time)
+        # Delay adding jobs in proportion to queue size, so that if queue freezes during reprocessing
+        # only the jobs in the queue are lost
+        self.printAndLog("Delaying {}s".format(self.total_jobs.value() - self.output_queue.qsize()))
         time.sleep(self.total_jobs.value() - self.output_queue.qsize())
 
 
