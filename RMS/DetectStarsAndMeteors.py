@@ -210,7 +210,7 @@ def saveDetections(detection_results, ff_dir, config):
 
 
 
-def detectStarsAndMeteorsDirectory(dir_path, config):
+def detectStarsAndMeteorsDirectory(dir_path, config, throttle_queue = False):
     """ Extract stars and detect meteors on all FF files in the given folder. 
 
     Arguments:
