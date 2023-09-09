@@ -254,10 +254,11 @@ def detectStarsAndMeteorsDirectory(dir_path, config):
             if detector.available_workers.value() > 0:
                 log.info('Adding for detection: {}'.format(ff_name))
                 queue_size = detector.addJob([ff_dir, ff_name, config], wait_time=0)
-                # Delay loading by the size of the queue, so that if the worker is reset
-                # the whole night's observation session is not lost
-                log.info('Delaying queue loading by {} seconds'.format(queue_size))
-                time.sleep(queue_size)
+                if throttle_queue:
+                    # Delay loading by the size of the queue, so that if the worker is reset
+                    # the whole night's observation session is not lost
+                    log.info('Queue has {} jobs, delaying queue loading by {} seconds'.format(queue_size, queue_size/10))
+                    time.sleep(queue_size/10)
                 break
             else:
                 time.sleep(0.1)
