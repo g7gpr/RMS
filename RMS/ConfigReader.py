@@ -251,7 +251,6 @@ class Config:
 
         self.external_script_run = False
         self.auto_reprocess_external_script_run = False
-        self.prioritise_capture_over_reprocess = False
         self.external_script_path = None
         self.external_function_name = "rmsExternal"
 
@@ -932,8 +931,10 @@ def parseCapture(config, parser):
     if parser.has_option(section, "mask"):
         config.mask_file = os.path.basename(parser.get(section, "mask"))
 
+
     if parser.has_option(section, "extra_space_gb"):
         config.extra_space_gb = parser.getfloat(section, "extra_space_gb")
+
 
     # Enable/disable showing maxpixel on the screen
     if parser.has_option(section, "live_maxpixel_enable"):
@@ -946,6 +947,7 @@ def parseCapture(config, parser):
     # Enable/disable showing a slideshow of last night's meteor detections on the screen during the day
     if parser.has_option(section, "slideshow_enable"):
         config.slideshow_enable = parser.getboolean(section, "slideshow_enable")
+
 
     # Enable/disable auto reprocessing
     if parser.has_option(section, "auto_reprocess"):
