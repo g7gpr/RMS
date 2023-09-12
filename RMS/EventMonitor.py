@@ -16,49 +16,107 @@
 
 
 
-
 from __future__ import print_function, division, absolute_import
 
-import sqlite3
-import multiprocessing
-import RMS.ConfigReader as cr
 
 import os
 import sys
 import shutil
+
+import datetime
 import time
+import dateutil
+import glob
+import sqlite3
+import multiprocessing
+import logging
 import copy
 import uuid
-import numpy as np
-import datetime
-import argparse
 import random
 import string
 
-if sys.hexversion < 0x03000000:
-    import requests
+
+if sys.version_info[0] < 3:
+
+    import urllib2
+
+    # Fix Python 2 SSL certs
+    try:
+        import os, ssl
+        if (not os.environ.get('PYTHONHTTPSVERIFY', '') and
+            getattr(ssl, '_create_unverified_context', None)):
+            ssl._create_default_https_context = ssl._create_unverified_context
+    except:
+        # Print the error
+        print("Error: {}".format(sys.exc_info()[0]))
+
 else:
-    import statistics
     import urllib.request
-    from Utils.SkyFit2 import convertFRNameToFF
 
-import logging
 
+import numpy as np
+
+import RMS.ConfigReader as cr
 from RMS.Astrometry.Conversions import datetime2JD, geo2Cartesian, altAz2RADec, vectNorm, raDec2Vector
 from RMS.Astrometry.Conversions import latLonAlt2ECEF, AER2LatLonAlt, AEH2Range, ECEF2AltAz, ecef2LatLonAlt
 from RMS.Math import angularSeparationVect
+from RMS.Formats.FFfile import convertFRNameToFF
 from RMS.Formats.Platepar import Platepar
-from datetime import datetime
-from dateutil import parser
+from RMS.UploadManager import uploadSFTP
 from Utils.StackFFs import stackFFs
 from Utils.FRbinViewer import view
 from Utils.BatchFFtoImage import batchFFtoImage
-from RMS.Astrometry.CyFunctions import cyTrueRaDec2ApparentAltAz
-from RMS.UploadManager import uploadSFTP
 
-from glob import glob
+
+
+# Import Cython functions
+import pyximport
+pyximport.install(setup_args={'include_dirs':[np.get_include()]})
+from RMS.Astrometry.CyFunctions import cyTrueRaDec2ApparentAltAz
+
 
 log = logging.getLogger("logger")
+
+"""
+
+# Reference event
+
+# Required
+EventTime                : 20230821_110845	#Time as YYYYMMDD_HHMMSS
+TimeTolerance (s)        : 20			    #Width of time to take
+EventLat (deg +N)        : -33			    #Event start latitude
+EventLon (deg +E)        : 116.0		    #Event start longitude
+EventHt (km)             : 100			    #Event height in km
+CloseRadius(km)          : 10			    #Radius of stations to trajectory which must upload information for time
+FarRadius (km)           : 1000			    #Radius of stations to trajectory which must upload if trajectory passed through field of view
+
+#Either
+EventLat2Std (deg)       : 1.0			    #Event end latitude standard deviation
+EventLon2 (deg +E)       : 116.0		    #Event end longitude
+EventHt2 (km)            : 90			    #Event height standard deviation
+
+#Or
+EventAzim                : 45			    #Azimuth from North +E from point of view of object
+EventElev		         : 20			    #Elevation as perceived by observer on ground, hence always +ve
+
+#Optional
+EventCartStd		     : 10000		    #Event start cartesian standard deviation (m)
+EventCart2Std		     : 10000		    #Event end cartesian standard deviation (m)
+
+
+#Optional - not preferred as sensitive to different latitudes
+EventLatStd (deg)	     : 1.0			    #Event start latitude polar standard deviation
+EventLonStd (deg)	     : 1.0		        #Event start longitude polar standard deviation
+EventLat2 (deg +N)       : -31			    #Event end latitude
+EventLon2Std (deg)	     : 1.0			    #Event end longitude standard deviation
+
+
+END						                    #Event delimiter - everything after this is associated with a new event
+
+"""
+
+""" Automatically uploads data files based on search specification information given on a website. """
+
 
 class EventContainer(object):
 
@@ -299,18 +357,24 @@ class EventContainer(object):
 
         """
         Apply random number from normal distribution to each component of a 3 dimension vector
+        If this fails, just return the point.
 
         arguments:
             pt: [vector] vector
             std: [float] sigma to apply
 
         """
-        return pt + np.random.normal(scale=std, size=3)
 
-    def applyCartesianSD(self, population):
+        try:
+            return pt + np.random.normal(scale=std, size=3)
+        except:
+            return pt
+
+    def applyCartesianSD(self, population, seed = None):
 
         """
         Apply standard deviation to the Cartesian coordinate of a population of trajectories
+        Take the absolute value, in case a negative value was passed
 
         arguments:
             population: [list] population of events
@@ -320,28 +384,37 @@ class EventContainer(object):
 
         """
 
+        if seed is not None:
+            np.random.seed(seed)
         ecef_vector = self.eventToECEFVector()
         if self.hasCartSD():
             for tr in population:
-                start_vect = self.applyCartesianSDToPoint(ecef_vector[0], self.cart_std)
-                end_vect = self.applyCartesianSDToPoint(ecef_vector[1], self.cart2_std)
+                start_vect = self.applyCartesianSDToPoint(ecef_vector[0], abs(self.cart_std))
+                end_vect = self.applyCartesianSDToPoint(ecef_vector[1], abs(self.cart2_std))
                 tr.lat, tr.lon, tr.ht = ecefV2LatLonAlt(start_vect)
                 tr.lat2, tr.lon2, tr.ht2 = ecefV2LatLonAlt(end_vect)
 
         return population
 
-    def applyPolarSD(self, population):
+
+    def applyPolarSD(self, population, seed = None):
+
 
         """
         Apply standard deviation to the Polar coordinates of a population of trajectories
+        This function can handle negative standard deviations
 
         arguments:
             population: [list] of events
+            seed: optional, set the seed for the standard deviation generation
 
         returns:
             population: [list] of events
 
         """
+
+        if seed is not None:
+            np.random.seed(seed)
 
         for tr in population:
             tr.lat = tr.lat + np.random.normal(scale=1) * self.lat_std
@@ -363,7 +436,7 @@ class EventContainer(object):
         Arguments:
 
         Returns: [bool]
-            True if end point lats or lons or heights are not zero
+            True if end point latitudes or longitudes or heights are not zero
 
         """
 
@@ -381,8 +454,8 @@ class EventContainer(object):
 
         Arguments
             min_elev_hard: [float] minimum elevation considered reasonable
-            min_elev: [float] minimum elevation conisdered correct
-    `       prob_elev: [float] set any unreasonable elevations
+            min_elev: [float] minimum elevation considered correct
+            prob_elev: [float] set any unreasonable elevations
             max_elev: [float] maximum elevation considered reasonable
 
         Returns:
@@ -394,14 +467,12 @@ class EventContainer(object):
         if min_elev < self.elev < max_elev:
             pass
         else:
-            log.info("Elevation {} is not within range of {} - {} degrees".format(self.elev, min_elev, max_elev))
-
             # If elevation is not within min_elev_hard and max_elev degrees set to prob_elev
             self.elev = self.elev if min_elev_hard < self.elev < max_elev else prob_elev
 
             # If elevation is min_elev_hard - min_elev degrees set to min_elev
             self.elev = min_elev if min_elev_hard < self.elev < min_elev else self.elev
-            log.info("Elevation set to {} degrees".format(self.elev))
+
 
     def limitHeights(self, obsvd_ht, min_lum_flt_ht, max_lum_flt_ht, gap):
 
@@ -652,7 +723,7 @@ class EventMonitor(multiprocessing.Process):
         # The path to the event monitor database
         self.event_monitor_db_path = os.path.join(os.path.abspath(self.syscon.data_dir),
                                                   self.syscon.event_monitor_db_name)
-        log.info("Using {} as database".format(self.event_monitor_db_path))
+
         self.createDB()
 
         # Load the event monitor database. Any problems, delete and recreate.
@@ -661,8 +732,8 @@ class EventMonitor(multiprocessing.Process):
         self.exit = multiprocessing.Event()
 
         log.info("EventMonitor is starting")
-        log.info("Monitoring {} at {:3.2f} minute intervals".format(self.syscon.event_monitor_webpage, self.syscon.event_monitor_check_interval))
-        log.info("Local db path name {}".format(self.syscon.event_monitor_db_name))
+        log.info("Monitoring {} ".format(self.syscon.event_monitor_webpage))
+        log.info("At {:3.2f} minute intervals".format(self.syscon.event_monitor_check_interval))
         log.info("Reporting data to {}/{}".format(self.syscon.hostname, self.syscon.event_monitor_remote_dir))
 
     def createDB(self):
@@ -917,7 +988,7 @@ class EventMonitor(multiprocessing.Process):
 
         Remove old record from the database, notional time of 14 days selected.
         The deletion is made on the criteria of when the record was added to the database, not the event date
-        If the event is is still listed on the website, then it will be added, and uploaded.
+        If the event is still listed on the website, then it will be added, and uploaded.
 
         """
 
@@ -1011,7 +1082,7 @@ class EventMonitor(multiprocessing.Process):
         sql_statement += "UPDATE event_monitor                 \n"
         sql_statement += "SET                                  \n"
         sql_statement += "processedstatus = 1,                 \n"
-        sql_statement += "timecompleted   = CURRENT_TIMESTAMP  \n".format(datetime.now())
+        sql_statement += "timecompleted   = CURRENT_TIMESTAMP  \n".format(datetime.datetime.utcnow())
         sql_statement += "                                     \n"
         sql_statement += "WHERE                                \n"
         sql_statement += "uuid = '{}'                          \n".format(event.uuid)
@@ -1147,8 +1218,8 @@ class EventMonitor(multiprocessing.Process):
 
         if not testmode:
             try:
-                if sys.hexversion < 0x03000000:
-                    web_page = requests.get(self.syscon.event_monitor_webpage).text.splitlines()
+                if sys.version_info[0] < 3:
+                    web_page = urllib2.urlopen(self.syscon.event_monitor_webpage).read().splitlines()
                 else:
                     web_page = urllib.request.urlopen(self.syscon.event_monitor_webpage).read().decode("utf-8").splitlines()
 
@@ -1320,7 +1391,11 @@ class EventMonitor(multiprocessing.Process):
     def findEventFiles(self, event, directory_list, file_extension_list):
 
         """Take an event, directory list and an extension list and return paths to files
+
            For .fits files always return at least the closest previous event
+           This is a pretty ugly process, where the previous file compared to the event time is held in a variable.
+           If the file being compared is the first file after the event time, put the previous file into the list,
+           if it is not already there.
 
            Arguments:
                 event: [event] Event of interest
@@ -1330,12 +1405,14 @@ class EventMonitor(multiprocessing.Process):
            Return:
                 file_list: [list of paths] List of paths to files
         """
+
         try:
-            event_time = parser.parse(event.dt)
+            event_time = dateutil.parser.parse(event.dt)
+
         except:
             event_time = convertGMNTimeToPOSIX(event.dt)
 
-        seeking_first_fits_after_event = True # to prevent warning of uninitialised
+        seeking_first_fits_after_event = True # to prevent warning of possibly uninitialised variable
         file_list = []
         # Iterate through the directory list, appending files with the correct extension
 
@@ -1347,7 +1424,7 @@ class EventMonitor(multiprocessing.Process):
                 dirlist = os.listdir(directory)
                 dirlist.sort()
                 if file_extension == ".fits":
-                    fits_list = glob(os.path.join(directory,"*.fits"))
+                    fits_list = glob.glob(os.path.join(directory,"*.fits"))
                     fits_list.sort()
                     log.info("Searching for first fits file in {}".format(directory))
                     if len(fits_list) == 0:
@@ -1547,11 +1624,11 @@ class EventMonitor(multiprocessing.Process):
             shutil.copy(file, this_event_directory)
         log.info("File pack assembled")
 
-        stackFFs(this_event_directory, "jpg", captured_stack=True)
+        stackFFs(this_event_directory, "jpg", captured_stack=True, print_progress=False)
 
         # convert bins to MP4
         for file in file_list:
-            if file.endswith(".bin") and sys.hexversion >= 0x03000000:
+            if file.endswith(".bin") and sys.version_info[0] >= 3:
                 fr_file = os.path.basename(file)
                 ff_file = convertFRNameToFF(fr_file)
 
@@ -1584,7 +1661,7 @@ class EventMonitor(multiprocessing.Process):
              root_dir = os.path.join(event_monitor_directory,upload_filename)
              archive_name = shutil.make_archive(base_name, 'bztar', root_dir, logger=log)
             else:
-             log.info("Not making an archive of {}, not sensible.".format(os.path.join(event_monitor_directory, upload_filename)))
+             log.info("Not making an archive of {}, not sensible.".format(os.path.join(event_monitor_directory)))
 
         # Remove the directory where the files were assembled
         if not keep_files:
@@ -1601,16 +1678,17 @@ class EventMonitor(multiprocessing.Process):
             # Don't include a delay before uploading
             log.info("Upload of {} - first attempt".format(event_monitor_directory))
             for retry in range(1,30):
-                archives = glob(os.path.join(event_monitor_directory,"*.bz2"))
-                # todo: remove this line which shadows uploads to local server
-                uploadSFTP("192.168.1.241", self.syscon.stationID.lower(), event_monitor_directory,
-                           self.syscon.event_monitor_remote_dir, archives, rsa_private_key=self.config.rsa_private_key)
-                upload_status = uploadSFTP(self.syscon.hostname, self.syscon.stationID.lower(),event_monitor_directory,self.syscon.event_monitor_remote_dir,archives,rsa_private_key=self.config.rsa_private_key)
+                archives = glob.glob(os.path.join(event_monitor_directory,"*.bz2"))
+
+                # Make the upload
+                upload_status = uploadSFTP(self.syscon.hostname, self.syscon.stationID.lower(),
+                                        event_monitor_directory,self.syscon.event_monitor_remote_dir,archives,
+                                           rsa_private_key=self.config.rsa_private_key, allow_dir_creation=True)
 
                 if upload_status:
                     log.info("Upload of {} - attempt no {} was successful".format(event_monitor_directory, retry))
-                    # set to the fast check rate after an upload
-                    self.check_interval = self.syscon.event_monitor_check_interval_fast
+                    # set to the fast check rate after an upload, unless already set to run faster than that, possibly for future event reporting
+                    self.check_interval = self.syscon.event_monitor_check_interval_fast if self.check_interval > self.syscon.event_monitor_check_interval_fast else self.check_interval
                     log.info("Now checking at {:2.2f} minute intervals".format(self.check_interval))
                     # Exit loop if upload was successful
                     break
@@ -1643,8 +1721,34 @@ class EventMonitor(multiprocessing.Process):
 
 
         for observed_event in unprocessed:
+
+            # Check to see if the end of this event is in the future, if it is then do not process
+            # If the end of the event is before the next scheduled execution of event monitor loop, then set the loop to execute after the event ends
+            try:
+                if convertGMNTimeToPOSIX(observed_event.dt) + datetime.timedelta(seconds=int(observed_event.time_tolerance)) > datetime.datetime.utcnow():
+                    time_until_event_end_seconds = (convertGMNTimeToPOSIX(observed_event.dt) -
+                                                        datetime.datetime.utcnow() +
+                                                        datetime.timedelta(seconds=int(observed_event.time_tolerance))).total_seconds()
+                    log.info("The end of event at {} is in the future by {:.2f} seconds"
+                             .format(observed_event.dt, time_until_event_end_seconds))
+
+                    if time_until_event_end_seconds < float(self.check_interval) * 60:
+
+                        log.info("Check interval is set to {:.2f} seconds, however end of future event is only {:.2f} seconds away"
+                                 .format(float(self.check_interval) * 60,time_until_event_end_seconds))
+                        self.check_interval = float((time_until_event_end_seconds + (random.randint(20,60))) / 60 )
+                        log.info("Check interval set to {:.2f} seconds, so that future event is reported quickly"
+                                 .format(float(self.check_interval) * 60))
+                    else:
+
+                        log.info("Check interval is set to {:.2f} seconds, end of future event {:.2f} seconds away, no action required"
+                                 .format(float(self.check_interval) * 60,time_until_event_end_seconds))
+                    continue
+            except:
+                    log.warning("Could not handle future event at {}".format(observed_event.dt))
+
             log.info("Checks on trajectories for event at {}".format(observed_event.dt))
-            check_time_start = datetime.now()
+            check_time_start = datetime.datetime.utcnow()
             # Iterate through the work
             # Events can be specified in different ways, make sure converted to LatLon
             observed_event.latLonAzElToLatLonLatLon()
@@ -1720,7 +1824,7 @@ class EventMonitor(multiprocessing.Process):
                 if min_dist < event.close_radius * 1000 and not test_mode:
                     # this is just for info
                     log.info("Event at {} was {:.0f}km away, inside {:.0f}km so is uploaded with no further checks.".format(event.dt, min_dist / 1000, event.close_radius))
-                    check_time_end = datetime.now()
+                    check_time_end = datetime.datetime.utcnow()
                     check_time_seconds = (check_time_end- check_time_start).total_seconds()
                     log.info("Check of trajectories time elapsed {:.2f} seconds".format(check_time_seconds))
                     count, event.start_distance, event.start_angle, event.end_distance, event.end_angle, event.fovra, event.fovdec = self.trajectoryThroughFOV(
@@ -1742,7 +1846,7 @@ class EventMonitor(multiprocessing.Process):
                     count, event.start_distance, event.start_angle, event.end_distance, event.end_angle, event.fovra, event.fovdec = self.trajectoryThroughFOV(event)
                     if count != 0:
                         log.info("Event at {} had {} points out of 100 in the trajectory in the FOV. Uploading.".format(event.dt, count))
-                        check_time_end = datetime.now()
+                        check_time_end = datetime.datetime.utcnow()
                         check_time_seconds = (check_time_end - check_time_start).total_seconds()
                         log.info("Check of trajectories took {:2f} seconds".format(check_time_seconds))
                         if self.doUpload(observed_event, ev_con, file_list, test_mode=test_mode):
@@ -1772,11 +1876,11 @@ class EventMonitor(multiprocessing.Process):
             # End of the processing loop for this event
             if self.eventProcessed(observed_event.uuid):
                 log.info("Reached end of checks - {} is processed".format(observed_event.dt))
-                check_time_end = datetime.now()
+                check_time_end = datetime.datetime.utcnow()
                 check_time_seconds = (check_time_end - check_time_start).total_seconds()
                 log.info("Check of trajectories time elapsed {:2f} seconds".format(check_time_seconds))
             else:
-                check_time_end = datetime.now()
+                check_time_end = datetime.datetime.utcnow()
                 check_time_seconds = (check_time_end - check_time_start).total_seconds()
                 log.info("Reached end of checks - {} is processed, nothing to upload".format(observed_event.dt))
                 log.info("Check of trajectories time elapsed {:.2f} seconds".format(check_time_seconds))
@@ -1792,8 +1896,14 @@ class EventMonitor(multiprocessing.Process):
     def start(self):
         """ Starts the event monitor. """
 
-        super(EventMonitor, self).start()
-        log.info("EventMonitor was started")
+        if testIndividuals(logging = False):
+            log.info("EventMonitor function test success")
+            super(EventMonitor, self).start()
+            log.info("EventMonitor was started")
+        else:
+            log.error("EventMonitor function test fail - not starting EventMonitor")
+
+
 
     def stop(self):
         """ Stops the event monitor. """
@@ -1846,8 +1956,8 @@ class EventMonitor(multiprocessing.Process):
         Call to start the event monitor loop. If the loop has been accelerated following a match
         then this loop slows it down by multiplying the check interval by 1.1.
 
-        The time between checks is the sum of the delay interval, and the time to perform the check.
-        No further randomisation is applied.
+        The time between checks is the sum of the delay interval, and the time to perform the check and upload.
+        No further randomisation is applied, as this is a congestion, not contention problem.
 
         """
 
@@ -1880,7 +1990,8 @@ def latLonAlt2ECEFDeg(lat, lon, h):
 
 def angularSeparationVectDeg(vect1, vect2):
     """ Calculates angle between vectors in radians.
-        Uses library function, but converts return to degrees"""
+        Uses library function, in radions , but converts return to degrees
+        This function is to reduce inline conversion calls """
 
     return np.degrees(angularSeparationVect(vect1,vect2))
 
@@ -2032,11 +2143,11 @@ def convertGMNTimeToPOSIX(timestring):
         posix compatible time
     """
     try:
-        dt_object = datetime.strptime(timestring.strip(), "%Y%m%d_%H%M%S")
+        dt_object = datetime.datetime.strptime(timestring.strip(), "%Y%m%d_%H%M%S")
     except:
         log.error("Badly formatted time {}".format(timestring.strip()))
         # return a time which will be safe but cannot produce any output
-        dt_object = datetime.strptime("20000101_000000".strip(), "%Y%m%d_%H%M%S")
+        dt_object = datetime.datetime.strptime("20000101_000000".strip(), "%Y%m%d_%H%M%S")
     return dt_object
 
 def createATestEvent07():
@@ -2204,7 +2315,7 @@ def testIsReasonable():
 def testHasCartSD():
 
     """
-    tests hasCardSD function by testing events
+    tests hasCartSD function by testing events
 
 
     return:
@@ -2304,7 +2415,7 @@ def testEventToECEFVector():
             time.sleep(30)
 
     return success
-        # Convert to radians
+
 
 def testEventCreation():
 
@@ -2410,17 +2521,13 @@ def testApplyCartesianSD():
         [bool]
     """
 
-    # If Python version less than 3, return true - can't run this testcode without 3.x
-    if sys.hexversion < 0x03000000:
-        return True
-
 
     success = True
     event = createATestEvent07()
     event_population = []
     event.cart_std, event.cart2_std = 1000,2000
     event_population = event.appendPopulation(event_population, 1000)
-    event_population = event.applyCartesianSD(event_population)
+    event_population = event.applyCartesianSD(event_population, seed = 0) # pass a seed for repeatability
 
     x1l,y1l,z1l = [],[],[]
     x2l,y2l,z2l = [],[],[]
@@ -2436,26 +2543,27 @@ def testApplyCartesianSD():
         x2l.append(x2)
         y2l.append(y2)
         z2l.append(z2)
-    xstd, ystd, zstd = statistics.pstdev(x1l),statistics.pstdev(y1l),statistics.pstdev(z1l)
+    xstd, ystd, zstd = np.std(x1l), np.std(y1l), np.std(z1l)
     success = success if abs(xstd - event.cart_std) < 100 else False
     success = success if abs(ystd - event.cart_std) < 100 else False
     success = success if abs(zstd - event.cart_std) < 100 else False
 
-    x2std, y2std, z2std = statistics.pstdev(x2l), statistics.pstdev(y2l), statistics.pstdev(z2l)
+    x2std, y2std, z2std = np.std(x2l), np.std(y2l), np.std(z2l)
     success = success if abs(x2std - event.cart2_std) < 100 else False
     success = success if abs(y2std - event.cart2_std) < 100 else False
     success = success if abs(z2std - event.cart2_std) < 100 else False
 
 
 
-    xmn, ymn, zmn = statistics.mean(x1l), statistics.mean(y1l), statistics.mean(z1l)
-    x2mn, y2mn, z2mn = statistics.mean(x2l), statistics.mean(y2l), statistics.mean(z2l)
+    xmn, ymn, zmn = np.mean(x1l), np.mean(y1l), np.mean(z1l)
+    x2mn, y2mn, z2mn = np.mean(x2l), np.mean(y2l), np.mean(z2l)
     lat,lon,ht = ecef2LatLonAlt(xmn,ymn,zmn)
     lat2, lon2, ht2 = ecef2LatLonAlt(x2mn+50, y2mn+50 , z2mn+50 )
     lat, lon, lat2, lon2 = np.degrees(lat) , np.degrees(lon),np.degrees(lat2), np.degrees(lon2)
     success = success if gcDistDeg(lat, lon, event.lat, event.lon) < 0.1 else False
     success = success if gcDistDeg(lat2, lon2, event.lat2, event.lon2) < 0.1 else False
     success = success if abs(e.ht - ht/1000) < 10 and (e.ht2 -  ht2/1000) < 10 else False
+
     return success
 
 def testApplyPolarSD():
@@ -2473,7 +2581,7 @@ def testApplyPolarSD():
     event_population = []
     event.lat_std, event.lon_std, event.ht_std, event.lat2_std, event.lon2_std,event.ht2_std = 0.01,0.02,1,0.05,0.6,5
     event_population = event.appendPopulation(event_population, 10000)
-    event_population = event.applyPolarSD(event_population)
+    event_population = event.applyPolarSD(event_population, seed = 0) # pass a seed for repeatbility
 
     lat1l,lon1l,ht1l = [],[],[]
     lat2l,lon2l,ht2l = [],[],[]
@@ -2491,12 +2599,12 @@ def testApplyPolarSD():
 
 
 
-    lat1std, lon1std, ht1std = statistics.pstdev(lat1l),statistics.pstdev(lon1l),statistics.pstdev(ht1l)
+    lat1std, lon1std, ht1std = np.std(lat1l), np.std(lon1l), np.std(ht1l)
     success = success if abs(lat1std - event.lat_std) < 0.01 else False
     success = success if abs(lon1std - event.lon_std) < 0.01 else False
     success = success if abs(ht1std - event.ht_std) < 0.1 else False
 
-    lat2std, lon2std, ht2std = statistics.pstdev(lat2l), statistics.pstdev(lon2l), statistics.pstdev(ht2l)
+    lat2std, lon2std, ht2std = np.std(lat2l), np.std(lon2l), np.std(ht2l)
     success = success if abs(lat2std - event.lat2_std) < 0.01 else False
     success = success if abs(lon2std - event.lon2_std) < 0.01 else False
     success = success if abs(ht2std - event.ht2_std) < 0.1 else False
@@ -2506,15 +2614,16 @@ def testApplyPolarSD():
 
 
 
-    lat1mn, lon1mn, ht1mn = statistics.mean(lat1l), statistics.mean(lon1l), statistics.mean(ht1l)
-    lat2mn, lon2mn, ht2mn = statistics.mean(lat2l), statistics.mean(lon2l), statistics.mean(ht2l)
+    lat1mn, lon1mn, ht1mn = np.mean(lat1l), np.mean(lon1l), np.mean(ht1l)
+    lat2mn, lon2mn, ht2mn = np.mean(lat2l), np.mean(lon2l), np.mean(ht2l)
 
     success = success if gcDistDeg(lat1mn, lon1mn, event.lat, event.lon) < 0.1 else False
     success = success if gcDistDeg(lat2mn, lon2mn, event.lat2, event.lon2) < 0.1 else False
     success = success if abs(e.ht - ht1mn) < 5 and (e.ht2 - ht2mn) < 10 else False
     return success
 
-def testIndividuals():
+
+def testIndividuals(logging = True):
 
 
     """
@@ -2531,32 +2640,37 @@ def testIndividuals():
     individuals_success = True
 
     if testRevAz():
-        log.info("revAz passed tests")
+        if logging:
+            log.info("revAz passed tests")
     else:
         log.error("revAz failed tests")
         individuals_success = False
 
     if testIsReasonable():
-        log.info("isReasonable passed tests")
+        if logging:
+            log.info("isReasonable passed tests")
     else:
         log.error("isReasonable failed tests")
         individuals_success = False
 
     if testHasCartSD():
-        log.info("hasCartSD passed tests")
+        if logging:
+            log.info("hasCartSD passed tests")
     else:
         log.error("hasCartSD failed tests")
         individuals_success = False
 
 
     if testHasPolarSD():
-        log.info("hasPolarSD passed tests")
+        if logging:
+            log.info("hasPolarSD passed tests")
     else:
         log.error("hasPolarSD failed tests")
         individuals_success = False
 
     if abs(gcDistDeg(31.7, 26.3, 45.1, 31.2) - 1549.2) < 0.5:
-        log.info("GC Dist passed test")
+        if logging:
+            log.info("GC Dist passed test")
     else:
         log.error("GC Dist failed test")
         individuals_success = False
@@ -2564,32 +2678,37 @@ def testIndividuals():
 
 
     if testEventToECEFVector():
-        log.info("eventToECEFVector passed tests")
+        if logging:
+            log.info("eventToECEFVector passed tests")
     else:
         log.error("eventToECEFVector failed tests")
         individuals_success = False
 
 
-    if convertGMNTimeToPOSIX("20210925_163127") == datetime(2021, 9, 25, 16, 31, 27):
-        log.info("convertgmntimetoposix success")
+    if convertGMNTimeToPOSIX("20210925_163127") == datetime.datetime(2021, 9, 25, 16, 31, 27):
+        if logging:
+            log.info("convertgmntimetoposix success")
     else:
         log.error("convertgmntimetoposix fail")
         individuals_success = False
 
 
     if testEventCreation():
-        log.info("Event Creation success")
+        if logging:
+            log.info("Event Creation success")
     else:
         log.error("Event Creation fail")
 
     if testApplyCartesianSD():
-        log.info("Apply Cartesian SD success")
+        if logging:
+            log.info("Apply Cartesian SD success")
     else:
         log.error("Apply Cartesian SD fail")
         individuals_success = False
 
     if testApplyPolarSD():
-        log.info("Apply Polar SD success")
+        if logging:
+            log.info("Apply Polar SD success")
     else:
         log.error("Apply Polar SD fail")
         individuals_success = False
@@ -2597,6 +2716,8 @@ def testIndividuals():
     return individuals_success
 
 if __name__ == "__main__":
+
+    import argparse
 
     arg_parser = argparse.ArgumentParser(description="""Check a web page for trajectories, and upload relevant data. \
         """, formatter_class=argparse.RawTextHelpFormatter)
@@ -2636,8 +2757,8 @@ if __name__ == "__main__":
         # Add a random string after the URL to defeat caching
         print(syscon.event_monitor_webpage)
 
-        if sys.hexversion < 0x03000000:
-            web_page = requests.get(syscon.event_monitor_webpage).text.splitlines()
+        if sys.version_info[0] < 3:
+            web_page = urllib2.urlopen(syscon.event_monitor_webpage).read().splitlines()
         else:
             web_page = urllib.request.urlopen(syscon.event_monitor_webpage).read().decode("utf-8").splitlines()
 
