@@ -1698,7 +1698,9 @@ class EventMonitor(multiprocessing.Process):
                     log.info("Upload of {} - attempt no {} was successful".format(event_monitor_directory, retry))
                     # set to the fast check rate after an upload, unless already set to run faster than that, possibly for future event reporting
                     self.check_interval = self.syscon.event_monitor_check_interval_fast if self.check_interval > self.syscon.event_monitor_check_interval_fast else self.check_interval
-                    log.info("Now checking at {:2.2f} minute intervals".format(self.check_interval))
+
+                    log.info("Now checking at {:.1f} minute intervals".format(self.check_interval))
+
                     # Exit loop if upload was successful
                     break
                 else:
@@ -1728,22 +1730,34 @@ class EventMonitor(multiprocessing.Process):
 
         unprocessed = self.getUnprocessedEventsfromDB()
 
-
+        future_events = 0
         for observed_event in unprocessed:
 
-            # Check to see if the end of this event is in the future, if it is then do not process
-            # If the end of the event is before the next scheduled execution of event monitor loop, then set the loop to execute after the event ends
-            if convertGMNTimeToPOSIX(observed_event.dt) + datetime.timedelta(seconds=int(observed_event.time_tolerance)) > datetime.datetime.utcnow():
+
+            # check to see if the end of this event is in the future, if it is then do not process
+            # if the end of the event is before the next scheduled execution of event monitor loop,
+            # then set the loop to execute after the event ends
+            if convertGMNTimeToPOSIX(observed_event.dt) + \
+                    datetime.timedelta(seconds=int(observed_event.time_tolerance)) > datetime.datetime.utcnow():
                 time_until_event_end_seconds = (convertGMNTimeToPOSIX(observed_event.dt) -
                                                     datetime.datetime.utcnow() +
                                                     datetime.timedelta(seconds=int(observed_event.time_tolerance))).total_seconds()
-                log.info("The end of event at {} is in the future by {:.2f} seconds".format(observed_event.dt, time_until_event_end_seconds))
+                future_events += 1
+                log.info("The end of event at {} is in the future by {:.1f} minutes"
+                         .format(observed_event.dt, time_until_event_end_seconds / 60))
                 if time_until_event_end_seconds < float(self.check_interval) * 60:
-                    log.info("Check interval is set to {:.2f} seconds, however end of future event is only {:.2f} seconds away".format(float(self.check_interval) * 60,time_until_event_end_seconds))
-                    self.check_interval = float((time_until_event_end_seconds + (random.randint(20,60))) / 60 )
-                    log.info("Check interval set to {:.2f} seconds, so that future event is reported quickly".format(float(self.check_interval) * 60))
+                    log.info("Check interval is set to {:.1f} minutes, however end of future event is only {:.1f} minutes away"
+                             .format(float(self.check_interval),time_until_event_end_seconds / 60))
+                    # set the check_interval to the time until the end of the event
+                    self.check_interval = float(time_until_event_end_seconds) / 60
+                    # random time offset to reduce congestion
+                    self.check_interval += random.randint(20, 60) / 60
+                    log.info("Check interval set to {:.1f} minutes, so that future event is reported quickly"
+                             .format(float(self.check_interval)))
                 else:
-                    log.info("Check interval is set to {:.2f} seconds, end of future event {:.2f} seconds away, no action required".format(float(self.check_interval) * 60,time_until_event_end_seconds))
+                    log.info("Check interval is set to {:.1f} minutes, end of future event {:.1f} minutes away, no action required"
+                             .format(float(self.check_interval),time_until_event_end_seconds / 60 ))
+
                 continue
 
 
@@ -1873,12 +1887,14 @@ class EventMonitor(multiprocessing.Process):
 
                     # Continue with other trajectories from this population
                     continue
+
             # End of the processing loop for this event
             if self.eventProcessed(observed_event.uuid):
                 log.info("Reached end of checks - {} is processed".format(observed_event.dt))
                 check_time_end = datetime.datetime.utcnow()
                 check_time_seconds = (check_time_end - check_time_start).total_seconds()
-                log.info("Check of trajectories time elapsed {:2f} seconds".format(check_time_seconds))
+                log.info("Check of trajectories time elapsed {:.2f} seconds".format(check_time_seconds))
+
             else:
                 check_time_end = datetime.datetime.utcnow()
                 check_time_seconds = (check_time_end - check_time_start).total_seconds()
@@ -1886,10 +1902,20 @@ class EventMonitor(multiprocessing.Process):
                 log.info("Check of trajectories time elapsed {:.2f} seconds".format(check_time_seconds))
                 self.markEventAsProcessed(observed_event)
 
-        if len(unprocessed) > 1:
-            log.info("{} events were processed, event_monitor work completed".format(len(unprocessed)))
-        if len(unprocessed) == 1:
-            log.info("{} event was processed, event_monitor work completed".format(len(unprocessed)))
+        if len(unprocessed) - future_events > 1:
+            log.info("{} events were processed, EventMonitor work completed"
+                     .format(len(unprocessed) - future_events))
+        if len(unprocessed) - future_events == 1:
+            log.info("{} event was processed, EventMonitor work completed"
+                     .format(len(unprocessed) - future_events))
+
+        next_run = (datetime.datetime.utcnow() + datetime.timedelta(minutes=self.check_interval)).replace(microsecond = 0)
+        if future_events == 1:
+            log.info("{} future event is scheduled, running again at {}"
+                     .format(future_events, next_run))
+        if future_events > 1:
+            log.info("{} future events are scheduled, running again at {}"
+                     .format(future_events, next_run))
 
         return None
 
