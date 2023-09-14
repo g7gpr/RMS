@@ -583,7 +583,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
          if eventmonitor is not None:
             # Stop the EventMonitor
             if eventmonitor.is_alive():
-                log.debug('Closing Eventonitor...')
+                log.debug('Closing EventMonitor...')
                 eventmonitor.stop()
                 del eventmonitor
 
