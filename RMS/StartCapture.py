@@ -479,7 +479,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
                 # Stop the eventmonitor manager
                 if eventmonitor.is_alive():
-                    log.debug('Closing eventmonitor...')
+                    log.debug('Closing EventMonitor...')
                     eventmonitor.stop()
                     del eventmonitor
 
@@ -581,9 +581,9 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
         if 'eventmonitor' in locals():
          if eventmonitor is not None:
-            # Stop the eventmonitor
+            # Stop the EventMonitor
             if eventmonitor.is_alive():
-                log.debug('Closing eventmonitor...')
+                log.debug('Closing EventMonitor...')
                 eventmonitor.stop()
                 del eventmonitor
 
@@ -967,9 +967,9 @@ if __name__ == "__main__":
 
                 if eventmonitor is not None:
 
-                    # Stop the eventmonitor
+                    # Stop the EventMonitor
                     if eventmonitor.is_alive():
-                        log.debug('Closing eventmonitor...')
+                        log.debug('Closing EventMonitor...')
                         eventmonitor.stop()
                         del eventmonitor
 
@@ -1073,7 +1073,7 @@ if __name__ == "__main__":
 
                         # Stop the eventmonitor
                         if eventmonitor.is_alive():
-                             log.debug('Closing eventmonitor...')
+                             log.debug('Closing EventMonitor...')
                              eventmonitor.stop()
                              del eventmonitor
 
@@ -1157,7 +1157,7 @@ if __name__ == "__main__":
 
     # Stop the EventMonitor
         if eventmonitor.is_alive():
-             log.debug('Closing eventmonitor...')
+             log.debug('Closing EventMonitor...')
              eventmonitor.stop()
 
              del eventmonitor
