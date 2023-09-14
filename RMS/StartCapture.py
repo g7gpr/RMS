@@ -867,8 +867,8 @@ if __name__ == "__main__":
     eventmonitor = None
 
     if config.event_monitor_enabled:
-        # Init the event monitor
-        log.info('Starting the event monitor...')
+        # Init the EventMonitor
+        log.info('Starting the EventMonitor...')
         eventmonitor = EventMonitor(config)
         eventmonitor.start()
 
@@ -1155,7 +1155,7 @@ if __name__ == "__main__":
 
     if eventmonitor is not None:
 
-    # Stop the event monitor
+    # Stop the EventMonitor
         if eventmonitor.is_alive():
              log.debug('Closing eventmonitor...')
              eventmonitor.stop()

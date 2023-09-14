@@ -719,13 +719,13 @@ class EventMonitor(multiprocessing.Process):
         self.config = config        # the config that will be used for all data processing - lats, lons etc.
         self.syscon = config        # the config that describes where the folders are
 
-        # The path to the event monitor database
+        # The path to the EventMonitor database
         self.event_monitor_db_path = os.path.join(os.path.abspath(self.syscon.data_dir),
                                                   self.syscon.event_monitor_db_name)
 
         self.createDB()
 
-        # Load the event monitor database. Any problems, delete and recreate.
+        # Load the EventMonitor database. Any problems, delete and recreate.
         self.db_conn = self.getConnectionToEventMonitorDB()
         self.check_interval = self.syscon.event_monitor_check_interval
         self.exit = multiprocessing.Event()
@@ -758,7 +758,7 @@ class EventMonitor(multiprocessing.Process):
 
     def createEventMonitorDB(self, test_mode=False):
 
-        """ Creates the event monitor database. Tries only once.
+        """ Creates the EventMonitor database. Tries only once.
 
         arguments:
 
@@ -767,7 +767,7 @@ class EventMonitor(multiprocessing.Process):
 
         """
 
-        # Create the event monitor database
+        # Create the EventMonitor database
         if test_mode:
             self.event_monitor_db_path = os.path.expanduser(os.path.join(self.syscon.data_dir, self.syscon.event_monitor_db_name))
             if os.path.exists(self.event_monitor_db_path):
@@ -852,7 +852,7 @@ class EventMonitor(multiprocessing.Process):
 
     def delEventMonitorDB(self):
 
-        """ Delete the event monitor database.
+        """ Delete the EventMonitor database.
 
         Arguments:
 
@@ -919,7 +919,7 @@ class EventMonitor(multiprocessing.Process):
         return None
 
     def getConnectionToEventMonitorDB(self):
-        """ Loads the event monitor database
+        """ Loads the EventMonitor database
 
         Arguments:
 
@@ -927,11 +927,11 @@ class EventMonitor(multiprocessing.Process):
              connection: [connection] A connection to the database
         """
 
-        # Create the event monitor database if it does not exist
+        # Create the EventMonitor database if it does not exist
         if not os.path.isfile(self.event_monitor_db_path):
             self.createEventMonitorDB()
 
-        # Load the event monitor database - only gets done here
+        # Load the EventMonitor database - only gets done here
         try:
             self.conn = sqlite3.connect(self.event_monitor_db_path)
         except:
@@ -1224,7 +1224,7 @@ class EventMonitor(multiprocessing.Process):
 
             except:
                 # Return an empty list
-                log.info("Event monitor found no page at {}".format(self.syscon.event_monitor_webpage))
+                log.info("EventMonitor found no page at {}".format(self.syscon.event_monitor_webpage))
                 return events
         else:
             f = open(os.path.expanduser("~/RMS_data/event_watchlist.txt"), "r")
@@ -1738,7 +1738,7 @@ class EventMonitor(multiprocessing.Process):
 
 
             # check to see if the end of this event is in the future, if it is then do not process
-            # if the end of the event is before the next scheduled execution of event monitor loop,
+            # if the end of the event is before the next scheduled execution of EventMonitor loop,
             # then set the loop to execute after the event ends
             if convertGMNTimeToPOSIX(observed_event.dt) + \
                     datetime.timedelta(seconds=int(observed_event.time_tolerance)) > datetime.datetime.utcnow():
@@ -1923,7 +1923,7 @@ class EventMonitor(multiprocessing.Process):
         return None
 
     def start(self):
-        """ Starts the event monitor. """
+        """ Starts the EventMonitor. """
 
         if testIndividuals(logging = False):
             log.info("EventMonitor function test success")
@@ -1935,7 +1935,7 @@ class EventMonitor(multiprocessing.Process):
 
 
     def stop(self):
-        """ Stops the event monitor. """
+        """ Stops the EventMonitor. """
 
         self.db_conn.close()
         time.sleep(2)
@@ -1982,7 +1982,7 @@ class EventMonitor(multiprocessing.Process):
     def run(self):
 
         """
-        Call to start the event monitor loop. If the loop has been accelerated following a match
+        Call to start the EventMonitor loop. If the loop has been accelerated following a match
         then this loop slows it down by multiplying the check interval by 1.1.
 
         The time between checks is the sum of the delay interval, and the time to perform the check and upload.
@@ -1996,7 +1996,7 @@ class EventMonitor(multiprocessing.Process):
         while not self.exit.is_set():
             self.checkDBExists()
             self.getEventsAndCheck()
-            log.info("Event monitor check completed")
+            log.info("EventMonitor check completed")
             start_time, duration = captureDuration(self.syscon.latitude, self.syscon.longitude, self.syscon.elevation)
             if not isinstance(start_time, bool):
                 log.info('Next capture start time: ' + str(start_time) + ' UTC')
