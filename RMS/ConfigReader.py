@@ -550,7 +550,7 @@ class Config:
         # Maximum distance from shower radiant (degrees)
         self.shower_max_radiant_separation = 7.5
 
-        #### Event Monitor
+        #### EventMonitor
 
         self.event_monitor_db_name = "event_monitor.db"
 
@@ -1017,7 +1017,7 @@ def parseUpload(config, parser):
     if parser.has_option(section, "upload_mode"):
         config.upload_mode = parser.getint(section, "upload_mode")
 
-    # Event monitor enabled
+    # EventMonitor enabled
     if parser.has_option(section, "event_monitor_enabled"):
         config.event_monitor_enabled = parser.getboolean(section, "event_monitor_enabled")
 
