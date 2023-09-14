@@ -35,7 +35,6 @@ import uuid
 import random
 import string
 
-
 if sys.version_info[0] < 3:
 
     import urllib2
@@ -720,13 +719,13 @@ class EventMonitor(multiprocessing.Process):
         self.config = config        # the config that will be used for all data processing - lats, lons etc.
         self.syscon = config        # the config that describes where the folders are
 
-        # The path to the event monitor database
+        # The path to the EventMonitor database
         self.event_monitor_db_path = os.path.join(os.path.abspath(self.syscon.data_dir),
                                                   self.syscon.event_monitor_db_name)
 
         self.createDB()
 
-        # Load the event monitor database. Any problems, delete and recreate.
+        # Load the EventMonitor database. Any problems, delete and recreate.
         self.db_conn = self.getConnectionToEventMonitorDB()
         self.check_interval = self.syscon.event_monitor_check_interval
         self.exit = multiprocessing.Event()
@@ -759,7 +758,7 @@ class EventMonitor(multiprocessing.Process):
 
     def createEventMonitorDB(self, test_mode=False):
 
-        """ Creates the event monitor database. Tries only once.
+        """ Creates the EventMonitor database. Tries only once.
 
         arguments:
 
@@ -768,7 +767,7 @@ class EventMonitor(multiprocessing.Process):
 
         """
 
-        # Create the event monitor database
+        # Create the EventMonitor database
         if test_mode:
             self.event_monitor_db_path = os.path.expanduser(os.path.join(self.syscon.data_dir, self.syscon.event_monitor_db_name))
             if os.path.exists(self.event_monitor_db_path):
@@ -853,7 +852,7 @@ class EventMonitor(multiprocessing.Process):
 
     def delEventMonitorDB(self):
 
-        """ Delete the event monitor database.
+        """ Delete the EventMonitor database.
 
         Arguments:
 
@@ -920,7 +919,7 @@ class EventMonitor(multiprocessing.Process):
         return None
 
     def getConnectionToEventMonitorDB(self):
-        """ Loads the event monitor database
+        """ Loads the EventMonitor database
 
         Arguments:
 
@@ -928,11 +927,11 @@ class EventMonitor(multiprocessing.Process):
              connection: [connection] A connection to the database
         """
 
-        # Create the event monitor database if it does not exist
+        # Create the EventMonitor database if it does not exist
         if not os.path.isfile(self.event_monitor_db_path):
             self.createEventMonitorDB()
 
-        # Load the event monitor database - only gets done here
+        # Load the EventMonitor database - only gets done here
         try:
             self.conn = sqlite3.connect(self.event_monitor_db_path)
         except:
@@ -1225,7 +1224,7 @@ class EventMonitor(multiprocessing.Process):
 
             except:
                 # Return an empty list
-                log.info("Event monitor found no page at {}".format(self.syscon.event_monitor_webpage))
+                log.info("EventMonitor found no page at {}".format(self.syscon.event_monitor_webpage))
                 return events
         else:
             f = open(os.path.expanduser("~/RMS_data/event_watchlist.txt"), "r")
@@ -1637,7 +1636,9 @@ class EventMonitor(multiprocessing.Process):
         # convert bins to MP4
         for file in file_list:
             #Guard against FS files getting into binViewer
+
             if file.endswith(".bin") and sys.version_info[0] >= 3 and os.path.basename(file)[0:2] != "FS":
+
                 fr_file = os.path.basename(file)
                 ff_file = convertFRNameToFF(fr_file)
 
@@ -1689,6 +1690,7 @@ class EventMonitor(multiprocessing.Process):
             for retry in range(1,30):
                 archives = glob.glob(os.path.join(event_monitor_directory,"*.bz2"))
 
+
                 # Make the upload
                 upload_status = uploadSFTP(self.syscon.hostname, self.syscon.stationID.lower(),
                                         event_monitor_directory,self.syscon.event_monitor_remote_dir,archives,
@@ -1696,9 +1698,12 @@ class EventMonitor(multiprocessing.Process):
 
                 if upload_status:
                     log.info("Upload of {} - attempt no {} was successful".format(event_monitor_directory, retry))
-                    # set to the fast check rate after an upload
-                    self.check_interval = self.syscon.event_monitor_check_interval_fast
-                    log.info("Now checking at {:2.2f} minute intervals".format(self.check_interval))
+                    # set to the fast check rate after an upload,
+                    # unless already set to run faster than that, possibly for future event reporting
+                    self.check_interval = self.syscon.event_monitor_check_interval_fast if self.check_interval > self.syscon.event_monitor_check_interval_fast else self.check_interval
+
+                    log.info("Now checking at {:.1f} minute intervals".format(self.check_interval))
+
                     # Exit loop if upload was successful
                     break
                 else:
@@ -1728,8 +1733,37 @@ class EventMonitor(multiprocessing.Process):
 
         unprocessed = self.getUnprocessedEventsfromDB()
 
-
+        future_events = 0
         for observed_event in unprocessed:
+
+
+            # check to see if the end of this event is in the future, if it is then do not process
+            # if the end of the event is before the next scheduled execution of EventMonitor loop,
+            # then set the loop to execute after the event ends
+            if convertGMNTimeToPOSIX(observed_event.dt) + \
+                    datetime.timedelta(seconds=int(observed_event.time_tolerance)) > datetime.datetime.utcnow():
+                time_until_event_end_seconds = (convertGMNTimeToPOSIX(observed_event.dt) -
+                                                    datetime.datetime.utcnow() +
+                                                    datetime.timedelta(seconds=int(observed_event.time_tolerance))).total_seconds()
+                future_events += 1
+                log.info("The end of event at {} is in the future by {:.1f} minutes"
+                         .format(observed_event.dt, time_until_event_end_seconds / 60))
+                if time_until_event_end_seconds < float(self.check_interval) * 60:
+                    log.info("Check interval is set to {:.1f} minutes, however end of future event is only {:.1f} minutes away"
+                             .format(float(self.check_interval),time_until_event_end_seconds / 60))
+                    # set the check_interval to the time until the end of the event
+                    self.check_interval = float(time_until_event_end_seconds) / 60
+                    # random time offset to reduce congestion
+                    self.check_interval += random.randint(20, 60) / 60
+                    log.info("Check interval set to {:.1f} minutes, so that future event is reported quickly"
+                             .format(float(self.check_interval)))
+                else:
+                    log.info("Check interval is set to {:.1f} minutes, end of future event {:.1f} minutes away, no action required"
+                             .format(float(self.check_interval),time_until_event_end_seconds / 60 ))
+
+                continue
+
+
             log.info("Checks on trajectories for event at {}".format(observed_event.dt))
             check_time_start = datetime.datetime.utcnow()
             # Iterate through the work
@@ -1856,12 +1890,14 @@ class EventMonitor(multiprocessing.Process):
 
                     # Continue with other trajectories from this population
                     continue
+
             # End of the processing loop for this event
             if self.eventProcessed(observed_event.uuid):
                 log.info("Reached end of checks - {} is processed".format(observed_event.dt))
                 check_time_end = datetime.datetime.utcnow()
                 check_time_seconds = (check_time_end - check_time_start).total_seconds()
-                log.info("Check of trajectories time elapsed {:2f} seconds".format(check_time_seconds))
+                log.info("Check of trajectories time elapsed {:.2f} seconds".format(check_time_seconds))
+
             else:
                 check_time_end = datetime.datetime.utcnow()
                 check_time_seconds = (check_time_end - check_time_start).total_seconds()
@@ -1869,15 +1905,25 @@ class EventMonitor(multiprocessing.Process):
                 log.info("Check of trajectories time elapsed {:.2f} seconds".format(check_time_seconds))
                 self.markEventAsProcessed(observed_event)
 
-        if len(unprocessed) > 1:
-            log.info("{} events were processed, event_monitor work completed".format(len(unprocessed)))
-        if len(unprocessed) == 1:
-            log.info("{} event was processed, event_monitor work completed".format(len(unprocessed)))
+        if len(unprocessed) - future_events > 1:
+            log.info("{} events were processed, EventMonitor work completed"
+                     .format(len(unprocessed) - future_events))
+        if len(unprocessed) - future_events == 1:
+            log.info("{} event was processed, EventMonitor work completed"
+                     .format(len(unprocessed) - future_events))
+
+        next_run = (datetime.datetime.utcnow() + datetime.timedelta(minutes=self.check_interval)).replace(microsecond = 0)
+        if future_events == 1:
+            log.info("{} future event is scheduled, running again at {}"
+                     .format(future_events, next_run))
+        if future_events > 1:
+            log.info("{} future events are scheduled, running again at {}"
+                     .format(future_events, next_run))
 
         return None
 
     def start(self):
-        """ Starts the event monitor. """
+        """ Starts the EventMonitor. """
 
         if testIndividuals(logging = False):
             log.info("EventMonitor function test success")
@@ -1889,7 +1935,7 @@ class EventMonitor(multiprocessing.Process):
 
 
     def stop(self):
-        """ Stops the event monitor. """
+        """ Stops the EventMonitor. """
 
         self.db_conn.close()
         time.sleep(2)
@@ -1936,7 +1982,7 @@ class EventMonitor(multiprocessing.Process):
     def run(self):
 
         """
-        Call to start the event monitor loop. If the loop has been accelerated following a match
+        Call to start the EventMonitor loop. If the loop has been accelerated following a match
         then this loop slows it down by multiplying the check interval by 1.1.
 
         The time between checks is the sum of the delay interval, and the time to perform the check and upload.
@@ -1950,7 +1996,8 @@ class EventMonitor(multiprocessing.Process):
         while not self.exit.is_set():
             self.checkDBExists()
             self.getEventsAndCheck()
-            log.info("Event monitor check completed")
+            log.info("EventMonitor check completed")
+ 
             start_time, duration = captureDuration(self.syscon.latitude, self.syscon.longitude, self.syscon.elevation)
             if not isinstance(start_time, bool):
                 log.info('Next capture start time: ' + str(start_time) + ' UTC')
@@ -2306,7 +2353,6 @@ def testHasCartSD():
 
     """
     tests hasCartSD function by testing events
-    tests hasCardSD function by testing events
 
 
     return:
@@ -2573,6 +2619,7 @@ def testApplyPolarSD():
     event.lat_std, event.lon_std, event.ht_std, event.lat2_std, event.lon2_std,event.ht2_std = 0.01,0.02,1,0.05,0.6,5
     event_population = event.appendPopulation(event_population, 10000)
     event_population = event.applyPolarSD(event_population, seed = 0) # pass a seed for repeatbility
+
 
     lat1l,lon1l,ht1l = [],[],[]
     lat2l,lon2l,ht2l = [],[],[]
