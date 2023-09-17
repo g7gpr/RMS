@@ -690,7 +690,7 @@ def processIncompleteCaptures(config, upload_manager):
 
         if FTPfile_newer_than_bz2:
                 run_reprocess = True
-                log.info("Reprocessing because {} newer than {}".format(FTPfile,related_bz2_path))
+                log.info("Reprocessing because {} newer than {}".format(os.path.basename(FTPfile),os.path.basename(related_bz2_path)))
 
 
         # Skip the folder if it doesn't need to be reprocessed
