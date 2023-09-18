@@ -479,7 +479,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
                 # Stop the eventmonitor manager
                 if eventmonitor.is_alive():
-                    log.debug('Closing eventmonitor...')
+                    log.debug('Closing EventMonitor...')
                     eventmonitor.stop()
                     del eventmonitor
 
@@ -656,10 +656,35 @@ def processIncompleteCaptures(config, upload_manager):
                     # if there is no platepar in the captured_dir_path
                     newest_FTPfile_older_than_platepar = False
 
+            # Check if there is a matching .bz2 file, and that it is newer than the newest FTP file
+            FTPfile_newer_than_bz2 = False
+            for FTPfile in FTPdetectinfo_files:
+                # Ignore FTP files that have been generated for cams code compatibility
+                if FTPfile[14:20] == config.cams_code:
+                    log.info("Ignoring {} as it is a cams_code file".format(os.path.basename(FTPfile)))
+                    continue
+                # Only reprocess for FTP files with the correct station ID
+                if FTPfile[14:20] != config.stationID:
+                    log.warning("Ignoring {} as it does not have the correct stationID".format(os.path.basename(FTPfile)))
+                    continue
+                bz2_file = "{}_detected.tar.bz2".format(os.path.basename(FTPfile)[14:43])
+                related_bz2_path = os.path.join(config.data_dir, config.archived_dir, bz2_file)
+                if os.path.exists(related_bz2_path):
+                    if os.path.getmtime(FTPfile) > os.path.getmtime(related_bz2_path):
+                        FTPfile_newer_than_bz2 = True
+                        log.info("FTPFile {} is newer than bz2".format(FTPfile, related_bz2_path))
+                        break
+                else:
+                    FTPfile_newer_than_bz2 = True
+                    break
+
+
         # Auto reprocess criteria:
         #   - Any backup pickle files
         #   - No pickle and no FTPdetectinfo files
         #   - Newest FTP file older than platepar in capture directory
+        #   - Any FTP file in capture directory is newer than associated bz2 file
+        #   - Associated bz2 file does not exist
 
         run_reprocess = False
         if any_pickle_files:
@@ -670,6 +695,11 @@ def processIncompleteCaptures(config, upload_manager):
         if newest_FTPfile_older_than_platepar:
                 run_reprocess = True
                 log.info("Reprocessing because newest FTPDetect file older than platepar file")
+
+        if FTPfile_newer_than_bz2:
+                run_reprocess = True
+                log.info("Reprocessing because {} newer than {}".format(os.path.basename(FTPfile),os.path.basename(related_bz2_path)))
+
 
         # Skip the folder if it doesn't need to be reprocessed
         if not run_reprocess:
@@ -967,9 +997,9 @@ if __name__ == "__main__":
 
                 if eventmonitor is not None:
 
-                    # Stop the eventmonitor
+                    # Stop the EventMonitor
                     if eventmonitor.is_alive():
-                        log.debug('Closing eventmonitor...')
+                        log.debug('Closing EventMonitor...')
                         eventmonitor.stop()
                         del eventmonitor
 
@@ -1073,7 +1103,7 @@ if __name__ == "__main__":
 
                         # Stop the eventmonitor
                         if eventmonitor.is_alive():
-                             log.debug('Closing eventmonitor...')
+                             log.debug('Closing EventMonitor...')
                              eventmonitor.stop()
                              del eventmonitor
 
@@ -1157,7 +1187,7 @@ if __name__ == "__main__":
 
     # Stop the EventMonitor
         if eventmonitor.is_alive():
-             log.debug('Closing eventmonitor...')
+             log.debug('Closing EventMonitor...')
              eventmonitor.stop()
 
              del eventmonitor
