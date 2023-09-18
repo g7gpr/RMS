@@ -1997,6 +1997,7 @@ class EventMonitor(multiprocessing.Process):
             self.checkDBExists()
             self.getEventsAndCheck()
             log.info("EventMonitor check completed")
+
             start_time, duration = captureDuration(self.syscon.latitude, self.syscon.longitude, self.syscon.elevation)
             if not isinstance(start_time, bool):
                 log.info('Next capture start time: ' + str(start_time) + ' UTC')
