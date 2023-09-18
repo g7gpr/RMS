@@ -661,6 +661,11 @@ def processIncompleteCaptures(config, upload_manager):
             for FTPfile in FTPdetectinfo_files:
                 # Ignore FTP files that have been generated for cams code compatibility
                 if FTPfile[14:20] == config.cams_code:
+                    log.info("Ignoring {} as it is a cams_code file".format(os.path.basename(FTPfile)))
+                    continue
+                # Only reprocess for FTP files with the correct station ID
+                if FTPfile[14:20] != config.stationID:
+                    log.warning("Ignoring {} as it does not have the correct stationID".format(os.path.basename(FTPfile)))
                     continue
                 bz2_file = "{}_detected.tar.bz2".format(os.path.basename(FTPfile)[14:43])
                 related_bz2_path = os.path.join(config.data_dir, config.archived_dir, bz2_file)
