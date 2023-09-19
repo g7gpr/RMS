@@ -662,7 +662,7 @@ def processIncompleteCaptures(config, upload_manager):
                 FTPfile_stationID = os.path.basename(FTPfile)[14:20]
                 # Ignore FTP files that have been generated for cams code compatibility
                 log.info("FTPfile_stationID {}, config.cams_code {}".format(FTPfile_stationID[2:6], config.cams_code))
-                if FTPfile_stationID[2:6].strip() == config.cams_code.strip():
+                if str(FTPfile_stationID[2:6]).strip() == str(config.cams_code).strip():
                     log.info("Ignoring {} as it is a cams_code file".format(os.path.basename(FTPfile)))
 
                     continue
