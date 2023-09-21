@@ -143,7 +143,7 @@ def saveDetections(detection_results, ff_dir, config):
         for meteor in meteor_data:
             meteors_num += 1
 
-    log.info('TOTAL: ' + str(meteors_num) + ' detected meteors.')
+    log.info('TOTAL: ' + str(meteors_num) + ' detected meteors in ' + str(os.path.basename(ff_dir)))
 
 
     # Save the detections to a file
