@@ -58,7 +58,7 @@ import RMS.Routines.MorphCy as morph
 from RMS.Routines.BinImageCy import binImage
 
 # If True, all detection details will be logged
-VERBOSE_DEBUG = True
+VERBOSE_DEBUG = False
 
 
 # Get the logger from the main module
