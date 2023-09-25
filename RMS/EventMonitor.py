@@ -1773,14 +1773,14 @@ class EventMonitor(multiprocessing.Process):
                                 ev_con = cr.parse(file)
                             except:
                                 log.warning("Unknown error loading .config file; reverting to station .config")
-                                ev_con = cr.parse(syscon.config_file_name)
+                                ev_con = cr.parse(self.syscon.config_file_name)
                         else:
                             log.warning("Zero size .config file found")
-                            ev_con = cr.parse(syscon.config_file_name)
+                            ev_con = cr.parse(self.syscon.config_file_name)
                             log.warning("Used the station .config file as night directory .config file had zero length")
                     else:
                         log.info("No .config file found at {}".format(file))
-                        ev_con = cr.parse(syscon.config_file_name)
+                        ev_con = cr.parse(self.syscon.config_file_name)
                         log.warning("Used the station .config file as no contemporary .config file was found")
 
             # Look for the station code in the stations_required string
