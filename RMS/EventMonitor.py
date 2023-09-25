@@ -1468,8 +1468,8 @@ class EventMonitor(multiprocessing.Process):
 
         file_list += self.findEventFiles(event, self.getDirectoryList(event), [".fits", ".bin"])
         if len(self.getDirectoryList(event)) > 0:
-            file_list += self.getFile(".config", self.getDirectoryList(event)[-1])
-            file_list += self.getFile("platepar_cmn2010.cal", self.getDirectoryList(event)[-1])
+            file_list += self.getFile(".config", self.getDirectoryList(event).sort()[-1])
+            file_list += self.getFile("platepar_cmn2010.cal", self.getDirectoryList(event).sort()[-1])
 
         return file_list
 
