@@ -1770,7 +1770,7 @@ class EventMonitor(multiprocessing.Process):
                         ev_con = cr.parse(file)
                     else:
                         log.info("No .config file found at {}".format(file))
-                        ev_con = cr.parse(config.config_file_name)
+                        ev_con = cr.parse(syscon.config_file_name)
                         log.warning("Used the station .config file as no contemporary .config file was found")
 
             # Look for the station code in the stations_required string
