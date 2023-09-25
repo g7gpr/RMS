@@ -1768,7 +1768,16 @@ class EventMonitor(multiprocessing.Process):
                     log.info("Attempt to parse {} as the .config for the event".format(file))
                     if os.path.isfile(file):
                         log.info("Contemporary .config file found")
-                        ev_con = cr.parse(file)
+                        if os.path.getsize(file) != 0:
+                            try:
+                                ev_con = cr.parse(file)
+                            except:
+                                log.warning("Unknown error loading .config file; reverting to station .config")
+                                ev_con = cr.parse(syscon.config_file_name)
+                        else:
+                            log.warning("Zero size .config file found")
+                            ev_con = cr.parse(syscon.config_file_name)
+                            log.warning("Used the station .config file as night directory .config file had zero length")
                     else:
                         log.info("No .config file found at {}".format(file))
                         ev_con = cr.parse(syscon.config_file_name)
