@@ -594,7 +594,7 @@ def sanitise(unsanitised, lower = False, space_substitution = "", log_changes = 
             if c in permitted:
                 sanitised += c
 
-    log.info("String {} was sanitised to {}".format(unsanitised, sanitised))
+
     if unsanitised != sanitised and log_changes:
         log.info("String {} was sanitised to {}".format(unsanitised, sanitised))
 
