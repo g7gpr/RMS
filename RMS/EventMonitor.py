@@ -210,7 +210,7 @@ class EventContainer(object):
         self.stations_required = str(value) if "StationsRequired" == variable_name else self.stations_required
         self.uuid = str(value) if "uuid" == variable_name else self.uuid
         self.respond_to = str(value) if "RespondTo" == variable_name else self.respond_to
-        self.suffix = sanitise(str(value)) if "Suffix" == variable_name else self.suffix
+        self.suffix = sanitise(str(value).strip(), space_substitution="_") if "Suffix" == variable_name else self.suffix
 
     def eventToString(self):
 
