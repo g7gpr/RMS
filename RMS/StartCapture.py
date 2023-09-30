@@ -660,7 +660,7 @@ def processIncompleteCaptures(config, upload_manager):
             FTPfile_newer_than_bz2 = False
 
             for FTPfile in FTPdetectinfo_files:
-                log.info("Checking if matching .bz2 file for {}".format(os.path.basename(FTPfile)))
+                #log.info("Checking if matching .bz2 file for {}".format(os.path.basename(FTPfile)))
                 FTPfile_stationID = os.path.basename(FTPfile)[14:20]
                 # Ignore FTP files that have been generated for cams code compatibility
                 if str(FTPfile_stationID[2:6]).strip() == str(config.cams_code).strip():
@@ -677,7 +677,7 @@ def processIncompleteCaptures(config, upload_manager):
                         log.info("FTPFile {} is newer than bz2".format(FTPfile, related_bz2_path))
                         break
                 else:
-                    log.info("FTPFile {} does not have a related bz2 file".format(FTPfile, related_bz2_path))
+                    log.info("FTPFile {} does not have a related bz2 file".format(os.path.basename(FTPfile), related_bz2_path))
                     FTPfile_newer_than_bz2 = True
                     break
 
@@ -701,7 +701,7 @@ def processIncompleteCaptures(config, upload_manager):
 
         if FTPfile_newer_than_bz2:
                 run_reprocess = True
-                log.info("Reprocessing because {} newer than {}".format(os.path.basename(FTPfile),os.path.basename(related_bz2_path)))
+                log.info("Reprocessing because {} needs to be created to match {}".format(os.path.basename(related_bz2_path),os.path.basename(FTPfile)))
 
 
         # Skip the folder if it doesn't need to be reprocessed
