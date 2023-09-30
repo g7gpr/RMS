@@ -658,8 +658,9 @@ def processIncompleteCaptures(config, upload_manager):
 
             # Check if there is a matching .bz2 file, and that it is newer than the newest FTP file
             FTPfile_newer_than_bz2 = False
-            log.info("Checking if matching .bz2 file for {}".format(os.path.basenam(FTPfile)))
+
             for FTPfile in FTPdetectinfo_files:
+                log.info("Checking if matching .bz2 file for {}".format(os.path.basename(FTPfile)))
                 FTPfile_stationID = os.path.basename(FTPfile)[14:20]
                 # Ignore FTP files that have been generated for cams code compatibility
                 if str(FTPfile_stationID[2:6]).strip() == str(config.cams_code).strip():
