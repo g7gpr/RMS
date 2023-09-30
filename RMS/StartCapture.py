@@ -677,6 +677,7 @@ def processIncompleteCaptures(config, upload_manager):
                         log.info("FTPFile {} is newer than bz2".format(FTPfile, related_bz2_path))
                         break
                 else:
+                    log.info("FTPFile {} does not have a related bz2 file".format(FTPfile, related_bz2_path))
                     FTPfile_newer_than_bz2 = True
                     break
 
