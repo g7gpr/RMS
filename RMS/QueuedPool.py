@@ -83,7 +83,7 @@ class BackupContainer(object):
 
 
 class QueuedPool(object):
-    def __init__(self, func, cores=None, log=None, delay_start=0, worker_timeout=2000, backup_dir='.', \
+    def __init__(self, func, cores=None, log=None, delay_start=0, worker_timeout=8000, backup_dir='.', \
         input_queue_maxsize=None, low_priority=False, func_extra_args=None, func_kwargs=None, 
         worker_wait_inbetween_jobs=0.1, print_state=True):
         """ Provides capability of creating a pool of workers which will process jobs in a given queue, and 
@@ -92,7 +92,7 @@ class QueuedPool(object):
         The workers will process the queue until the pool is deliberately closed. All results are stored in an 
         output queue. It is also possible to change the number of workers in a pool during runtime.
 
-        The default worker timeout time is 2000 seconds.
+        The default worker timeout time is 8000 seconds.
 
         Arguments:
             func: [function] Worker function to which the arguments from the queue will be passed
