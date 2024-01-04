@@ -83,7 +83,7 @@ class BackupContainer(object):
 
 
 class QueuedPool(object):
-    def __init__(self, func, cores=None, log=None, delay_start=0, worker_timeout=8000, backup_dir='.', \
+    def __init__(self, func, cores=None, log=None, delay_start=0, worker_timeout=3600 * 4, backup_dir='.', \
         input_queue_maxsize=None, low_priority=False, func_extra_args=None, func_kwargs=None, 
         worker_wait_inbetween_jobs=0.1, print_state=True):
         """ Provides capability of creating a pool of workers which will process jobs in a given queue, and 
