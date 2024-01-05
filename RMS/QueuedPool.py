@@ -83,16 +83,16 @@ class BackupContainer(object):
 
 
 class QueuedPool(object):
-    def __init__(self, func, cores=None, log=None, delay_start=0, worker_timeout=3600 * 4, backup_dir='.', \
+    def __init__(self, func, cores=None, log=None, delay_start=0, worker_timeout=3600, backup_dir='.', \
         input_queue_maxsize=None, low_priority=False, func_extra_args=None, func_kwargs=None, 
-        worker_wait_inbetween_jobs=0.1, print_state=True):
+        worker_wait_inbetween_jobs=0.1, print_state=True, stuck_action = "Abort", working_dir=None, config=None, recursion_count = 0):
         """ Provides capability of creating a pool of workers which will process jobs in a given queue, and 
         the input queue can be updated in another thread. 
 
         The workers will process the queue until the pool is deliberately closed. All results are stored in an 
         output queue. It is also possible to change the number of workers in a pool during runtime.
 
-        The default worker timeout time is 8000 seconds.
+        The default worker timeout time is 3600 seconds.
 
         Arguments:
             func: [function] Worker function to which the arguments from the queue will be passed
@@ -155,6 +155,10 @@ class QueuedPool(object):
         self.func_extra_args = func_extra_args
         self.func_kwargs = func_kwargs
         self.worker_wait_inbetween_jobs = worker_wait_inbetween_jobs
+        self.stuck_action = stuck_action
+        self.working_dir = working_dir
+        self.config = config
+        self.recursion_count = recursion_count
 
         # Initialize queues (for some reason queues from Manager need to be created, otherwise they are 
         # blocking when using get_nowait)
@@ -437,15 +441,36 @@ class QueuedPool(object):
 
                 # If the queue has been idle for too long, kill it
                 if (time.time() - output_qsize_last_change) > worker_timeout:
-                    self.printAndLog('One of the workers got stuck longer than {:.1f} seconds, killing multiprocessing...'.format(float(worker_timeout)))
+                    if self.stuck_action == "Abort":
+                        self.printAndLog('One of the workers got stuck longer than {:.1f} seconds, killing multiprocessing...'.format(float(worker_timeout)))
 
-                    self.printAndLog('Terminating pool...')
-                    self.pool.terminate()
+                        self.printAndLog('Terminating pool...')
+                        self.pool.terminate()
 
-                    self.printAndLog('Joining pool...')
-                    self.pool.join()
+                        self.printAndLog('Joining pool...')
+                        self.pool.join()
 
-                    self.active_workers.set(0)
+                        self.active_workers.set(0)
+
+                    elif self.stuck_action == "Reload":
+                        self.printAndLog(
+                            'One of the workers got stuck longer than {:.1f} seconds, reloading multiprocessing...'.format(
+                                float(worker_timeout)))
+
+                        self.printAndLog('Terminating pool...')
+                        self.pool.terminate()
+
+                        self.printAndLog('Joining pool...')
+                        self.pool.join()
+
+                        self.active_workers.set(0)
+                        self.recursion_count += 1
+                        if self.recursion_count < 3:
+                            print("Retry {}".format(self.recursion_count))
+                            detectStarsAndMeteorsDirectory(self.working_dir, self.config, self.recursion_count)
+                        else:
+                            print("Recursed {} times, not retrying".format(self.recursion_count))
+
 
                     break
 
