@@ -92,7 +92,7 @@ class QueuedPool(object):
         The workers will process the queue until the pool is deliberately closed. All results are stored in an 
         output queue. It is also possible to change the number of workers in a pool during runtime.
 
-        The default worker timeout time is 3600 seconds.
+        The default worker timeout time is 7200 seconds.
 
         Arguments:
             func: [function] Worker function to which the arguments from the queue will be passed
