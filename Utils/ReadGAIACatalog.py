@@ -273,25 +273,30 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                 oid_index = name_list.index(gaia_dr3_ident)
                 oid = oid_list[oid_index]
                 # since we had a valid simbad oid, try and find the name
+                name_score = np.inf
                 oid_index_list = [i for i, x in enumerate(oid_list) if x == oid]
                 for index in oid_index_list:
                     if name_list[index][0:3] == "TYC":
                         main_id = name_list[index]
+                        name_score = 0
                         break
-                    if name_list[index][0:3] == "TIC":
+                    if name_list[index][0:3] == "TIC" and name_score > 1:
                         main_id = name_list[index]
-                        break
-                    if name_list[index][0:5] == "2MASS":
+                        name_score = 1
+                    if name_list[index][0:5] == "2MASS" and name_score > 2:
                         main_id = name_list[index]
+                        name_score = 2
                         break
-                if main_id == "":
-                    main_id = gaia_dr3_ident
+                    if name_list[index][0:8] == "Gaia DR3"  and name_score > 3:
+                        main_id = name_list[index]
+                        name_score = 3
+
             else:
                 oid, main_id = "-1", gaia_dr3_ident
 
             catalogue_line.append(oid)
             catalogue_line.append(main_id)
-            line_string = ""
+            line_string = "|"
             for value in catalogue_line:
                 line_string += str(value).replace("\n", "").strip()
                 line_string += "|"
