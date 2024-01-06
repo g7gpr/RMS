@@ -421,11 +421,10 @@ if __name__ == "__main__":
 
     with open ("/home/david/tmp/catalogue_with_oid_sorted_by_oid.txt", 'w') as f:
         for line in catalogue_with_oid:
-            line_split = line.split("|")
             output_line = "|"
-            for value in line_split:
+            for value in line:
                 output_line += str(value)
-            output_line += "|"
+            output_line += "|\n"
             f.write(output_line)
 
 
