@@ -212,11 +212,6 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
     Replacement for IDS function
 
     """
-    star_list, designator_list = [], []
-    for star in catalogue:
-        (star[columns.index("designation")].replace(" ", "+"))
-        designator = star[columns.index("designation")]
-        designator_list.append(designator)
 
     cross_reference_list = []
 
@@ -233,10 +228,10 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
                     continue
                 id = line_list[0].replace('"','').strip()
                 oidref=line_list[1]
-
-                if "Gaia DR3" == id[0:8]:
-
+                if oidref != "oidref" and id !="id" and "-" not in oidref:
                     cross_reference_list.append([id,int(oidref)])
+                else:
+                    print("Skipping {}|{}".format(id,oidref))
             print(len(cross_reference_list))
 
     # sort by gaia ident to speed up the future join
@@ -253,13 +248,13 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
     return gaia_id_list, oid_list
 
 
-def generateDR3CatalogueWithSimbadCode(catalogue, columns, gaia_id_list, oid_list, main_id_list_simbad, oid_list_simbad, output_filename):
+def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, output_filename):
 
 
     with open(output_filename, 'w') as fh:
 
         line_string = "|"
-        for column_name in columns:
+        for column_name in gaia_columns:
             line_string += column_name
             line_string += "|"
         line_string += "simbad_code|main_id|"
@@ -270,27 +265,26 @@ def generateDR3CatalogueWithSimbadCode(catalogue, columns, gaia_id_list, oid_lis
 
 
     # optimise this code - both lists are sorted so can be merged more efficiently
-        for catalogue_line in tqdm(catalogue):
+        for catalogue_line in tqdm(gaia_catalogue):
             gaia_dr3_ident = catalogue_line[0]
         #add the simbad oid
-
-            if gaia_dr3_ident in gaia_id_list:
-                oid_index = gaia_id_list.index(gaia_dr3_ident)
+            main_id = ""
+            if gaia_dr3_ident in name_list:
+                oid_index = name_list.index(gaia_dr3_ident)
                 oid = oid_list[oid_index]
                 # since we had a valid simbad oid, try and find the name
-                if oid in oid_list_simbad:
-                    oid_list_simbad_index_list = [i for i, x in enumerate(oid_list_simbad) if x == oid]
-                    for index in oid_list_simbad_index_list:
-                        if main_id_list_simbad[index][0:3] == "TYC":
-                            main_id = main_id_list_simbad[index]
-                            break
-                        if main_id_list_simbad[index][0:3] == "TIC":
-                            main_id = main_id_list_simbad[index]
-                            break
-                        if main_id_list_simbad[index][0:5] == "2MASS":
-                            main_id = main_id_list_simbad[index]
-                            break
-                else:
+                oid_index_list = [i for i, x in enumerate(oid_list) if x == oid]
+                for index in oid_index_list:
+                    if name_list[index][0:3] == "TYC":
+                        main_id = name_list[index]
+                        break
+                    if name_list[index][0:3] == "TIC":
+                        main_id = name_list[index]
+                        break
+                    if name_list[index][0:5] == "2MASS":
+                        main_id = name_list[index]
+                        break
+                if main_id == "":
                     main_id = gaia_dr3_ident
             else:
                 oid, main_id = "-1", gaia_dr3_ident
@@ -330,21 +324,21 @@ if __name__ == "__main__":
 
 
     #This provides a lookup table to go from Simbad oid key to main_id, which I think is the name that GMN wishes to use
-    print("Reading Simbad Basic ")
-    simbadBasicSortedByOID, columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
-    print("Simbad Basic read completed - oid2main_id file written")
+    #print("Reading Simbad Basic ")
+    #simbadBasicSortedByOID, simbad_columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
+    #print("Simbad Basic read completed - oid2main_id file written")
 
 
     #Read in the Gaia catalogue
     print("Reading in the Gaia Catalogue")
-    catalogue, columns = readGaiaCatalogTxt(os.path.expanduser(cml_args.input_path),max_objects=cml_args.maxobjects)
+    gaia_catalogue, gaia_columns = readGaiaCatalogTxt(os.path.expanduser(cml_args.input_path), max_objects=cml_args.maxobjects)
     print("Gaia Catalogue read complete")
 
 
     #From the Gaia catalogue produce a relationship between Gaia ident and Simbad Code
 
     print("Producing relationship from Gaia DR3 ident to Simbad Code")
-    gaia_id_list, oid_list = generateGaia2SimbadCodeFromIdentTables(catalogue, columns)
+    name_list, oid_list = generateGaia2SimbadCodeFromIdentTables(gaia_catalogue, gaia_columns)
 
     print("Pickling work so far")
     #with open('gaia_id_list','wb') as fh:
@@ -359,10 +353,10 @@ if __name__ == "__main__":
     #with open('oid_list', 'rb') as fh:
     #    oid_list = pickle.load(fh)
 
-    print("Relationship from Gaia DR3 ident to Simbad code produced")
+
 
     print("Produce Gaia catalogue sorted by simbad code")
-    generateDR3CatalogueWithSimbadCode(catalogue, columns, gaia_id_list, oid_list, main_id_list_simbad, oid_list_simbad,"/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
+    generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, "/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
     print("Gaia catalogue sored by simbad code produced")
 
 
