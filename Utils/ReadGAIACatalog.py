@@ -424,6 +424,7 @@ if __name__ == "__main__":
             output_line = "|"
             for value in line:
                 output_line += str(value)
+                output_line += "|"
             output_line += "|\n"
             f.write(output_line)
 
