@@ -279,7 +279,7 @@ def generateDR3CatalogueWithSimbadCode(catalogue, columns, gaia_id_list, oid_lis
                 oid = oid_list[oid_index]
                 # since we had a valid simbad oid, try and find the name
                 if oid in oid_list_simbad:
-                    oid_list_simbad_index_list = [i for i, x in enumerate(my_list) if x == oid]
+                    oid_list_simbad_index_list = [i for i, x in enumerate(oid_list_simbad) if x == oid]
                     for index in oid_list_simbad_index_list:
                         if main_id_list_simbad[index][0:3] == "TYC":
                             main_id = main_id_list_simbad[index]
