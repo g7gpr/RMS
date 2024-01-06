@@ -164,7 +164,7 @@ if __name__ == "__main__":
         for column_name in columns:
             line_string += column_name
             line_string += "|"
-        line_string += "sinbad_code|"IDS
+        line_string += "sinbad_code|"
         line_string += "\n"
         fh.write(line_string)
 
