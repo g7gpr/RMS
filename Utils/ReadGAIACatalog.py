@@ -417,9 +417,16 @@ if __name__ == "__main__":
     catalogue_with_oid = generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list,
                                                             id_list_gaia_dr3_only, oid_list_gaia_dr3_only,
                                                             "/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
-    print("Gaia catalogue sored by simbad code produced")
+    print("Gaia catalogue sorted by simbad code produced")
 
-
+    with open ("/home/david/tmp/catalogue_with_oid_sorted_by_oid.txt", 'w') as f:
+    for line in catalogue_with_oid:
+        line_split = line.split("|")
+        output_line = "|"
+        for value in line_split:
+            output_line += str(value)
+        output_line += "|"
+        f.write(output_line)
 
 
     #ra, dec, mag = results.T
