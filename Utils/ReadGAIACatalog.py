@@ -307,7 +307,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
         #add the simbad oid
             main_id = ""
             if gaia_dr3_ident in name_list_dr3_only:
-                oid_index = name_list.index(gaia_dr3_ident)
+                oid_index = name_list_dr3_only.index(gaia_dr3_ident)
                 oid = oid_list_dr3_only[oid_index]
                 # since we had a valid simbad oid, try and find the name
                 """
