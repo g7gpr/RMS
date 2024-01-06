@@ -288,17 +288,16 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
 def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, output_filename):
 
 
-        fh = open(output_filename, 'w')
+        gaia_columns.append("oid")
 
+        fh = open(output_filename, 'w')
         line_string = "|"
+
         for column_name in gaia_columns:
             line_string += column_name
             line_string += "|"
-        line_string += "oid|main_id|"
         line_string += "\n"
         fh.write(line_string)
-        gaia_columns.append("oid")
-        gaia_columns.append("main_id")
 
         fh.close()
         catalogue_with_oid = []
@@ -342,6 +341,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                 line_string += str(value).replace("\n", "").strip()
                 line_string += "|"
                 catalogue_with_oid.append(value)
+
             line_string += "\n"
             fh = open(output_filename, 'a')
             fh.write(line_string)
