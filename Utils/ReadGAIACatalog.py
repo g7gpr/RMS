@@ -420,13 +420,13 @@ if __name__ == "__main__":
     print("Gaia catalogue sorted by simbad code produced")
 
     with open ("/home/david/tmp/catalogue_with_oid_sorted_by_oid.txt", 'w') as f:
-    for line in catalogue_with_oid:
-        line_split = line.split("|")
-        output_line = "|"
-        for value in line_split:
-            output_line += str(value)
-        output_line += "|"
-        f.write(output_line)
+        for line in catalogue_with_oid:
+            line_split = line.split("|")
+            output_line = "|"
+            for value in line_split:
+                output_line += str(value)
+            output_line += "|"
+            f.write(output_line)
 
 
     #ra, dec, mag = results.T
