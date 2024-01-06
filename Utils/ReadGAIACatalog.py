@@ -236,7 +236,7 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
 
     # sort by gaia ident to speed up the future join
     print("Sorting")
-    cross_reference_list_sorted_by_id = sorted(cross_reference_list, key=lambda gaia2simbadcode: gaia2simbadcode[0])
+    cross_reference_list_sorted_by_id = sorted(cross_reference_list, key=lambda gaia2simbadcode: gaia2simbadcode[1])
     print("Sorted")
     gaia_id_list, oid_list = [],[]
 
