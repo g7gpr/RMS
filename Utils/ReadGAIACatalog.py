@@ -382,7 +382,7 @@ if __name__ == "__main__":
     #From the Gaia catalogue produce a relationship between Gaia ident and Simbad Code
 
     print("Producing relationship from Gaia DR3 ident to Simbad Code")
-    name_list, oid_list = generateGaia2SimbadCodeFromIdentTables(gaia_catalogue, gaia_columns)
+    name_list, oid_list,id_list_gaia_dr3_only, oid_list_gaia_dr3_only = generateGaia2SimbadCodeFromIdentTables(gaia_catalogue, gaia_columns)
 
     print("Pickling work so far")
     #with open('gaia_id_list','wb') as fh:
@@ -400,7 +400,7 @@ if __name__ == "__main__":
 
 
     print("Produce Gaia catalogue sorted by simbad code")
-    generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, "/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
+    generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, id_list_gaia_dr3_only, oid_list_gaia_dr3_only, "/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
     print("Gaia catalogue sored by simbad code produced")
 
 
