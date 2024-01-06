@@ -162,8 +162,7 @@ if __name__ == "__main__":
 
     col_no = len(gaia_dr3_catalogue_with_sinbad_code[0])
     print("Sinbad col_no {}".format(col_no))
-    gaia_dr3_catalogue_with_sinbad_code_sorted_by_sinbad_code = \
-        gaia_dr3_catalogue_with_sinbad_code.sorted(gaia_dr3_catalogue_with_sinbad_code,key=itemgetter(col_no))
+    gaia_dr3_catalogue_with_sinbad_code_sorted_by_sinbad_code = sorted(gaia_dr3_catalogue_with_sinbad_code,key=itemgetter(col_no))
 
     with open("/home/david/tmp/gaiacatalogue_with_sinbad_code.txt", 'w') as fh:
 
