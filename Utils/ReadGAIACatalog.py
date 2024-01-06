@@ -242,7 +242,7 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
     cross_reference_list_sorted_by_id = sorted(cross_reference_list, key=lambda gaia2simbadcode: gaia2simbadcode[1])
     cross_reference_list_DR3_sorted_by_GaiaReference = sorted(cross_reference_list, key=lambda gaia2simbadcode: gaia2simbadcode[0])
     print("Sorted")
-    gaia_id_list, oid_list = [],[]
+
 
     print("Starting write of name2oid.txt")
     with open("/home/david/tmp/name2oid.txt","w") as fh:
@@ -269,13 +269,20 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
 
 
 
+    id_list, oid_list = [],[]
 
     for relationship in cross_reference_list_sorted_by_id:
-        gaia_id_list.append(relationship[0])
+        id_list.append(relationship[0])
         oid_list.append(relationship[1])
 
+    id_list_gaia_dr3_only, oid_list_dr3_only = [],[]
+    for relationship in cross_reference_list_DR3_sorted_by_GaiaReference:
+        id_list_gaia_dr3_only.append(relationship[0])
+        oid_list_dr3_only.append(relationship[1])
+
+
     print("Largest oid {}".format(max(oid_list)))
-    return gaia_id_list, oid_list
+    return id_list, oid_list, id_list_gaia_dr3_only, oid_list_dr3_only
 
 
 def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, output_filename):
