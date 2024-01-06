@@ -416,7 +416,7 @@ if __name__ == "__main__":
 
 
     print("Produce Gaia catalogue sorted by simbad code")
-    catalogue_with_oid = generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list,
+    catalogue_with_oid,gaia_columns = generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list,
                                                             id_list_gaia_dr3_only, oid_list_gaia_dr3_only,
                                                             "/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
     print("Gaia catalogue sorted by simbad code produced")
