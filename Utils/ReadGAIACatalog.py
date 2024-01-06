@@ -424,7 +424,7 @@ if __name__ == "__main__":
         for value in gaia_columns:
             output_line += str(value)
             output_line += "|"
-            output_line += "|\n"
+        output_line += "\n"
         f.write(output_line)
 
         for line in catalogue_with_oid:
