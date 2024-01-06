@@ -240,7 +240,8 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
     print("Sorted")
     gaia_id_list, oid_list = [],[]
 
-    with open("name2oid.txt","w") as fh:
+    print("Starting write of name2oid.txt")
+    with open("/home/david/tmp/name2oid.txt","w") as fh:
         for line in cross_reference_list_sorted_by_id:
             line_string = "|"
             for value in line:
@@ -248,7 +249,7 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
                 line_string += "|"
             line_string += "\n"
             fh.write(line_string)
-
+    print("Written name2oid.txt")
 
     for relationship in cross_reference_list_sorted_by_id:
         gaia_id_list.append(relationship[0])
