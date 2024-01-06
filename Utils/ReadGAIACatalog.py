@@ -240,11 +240,21 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
     print("Sorted")
     gaia_id_list, oid_list = [],[]
 
+    with open("oid2name.txt","w") as fh:
+        for line in cross_reference_list_sorted_by_id:
+            line_string = "|"
+            for value in line:
+                line_string += value
+                line_string += "|"
+            line_string += "\n"
+            fh.write(line_string)
+
+
     for relationship in cross_reference_list_sorted_by_id:
         gaia_id_list.append(relationship[0])
         oid_list.append(relationship[1])
 
-
+    print("Largest oid {}".format(max(oid_list)))
     return gaia_id_list, oid_list
 
 
