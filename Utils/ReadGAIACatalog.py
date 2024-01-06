@@ -341,7 +341,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                 line_string += str(value).replace("\n", "").strip()
                 line_string += "|"
                 catalogue_with_oid.append(value)
-
+                print(value)
             line_string += "\n"
             fh = open(output_filename, 'a')
             fh.write(line_string)
@@ -352,7 +352,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
         print(gaia_columns)
         oid_col_no = gaia_columns.index('oid')
         print("oid_col_no {}".format(oid_col_no))
-        catalogue_with_oid_sorted_oid = sorted(catalogue_with_oid, key=lambda oid: oid[oid_col_no])
+        catalogue_with_oid_sorted_oid = sorted(catalogue_with_oid, key=lambda oid_sort: oid_sort[oid_col_no])
 
         return catalogue_with_oid_sorted_oid,gaia_columns
 
