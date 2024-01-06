@@ -297,10 +297,11 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
         line_string += "simbad_code|main_id|"
         line_string += "\n"
         fh.write(line_string)
-
+        gaia_columns.append("simbad_code")
+        gaia_columns.append("main_id")
 
         fh.close()
-
+        catalogue_with_oid = []
     # optimise this code - both lists are sorted so can be merged more efficiently
         for catalogue_line in tqdm(gaia_catalogue):
             gaia_dr3_ident = catalogue_line[0]
@@ -340,12 +341,15 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             for value in catalogue_line:
                 line_string += str(value).replace("\n", "").strip()
                 line_string += "|"
+                catalogue_with_oid.append(value)
             line_string += "\n"
             fh = open(output_filename, 'a')
             fh.write(line_string)
             fh.close()
 
 
+
+        return catalogue_with_oid
 
 
 
@@ -403,7 +407,9 @@ if __name__ == "__main__":
 
 
     print("Produce Gaia catalogue sorted by simbad code")
-    generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, id_list_gaia_dr3_only, oid_list_gaia_dr3_only, "/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
+    catalogue_with_oid = generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list,
+                                                            id_list_gaia_dr3_only, oid_list_gaia_dr3_only,
+                                                            "/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
     print("Gaia catalogue sored by simbad code produced")
 
 
