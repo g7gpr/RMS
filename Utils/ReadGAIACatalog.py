@@ -423,8 +423,10 @@ if __name__ == "__main__":
 
     with open ("/home/david/tmp/catalogue_with_oid_sorted_by_oid.txt", 'w') as f:
         for line in catalogue_with_oid:
+            print("line".format(line))
             output_line = "|"
             for value in line:
+                print("value {}".format(value))
                 output_line += str(value)
                 output_line += "|"
             output_line += "|\n"
