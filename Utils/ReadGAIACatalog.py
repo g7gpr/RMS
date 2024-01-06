@@ -244,7 +244,7 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
         for line in cross_reference_list_sorted_by_id:
             line_string = "|"
             for value in line:
-                line_string += value
+                line_string += str(value)
                 line_string += "|"
             line_string += "\n"
             fh.write(line_string)
