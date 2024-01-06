@@ -240,7 +240,7 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
     print("Sorted")
     gaia_id_list, oid_list = [],[]
 
-    with open("oid2name.txt","w") as fh:
+    with open("name2oid.txt","w") as fh:
         for line in cross_reference_list_sorted_by_id:
             line_string = "|"
             for value in line:
