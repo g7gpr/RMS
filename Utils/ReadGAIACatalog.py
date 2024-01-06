@@ -5,6 +5,7 @@ import pickle
 import urllib.request
 import time
 from operator import itemgetter,attrgetter
+from tqdm import tqdm
 
 # Read from http://jvo.nao.ac.jp/portal/gaia/dr3.do
 # Photometric calculations at https://gea.esac.esa.int/archive/documentation/GDR3/Data_processing/chap_cu5pho/cu5pho_sec_photSystem/cu5pho_ssec_photRelations.html
@@ -54,7 +55,7 @@ def readGaiaCatalogTxt(file_path, lim_mag=None, header_designator = "#", max_obj
 
         # Read Gaia catalog
 
-        for line in f:
+        for line in tqdm(f):
 
             if line[0]==header_designator:
                 info_type, data_returned = handleHeader(line[1:])
@@ -80,12 +81,13 @@ def readGaiaCatalogTxt(file_path, lim_mag=None, header_designator = "#", max_obj
         return catalogue_sorted_by_gaia_id, columns
 
 
-def readSimbadBasic(file_path, max_objects = None):
-    """ Read star data from the GAIA catalog in the .psv format - works with any column order. """
+def generateOID2Main_ID(input_file_path, output_file_path, max_objects = None):
+
+
 
 
     results = []
-    print(file_path)
+    print(input_file_path)
     # intialise
 
     columns, object_count = None, None
@@ -96,7 +98,7 @@ def readSimbadBasic(file_path, max_objects = None):
         max_objects = max_objects[0]
         print("Only reading {} objects".format(max_objects))
 
-    with open(file_path) as f:
+    with open(input_file_path) as f:
 
         # Initialise list to hold the catalogue
         catalogue, objects = [],0
@@ -109,16 +111,28 @@ def readSimbadBasic(file_path, max_objects = None):
         columns = []
         for col in columns_raw:
             columns.append(col.strip())
-        print(columns)
+
 
         # then a horizontal separator
 
         line = f.readline()
 
-        for line in f:
+        for line in tqdm(f):
 
-            print(line)
-            catalogue.append(line.split('|'))
+
+            line_list_txt = line.split('|')
+            if len(line_list_txt)  != 67:
+                print("Skipping line {}".format(line_list_txt))
+                continue
+            line_list_typed = []
+            col_counter = 0
+            for value in line_list_txt:
+                if col_counter == columns.index("oid"):
+                    line_list_typed.append(int(value))
+                else:
+                    line_list_typed.append(value.strip())
+                col_counter += 1
+            catalogue.append(line_list_typed)
             objects += 1
             if objects > max_objects:
                 break
@@ -126,15 +140,34 @@ def readSimbadBasic(file_path, max_objects = None):
         # sort by designation - also known is gaia id
 
         sort_col = columns.index("oid")
-        print("Sorting on column {}".format(sort_col))
+
+        len_catalogue_line = len(catalogue[25])
+        print("Normal line length is {}".format(len_catalogue_line))
+        for line in catalogue:
+            if len(line) != len_catalogue_line:
+                print("Line length is only {}".format(len(line)))
+
+
+        print("Sorting on column {}:{}".format(sort_col, columns[sort_col]))
         catalogue_sorted = sorted(catalogue,key=lambda object_line: object_line[sort_col])
         print("Object_count {}".format(object_count))
         print("Catalogue_length {}".format(len(catalogue)))
 
+        oid_column = columns.index("oid")
+        main_id_column = columns.index("main_id")
+
+
+        with open(output_file_path, 'w') as fh:
+
+
+            for line in catalogue_sorted:
+                line_string = "|{}|{}|\n".format(line[oid_column],line[main_id_column].replace('"',""))
+                fh.write(line_string)
+
         return catalogue_sorted, columns
 
 
-def getStarNames(catalogue,columns):
+def generateGaia2SimbadCode(catalogue,columns):
 
     star_list, designator_list = [],[]
     for star in catalogue:
@@ -145,23 +178,30 @@ def getStarNames(catalogue,columns):
 
 
     cross_reference_list = []
-    with open("/home/david/tmp/IDS.txt",'r') as fh:
-        print(designator_list)
-        for line in fh:
-            ident_list = line.replace('"','').split("|")
 
-            for ident in ident_list:
-                if "DR3" in ident:
-                    gaia_dr3_ident = ident
-                    if ident in designator_list:
-                        cross_reference_list.append([gaia_dr3_ident, ident_list[-1].strip()])
+    table_files = sorted(os.listdir("/home/david/tmp/IDS_TABLE/"))
+
+
+    for table_file in table_files:
+        path_table_file =  os.path.join("/home/david/tmp/IDS_TABLE/", table_file)
+        print(path_table_file)
+        with open(path_table_file,'r') as fh:
+
+            for line in tqdm(fh):
+                ident_list = line.replace('"','').split("|")
+
+                for ident in ident_list:
+                    if "Gaia DR3" in ident:
+                        gaia_dr3_ident = ident
+                        if ident in designator_list:
+                            cross_reference_list.append([gaia_dr3_ident, ident_list[-1].strip()])
 
 
     # sort by gaia ident to speed up the future join
-    cross_reference_list_sorted_by_id = sorted(cross_reference_list,key=lambda gaia2sinbadcode: gaia2sinbadcode[0])
+    cross_reference_list_sorted_by_id = sorted(cross_reference_list,key=lambda gaia2simbadcode: gaia2simbadcode[0])
     return cross_reference_list_sorted_by_id
 
-def generateDR3CatalogueWithSimbadCode(catalogue, columns, gaia2name_list, filename):
+def generateDR3CatalogueWithSimbadCode(catalogue, columns, gaia2name_list, output_filename):
 
 
     gaia_dr3_catalogue_with_sinbad_code = []
@@ -173,7 +213,7 @@ def generateDR3CatalogueWithSimbadCode(catalogue, columns, gaia2name_list, filen
         for relation in gaia2name_list:
             if relation[0] == gaia_dr3_ident:
                 sinbad_code = relation[1]
-                print("{}|{}".format(gaia_dr3_ident, sinbad_code))
+
                 catalogue_line.append(sinbad_code)
                 gaia_dr3_catalogue_with_sinbad_code.append(catalogue_line)
 
@@ -183,7 +223,7 @@ def generateDR3CatalogueWithSimbadCode(catalogue, columns, gaia2name_list, filen
     gaia_dr3_catalogue_with_sinbad_code_sorted_by_sinbad_code = sorted(gaia_dr3_catalogue_with_sinbad_code,
                                                                        key=itemgetter(col_no))
 
-    with open(filename, 'w') as fh:
+    with open(output_filename, 'w') as fh:
 
         line_string = "|"
         for column_name in columns:
@@ -222,29 +262,27 @@ if __name__ == "__main__":
 
 
 
-    sinbadBasicSortedByOID, columns = readSimbadBasic("/home/david/tmp/sinbad_basic.txt", max_objects=[30])
-
-    print(sinbadBasicSortedByOID)
-    print("Reading file from {}".format(cml_args.input_path))
-
-
+    #This provides a lookup table to go from Simbad oid key to main_id, which I think is the name that GMN wishes to use
+    print("Reading Simbad Basic ")
+    simbadBasicSortedByOID, columns = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
+    print("Simbad Basic read completed - oid2main_id file written")
 
 
-    #catalogue, columns = readGaiaCatalogTxt(os.path.expanduser(cml_args.input_path),max_objects=cml_args.maxobjects)
+    #Read in the Gaia catalogue
+    print("Reading in the Gaia Catalogue")
+    catalogue, columns = readGaiaCatalogTxt(os.path.expanduser(cml_args.input_path),max_objects=cml_args.maxobjects)
+    print("Gaia Catalogue read complete")
 
-    #with open('/home/david/tmp/catalogue.pickle', 'wb') as fh:
-        #pickle.dump(catalogue, fh)
 
-    #print(columns)
+    #From the Gaia catalogue produce a relationship between Gaia ident and Simbad Code
 
-    #gaia2name_list = getStarNames(catalogue, columns)
+    print("Producing relationship from Gaia DR3 ident to Simbad Code")
+    gaia2SimbadCode = generateGaia2SimbadCode(catalogue, columns)
+    print("Relationship from Gaia DR3 ident to Simbad code produced")
 
-    #with open("/home/david/tmp/gaia2id.pickle", 'wb') as fh:
-
-    #    pickle.dump(gaia2name_list, fh)
-
-    #generateDR3CatalogueWithSinbadCode(catalogue, columns, gaia2name_list,"/home/david/tmp/gaiacatalogue_with_sinbad_code.txt")
-
+    print("Produce Gaia catalogue sorted by simbad code")
+    generateDR3CatalogueWithSimbadCode(catalogue, columns, gaia2SimbadCode,"/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
+    print("Gaia catalogue sored by simbad code produced")
 
 
 
