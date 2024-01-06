@@ -332,17 +332,19 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             else:
                 oid, main_id = "-1", gaia_dr3_ident
             """
-            new_catalogue_line = catalogue_line
-            new_catalogue_line.append(oid)
+
+
             """
             catalogue_line.append(main_id)
             """
             line_string = "|"
             line_with_oid = []
-            for value in new_catalogue_line:
+
+            for value in catalogue_line:
                 line_string += str(value).replace("\n", "").strip()
                 line_string += "|"
                 line_with_oid.append(value)
+            line_with_oid.append(oid)
             catalogue_with_oid.append(line_with_oid)
             line_string += "\n"
             fh = open(output_filename, 'a')
