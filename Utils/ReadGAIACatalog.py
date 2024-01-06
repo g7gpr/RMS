@@ -5,6 +5,7 @@ from tqdm import tqdm
 import pickle
 import urllib.request
 import time
+from operator import itemgetter,attrgetter
 
 # Read from http://jvo.nao.ac.jp/portal/gaia/dr3.do
 # Photometric calculations at https://gea.esac.esa.int/archive/documentation/GDR3/Data_processing/chap_cu5pho/cu5pho_sec_photSystem/cu5pho_ssec_photRelations.html
@@ -158,6 +159,12 @@ if __name__ == "__main__":
                 catalogue_line.append(sinbad_code)
                 gaia_dr3_catalogue_with_sinbad_code.append(catalogue_line)
 
+
+    col_no = len(gaia_dr3_catalogue_with_sinbad_code[0])
+    print("Sinbad col_no {}".format(col_no))
+    gaia_dr3_catalogue_with_sinbad_code_sorted_by_sinbad_code = \
+        gaia_dr3_catalogue_with_sinbad_code.sorted(gaia_dr3_catalogue_with_sinbad_code,key=itemgetter(col_no))
+
     with open("/home/david/tmp/gaiacatalogue_with_sinbad_code.txt", 'w') as fh:
 
         line_string = "|"
@@ -168,11 +175,11 @@ if __name__ == "__main__":
         line_string += "\n"
         fh.write(line_string)
 
-        for line in gaia_dr3_catalogue_with_sinbad_code:
+        for line in gaia_dr3_catalogue_with_sinbad_code_sorted_by_sinbad_code:
             line_string = "|"
             print(line)
             for value in line:
-                line_string += value.replace("\n","")
+                line_string += value.replace("\n","").trim()
                 line_string += "|"
             line_string += "\n"
             fh.write(line_string)
