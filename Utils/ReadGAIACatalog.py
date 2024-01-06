@@ -332,7 +332,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             else:
                 oid, main_id = "-1", gaia_dr3_ident
 
-
+            catalogue_line.append(oid)
 
             """
             catalogue_line.append(main_id)
