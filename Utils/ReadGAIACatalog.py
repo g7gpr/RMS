@@ -328,10 +328,10 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                     if name_list[index][0:8] == "Gaia DR3"  and name_score > 3:
                         main_id = name_list[index]
                         name_score = 3
-
+            """
             else:
                 oid, main_id = "-1", gaia_dr3_ident
-            """
+
 
 
             """
@@ -422,20 +422,20 @@ if __name__ == "__main__":
     print("Gaia catalogue sorted by simbad code produced")
 
     with open ("/home/david/tmp/catalogue_with_oid_sorted_by_oid.txt", 'w') as f:
-        for line in gaia_columns:
-            output_line = "|"
-            for value in line:
-                output_line += str(value)
-                output_line += "|"
+
+        output_line = "|"
+        for value in gaia_columns:
+            output_line += str(value)
+            output_line += "|"
             output_line += "|\n"
-            f.write(output_line)
+        f.write(output_line)
 
         for line in catalogue_with_oid:
             output_line = "|"
             for value in line:
                 output_line += str(value)
                 output_line += "|"
-            output_line += "|\n"
+            output_line += "\n"
             f.write(output_line)
 
 
