@@ -213,7 +213,7 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
 
     """
 
-    cross_reference_list = []
+    cross_reference_list, cross_reference_list_DR3_only = [],[]
 
     table_files = sorted(os.listdir("/home/david/tmp/IDENT_TABLE/"))
 
@@ -230,13 +230,17 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
                 oidref=line_list[1]
                 if oidref != "oidref" and id !="id" and "-" not in oidref:
                     cross_reference_list.append([id,int(oidref)])
+                    if "Gaia DR3" in id:
+                        cross_reference_list_DR3_only.append([id, int(oidref)])
                 else:
-                    print("Skipping {}|{}".format(id,oidref))
+                    pass
             print(len(cross_reference_list))
 
-    # sort by gaia ident to speed up the future join
+
     print("Sorting")
+    # sort by oid to speed up the future join
     cross_reference_list_sorted_by_id = sorted(cross_reference_list, key=lambda gaia2simbadcode: gaia2simbadcode[1])
+    cross_reference_list_DR3_sorted_by_GaiaReference = sorted(cross_reference_list, key=lambda gaia2simbadcode: gaia2simbadcode[0])
     print("Sorted")
     gaia_id_list, oid_list = [],[]
 
@@ -249,7 +253,22 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
                 line_string += "|"
             line_string += "\n"
             fh.write(line_string)
-    print("Written name2oid.txt")
+    print("Finished write")
+
+    print("Starting write of name2oid_dr3_only.txt")
+    with open("/home/david/tmp/name2oid_dr3_only.txt","w") as fh:
+        for line in cross_reference_list_DR3_sorted_by_GaiaReference:
+            line_string = "|"
+            for value in line:
+                line_string += str(value)
+                line_string += "|"
+            line_string += "\n"
+            fh.write(line_string)
+    print("Finished write")
+
+
+
+
 
     for relationship in cross_reference_list_sorted_by_id:
         gaia_id_list.append(relationship[0])
