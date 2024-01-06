@@ -160,8 +160,9 @@ if __name__ == "__main__":
                 gaia_dr3_catalogue_with_sinbad_code.append(catalogue_line)
 
 
-    col_no = len(gaia_dr3_catalogue_with_sinbad_code[0])
+    col_no = len(gaia_dr3_catalogue_with_sinbad_code[0])-1
     print("Sinbad col_no {}".format(col_no))
+    print(gaia_dr3_catalogue_with_sinbad_code)
     gaia_dr3_catalogue_with_sinbad_code_sorted_by_sinbad_code = sorted(gaia_dr3_catalogue_with_sinbad_code,key=itemgetter(col_no))
 
     with open("/home/david/tmp/gaiacatalogue_with_sinbad_code.txt", 'w') as fh:
@@ -178,7 +179,7 @@ if __name__ == "__main__":
             line_string = "|"
             print(line)
             for value in line:
-                line_string += value.replace("\n","").trim()
+                line_string += value.replace("\n","").strip()
                 line_string += "|"
             line_string += "\n"
             fh.write(line_string)
