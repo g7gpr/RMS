@@ -240,7 +240,7 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
     print("Sorting")
     # sort by oid to speed up the future join
     cross_reference_list_sorted_by_id = sorted(cross_reference_list, key=lambda gaia2simbadcode: gaia2simbadcode[1])
-    cross_reference_list_DR3_sorted_by_GaiaReference = sorted(cross_reference_list, key=lambda gaia2simbadcode: gaia2simbadcode[0])
+    cross_reference_list_DR3_sorted_by_GaiaReference = sorted(cross_reference_list_DR3_only, key=lambda gaia2simbadcode: gaia2simbadcode[0])
     print("Sorted")
 
 
@@ -348,7 +348,9 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             fh.close()
 
             #this needs to be sorted by oid
+            print("gaia_columns")
             oid_col_no = gaia_columns.index('oid')
+            print("oid_col_no".format(oid_col_no))
             catalogue_with_oid_sorted_oid = sorted(catalogue_with_oid, key=lambda oid: oid[oid_col_no])
 
         return catalogue_with_oid_sorted_oid,gaia_columns
