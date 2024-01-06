@@ -260,7 +260,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
         line_string += "simbad_code|main_id|"
         line_string += "\n"
         fh.write(line_string)
-
+        print(line_string)
 
 
 
@@ -297,7 +297,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                 line_string += "|"
             line_string += "\n"
             fh.write(line_string)
-
+            print(line_string)
 
 
 
