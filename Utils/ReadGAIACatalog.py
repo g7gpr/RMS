@@ -285,7 +285,7 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
     return id_list, oid_list, id_list_gaia_dr3_only, oid_list_dr3_only
 
 
-def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, output_filename):
+def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, output_filename):
 
 
         fh = open(output_filename, 'w')
@@ -306,10 +306,11 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             gaia_dr3_ident = catalogue_line[0]
         #add the simbad oid
             main_id = ""
-            if gaia_dr3_ident in name_list:
+            if gaia_dr3_ident in name_list_dr3_only:
                 oid_index = name_list.index(gaia_dr3_ident)
-                oid = oid_list[oid_index]
+                oid = oid_list_dr3_only[oid_index]
                 # since we had a valid simbad oid, try and find the name
+                """
                 name_score = np.inf
                 oid_index_list = [i for i, x in enumerate(oid_list) if x == oid]
                 for index in oid_index_list:
@@ -330,9 +331,11 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
 
             else:
                 oid, main_id = "-1", gaia_dr3_ident
-
+            """
             catalogue_line.append(oid)
+            """
             catalogue_line.append(main_id)
+            """
             line_string = "|"
             for value in catalogue_line:
                 line_string += str(value).replace("\n", "").strip()
