@@ -141,10 +141,41 @@ if __name__ == "__main__":
 
     gaia2name_list = getStarNames(catalogue)
 
-    with open("/home/david/tmp/gaia2id.txt", 'w') as fh:
+    with open("/home/david/tmp/gaia2id.pickle", 'wb') as fh:
 
-        for pair in gaia2name_list:
-            fh.write("{}|{}\n".format(pair[0],pair[1]))
+        pickle.dump(gaia2name_list, fh)
+
+    gaia_dr3_catalogue_with_sinbad_code = []
+
+    # optimise this code - both lists are sorted so can be merged more efficiently
+    for catalogue_line in catalogue:
+        gaia_dr3_ident = catalogue_line[0]
+
+        for relation in gaia2name_list:
+            if relation[0] == gaia_dr3_ident:
+                sinbad_code = relation[1]
+                print("{}|{}".format(gaia_dr3_ident, sinbad_code))
+                catalogue_line.append(sinbad_code)
+                gaia_dr3_catalogue_with_sinbad_code.append(catalogue_line)
+
+    with open("/home/david/tmp/gaiacatalogue_with_sinbad_code.txt", 'w') as fh:
+
+        line_string = "|"
+        for column_name in columns:
+            line_string += column_name
+            line_string += "|"
+        line_string += "sinbad_code|"IDS
+        line_string += "\n"
+        fh.write(line_string)
+
+        for line in gaia_dr3_catalogue_with_sinbad_code:
+            line_string = "|"
+            print(line)
+            for value in line:
+                line_string += value.replace("\n","")
+                line_string += "|"
+            line_string += "\n"
+            fh.write(line_string)
 
 
 
