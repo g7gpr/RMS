@@ -299,7 +299,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
         line_string += "\n"
         fh.write(line_string)
 
-        fh.close()
+
         catalogue_with_oid, last_oid_index= [],0
     # optimise this code - both lists are sorted so can be merged more efficiently
         for catalogue_line in tqdm(gaia_catalogue):
@@ -353,8 +353,8 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             line_string += "\n"
             fh = open(output_filename, 'a')
             fh.write(line_string)
-            fh.flush()
-            fh.close()
+
+        fh.close()
 
         #this needs to be sorted by oid
         oid_col_no = gaia_columns.index('oid')
