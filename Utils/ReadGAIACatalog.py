@@ -286,7 +286,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                     if name_list[index][0:5] == "2MASS" and name_score > 2:
                         main_id = name_list[index]
                         name_score = 2
-                        break
+
                     if name_list[index][0:8] == "Gaia DR3"  and name_score > 3:
                         main_id = name_list[index]
                         name_score = 3
