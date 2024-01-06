@@ -422,11 +422,17 @@ if __name__ == "__main__":
     print("Gaia catalogue sorted by simbad code produced")
 
     with open ("/home/david/tmp/catalogue_with_oid_sorted_by_oid.txt", 'w') as f:
-        for line in catalogue_with_oid:
-            print("line".format(line))
+        for line in gaia_columns:
             output_line = "|"
             for value in line:
-                print("value {}".format(value))
+                output_line += str(value)
+                output_line += "|"
+            output_line += "|\n"
+            f.write(output_line)
+
+        for line in catalogue_with_oid:
+            output_line = "|"
+            for value in line:
                 output_line += str(value)
                 output_line += "|"
             output_line += "|\n"
