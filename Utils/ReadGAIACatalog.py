@@ -273,13 +273,23 @@ def generateDR3CatalogueWithSimbadCode(catalogue, columns, gaia_id_list, oid_lis
         for catalogue_line in tqdm(catalogue):
             gaia_dr3_ident = catalogue_line[0]
         #add the simbad oid
+
             if gaia_dr3_ident in gaia_id_list:
                 oid_index = gaia_id_list.index(gaia_dr3_ident)
                 oid = oid_list[oid_index]
                 # since we had a valid simbad oid, try and find the name
                 if oid in oid_list_simbad:
-                    oid_list_simbad_index = oid_list_simbad.index(oid)
-                    main_id = main_id_list_simbad[oid_list_simbad_index]
+                    oid_list_simbad_index_list = [i for i, x in enumerate(my_list) if x == oid]
+                    for index in oid_list_simbad_index_list:
+                        if main_id_list_simbad[index][0:3] == "TYC":
+                            main_id = main_id_list_simbad[index]
+                            break
+                        if main_id_list_simbad[index][0:3] == "TIC":
+                            main_id = main_id_list_simbad[index]
+                            break
+                        if main_id_list_simbad[index][0:5] == "2MASS":
+                            main_id = main_id_list_simbad[index]
+                            break
                 else:
                     main_id = gaia_dr3_ident
             else:
@@ -287,7 +297,7 @@ def generateDR3CatalogueWithSimbadCode(catalogue, columns, gaia_id_list, oid_lis
 
             catalogue_line.append(oid)
             catalogue_line.append(main_id)
-
+            line_string = ""
             for value in catalogue_line:
                 line_string += str(value).replace("\n", "").strip()
                 line_string += "|"
