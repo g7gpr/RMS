@@ -518,7 +518,7 @@ if __name__ == "__main__":
     with open('home/david/tmp/gaiaDR3_2_preferred_name_DR3.pickle') as fh:
         pickle.dump(gaiaDR3_2_preferred_name_DR3,fh)
 
-    print("Pickling 8/7")
+    print("Pickling 8/8")
     with open('home/david/tmp/gaiaDR3_2_preferred_name_name.pickle') as fh:
         pickle.dump(gaiaDR3_2_preferred_name_name, fh)
 
