@@ -482,11 +482,11 @@ if __name__ == "__main__":
     print("Gaia Catalogue read complete")
 
     print("Pickling 1/8")
-    with open('/home/david/tmp/gaia_catalogue.pickle') as fh:
+    with open('/home/david/tmp/gaia_catalogue.pickle','w') as fh:
         pickle.dump(gaia_catalogue, fh)
 
     print("Pickling 2/8")
-    with open('/home/david/tmp/gaia_columns.pickle') as fh:
+    with open('/home/david/tmp/gaia_columns.pickle','w') as fh:
         pickle.dump(gaia_columns, fh)
 
     #From the Gaia catalogue produce a relationship between Gaia ident and Simbad Code
@@ -495,19 +495,19 @@ if __name__ == "__main__":
     name_list, oid_list,id_list_gaia_dr3_only, oid_list_gaia_dr3_only = generateGaia2SimbadCodeFromIdentTables(gaia_catalogue, gaia_columns)
 
     print("Pickling 3/8")
-    with open('/home/david/tmp/name_list.pickle') as fh:
+    with open('/home/david/tmp/name_list.pickle','w') as fh:
         pickle.dump(name_list, fh)
 
     print("Pickling 4/8")
-    with open('home/david/tmp/oid_list.pickle') as fh:
+    with open('home/david/tmp/oid_list.pickle','w') as fh:
         pickle.dump(oid_list, fh)
 
     print("Pickling 5/8")
-    with open('home/david/tmp/id_list_gaia_dr3_only.pickle') as fh:
+    with open('home/david/tmp/id_list_gaia_dr3_only.pickle','w') as fh:
         pickle.dump(id_list_gaia_dr3_only, fh)
 
     print("Pickling 6/8")
-    with open('home/david/tmp/oid_list_gaia_dr3_only.pickle') as fh:
+    with open('home/david/tmp/oid_list_gaia_dr3_only.pickle','w') as fh:
         pickle.dump(oid_list_gaia_dr3_only, fh)
 
     print("Preparing lookup table")
@@ -515,11 +515,11 @@ if __name__ == "__main__":
     gaiaDR3_2_preferred_name_DR3, gaiaDR3_2_preferred_name_name = generateNameLookUpList("/home/david/tmp/name2oid.txt","/home/david/tmp/oid2preferredname.txt")
 
     print("Pickling 7/8")
-    with open('home/david/tmp/gaiaDR3_2_preferred_name_DR3.pickle') as fh:
+    with open('home/david/tmp/gaiaDR3_2_preferred_name_DR3.pickle','w') as fh:
         pickle.dump(gaiaDR3_2_preferred_name_DR3,fh)
 
     print("Pickling 8/8")
-    with open('home/david/tmp/gaiaDR3_2_preferred_name_name.pickle') as fh:
+    with open('home/david/tmp/gaiaDR3_2_preferred_name_name.pickle','w') as fh:
         pickle.dump(gaiaDR3_2_preferred_name_name, fh)
 
 
