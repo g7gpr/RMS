@@ -289,6 +289,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
 
 
         gaia_columns.append("oid")
+        gaia_columns.append("main_id")
 
         fh = open(output_filename, 'w')
         line_string = "|"
@@ -306,41 +307,57 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             gaia_dr3_ident = catalogue_line[0]
         #add the simbad oid
             main_id = ""
+            # this should always evaluate to true - so after more testing eliminate this very slow check
             if gaia_dr3_ident in name_list_dr3_only:
+
                 #oid_index = name_list_dr3_only.index(gaia_dr3_ident, last_oid_index)
                 for oid_index in range(last_oid_index,len(name_list_dr3_only)):
                     if name_list_dr3_only[oid_index] == gaia_dr3_ident:
                         break
                 last_oid_index = oid_index + 1
                 oid = oid_list_dr3_only[oid_index]
+
                 # since we had a valid simbad oid, try and find the name
-                """
-                name_score = np.inf
-                oid_index_list = [i for i, x in enumerate(oid_list) if x == oid]
-                for index in oid_index_list:
-                    if name_list[index][0:3] == "TYC":
-                        main_id = name_list[index]
-                        name_score = 0
-                        break
-                    if name_list[index][0:3] == "TIC" and name_score > 1:
-                        main_id = name_list[index]
-                        name_score = 1
-                    if name_list[index][0:5] == "2MASS" and name_score > 2:
-                        main_id = name_list[index]
-                        name_score = 2
+                if True:
+                    name_score = np.inf
+                    oid_index_list = [i for i, x in enumerate(oid_list) if x == oid]
+                    for index in oid_index_list:
+                        if name_list[index][0:4] == "NAME" and name_score > 0:
+                            main_id = name_list[index]
+                            name_score = 0
 
-                    if name_list[index][0:8] == "Gaia DR3"  and name_score > 3:
-                        main_id = name_list[index]
-                        name_score = 3
-            """
+                        if name_list[index][0:2] == "HD" and name_score > 1:
+                            main_id = name_list[index]
+                            name_score = 1
+
+                        if name_list[index][0:3] == "SAO" and name_score > 1:
+                            main_id = name_list[index]
+                            name_score = 1
+
+                        if name_list[index][0:3] == "TYC" and name_score > 3:
+                            main_id = name_list[index]
+                            name_score = 3
+
+                        if name_list[index][0:3] == "TIC" and name_score > 4:
+                            main_id = name_list[index]
+                            name_score = 4
+
+                        if name_list[index][0:5] == "2MASS" and name_score > 5:
+                            main_id = name_list[index]
+                            name_score = 5
+
+                        if name_list[index][0:8] == "Gaia DR3"  and name_score > 6:
+                            main_id = name_list[index]
+                            name_score = 6
+
             else:
+                #todo: check that this is never executed, if it is then something is wrong with the data structure
                 oid, main_id = "-1", gaia_dr3_ident
-
+                print("Missing Gaia DR3 ident in oid list")
+                pass
             catalogue_line.append(oid)
-
-            """
             catalogue_line.append(main_id)
-            """
+
             line_string = "|"
             line_with_oid = []
 
