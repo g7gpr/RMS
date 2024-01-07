@@ -366,6 +366,23 @@ def generateNameLookUpList(input_filename,output_filename):
 
     return look_up_list_sorted_by_DR3_DR3,look_up_list_sorted_by_DR3_best_name
 
+def calculatePhotometry(G,Gbp,Grp,c1,c2,c3,c4,c5)
+
+    value = (c1 + c2 * (Gbp-Grp) + c3 * (Gbp-Grp) ** 2 + c4 * (Gbp-Grp) ** 3 + c5 * (Gbp-Grp) ** 4 - G) * -1
+
+    return value
+
+def johnsonCousins(G,Gbp,Grp)
+
+
+
+    B  =  calculatePhotometry(G,Gbp,Grp,   0.01448,-0.06874, -0.3604,  0.06718 , -0.006061)
+    R  =  calculatePhotometry(G,Gbp,Grp,  -0.02275, 0.3961 , -0.1243, -0.01396 ,  0.003775)
+    V  =  calculatePhotometry(G,Gbp,Grp,  -0.02704, 0.01424, -0.2156,  0.01426 ,  0       )
+    Ic =  calculatePhotometry(G,Gbp,Grp,   0.01753, 0.76   , -0.0991,  0       ,  0       )
+
+    return [B,R,V,Ic]
+
 def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, gaia_dr3_2_preferred_name_gaia_dr3, gaia_dr3_2_preferred_name_name, output_filename):
 
 
