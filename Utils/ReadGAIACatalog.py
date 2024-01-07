@@ -360,7 +360,7 @@ def generateNameLookUpList(input_filename,output_filename):
 
     look_up_list_sorted_by_DR3_DR3, look_up_list_sorted_by_DR3_best_name = [],[]
     for relationship in look_up_list_sorted_by_DR3:
-        look_up_list_sorted_by_DR3_DR3.append.append(relationship[0])
+        look_up_list_sorted_by_DR3_DR3.append(relationship[0])
         look_up_list_sorted_by_DR3_best_name.append(relationship[1])
 
 
