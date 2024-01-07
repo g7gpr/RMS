@@ -345,7 +345,7 @@ def generateNameLookUpList(input_filename,output_filename):
     #Sort by Gaia_DR3_ident
 
     print("Sorting")
-    look_up_list_sorted_by_DR3 = sorted(look_up_list, key=lambda DR3: DR3[2])
+    look_up_list_sorted_by_DR3 = sorted(look_up_list, key=lambda DR3: DR3[0])
     print("Sorted")
 
     print("Storing")
@@ -405,14 +405,19 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                 oid = oid_dr3_only
 
                 gaia_dr3_ident_lookup = ""
+                print("Seeking {} starting at {}".format(gaia_dr3_ident,last_checked_preferred_name_index))
                 for preferred_name_index in range(last_checked_preferred_name_index,len_of_gaia_dr3_2_preferred_name):
                     gaia_dr3_ident_lookup, preferred_name = gaia_dr3_2_preferred_name_gaia_dr3[preferred_name_index], gaia_dr3_2_preferred_name_name[preferred_name_index]
                     if gaia_dr3_ident_lookup == gaia_dr3_ident:
                         last_checked_preferred_name_index = preferred_name_index
                         break
 
-
-                main_id = gaia_dr3_ident_lookup
+                if gaia_dr3_ident_lookup == gaia_dr3_ident:
+                    print("{} assigned {}".format(gaia_dr3_ident, preferred_name))
+                    main_id = preferred_name
+                else:
+                    last_checked_preferred_name_index = 0
+                    oid, main_id = "-1", gaia_dr3_ident
 
                 # don't do this here. Will be much more efficient to do it on a reverse ordered oid list
 
@@ -468,15 +473,14 @@ if __name__ == "__main__":
 
     cml_args = arg_parser.parse_args()
 
+    if False:
+        #This provides a lookup table to go from Simbad oid key to main_id, which I think is the name that GMN wishes to use
+        #print("Reading Simbad Basic ")
+        simbadBasicSortedByOID, simbad_columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
+        #print("Simbad Basic read completed - oid2main_id file written")
 
 
-    #This provides a lookup table to go from Simbad oid key to main_id, which I think is the name that GMN wishes to use
-    #print("Reading Simbad Basic ")
-    simbadBasicSortedByOID, simbad_columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
-    #print("Simbad Basic read completed - oid2main_id file written")
-
-    if True:
-    #Read in the Gaia catalogue
+        #Read in the Gaia catalogue
         print("Reading in the Gaia Catalogue")
         gaia_catalogue, gaia_columns = readGaiaCatalogTxt(os.path.expanduser(cml_args.input_path), max_objects=cml_args.maxobjects)
         print("Gaia Catalogue read complete")
@@ -547,7 +551,18 @@ if __name__ == "__main__":
 
         print("oid_list_gaia_dr3_only          6/8")
         with open('/home/david/tmp/pickles/oid_list_gaia_dr3_only.pickle', 'rb') as fh:
-            oid_lists_gaia_dr3_only = pickle.load(fh)
+            oid_list_gaia_dr3_only = pickle.load(fh)
+
+        gaiaDR3_2_preferred_name_DR3, gaiaDR3_2_preferred_name_name = generateNameLookUpList(
+            "/home/david/tmp/name2oid.txt", "/home/david/tmp/oid2preferredname.txt")
+
+        print("Pickling gaiaDR_2_preferred_name_DR3     7/8")
+        with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_DR3.pickle', 'wb') as fh:
+            pickle.dump(gaiaDR3_2_preferred_name_DR3, fh)
+
+        print("Pickling gaia_DR3_2_preferred_name_name  8/8")
+        with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_name.pickle', 'wb') as fh:
+            pickle.dump(gaiaDR3_2_preferred_name_name, fh)
 
         print("gaiaDR_2_preferred_name_DR3     7/8")
         with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_DR3.pickle', 'rb') as fh:
