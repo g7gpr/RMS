@@ -458,7 +458,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                 catalogue_line.append(str(BRVIc[3]))
             except:
                 print
-                print("G:{} Gbp:{}, Grp:{}".format(float(catalogue_line[5]),float(catalogue_line[6]),float(catalogue_line[7])))
+                print("G:{} Gbp:{}, Grp:{}".format((catalogue_line[5]),(catalogue_line[6]),(catalogue_line[7])))
                 catalogue_line.append(str("NOT CALCULATED"))
                 catalogue_line.append(str("NOT CALCULATED"))
                 catalogue_line.append(str("NOT CALCULATED"))
