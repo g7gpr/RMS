@@ -405,7 +405,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                 oid = oid_dr3_only
 
                 gaia_dr3_ident_lookup = ""
-                print("Seeking {} starting at {}".format(gaia_dr3_ident,last_checked_preferred_name_index))
+
                 for preferred_name_index in range(last_checked_preferred_name_index,len_of_gaia_dr3_2_preferred_name):
                     gaia_dr3_ident_lookup, preferred_name = gaia_dr3_2_preferred_name_gaia_dr3[preferred_name_index], gaia_dr3_2_preferred_name_name[preferred_name_index]
                     if gaia_dr3_ident_lookup == gaia_dr3_ident:
@@ -413,7 +413,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                         break
 
                 if gaia_dr3_ident_lookup == gaia_dr3_ident:
-                    print("{} assigned {}".format(gaia_dr3_ident, preferred_name))
+
                     main_id = preferred_name
                 else:
                     last_checked_preferred_name_index = 0
