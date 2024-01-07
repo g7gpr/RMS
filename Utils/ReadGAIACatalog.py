@@ -399,8 +399,8 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             else:
 
                 oid, main_id = "-1", gaia_dr3_ident
-                print("Missing Gaia DR3 ident {} in oid list".format(gaia_dr3_ident))
-                print("This occurs for an object which is in the GaiaDR3 catalogue, but which does not have a Simbad OID code")
+                # Missing Gaia DR3 ident {} in oid list
+                # This occurs for an object which is in the GaiaDR3 catalogue, but which does not have a Simbad OID code
                 pass
             catalogue_line.append(oid)
             catalogue_line.append(main_id)
