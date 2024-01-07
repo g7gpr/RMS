@@ -553,16 +553,6 @@ if __name__ == "__main__":
         with open('/home/david/tmp/pickles/oid_list_gaia_dr3_only.pickle', 'rb') as fh:
             oid_list_gaia_dr3_only = pickle.load(fh)
 
-        gaiaDR3_2_preferred_name_DR3, gaiaDR3_2_preferred_name_name = generateNameLookUpList(
-            "/home/david/tmp/name2oid.txt", "/home/david/tmp/oid2preferredname.txt")
-
-        print("Pickling gaiaDR_2_preferred_name_DR3     7/8")
-        with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_DR3.pickle', 'wb') as fh:
-            pickle.dump(gaiaDR3_2_preferred_name_DR3, fh)
-
-        print("Pickling gaia_DR3_2_preferred_name_name  8/8")
-        with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_name.pickle', 'wb') as fh:
-            pickle.dump(gaiaDR3_2_preferred_name_name, fh)
 
         print("gaiaDR_2_preferred_name_DR3     7/8")
         with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_DR3.pickle', 'rb') as fh:
