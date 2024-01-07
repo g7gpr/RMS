@@ -450,13 +450,20 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                 pass
 
 
+            try:
+                BRVIc = johnsonCousins(float(catalogue_line[5]),float(catalogue_line[6]),float(catalogue_line[7]))
+                catalogue_line.append(str(BRVIc[0]))
+                catalogue_line.append(str(BRVIc[1]))
+                catalogue_line.append(str(BRVIc[2]))
+                catalogue_line.append(str(BRVIc[3]))
+            except:
+                print
+                print("G:{} Gbp:{}, Grp:{}".format(float(catalogue_line[5]),float(catalogue_line[6]),float(catalogue_line[7])))
+                catalogue_line.append(str("NOT CALCULATED"))
+                catalogue_line.append(str("NOT CALCULATED"))
+                catalogue_line.append(str("NOT CALCULATED"))
+                catalogue_line.append(str("NOT CALCULATED"))
 
-            BRVIc = johnsonCousins(float(catalogue_line[5]),float(catalogue_line[6]),float(catalogue_line[7]))
-
-            catalogue_line.append(str(BRVIc[0]))
-            catalogue_line.append(str(BRVIc[1]))
-            catalogue_line.append(str(BRVIc[2]))
-            catalogue_line.append(str(BRVIc[3]))
             catalogue_line.append(oid)
             catalogue_line.append(main_id)
 
