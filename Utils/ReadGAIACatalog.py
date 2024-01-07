@@ -385,7 +385,10 @@ def johnsonCousins(G,Gbp,Grp):
 
 def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, gaia_dr3_2_preferred_name_gaia_dr3, gaia_dr3_2_preferred_name_name, output_filename):
 
-
+        gaia_columns.append("B")
+        gaia_columns.append("R")
+        gaia_columns.append("V")
+        gaia_columns.append("Ic")
         gaia_columns.append("oid")
         gaia_columns.append("preferred_name")
 
@@ -445,6 +448,15 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                 # Missing Gaia DR3 ident {} in oid list
                 # This occurs for an object which is in the GaiaDR3 catalogue, but which does not have a Simbad OID code
                 pass
+
+
+
+            BRVIc = johnsonCousins(catalogue_line[5],catalogue_line[6],catalogue_line[7])
+
+            catalogue_line.append(BRVIc[0])
+            catalogue_line.append(BRVIc[1])
+            catalogue_line.append(BRVIc[2])
+            catalogue_line.append(BRVIc[3])
             catalogue_line.append(oid)
             catalogue_line.append(main_id)
 
