@@ -240,7 +240,7 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
     print("Sorting")
     # sort by oid to speed up the future join
     cross_reference_list_sorted_by_id = sorted(cross_reference_list, key=lambda gaia2simbadcode: gaia2simbadcode[1])
-    # sort this in reverse, so that we can pop from the end
+    # sort this in reverse by Gaia Code, so that we can pop from the end
     cross_reference_list_DR3_sorted_by_GaiaReference = sorted(cross_reference_list_DR3_only, key=lambda gaia2simbadcode: gaia2simbadcode[0], reverse=True)
     print("Sorted")
 
@@ -331,7 +331,6 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
 
 
         catalogue_with_oid, last_oid_index= [],0
-        len_name_list_dr3_only = len(name_list_dr3_only)
 
         for catalogue_line in tqdm(gaia_catalogue):
             gaia_dr3_ident = catalogue_line[0]
@@ -341,7 +340,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
 
 
                 #oid_index = name_list_dr3_only.index(gaia_dr3_ident, last_oid_index)
-                for oid_index in range(len_name_list_dr3_only):
+                for oid_index in range(len(name_list_dr3_only)):
                     name_dr3_only, oid_dr3_only = name_list_dr3_only.pop(), oid_list_dr3_only.pop()
                     if name_dr3_only == gaia_dr3_ident:
                         break
