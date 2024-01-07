@@ -525,6 +525,37 @@ if __name__ == "__main__":
     else:
         print("Unpickling")
 
+        print("Gaia_catalogue data             1/8")
+        with open('/home/david/tmp/pickles/gaia_catalogue.pickle', 'rb') as fh:
+            gaia_catalogue = pickle.load(fh)
+
+        print("Gaia_catalogue columns          2/8")
+        with open('/home/david/tmp/pickles/gaia_columns.pickle', 'rb') as fh:
+            gaia_columns = pickle.load(fh)
+
+        print("name_list                       3/8")
+        with open('/home/david/tmp/pickles/name_list.pickle', 'rb') as fh:
+            name_list = pickle.load(fh)
+
+        print("oid_list                        4/8")
+        with open('/home/david/tmp/pickles/oid_list.pickle', 'rb') as fh:
+            oid_list = pickle.load(fh)
+
+        print("id_list_gaia_dr3_only           5/8")
+        with open('/home/david/tmp/pickles/id_list_gaia_dr3_only.pickle', 'rb') as fh:
+            id_list_gaia_dr3_only = pickle.load(fh)
+
+        print("oid_list_gaia_dr3_only          6/8")
+        with open('/home/david/tmp/pickles/oid_list_gaia_dr3_only.pickle', 'rb') as fh:
+            oid_lists_gaia_dr3_only = pickle.load(fh)
+
+        print("gaiaDR_2_preferred_name_DR3     7/8")
+        with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_DR3.pickle', 'rb') as fh:
+            gaiaDR3_2_preferred_name_DR3 = pickle.load(fh)
+
+        print("gaia_DR3_2_preferred_name_name  8/8")
+        with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_name.pickle', 'rb') as fh:
+            gaiaDR3_2_preferred_name_name = pickle.load(fh)
 
     print("Produce Gaia catalogue sorted by simbad code")
     catalogue_with_oid,gaia_columns = generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list,
