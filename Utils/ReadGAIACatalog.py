@@ -240,7 +240,8 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
     print("Sorting")
     # sort by oid to speed up the future join
     cross_reference_list_sorted_by_id = sorted(cross_reference_list, key=lambda gaia2simbadcode: gaia2simbadcode[1])
-    cross_reference_list_DR3_sorted_by_GaiaReference = sorted(cross_reference_list_DR3_only, key=lambda gaia2simbadcode: gaia2simbadcode[0])
+    # sort this in reverse, so that we can pop from the end
+    cross_reference_list_DR3_sorted_by_GaiaReference = sorted(cross_reference_list_DR3_only, key=lambda gaia2simbadcode: gaia2simbadcode[0], reverse=True)
     print("Sorted")
 
 
@@ -281,9 +282,37 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
         oid_list_dr3_only.append(relationship[1])
 
 
+
     print("Largest oid {}".format(max(oid_list)))
     return id_list, oid_list, id_list_gaia_dr3_only, oid_list_dr3_only
 
+def generateNameLookUpList(input_filename):
+
+    """
+    This produces a list of oid references against all the preferred names.
+    It will be ordered by oid, the same as the catalogue
+
+    """
+
+    with open(input_filename, "r") as fh:
+        first_iteration = True
+        look_up_list = []
+
+        for line in tqdm(fh):
+            line_list = line.split("|")
+            if first_iteration:
+                first_iteration = False
+                reference_names_list = []
+                last_line_oid_ref = int(line_list[2])
+            if last_line_oid_ref == int(line_list[2]):
+                reference_names_list.append(line_list[1])
+            else:
+                #this is a new oid
+                reference_names_list = []
+                reference_names_list.append(line_list[1])
+        look_up_list.append([line_list[2],reference_names_list])
+
+    return look_up_list.append
 
 def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, output_filename):
 
@@ -302,30 +331,32 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
 
 
         catalogue_with_oid, last_oid_index= [],0
-    # optimise this code - both lists are sorted so can be merged more efficiently
+        len_name_list_dr3_only = len(name_list_dr3_only)
+
         for catalogue_line in tqdm(gaia_catalogue):
             gaia_dr3_ident = catalogue_line[0]
-        #add the simbad oid
+
             main_id = ""
-            # this should always evaluate to true - so after more testing eliminate this very slow check
             if gaia_dr3_ident in name_list_dr3_only:
 
+
                 #oid_index = name_list_dr3_only.index(gaia_dr3_ident, last_oid_index)
-                for oid_index in range(last_oid_index,len(name_list_dr3_only)):
-                    if name_list_dr3_only[oid_index] == gaia_dr3_ident:
+                for oid_index in range(len_name_list_dr3_only):
+                    name_dr3_only, oid_dr3_only = name_list_dr3_only.pop(), oid_list_dr3_only.pop()
+                    if name_dr3_only == gaia_dr3_ident:
                         break
                 last_oid_index = oid_index + 1
-                oid = oid_list_dr3_only[oid_index]
+                oid = oid_dr3_onl
 
                 # since we had a valid simbad oid, try and find the name
-                if True:
+                if False:
                     name_score = np.inf
                     oid_index_list = [i for i, x in enumerate(oid_list) if x == oid]
                     for index in oid_index_list:
                         if name_list[index][0:4] == "NAME" and name_score > 0:
                             main_id = name_list[index]
                             name_score = 0
-
+                            continue
                         if name_list[index][0:2] == "HD" and name_score > 1:
                             main_id = name_list[index]
                             name_score = 1
