@@ -240,8 +240,8 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
     print("Sorting")
     # sort by oid to speed up the future join
     cross_reference_list_sorted_by_id = sorted(cross_reference_list, key=lambda gaia2simbadcode: gaia2simbadcode[1])
-    # sort this in reverse by Gaia Code, so that we can pop from the end
-    cross_reference_list_DR3_sorted_by_GaiaReference = sorted(cross_reference_list_DR3_only, key=lambda gaia2simbadcode: gaia2simbadcode[0], reverse=True)
+    # sort by Gaia DR3 reference to speed up the join
+    cross_reference_list_DR3_sorted_by_GaiaReference = sorted(cross_reference_list_DR3_only, key=lambda gaia2simbadcode: gaia2simbadcode[0])
     print("Sorted")
 
 
@@ -314,15 +314,16 @@ def generateNameLookUpList(input_filename):
                 reference_names_list = []
                 reference_names_list.append(line_list[1])
 
-            best_name_score = 0
+            # best name score - lower number is better
+            best_name_score = np.inf
             for name in reference_names_list:
                     for name_preference in name_preference_list:
-                        if name[0:len(name_preference-1)] == name:
-                            pass
+                        if name[0:len(name_preference-1)] == name and name_preference_list.index(name) < best_name_score:
+                            best_name_score = name_preference_list.index(name)
+                            best_name = name
 
 
-
-        look_up_list.append([line_list[2],reference_names_list])
+        look_up_list.append([line_list[2],best_name])
 
     return look_up_list.append
 
@@ -343,7 +344,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
 
 
         catalogue_with_oid, last_oid_index= [],0
-        top_of_list = len(name_list)
+        len_of_list = len(name_list)
 
         for catalogue_line in tqdm(gaia_catalogue):
             gaia_dr3_ident = catalogue_line[0]
@@ -351,12 +352,12 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             main_id = ""
             if gaia_dr3_ident in name_list_dr3_only:
 
-                # Name and oid list are sorted in reverse dr3 order, so should be able to pop from the end to save time
-                #oid_index = name_list_dr3_only.index(gaia_dr3_ident, last_oid_index)
-                for oid_index in range(top_of_list,0):
-                    name_dr3_only, oid_dr3_only = name_list_dr3_only[oid_index], oid_list_dr3_only.pop[oid_index]
+                #oid_index is being used as a pointer so that we don't recurse any more than we have to
+
+                for oid_index in range(last_checked,len_of_list):
+                    name_dr3_only, oid_dr3_only = name_list_dr3_only[oid_index], oid_list_dr3_only[oid_index]
                     if name_dr3_only == gaia_dr3_ident:
-                        top_of_list = oid_index
+                        last_checked = oid_index
                         break
 
                 oid = oid_dr3_only
