@@ -497,13 +497,14 @@ if __name__ == "__main__":
     #with open('oid_list', 'rb') as fh:
     #    oid_list = pickle.load(fh)
 
-    gaiaDR3_2_preferred_name = generateNameLookUpList("/home/david/tmp/name2oid.txt","/home/david/tmp/oid2preferredname.txt")
+    gaiaDR3_2_preferred_name_DR3, gaiaDR3_2_preferred_name_name = generateNameLookUpList("/home/david/tmp/name2oid.txt","/home/david/tmp/oid2preferredname.txt")
 
 
     print("Produce Gaia catalogue sorted by simbad code")
     catalogue_with_oid,gaia_columns = generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list,
-                                                            id_list_gaia_dr3_only, oid_list_gaia_dr3_only,gaiaDR3_2_preferred_name,
-                                                            "/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
+                                                            id_list_gaia_dr3_only, oid_list_gaia_dr3_only,
+                                                            gaiaDR3_2_preferred_name_DR3,gaiaDR3_2_preferred_name_name,
+                                                    "/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
     print("Gaia catalogue sorted by simbad code produced")
 
     with open ("/home/david/tmp/catalogue_with_oid_sorted_by_oid.txt", 'w') as f:
