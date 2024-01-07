@@ -490,7 +490,7 @@ if __name__ == "__main__":
 
     cml_args = arg_parser.parse_args()
 
-    if True:
+    if False:
         #This provides a lookup table to go from Simbad oid key to main_id, which I think is the name that GMN wishes to use
         #print("Reading Simbad Basic ")
         simbadBasicSortedByOID, simbad_columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
