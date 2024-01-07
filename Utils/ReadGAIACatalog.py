@@ -342,9 +342,10 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
         line_string += "\n"
         fh.write(line_string)
 
-
+        # initialisation
         catalogue_with_oid, last_oid_index= [],0
         len_of_list = len(name_list)
+        last_checked = 0
 
         for catalogue_line in tqdm(gaia_catalogue):
             gaia_dr3_ident = catalogue_line[0]
@@ -352,7 +353,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             main_id = ""
             if gaia_dr3_ident in name_list_dr3_only:
 
-                #oid_index is being used as a pointer so that we don't recurse any more than we have to
+                #oid_index is being used as a pointer so that we keep recursion to a minimum
 
                 for oid_index in range(last_checked,len_of_list):
                     name_dr3_only, oid_dr3_only = name_list_dr3_only[oid_index], oid_list_dr3_only[oid_index]
