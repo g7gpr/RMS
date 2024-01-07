@@ -292,7 +292,10 @@ def generateNameLookUpList(input_filename):
     This produces a list of oid references against all the preferred names.
     It will be ordered by oid, the same as the catalogue
 
+
     """
+
+    name_preference_list = ["NAME","HD","SAO","TYC","TIC","2MASS","GAIA_DR3"]
 
     with open(input_filename, "r") as fh:
         first_iteration = True
@@ -310,6 +313,15 @@ def generateNameLookUpList(input_filename):
                 #this is a new oid
                 reference_names_list = []
                 reference_names_list.append(line_list[1])
+
+            best_name_score = 0
+            for name in reference_names_list:
+                    for name_preference in name_preference_list:
+                        if name[0:len(name_preference-1)] == name:
+                            pass
+
+
+
         look_up_list.append([line_list[2],reference_names_list])
 
     return look_up_list.append
@@ -331,6 +343,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
 
 
         catalogue_with_oid, last_oid_index= [],0
+        top_of_list = len(name_list)
 
         for catalogue_line in tqdm(gaia_catalogue):
             gaia_dr3_ident = catalogue_line[0]
@@ -338,16 +351,17 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             main_id = ""
             if gaia_dr3_ident in name_list_dr3_only:
 
-
+                # Name and oid list are sorted in reverse dr3 order, so should be able to pop from the end to save time
                 #oid_index = name_list_dr3_only.index(gaia_dr3_ident, last_oid_index)
-                for oid_index in range(len(name_list_dr3_only)):
-                    name_dr3_only, oid_dr3_only = name_list_dr3_only.pop(), oid_list_dr3_only.pop()
+                for oid_index in range(top_of_list,0):
+                    name_dr3_only, oid_dr3_only = name_list_dr3_only[oid_index], oid_list_dr3_only.pop[oid_index]
                     if name_dr3_only == gaia_dr3_ident:
+                        top_of_list = oid_index
                         break
-                last_oid_index = oid_index + 1
+
                 oid = oid_dr3_only
 
-                # since we had a valid simbad oid, try and find the name
+                # don't do this here. Will be much more efficient to do it on a reverse ordered oid list
                 if False:
                     name_score = np.inf
                     oid_index_list = [i for i, x in enumerate(oid_list) if x == oid]
