@@ -451,12 +451,12 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
 
 
 
-            BRVIc = johnsonCousins(catalogue_line[5],catalogue_line[6],catalogue_line[7])
+            BRVIc = johnsonCousins(float(catalogue_line[5]),float(catalogue_line[6]),float(catalogue_line[7]))
 
-            catalogue_line.append(BRVIc[0])
-            catalogue_line.append(BRVIc[1])
-            catalogue_line.append(BRVIc[2])
-            catalogue_line.append(BRVIc[3])
+            catalogue_line.append(str(BRVIc[0]))
+            catalogue_line.append(str(BRVIc[1]))
+            catalogue_line.append(str(BRVIc[2]))
+            catalogue_line.append(str(BRVIc[3]))
             catalogue_line.append(oid)
             catalogue_line.append(main_id)
 
