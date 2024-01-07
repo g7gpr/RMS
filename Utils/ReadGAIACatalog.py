@@ -366,13 +366,13 @@ def generateNameLookUpList(input_filename,output_filename):
 
     return look_up_list_sorted_by_DR3_DR3,look_up_list_sorted_by_DR3_best_name
 
-def calculatePhotometry(G,Gbp,Grp,c1,c2,c3,c4,c5)
+def calculatePhotometry(G,Gbp,Grp,c1,c2,c3,c4,c5):
 
     value = (c1 + c2 * (Gbp-Grp) + c3 * (Gbp-Grp) ** 2 + c4 * (Gbp-Grp) ** 3 + c5 * (Gbp-Grp) ** 4 - G) * -1
 
     return value
 
-def johnsonCousins(G,Gbp,Grp)
+def johnsonCousins(G,Gbp,Grp):
 
 
 
