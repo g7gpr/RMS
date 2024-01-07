@@ -286,7 +286,7 @@ def generateGaia2SimbadCodeFromIdentTables(catalogue, columns):
     print("Largest oid {}".format(max(oid_list)))
     return id_list, oid_list, id_list_gaia_dr3_only, oid_list_dr3_only
 
-def generateNameLookUpList(input_filename):
+def generateNameLookUpList(input_filename,output_filename):
 
     """
     This produces a list of oid references against all the preferred names.
@@ -303,35 +303,74 @@ def generateNameLookUpList(input_filename):
 
         for line in tqdm(fh):
             line_list = line.split("|")
+
+            # first time through do the initialisation
             if first_iteration:
                 first_iteration = False
                 reference_names_list = []
+                contains_DR3 = False
                 last_line_oid_ref = int(line_list[2])
+
             if last_line_oid_ref == int(line_list[2]):
                 reference_names_list.append(line_list[1])
+
+                if line_list[1][0:len("Gaia DR3")] == "Gaia DR3":
+                    contains_DR3 = True
+                    Gaia_DR3_code = line_list[1]
+
             else:
-                #this is a new oid
+                # this is a new oid
+
+                # first handle the previous collection
+                if contains_DR3:
+                    best_name_score = np.inf
+                    for name in reference_names_list:
+                        for name_preference in name_preference_list:
+                            if name[0:len(name_preference)] == name_preference and name_preference_list.index(name_preference) < best_name_score:
+                                best_name_score = name_preference_list.index(name_preference)
+                                best_name = name
+                    look_up_list.append([Gaia_DR3_code, best_name,line_list[2]])
+
+                #then reinitialise
+                contains_DR3 = False
+                Gaia_DR3_code = ""
                 reference_names_list = []
-                reference_names_list.append(line_list[1])
 
-            # best name score - lower number is better
-            best_name_score = np.inf
-            for name in reference_names_list:
-                    for name_preference in name_preference_list:
-                        if name[0:len(name_preference-1)] == name and name_preference_list.index(name) < best_name_score:
-                            best_name_score = name_preference_list.index(name)
-                            best_name = name
+                #record this line
+                reference_names_list.append(line_list[2])
 
 
-        look_up_list.append([line_list[2],best_name])
+            last_line_oid_ref = int(line_list[2])
 
-    return look_up_list.append
+    #Sort by Gaia_DR3_ident
 
-def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, output_filename):
+    print("Sorting")
+    look_up_list_sorted_by_DR3 = sorted(look_up_list, key=lambda DR3: DR3[2])
+    print("Sorted")
+
+    print("Storing")
+    with open(output_filename, "w") as fh:
+        for line in look_up_list_sorted_by_DR3:
+            output_line = "|"
+            for value in line:
+                output_line += str(value)
+                output_line += "|"
+            output_line += "\n"
+            fh.write(output_line)
+
+    look_up_list_sorted_by_DR3_DR3, look_up_list_sorted_by_DR3_best_name = [],[]
+    for relationship in look_up_list_sorted_by_DR3:
+        look_up_list_sorted_by_DR3_DR3.append(relationship[0])
+        look_up_list_sorted_by_DR3_best_name(relationship[1])
+
+
+    return look_up_list_sorted_by_DR3_DR3,look_up_list_sorted_by_DR3_best_name
+
+def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, gaia_dr3_2_preferred_name_gaia_dr3, gaia_dr3_2_preferred_name_name, output_filename):
 
 
         gaia_columns.append("oid")
-        gaia_columns.append("main_id")
+        gaia_columns.append("preferred_name")
 
         fh = open(output_filename, 'w')
         line_string = "|"
@@ -343,9 +382,11 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
         fh.write(line_string)
 
         # initialisation
-        catalogue_with_oid, last_oid_index= [],0
+        catalogue_with_oid, last_oid_index, last_gaia_dr3_2_preferred_name_index = [],0,0
         len_of_list = len(name_list)
-        last_checked = 0
+        len_of_gaia_dr3_2_preferred_name = len(gaia_dr3_2_preferred_name_gaia_dr3)
+        last_checked_oid_index = 0
+        last_checked_preferred_name_index = 0
 
         for catalogue_line in tqdm(gaia_catalogue):
             gaia_dr3_ident = catalogue_line[0]
@@ -355,46 +396,23 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
 
                 #oid_index is being used as a pointer so that we keep recursion to a minimum
 
-                for oid_index in range(last_checked,len_of_list):
+                for oid_index in range(last_checked_oid_index,len_of_list):
                     name_dr3_only, oid_dr3_only = name_list_dr3_only[oid_index], oid_list_dr3_only[oid_index]
                     if name_dr3_only == gaia_dr3_ident:
-                        last_checked = oid_index
+                        last_checked_oid_index = oid_index
+                        break
+
+                for preferred_name_index in range(last_checked_preferred_name_index,len_of_gaia_dr3_2_preferred_name):
+                    gaia_dr3_ident_lookup, preferred_name = gaia_dr3_2_preferred_name_gaia_dr3[preferred_name_index], gaia_dr3_2_preferred_name_name[preferred_name_index]
+                    if gaia_dr3_ident_lookup == gaia_dr3_ident:
+                        last_checked_preferred_name_index = preferred_name_index
                         break
 
                 oid = oid_dr3_only
+                main_id = gaia_dr3_ident_lookup
 
                 # don't do this here. Will be much more efficient to do it on a reverse ordered oid list
-                if False:
-                    name_score = np.inf
-                    oid_index_list = [i for i, x in enumerate(oid_list) if x == oid]
-                    for index in oid_index_list:
-                        if name_list[index][0:4] == "NAME" and name_score > 0:
-                            main_id = name_list[index]
-                            name_score = 0
-                            continue
-                        if name_list[index][0:2] == "HD" and name_score > 1:
-                            main_id = name_list[index]
-                            name_score = 1
 
-                        if name_list[index][0:3] == "SAO" and name_score > 1:
-                            main_id = name_list[index]
-                            name_score = 1
-
-                        if name_list[index][0:3] == "TYC" and name_score > 3:
-                            main_id = name_list[index]
-                            name_score = 3
-
-                        if name_list[index][0:3] == "TIC" and name_score > 4:
-                            main_id = name_list[index]
-                            name_score = 4
-
-                        if name_list[index][0:5] == "2MASS" and name_score > 5:
-                            main_id = name_list[index]
-                            name_score = 5
-
-                        if name_list[index][0:8] == "Gaia DR3"  and name_score > 6:
-                            main_id = name_list[index]
-                            name_score = 6
 
             else:
 
@@ -451,7 +469,7 @@ if __name__ == "__main__":
 
     #This provides a lookup table to go from Simbad oid key to main_id, which I think is the name that GMN wishes to use
     #print("Reading Simbad Basic ")
-    #simbadBasicSortedByOID, simbad_columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
+    simbadBasicSortedByOID, simbad_columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
     #print("Simbad Basic read completed - oid2main_id file written")
 
 
@@ -479,11 +497,12 @@ if __name__ == "__main__":
     #with open('oid_list', 'rb') as fh:
     #    oid_list = pickle.load(fh)
 
+    gaiaDR3_2_preferred_name = generateNameLookUpList("/home/david/tmp/name2oid.txt","/home/david/tmp/oid2preferredname.txt")
 
 
     print("Produce Gaia catalogue sorted by simbad code")
     catalogue_with_oid,gaia_columns = generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list,
-                                                            id_list_gaia_dr3_only, oid_list_gaia_dr3_only,
+                                                            id_list_gaia_dr3_only, oid_list_gaia_dr3_only,gaiaDR3_2_preferred_name,
                                                             "/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
     print("Gaia catalogue sorted by simbad code produced")
 
@@ -504,9 +523,3 @@ if __name__ == "__main__":
             output_line += "\n"
             f.write(output_line)
 
-
-    #ra, dec, mag = results.T
-
-
-    #plt.scatter(ra, dec, s=0.1)
-    #plt.show()
