@@ -360,8 +360,8 @@ def generateNameLookUpList(input_filename,output_filename):
 
     look_up_list_sorted_by_DR3_DR3, look_up_list_sorted_by_DR3_best_name = [],[]
     for relationship in look_up_list_sorted_by_DR3:
-        look_up_list_sorted_by_DR3_DR3.append(relationship[0])
-        look_up_list_sorted_by_DR3_best_name(relationship[1])
+        look_up_list_sorted_by_DR3_DR3.append.append(relationship[0])
+        look_up_list_sorted_by_DR3_best_name.append(relationship[1])
 
 
     return look_up_list_sorted_by_DR3_DR3,look_up_list_sorted_by_DR3_best_name
@@ -484,20 +484,39 @@ if __name__ == "__main__":
     print("Producing relationship from Gaia DR3 ident to Simbad Code")
     name_list, oid_list,id_list_gaia_dr3_only, oid_list_gaia_dr3_only = generateGaia2SimbadCodeFromIdentTables(gaia_catalogue, gaia_columns)
 
-    print("Pickling work so far")
-    #with open('gaia_id_list','wb') as fh:
-    #    pickle.dump(gaia_id_list, fh)
-
-    #with open('oid_list','wb') as fh:
-    #    pickle.dump(oid_list, fh)
-
-    #with open('gaia_id_list', 'rb') as fh:
-    #    gaia_id_list = pickle.load(fh)
-
-    #with open('oid_list', 'rb') as fh:
-    #    oid_list = pickle.load(fh)
+    print("Preparing lookup table")
 
     gaiaDR3_2_preferred_name_DR3, gaiaDR3_2_preferred_name_name = generateNameLookUpList("/home/david/tmp/name2oid.txt","/home/david/tmp/oid2preferredname.txt")
+
+    print("Pickling 1/7")
+    with open('/home/david/tmp/gaia_catalogue.pickle') as fh:
+        pickle.dump(gaia_catalogue, fh)
+
+    print("Pickling 2/7")
+    with open('/home/david/tmp/gaia_columns.pickle') as fh:
+        pickle.dump(gaia_columns, fh)
+
+    print("Pickling 3/7")
+    with open('/home/david/tmp/name_list.pickle') as fh:
+        pickle.dump(name_list,fh)
+
+    print("Pickling 4/7")
+    with open('home/david/tmp/oid_list.pickle') as fh:
+        pickle.dump(name_list,fh)
+
+    print("Pickling 5/7")
+    with open('home/david/tmp/id_list_gaia_dr3_only.pickle') as fh:
+        pickle.dump(id_list_gaia_dr3_only,fh)
+
+    print("Pickling 6/7")
+    with open('home/david/tmp/gaiaDR3_2_preferred_name_DR3.pickle') as fh:
+        pickle.dump(gaiaDR3_2_preferred_name_DR3,fh)
+
+    print("Pickling 7/7")
+    with open('home/david/tmp/gaiaDR3_2_preferred_name_name.pickle') as fh:
+        pickle.dump(gaiaDR3_2_preferred_name_name, fh)
+
+
 
 
     print("Produce Gaia catalogue sorted by simbad code")
