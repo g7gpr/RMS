@@ -642,9 +642,9 @@ if __name__ == "__main__":
 
 
     accumulated_time_recursion, accumulated_time_built_in = 0 ,0
-    for test_count in range(0,3000):
+    for test_count in range(0,10):
         random_list, random_list2 = [], []
-        for i in range(0,1000000):
+        for i in range(0,1000):
             random_number =  random.randint(0,360000000) / 1000000
             random_list.append([random_number])
             random_list2.append(random_number)
@@ -661,20 +661,21 @@ if __name__ == "__main__":
         built_in_result = min(random_list2, key=lambda x:abs(x-target))
         end_time = time.time()
         accumulated_time_built_in += end_time - start_time
-
+        if recursion_result != built_in_result:
+            print("Search Error")
+            quit()
 
         print(accumulated_time_recursion, accumulated_time_built_in)
         if search_range[0] < 0 or search_range[1] > len(random_list) -1:
             print("Result out of range")
         else:
             print("Target {}, {},{}".format(target, random_list[search_range[0]][0],random_list[search_range[1]][0]))
-        print("delta recusion {}, delta_built_in {}".format(target-recursion_result, target-built_in_result))
+        print("delta recursion {}, delta_built_in {}".format(target-recursion_result, target-built_in_result))
         print(recursion_result, built_in_result)
-        print("Accumulated times {},{}".format(accumulated_time_built_in, accumulated_time_recursion))
-        if built_in_result != random_list[search_range[0]][0]:
-            quit()
+        print("Accumulated times: Recursion {}, Built in {}".format(accumulated_time_built_in, accumulated_time_recursion))
 
-    quit()
+
+
 
     if False:
         #This provides a lookup table to go from Simbad oid key to main_id, which I think is the name that GMN wishes to use
