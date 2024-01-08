@@ -483,10 +483,10 @@ def calculatePhotometry(inputs,coefficients):
 
 def johnsonCousins(inputs):
 
-    coefficients_list = [[ 0.01448, -0.68740, -0.3604,  0.06718, -0.006061],
-                         [-0.02275,  0.39610, -0.1243, -0.01396,  0.003775],
-                         [-0.02704,  0.01424, -0.2156,  0.01426,  0       ],
-                         [ 0.01753,  0.76000, -0.0991,  0      ,  0       ]]
+    coefficients_list = [[ 0.01448, -0.68740, -0.3604,  0.06718, -0.006061],    #G-B
+                         [-0.02275,  0.39610, -0.1243, -0.01396,  0.003775],    #G-R
+                         [-0.02704,  0.01424, -0.2156,  0.01426,  0       ],    #G-V
+                         [ 0.01753,  0.76000, -0.0991,  0      ,  0       ]]    #G-Ic
 
     results = []
 
@@ -499,22 +499,14 @@ def johnsonCousins(inputs):
     return results
 
 
-def johnsonCousinsOld(G,Gbp,Grp):
 
-
-
-    B  =  calculatePhotometry(G,Gbp,Grp,   0.01448,-0.06874, -0.3604,  0.06718 , -0.006061)
-    R  =  calculatePhotometry(G,Gbp,Grp,  -0.02275, 0.3961 , -0.1243, -0.01396 ,  0.003775)
-    V  =  calculatePhotometry(G,Gbp,Grp,  -0.02704, 0.01424, -0.2156,  0.01426 ,  0       )
-    Ic =  calculatePhotometry(G,Gbp,Grp,   0.01753, 0.76   , -0.0991,  0       ,  0       )
-
-    return [B,R,V,Ic]
 
 def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, gaia_dr3_2_preferred_name_gaia_dr3, gaia_dr3_2_preferred_name_name, output_filename):
 
-        gaia_columns.append("B")
-        gaia_columns.append("R")
         gaia_columns.append("V")
+        gaia_columns.append("B-V")
+        gaia_columns.append("R")
+
         gaia_columns.append("Ic")
         gaia_columns.append("oid")
         gaia_columns.append("preferred_name")
@@ -579,10 +571,11 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
 
             try:
                 BRVIc = johnsonCousins([float(catalogue_line[5]),float(catalogue_line[6]),float(catalogue_line[7])])
-                catalogue_line.append(str(BRVIc[0]))
-                catalogue_line.append(str(BRVIc[1]))
-                catalogue_line.append(str(BRVIc[2]))
-                catalogue_line.append(str(BRVIc[3]))
+                # column order is V, B-V, R, Ic
+                catalogue_line.append(str(BRVIc[2]))            #V
+                catalogue_line.append(str(BRVIc[0]-BRVIc[2]))   #B-V
+                catalogue_line.append(str(BRVIc[1]))            #R
+                catalogue_line.append(str(BRVIc[3]))            #Ic
             except:
 
                 catalogue_line.append(str("NOT CALCULATED"))
