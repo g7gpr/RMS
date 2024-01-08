@@ -513,7 +513,7 @@ def johnsonCousinsOld(G,Gbp,Grp):
 
     return [B,R,V,Ic]
 
-def generateDR3CatalogueWithSimbadCodeOld(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, gaia_dr3_2_preferred_name_gaia_dr3, gaia_dr3_2_preferred_name_name, output_filename):
+def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, gaia_dr3_2_preferred_name_gaia_dr3, gaia_dr3_2_preferred_name_name, output_filename):
 
         gaia_columns.append("B")
         gaia_columns.append("R")
