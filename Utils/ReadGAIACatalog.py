@@ -477,9 +477,7 @@ def calculatePhotometry(inputs,coefficients):
     value = 0 - inputs[0]
     Gbp_Grp = inputs[1] - inputs[2]
     for index in range(0,len(coefficients)):
-        #print(index, coefficients[index])
         value += coefficients[index] * (Gbp_Grp ** index)
-        #print()
     return - value
 
 
@@ -495,7 +493,6 @@ def johnsonCousins(inputs):
     for coefficients_index in range(0,len(coefficients_list)):
         coefficients = (coefficients_list[coefficients_index])
         result = (calculatePhotometry(inputs,coefficients))
-        print(coefficients_index,result)
         results.append(result)
 
 
