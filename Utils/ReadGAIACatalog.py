@@ -503,8 +503,8 @@ def johnsonCousins(inputs):
 
 def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, gaia_dr3_2_preferred_name_gaia_dr3, gaia_dr3_2_preferred_name_name, output_filename):
 
+        gaia_columns.append("B")
         gaia_columns.append("V")
-        gaia_columns.append("B-V")
         gaia_columns.append("R")
 
         gaia_columns.append("Ic")
@@ -572,9 +572,15 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             try:
                 BRVIc = johnsonCousins([float(catalogue_line[5]),float(catalogue_line[6]),float(catalogue_line[7])])
                 # column order is V, B-V, R, Ic
-                catalogue_line.append(str(BRVIc[2]))            #V
-                catalogue_line.append(str(BRVIc[0]-BRVIc[2]))   #B-V
-                catalogue_line.append(str(BRVIc[1]))            #R
+                # catalogue_line.append(str(BRVIc[2]))            #V
+                # catalogue_line.append(str(BRVIc[0]-BRVIc[2]))   #B-V
+                # catalogue_line.append(str(BRVIc[1]))            #R
+                # catalogue_line.append(str(BRVIc[3]))            #Ic
+
+                # column order is B,V,R,Ic
+                catalogue_line.append(str(BRVIc[0]))            #B
+                catalogue_line.append(str(BRVIc[1]))            #V
+                catalogue_line.append(str(BRVIc[2]))            #R
                 catalogue_line.append(str(BRVIc[3]))            #Ic
             except:
 
