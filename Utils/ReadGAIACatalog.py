@@ -6,6 +6,8 @@ import urllib.request
 import time
 from operator import itemgetter,attrgetter
 from tqdm import tqdm
+import random
+import time
 
 # Read from http://jvo.nao.ac.jp/portal/gaia/dr3.do
 # Photometric calculations at https://gea.esac.esa.int/archive/documentation/GDR3/Data_processing/chap_cu5pho/cu5pho_sec_photSystem/cu5pho_ssec_photRelations.html
@@ -13,6 +15,103 @@ from tqdm import tqdm
 # Example star name query
 # http://simbad.cds.unistra.fr/simbad/sim-id?Ident=Gaia+DR3+1137162861578295168
 
+
+def findInSorted(target,dataset, field_no=0, search_range=None,
+                 interpolate=True, interpolate_factor=0.05, get_nearest=True,
+                 recursion_count=0):
+
+    """
+    High speed recursive searching in fairly evenly distributed sorted lists of lists
+    Very efficient for long lists
+
+    parameters:
+
+    target: value to be found
+    field_no: field to be searched
+    search_range: [start,end], generally no need to pass in a value, used only for recursion
+    interpolate: guess the range for the next search by interpolation
+    interpolate factor: lower numbers will close the search range down more quickly, but risk falling back to bifurcation
+    get_nearest: [bool] if true return the index of the nearest value to the target, else return the indices either side
+    recursion_count: the number of recursions required to find the element - generally no reason to pass a value here
+
+    returns: [low,high], recursion_count
+
+    """
+
+    # initialisation
+    if search_range is None:
+        recursion_count = 0
+        search_range = [0,len(dataset) -1]
+
+
+        # if the target is out of range
+        if target > dataset[search_range[1]][field_no]:
+            return [search_range[1],search_range[1]+1], recursion_count
+
+        if target < dataset[search_range[0]][field_no]:
+            return [search_range[0]-1,search_range[0]], recursion_count
+
+    # find the middle of the search range
+    midpoint = round ((search_range[0] + search_range[1]) /2)
+
+    if search_range[0] + 1 == search_range[1]:
+
+        if dataset[search_range[0]] == target:
+            return[search_range[0], search_range[0]]
+        elif dataset[search_range[1]] == target:
+            return[search_range[1], search_range[1]]
+        elif dataset[search_range[0]][field_no] < target < dataset[search_range[1]][field_no]:
+            return search_range, recursion_count +1
+
+
+
+    if interpolate:
+        span = search_range[1] - search_range[0]
+        fraction = (target - dataset[search_range[0]][field_no]) / (dataset[search_range[1]][field_no] - dataset[search_range[0]][field_no])
+        estimation = search_range[0] + fraction * span
+        interpolated_range = [round(estimation - span * 0.05), round(estimation+span*0.05)]
+        interpolated_range[0] = 0 if interpolated_range[0] < 0 else interpolated_range[0]
+        interpolated_range[1] = len(dataset)-1 if interpolated_range[1] > len(dataset)-1 else interpolated_range[1]
+        #print(interpolated_range[0], interpolated_range[1], len(dataset))
+        if dataset[interpolated_range[0]][field_no] < target < dataset[interpolated_range[1]][field_no]:
+            search_range = interpolated_range
+            search_range, recursion_count = findInSorted(target,dataset,field_no,search_range=search_range,
+                                                            interpolate=interpolate,
+                                                            interpolate_factor = interpolate_factor,
+                                                            recursion_count = recursion_count + 1,
+                                                            get_nearest = get_nearest)
+        else:
+            search_range, recursion_count = findInSorted(target,dataset,field_no,search_range=search_range,
+                                                            interpolate=False,
+                                                            interpolate_factor= interpolate_factor,
+                                                            recursion_count= recursion_count +1,
+                                                            get_nearest = get_nearest)
+
+    else:
+        if target < dataset[midpoint][field_no]:
+            search_range, recursion_count =  findInSorted(target,dataset,field_no,
+                                                            search_range = [search_range[0],midpoint],
+                                                            interpolate=False,
+                                                            interpolate_factor = interpolate_factor,
+                                                            recursion_count = recursion_count + 1,
+                                                            get_nearest=get_nearest)
+        else:
+            search_range, recursion_count = findInSorted(target, dataset, field_no,
+                                                            search_range=[midpoint, search_range[1]],
+                                                            interpolate=False,
+                                                            interpolate_factor=interpolate_factor,
+                                                            recursion_count=recursion_count + 1,
+                                                            get_nearest=get_nearest)
+
+    if search_range[1] - search_range[0] == 1 and get_nearest:
+        if target-dataset[search_range[0]][field_no] < dataset[search_range[1]][field_no] - target and search_range[0] < search_range[1]:
+            search_range[1] -= 1
+        else:
+            search_range[0] += 1
+
+
+
+    return search_range, recursion_count
 
 def handleHeader(line):
 
@@ -366,13 +465,44 @@ def generateNameLookUpList(input_filename,output_filename):
 
     return look_up_list_sorted_by_DR3_DR3,look_up_list_sorted_by_DR3_best_name
 
-def calculatePhotometry(G,Gbp,Grp,c1,c2,c3,c4,c5):
+def calculatePhotometryold(G,Gbp,Grp,c1,c2,c3,c4,c5):
 
     value = (c1 + c2 * (Gbp-Grp) + c3 * (Gbp-Grp) ** 2 + c4 * (Gbp-Grp) ** 3 + c5 * (Gbp-Grp) ** 4 - G) * -1
 
     return value
 
-def johnsonCousins(G,Gbp,Grp):
+
+def calculatePhotometry(inputs,coefficients):
+
+    value = 0 - inputs[0]
+    Gbp_Grp = inputs[1] - inputs[2]
+    for index in range(0,len(coefficients)):
+        #print(index, coefficients[index])
+        value += coefficients[index] * (Gbp_Grp ** index)
+        #print()
+    return - value
+
+
+def johnsonCousins(inputs):
+
+    coefficients_list = [[ 0.01448, -0.68740, -0.3604,  0.06718, -0.006061],
+                         [-0.02275,  0.39610, -0.1243, -0.01396,  0.003775],
+                         [-0.02704,  0.01424, -0.2156,  0.01426,  0       ],
+                         [ 0.01753,  0.76000, -0.0991,  0      ,  0       ]]
+
+    results = []
+
+    for coefficients_index in range(0,len(coefficients_list)):
+        coefficients = (coefficients_list[coefficients_index])
+        result = (calculatePhotometry(inputs,coefficients))
+        print(coefficients_index,result)
+        results.append(result)
+
+
+    return results
+
+
+def johnsonCousinsOld(G,Gbp,Grp):
 
 
 
@@ -383,7 +513,7 @@ def johnsonCousins(G,Gbp,Grp):
 
     return [B,R,V,Ic]
 
-def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, gaia_dr3_2_preferred_name_gaia_dr3, gaia_dr3_2_preferred_name_name, output_filename):
+def generateDR3CatalogueWithSimbadCodeOld(gaia_catalogue, gaia_columns, name_list, oid_list, name_list_dr3_only, oid_list_dr3_only, gaia_dr3_2_preferred_name_gaia_dr3, gaia_dr3_2_preferred_name_name, output_filename):
 
         gaia_columns.append("B")
         gaia_columns.append("R")
@@ -457,7 +587,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
                 catalogue_line.append(str(BRVIc[2]))
                 catalogue_line.append(str(BRVIc[3]))
             except:
-                print("G:{} Gbp:{}, Grp:{}".format((catalogue_line[5]),(catalogue_line[6]),(catalogue_line[7])))
+
                 catalogue_line.append(str("NOT CALCULATED"))
                 catalogue_line.append(str("NOT CALCULATED"))
                 catalogue_line.append(str("NOT CALCULATED"))
@@ -507,6 +637,44 @@ if __name__ == "__main__":
                             help="The maximum number of objects to read, useful for debugging.")
 
     cml_args = arg_parser.parse_args()
+
+    print(johnsonCousins([11.342619,12.138336,10.472202]))
+
+
+    accumulated_time_recursion, accumulated_time_built_in = 0 ,0
+    for test_count in range(0,3000):
+        random_list, random_list2 = [], []
+        for i in range(0,1000000):
+            random_number =  random.randint(0,360000000) / 1000000
+            random_list.append([random_number])
+            random_list2.append(random_number)
+        target = random.random() * 360
+
+        random_list = sorted(random_list)
+        start_time = time.time()
+        search_range, recursion_count = findInSorted(target, random_list, interpolate=True, get_nearest=True, interpolate_factor=0.05)
+        end_time = time.time()
+        accumulated_time_recursion += end_time - start_time
+        recursion_result = random_list[search_range[0]][0]
+
+        start_time = time.time()
+        built_in_result = min(random_list2, key=lambda x:abs(x-target))
+        end_time = time.time()
+        accumulated_time_built_in += end_time - start_time
+
+
+        print(accumulated_time_recursion, accumulated_time_built_in)
+        if search_range[0] < 0 or search_range[1] > len(random_list) -1:
+            print("Result out of range")
+        else:
+            print("Target {}, {},{}".format(target, random_list[search_range[0]][0],random_list[search_range[1]][0]))
+        print("delta recusion {}, delta_built_in {}".format(target-recursion_result, target-built_in_result))
+        print(recursion_result, built_in_result)
+        print("Accumulated times {},{}".format(accumulated_time_built_in, accumulated_time_recursion))
+        if built_in_result != random_list[search_range[0]][0]:
+            quit()
+
+    quit()
 
     if False:
         #This provides a lookup table to go from Simbad oid key to main_id, which I think is the name that GMN wishes to use
