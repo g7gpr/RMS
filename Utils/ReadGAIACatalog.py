@@ -9,6 +9,25 @@ from tqdm import tqdm
 import random
 import time
 
+
+"""
+To Do list
+
+1.  Write code to generate workspace
+2.  Automate download of source information
+3.  Fix variable and filenames
+4.  Execute only if pickle not exist
+5.  Comments
+6.  Confirm overlap on imported datasets
+7.  Confirm BVRI against Sky2000
+8.  Confirm BSC5 for missing stars
+9.  For stars with imported names, confirm name against remote catalogue
+10. 
+
+
+"""
+
+
 # Read from http://jvo.nao.ac.jp/portal/gaia/dr3.do
 # Photometric calculations at https://gea.esac.esa.int/archive/documentation/GDR3/Data_processing/chap_cu5pho/cu5pho_sec_photSystem/cu5pho_ssec_photRelations.html
 
@@ -22,7 +41,7 @@ def findInSorted(target,dataset, field_no=0, search_range=None,
 
     """
     High speed recursive searching in fairly evenly distributed sorted lists of lists
-    Very efficient for long lists
+    Very efficient for long lists - several orders of magnitude faster than built ins
 
     parameters:
 
@@ -113,7 +132,31 @@ def findInSorted(target,dataset, field_no=0, search_range=None,
 
     return search_range, recursion_count
 
-def handleHeader(line):
+def handleGaia3DRAuxiliaryInfo(line):
+
+    """
+
+    Reads the Gaia 3D Auxiliary information and returns two parameters,
+
+    example auxiliary information
+
+    # condition: phot_g_mean_mag < 12
+    # columns: designation, ra, dec, pmra, pmdec, phot_g_mean_mag, phot_bp_mean_mag, phot_rp_mean_mag, classprob_dsc_specmod_star, classprob_dsc_specmod_binarystar, spectraltype_esphs
+
+    -----
+    data
+    -----
+
+
+    # totalCount: 3087821
+
+
+    The information and the name of the field.
+
+    """
+
+
+
 
     print("Handling {}".format(line))
     if "condition" in line:
@@ -131,7 +174,16 @@ def handleHeader(line):
         return "Object_count", object_count
 
 def readGaiaCatalogTxt(file_path, lim_mag=None, header_designator = "#", max_objects = None):
-    """ Read star data from the GAIA catalog in the .psv format - works with any column order. """
+
+
+    """
+
+    Read star data from the GAIA catalog in the .psv format - works with any column order.
+
+    returns:
+        catalogue: Nested list of catalogue information
+        columns: List of column headings
+    """
 
 
     results = []
@@ -157,7 +209,7 @@ def readGaiaCatalogTxt(file_path, lim_mag=None, header_designator = "#", max_obj
         for line in tqdm(f):
 
             if line[0]==header_designator:
-                info_type, data_returned = handleHeader(line[1:])
+                info_type, data_returned = handleGaia3DRAuxiliaryInfo(line[1:])
                 condition = data_returned if info_type == "Condition" else condition
                 columns = data_returned if info_type == "Columns" else columns
                 object_count = data_returned if info_type == "Object_count" else object_count
@@ -181,7 +233,6 @@ def readGaiaCatalogTxt(file_path, lim_mag=None, header_designator = "#", max_obj
 
 
 def generateOID2Main_ID(input_file_path, output_file_path, max_objects = None):
-
 
 
 
@@ -236,7 +287,7 @@ def generateOID2Main_ID(input_file_path, output_file_path, max_objects = None):
             if objects > max_objects:
                 break
 
-        # sort by designation - also known is gaia id
+        # sort by designation - the Gaia3 code
 
         sort_col = columns.index("oid")
 
