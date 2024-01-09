@@ -2,13 +2,15 @@ import os
 import numpy as np
 import argparse
 import pickle
+import subprocess
+
 import urllib.request
 import time
 from operator import itemgetter,attrgetter
 from tqdm import tqdm
 import random
 import time
-
+from RMS.Misc import mkdirP
 
 """
 To Do list
@@ -33,6 +35,65 @@ To Do list
 
 # Example star name query
 # http://simbad.cds.unistra.fr/simbad/sim-id?Ident=Gaia+DR3+1137162861578295168
+
+
+def download(url,directory_location, data_name):
+
+
+    download_path = os.path.join(directory_location, data_name)
+    mkdirP(download_path)
+    filename = os.path.join(download_path,os.path.basename(url))
+    if not os.path.exists(filename) and not os.path.exists(os.path.splitext(filename)[0]):
+        urllib.request.urlretrieve(url, filename)
+        if os.path.splitext(filename)[1] == ".gz":
+            subprocess.run(["gunzip", filename])
+
+def createWorkArea(base_path=None):
+
+    """
+    Create the work area
+
+       name_preference_list = ["NAME", "HD", "SAO", "TYC", "TIC", "2MASS", "GAIA_DR3"]
+
+    """
+    if base_path is None:
+        base_path = ["~/tmp/"]
+
+    working_path = os.path.expanduser(base_path[0])
+    working_path = os.path.join(working_path,"catalogueassembly")
+    mkdirP(os.path.expanduser(working_path))
+
+
+    input_data = (os.path.join(working_path,"inputdata"))
+    #http://tdc-www.harvard.edu/catalogs/bsc5.dat.gz
+
+
+
+
+    download("http://tdc-www.harvard.edu/catalogs/bsc5.dat.gz",input_data, "BSC5")
+    download("https://github.com/CroatianMeteorNetwork/RMS/raw/master/Catalogs/STARS9TH_VBVRI.txt", input_data, "stars9th")
+    download("https://cdsarc.cds.unistra.fr/ftp/III/135A/catalog.dat.gz", input_data,"henrydraper")
+    mkdirP(os.path.join(input_data, "simbad"))
+    mkdirP(os.path.join(input_data, "Sky2000"))
+    mkdirP(os.path.join(input_data, "henrydraper"))
+    mkdirP(os.path.join(input_data, "smithsonianastrophyrsicalobservatory"))
+    mkdirP(os.path.join(input_data, "tycho-2"))
+    mkdirP(os.path.join(input_data, "tycho-2"))
+    mkdirP(os.path.join(input_data, "TessInputCatalogVersion8"))
+    mkdirP(os.path.join(input_data, "2micronallstarsurvey"))
+    mkdirP(os.path.join(input_data, "gaia_dr3"))
+
+    mkdirP(os.path.join(base_path, "workingfiles"))
+
+    mkdirP(os.path.join(base_path, "pickles"))
+    mkdirP(os.path.join(base_path, "outputdata"))
+
+
+
+
+
+
+
 
 
 def findInSorted(target,dataset, field_no=0, search_range=None,
@@ -665,7 +726,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
         return catalogue_with_oid_sorted_oid,gaia_columns
 
 
-def testFind()
+def testFind():
 
     accumulated_time_recursion, accumulated_time_built_in = 0 ,0
     for test_count in range(0,10):
@@ -730,97 +791,101 @@ if __name__ == "__main__":
 
 
 
+    createWorkArea(cml_args.workarea)
 
 
 
-    if True:
-        #This provides a lookup table to go from Simbad oid key to main_id, which I think is the name that GMN wishes to use
-        #print("Reading Simbad Basic ")
-        simbadBasicSortedByOID, simbad_columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
-        #print("Simbad Basic read completed - oid2main_id file written")
+    #This provides a lookup table to go from Simbad oid key to main_id, which I think is the name that GMN wishes to use
+    #print("Reading Simbad Basic ")
+
+    simbadBasicSortedByOID, simbad_columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
+    #print("Simbad Basic read completed - oid2main_id file written")
 
 
-        #Read in the Gaia catalogue
-        print("Reading in the Gaia Catalogue")
-        gaia_catalogue, gaia_columns = readGaiaCatalogTxt(os.path.expanduser(cml_args.input_path), max_objects=cml_args.maxobjects)
-        print("Gaia Catalogue read complete")
+    #Read in the Gaia catalogue
 
-        print("Pickling gaia_catalogue data             1/8")
-        with open('/home/david/tmp/pickles/gaia_catalogue.pickle','wb') as fh:
-            pickle.dump(gaia_catalogue, fh)
 
-        print("Pickling gaia_catalogue columns          2/8")
-        with open('/home/david/tmp/pickles/gaia_columns.pickle','wb') as fh:
-            pickle.dump(gaia_columns, fh)
+
+    print("Reading in the Gaia Catalogue")
+    gaia_catalogue, gaia_columns = readGaiaCatalogTxt(os.path.expanduser(cml_args.input_path), max_objects=cml_args.maxobjects)
+    print("Gaia Catalogue read complete")
+
+    print("Pickling gaia_catalogue data             1/8")
+    with open('/home/david/tmp/pickles/gaia_catalogue.pickle','wb') as fh:
+        pickle.dump(gaia_catalogue, fh)
+
+    print("Pickling gaia_catalogue columns          2/8")
+    with open('/home/david/tmp/pickles/gaia_columns.pickle','wb') as fh:
+        pickle.dump(gaia_columns, fh)
 
         #From the Gaia catalogue produce a relationship between Gaia ident and Simbad Code
 
-        print("Producing relationship from Gaia DR3 ident to Simbad Code")
-        name_list, oid_list,id_list_gaia_dr3_only, oid_list_gaia_dr3_only = generateGaia2SimbadCodeFromIdentTables(gaia_catalogue, gaia_columns)
+    print("Producing relationship from Gaia DR3 ident to Simbad Code")
+    name_list, oid_list,id_list_gaia_dr3_only, oid_list_gaia_dr3_only = generateGaia2SimbadCodeFromIdentTables(gaia_catalogue, gaia_columns)
 
-        print("Pickling name_list                       3/8")
-        with open('/home/david/tmp/pickles/name_list.pickle','wb') as fh:
-            pickle.dump(name_list, fh)
+    print("Pickling name_list                       3/8")
+    with open('/home/david/tmp/pickles/name_list.pickle','wb') as fh:
+        pickle.dump(name_list, fh)
 
-        print("Pickling oid_list                        4/8")
-        with open('/home/david/tmp/pickles/oid_list.pickle','wb') as fh:
-            pickle.dump(oid_list, fh)
+    print("Pickling oid_list                        4/8")
+    with open('/home/david/tmp/pickles/oid_list.pickle','wb') as fh:
+        pickle.dump(oid_list, fh)
 
-        print("Pickling id_list_gaia_dr3_only           5/8")
-        with open('/home/david/tmp/pickles/id_list_gaia_dr3_only.pickle','wb') as fh:
-            pickle.dump(id_list_gaia_dr3_only, fh)
+    print("Pickling id_list_gaia_dr3_only           5/8")
+    with open('/home/david/tmp/pickles/id_list_gaia_dr3_only.pickle','wb') as fh:
+        pickle.dump(id_list_gaia_dr3_only, fh)
 
-        print("Pickling oid_list_gaia_dr3_only          6/8")
-        with open('/home/david/tmp/pickles/oid_list_gaia_dr3_only.pickle','wb') as fh:
-            pickle.dump(oid_list_gaia_dr3_only, fh)
+    print("Pickling oid_list_gaia_dr3_only          6/8")
+    with open('/home/david/tmp/pickles/oid_list_gaia_dr3_only.pickle','wb') as fh:
+        pickle.dump(oid_list_gaia_dr3_only, fh)
 
-        print("Preparing lookup table")
+    print("Preparing lookup table")
 
-        gaiaDR3_2_preferred_name_DR3, gaiaDR3_2_preferred_name_name = generateNameLookUpList("/home/david/tmp/name2oid.txt","/home/david/tmp/oid2preferredname.txt")
+    gaiaDR3_2_preferred_name_DR3, gaiaDR3_2_preferred_name_name = generateNameLookUpList("/home/david/tmp/name2oid.txt","/home/david/tmp/oid2preferredname.txt")
 
-        print("Pickling gaiaDR_2_preferred_name_DR3     7/8")
-        with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_DR3.pickle','wb') as fh:
-            pickle.dump(gaiaDR3_2_preferred_name_DR3,fh)
+    print("Pickling gaiaDR_2_preferred_name_DR3     7/8")
+    with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_DR3.pickle','wb') as fh:
+        pickle.dump(gaiaDR3_2_preferred_name_DR3,fh)
 
-        print("Pickling gaia_DR3_2_preferred_name_name  8/8")
-        with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_name.pickle','wb') as fh:
-            pickle.dump(gaiaDR3_2_preferred_name_name, fh)
-
-    else:
-        print("Unpickling")
-
-        print("Gaia_catalogue data             1/8")
-        with open('/home/david/tmp/pickles/gaia_catalogue.pickle', 'rb') as fh:
-            gaia_catalogue = pickle.load(fh)
-
-        print("Gaia_catalogue columns          2/8")
-        with open('/home/david/tmp/pickles/gaia_columns.pickle', 'rb') as fh:
-            gaia_columns = pickle.load(fh)
-
-        print("name_list                       3/8")
-        with open('/home/david/tmp/pickles/name_list.pickle', 'rb') as fh:
-            name_list = pickle.load(fh)
-
-        print("oid_list                        4/8")
-        with open('/home/david/tmp/pickles/oid_list.pickle', 'rb') as fh:
-            oid_list = pickle.load(fh)
-
-        print("id_list_gaia_dr3_only           5/8")
-        with open('/home/david/tmp/pickles/id_list_gaia_dr3_only.pickle', 'rb') as fh:
-            id_list_gaia_dr3_only = pickle.load(fh)
-
-        print("oid_list_gaia_dr3_only          6/8")
-        with open('/home/david/tmp/pickles/oid_list_gaia_dr3_only.pickle', 'rb') as fh:
-            oid_list_gaia_dr3_only = pickle.load(fh)
+    print("Pickling gaia_DR3_2_preferred_name_name  8/8")
+    with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_name.pickle','wb') as fh:
+        pickle.dump(gaiaDR3_2_preferred_name_name, fh)
 
 
-        print("gaiaDR_2_preferred_name_DR3     7/8")
-        with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_DR3.pickle', 'rb') as fh:
-            gaiaDR3_2_preferred_name_DR3 = pickle.load(fh)
+    print("Unpickling")
 
-        print("gaia_DR3_2_preferred_name_name  8/8")
-        with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_name.pickle', 'rb') as fh:
-            gaiaDR3_2_preferred_name_name = pickle.load(fh)
+    print("Gaia_catalogue data             1/8")
+    with open('/home/david/tmp/pickles/gaia_catalogue.pickle', 'rb') as fh:
+        gaia_catalogue = pickle.load(fh)
+
+    print("Gaia_catalogue columns          2/8")
+    with open('/home/david/tmp/pickles/gaia_columns.pickle', 'rb') as fh:
+        gaia_columns = pickle.load(fh)
+
+    print("name_list                       3/8")
+    with open('/home/david/tmp/pickles/name_list.pickle', 'rb') as fh:
+        name_list = pickle.load(fh)
+
+    print("oid_list                        4/8")
+    with open('/home/david/tmp/pickles/oid_list.pickle', 'rb') as fh:
+        oid_list = pickle.load(fh)
+
+    print("id_list_gaia_dr3_only           5/8")
+    with open('/home/david/tmp/pickles/id_list_gaia_dr3_only.pickle', 'rb') as fh:
+        id_list_gaia_dr3_only = pickle.load(fh)
+
+    print("oid_list_gaia_dr3_only          6/8")
+    with open('/home/david/tmp/pickles/oid_list_gaia_dr3_only.pickle', 'rb') as fh:
+        oid_list_gaia_dr3_only = pickle.load(fh)
+
+
+    print("gaiaDR_2_preferred_name_DR3     7/8")
+    with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_DR3.pickle', 'rb') as fh:
+        gaiaDR3_2_preferred_name_DR3 = pickle.load(fh)
+
+    print("gaia_DR3_2_preferred_name_name  8/8")
+    with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_name.pickle', 'rb') as fh:
+        gaiaDR3_2_preferred_name_name = pickle.load(fh)
 
     print("Produce Gaia catalogue sorted by simbad code")
     catalogue_with_oid,gaia_columns = generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, oid_list,
