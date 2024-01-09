@@ -665,28 +665,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
         return catalogue_with_oid_sorted_oid,gaia_columns
 
 
-
-
-if __name__ == "__main__":
-
-    ### COMMAND LINE ARGUMENTS
-
-
-
-    # Init the command line arguments parser
-
-    arg_parser = argparse.ArgumentParser(description="Tool for encoding GAIA DR3 information into RMS format.")
-
-    arg_parser.add_argument('input_path', metavar='INPUT_FILE', type=str,
-                            help='Path to the input file.')
-
-    arg_parser.add_argument('-m', '--maxobjects', nargs=1, metavar='MAX_OBJECTS', type=int,
-                            help="The maximum number of objects to read, useful for debugging.")
-
-    cml_args = arg_parser.parse_args()
-
-    print(johnsonCousins([11.342619,12.138336,10.472202]))
-
+def testFind()
 
     accumulated_time_recursion, accumulated_time_built_in = 0 ,0
     for test_count in range(0,10):
@@ -724,7 +703,37 @@ if __name__ == "__main__":
 
 
 
-    if False:
+
+if __name__ == "__main__":
+
+    ### COMMAND LINE ARGUMENTS
+
+
+
+    # Init the command line arguments parser
+
+    arg_parser = argparse.ArgumentParser(description="Tool for encoding GAIA DR3 information into RMS format.")
+
+    arg_parser.add_argument('input_path', metavar='INPUT_FILE', type=str,
+                            help='Path to the input file.')
+
+    arg_parser.add_argument('-m', '--maxobjects', nargs=1, metavar='MAX_OBJECTS', type=int,
+                            help="The maximum number of objects to read, useful for debugging.")
+
+    arg_parser.add_argument('-w', '--workarea', nargs=1, metavar='MAX_OBJECTS', type=str,
+                            help="Directory for working.")
+
+
+    cml_args = arg_parser.parse_args()
+
+    print(johnsonCousins([11.342619,12.138336,10.472202]))
+
+
+
+
+
+
+    if True:
         #This provides a lookup table to go from Simbad oid key to main_id, which I think is the name that GMN wishes to use
         #print("Reading Simbad Basic ")
         simbadBasicSortedByOID, simbad_columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
