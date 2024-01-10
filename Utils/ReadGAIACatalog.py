@@ -37,13 +37,13 @@ To Do list
 # http://simbad.cds.unistra.fr/simbad/sim-id?Ident=Gaia+DR3+1137162861578295168
 
 
-def download(url,directory_location, data_name):
+def download(url,directory_location, data_name, force_download=False):
 
 
     download_path = os.path.join(directory_location, data_name)
     mkdirP(download_path)
     filename = os.path.join(download_path,os.path.basename(url))
-    if not os.path.exists(filename) and not os.path.exists(os.path.splitext(filename)[0]):
+    if (not os.path.exists(filename) and not os.path.exists(os.path.splitext(filename)[0])) or force_download:
         urllib.request.urlretrieve(url, filename)
         if os.path.splitext(filename)[1] == ".gz":
             subprocess.run(["gunzip", filename])
@@ -73,12 +73,17 @@ def createWorkArea(base_path=None):
     download("http://tdc-www.harvard.edu/catalogs/bsc5.dat.gz",input_data, "BSC5")
     download("https://github.com/CroatianMeteorNetwork/RMS/raw/master/Catalogs/STARS9TH_VBVRI.txt", input_data, "stars9th")
     download("https://cdsarc.cds.unistra.fr/ftp/III/135A/catalog.dat.gz", input_data,"henrydraper")
+
+    download("http://tdc-www.harvard.edu/catalogs/sky2kv4n.dat.gz", input_data, "Sky2000")
+    download("http://tdc-www.harvard.edu/catalogs/sky2kv4.readme", input_data, "Sky2000")
     mkdirP(os.path.join(input_data, "simbad"))
-    mkdirP(os.path.join(input_data, "Sky2000"))
+    download("https://cdsarc.cds.unistra.fr/ftp/I/131A/sao.dat.gz", input_data, "smithsonianastrophysicalobservatory")
     mkdirP(os.path.join(input_data, "henrydraper"))
-    mkdirP(os.path.join(input_data, "smithsonianastrophyrsicalobservatory"))
-    mkdirP(os.path.join(input_data, "tycho-2"))
-    mkdirP(os.path.join(input_data, "tycho-2"))
+    for i in range(0,19):
+        download_path = "https://cdsarc.cds.unistra.fr/ftp/I/259/tyc2.dat.{:0>{}}.gz".format(i,2)
+        download(download_path, input_data, "tycho-2")
+    download("https://cdsarc.cds.unistra.fr/ftp/I/131A/sao.dat.gz", input_data, "smithsonianastrophysicalobservatory")
+    download("https://cdsarc.cds.unistra.fr/ftp/I/131A/sao.dat.gz", input_data, "smithsonianastrophysicalobservatory")
     mkdirP(os.path.join(input_data, "TessInputCatalogVersion8"))
     mkdirP(os.path.join(input_data, "2micronallstarsurvey"))
     mkdirP(os.path.join(input_data, "gaia_dr3"))
