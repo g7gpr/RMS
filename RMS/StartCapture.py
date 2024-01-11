@@ -660,6 +660,27 @@ def processIncompleteCaptures(config, upload_manager):
                     # if there is no platepar in the captured_dir_path
                     newest_FTPfile_older_than_platepar = False
 
+        # Check if the FTPdetectinto file has no meteor detections
+        cs_split = captured_subdir.split("_")
+        FTP_file_to_check = "FTPdetectinfo_{}_{}_{}_{}.txt".format(cs_split[0],cs_split[1],cs_split[2],cs_split[3])
+        FTP_path_to_check = os.path.join(captured_dir_path,FTP_file_to_check)
+        no_meteor_detections = False
+
+        if os.path.exists(FTP_path_to_check):
+            with open(FTP_path_to_check,"r") as fh:
+                meteor_count = fh.readline().split("=")[1].strip()
+                reprocess_mark_file = os.path.join(captured_dir_path, ".reprocessed_for_no_meteors")
+                if meteor_count == "000000" and not os.path.exists(reprocess_mark_file):
+                    log.info("{} has {} meteors - reprocessing".format(FTP_file_to_check, meteor_count))
+                    with open(reprocess_mark_file, 'w') as _:
+                        pass
+                    no_meteor_detections = True
+                else:
+                    log.info("{} has {} meteors".format(FTP_file_to_check, meteor_count))
+        else:
+            log.warning("{} does not exist".format(FTP_path_to_check))
+
+
         # Auto reprocess criteria:
         #   - Any backup pickle files
         #   - No pickle and no FTPdetectinfo files
@@ -674,6 +695,10 @@ def processIncompleteCaptures(config, upload_manager):
         if newest_FTPfile_older_than_platepar:
                 run_reprocess = True
                 log.info("Reprocessing because newest FTPDetect file older than platepar file")
+
+        if no_meteor_detections:
+                run_reprocess = True
+                log.info("Reprocessing {} because no meteors recorded in {}".format(os.path.basename(captured_dir_path), FTP_file_to_check))
 
         # Skip the folder if it doesn't need to be reprocessed
         if not run_reprocess:
