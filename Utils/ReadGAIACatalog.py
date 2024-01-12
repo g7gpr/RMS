@@ -49,13 +49,13 @@ def getRaDecHD(name):
 
         name_match = False
         for star in fh:
-            HD      = star[0:6].strip()
+            cat_name = "HD {}".format(star[0:6])
 
-            if HD == name:
+            if cat_name == name:
                 name_match = True
                 break
         if not name_match:
-            print("Failed to find a match")
+            print("Failed to find a match for {}".format(name))
             quit()
         DM      = star[6:18]
         RAh     = star[18:20]
@@ -66,9 +66,6 @@ def getRaDecHD(name):
         Ptm     = star[29:34]
         Ptg     = star[36:41]
 
-        print("HD {} DM {}".format( HD,DM))
-        print("RAh {} RAm {} Dec{} {}' ".format(RAh, float(RAdm)/10,DEd,DEm))
-        print(Ptm,Ptg)
 
 
         ra_j1900 = np.radians((int(RAh) + int(RAdm) / 600)*(360/24))
@@ -91,13 +88,13 @@ def getRaDecSAO(name):
 
         name_match = False
         for star in fh:
-            cat_name = star[0:6].strip()
+            cat_name = "SAO {}".format(star[0:6])
 
             if cat_name == name:
                 name_match = True
                 break
         if not name_match:
-            print("Failed to find a match")
+            print("Failed to find a match for {}".format(name))
             quit()
 
         RAh     = star[7:9]
@@ -111,10 +108,9 @@ def getRaDecSAO(name):
         pmDE    = star[51:57]
 
 
-        print("Name SAO {}".format(name))
 
         # working in radians
-        print(RAh, RAm, RAs, pmRA, DEsign, DEd, DEm, DEs, pmDE)
+
 
         ra_j1950 = np.radians(((int(RAh) + int(RAm) / 60) + float(RAs) / 3600) * 360 / 24)
         if DEsign == "+":
@@ -146,7 +142,7 @@ def getRaDecTYC(name):
         with open(os.path.join("/home/david/tmp/catalogueassembly/inputdata/tycho-2", file ), 'r') as fh:
 
             name_match = False
-            print(file)
+
             for star in fh:
                 cat_name = "TYC {}-{}-{}".format(str(int(star[0:4].strip())),str(int(star[5:10].strip())),str(int(star[11].strip())))
 
@@ -164,16 +160,13 @@ def getRaDecTYC(name):
     RAmdeg  = star[15:27]
     DEcmdeg = star[28:40]
 
-    print("Name {}".format(name))
-
-
-
     return float(RAmdeg), float(DEcmdeg)
 
 
 def getRaDecTIC(name):
 
     return [0,0]
+
 
 def getRaDec2MASS(name):
 
@@ -187,6 +180,8 @@ def getRaDec2MASS(name):
 def getRaDec(name):
 
     #name_preference_list = ["NAME", "HD", "SAO", "TYC", "TIC", "2MASS", "GAIA_DR3"]
+
+    catalogue_coords = ["Null","Null"]
 
     if name[0:len('HD')] == "HD":
         catalogue_coords = getRaDecHD(name)
@@ -656,7 +651,7 @@ def generateGaia2SimbadCodeFromIdentTables(input_directory, working_path,catalog
     print("Finished write")
 
     print("Starting write of name2oid_dr3_only.txt")
-    with open(os.path.join(working_path,"name2oid_dr3_only"),"w") as fh:
+    with open(os.path.join(working_path,"name2oid_dr3_only.txt"),"w") as fh:
         for line in cross_reference_list_DR3_sorted_by_GaiaReference:
             line_string = "|"
             for value in line:
@@ -694,7 +689,9 @@ def generatePreferredNameLookUpList(input_filename,output_filename):
 
     """
 
-    name_preference_list = ["NAME","HD","SAO","TYC","TIC","2MASS","GAIA_DR3"]
+    name_preference_list = ["NAME","HD","SAO","TYC","TIC","2MASS","Gaia DR3"]
+
+
 
     with open(input_filename, "r") as fh:
         first_iteration = True
@@ -722,15 +719,25 @@ def generatePreferredNameLookUpList(input_filename,output_filename):
 
                 # first handle the previous collection
                 if contains_DR3:
-                    best_name_score = np.inf
+                    best_name_score = len(name_preference_list) - 1
+                    best_name = name_preference_list[best_name_score]
                     for name in reference_names_list:
                         for name_preference in name_preference_list:
                             if name[0:len(name_preference)] == name_preference and name_preference_list.index(name_preference) < best_name_score:
                                 best_name_score = name_preference_list.index(name_preference)
+                                #remove problematic last letters
+                                if name[-1].isalpha():
+                                    original = name
+                                    name = name[:-1]
+                                    print("Original {}, now {}".format(original, name))
+
                                 best_name = name
-                    look_up_list.append([Gaia_DR3_code, best_name,line_list[2]])
+
+
+
                     ra, dec = getRaDec(best_name)
-                    print("Name {} Ra/Dec {}/{}".format(best_name, ra, dec))
+                    look_up_list.append([Gaia_DR3_code, best_name, line_list[2], ra, dec])
+
                 #then reinitialise
                 contains_DR3 = False
                 Gaia_DR3_code = ""
@@ -987,9 +994,7 @@ if __name__ == "__main__":
     #simbadBasicSortedByOID, simbad_columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
     #print("Simbad Basic read completed - oid2main_id file written")
 
-    print(getRaDecHD("10"))
-    print(getRaDecSAO("40"))
-    print(getRaDecTYC("TYC 3771-224-1"))
+
 
     #Read in the Gaia catalogue
 
