@@ -229,10 +229,15 @@ def getRaDecSAO(name, gdr3):
 def getRaDecTYC(name, gdr3):
 
     # Name format TYC 3771-224-1 needs padding
-    field_1 = name.split(" ")[1].split("-")[0].zfill(4)
-    field_2 = name.split(" ")[1].split("-")[1].zfill(5)
-    field_3 = name.split(" ")[1].split("-")[2]
-    name = "TYC {}-{}-{}".format(field_1,field_2,field_3)
+    try:
+        field_1 = name.split(" ")[1].split("-")[0].zfill(4)
+        field_2 = name.split(" ")[1].split("-")[1].zfill(5)
+        field_3 = name.split(" ")[1].split("-")[2]
+        name = "TYC {}-{}-{}".format(field_1,field_2,field_3)
+    except:
+        print("Failed to parse {}".format(name))
+        return "Not evaluated", "Not evaluated"
+
 
     tycho_2_files_list = sorted(os.listdir("/home/david/tmp/catalogueassembly/inputdata/tycho-2"))
     for file in tycho_2_files_list:
