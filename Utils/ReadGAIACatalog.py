@@ -357,6 +357,7 @@ def createWorkArea(base_path=None):
         print("Downloading from {}".format(download_path))
         download(download_path, input_data, os.path.join("simbad","identtable"))
     download_path = "http://rvrgm.asuscomm.com:8243/data/simbad/IDENT_18_1.txt".format(i, 2)
+    download(download_path, input_data, os.path.join("simbad", "identtable"))
     mkdirP(os.path.join(input_data, "TessInputCatalogVersion8"))
     mkdirP(os.path.join(input_data, "2micronallstarsurvey"))
     mkdirP(os.path.join(input_data, "gaia_dr3"))
