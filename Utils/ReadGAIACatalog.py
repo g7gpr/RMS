@@ -77,7 +77,7 @@ def besselianPrecession(jd_initial_epoch, ra_initial_epoch, dec_initial_epoch, j
     """
 
     Takes degrees, return degrees
-    pm in arcseconds per annum
+    pm in arcseconds per annum - not in seconds of time
 
     """
 
@@ -124,6 +124,9 @@ def besselianPrecession(jd_initial_epoch, ra_initial_epoch, dec_initial_epoch, j
     #to degrees
     ra_final_epoch, dec_final_epoch = np.degrees(np.arctan2(A,B) + Zr), np.degrees(np.arcsin(C))
 
+    if ra_final_epoch < 0:
+        ra_final_epoch += 360
+
     return ra_final_epoch, dec_final_epoch
 
 
@@ -158,7 +161,7 @@ def getRaDecHD(name, gdr3):
 
 
 
-        ra_b1900 = np.radians((int(RAh) + int(RAdm) / 600)*(360/24))
+        ra_b1900 = (int(RAh) + int(RAdm) / 600)*(360/24)
         if DEsign == "+":
             dec_b1900 = (int(DEd) + float(DEm) / 60)
         else:
