@@ -352,11 +352,11 @@ def createWorkArea(base_path=None):
     download("https://cdsarc.cds.unistra.fr/ftp/I/131A/sao.dat.gz", input_data, "smithsonianastrophysicalobservatory")
     download("http://rvrgm.asuscomm.com:8243/data/gaia_dr3/result_gaiadr3_20240107230522822_107_78_1.psv.gz", input_data,"gaia")
 
-    for i in range(0,37):
+    for i in range(1,37):
         download_path = "http://rvrgm.asuscomm.com:8243/data/simbad/IDENT_{:0>{}}.txt.gz".format(i,2)
         print("Downloading from {}".format(download_path))
         download(download_path, input_data, os.path.join("simbad","identtable"))
-
+    download_path = "http://rvrgm.asuscomm.com:8243/data/simbad/IDENT_18_1.txt".format(i, 2)
     mkdirP(os.path.join(input_data, "TessInputCatalogVersion8"))
     mkdirP(os.path.join(input_data, "2micronallstarsurvey"))
     mkdirP(os.path.join(input_data, "gaia_dr3"))
