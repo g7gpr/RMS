@@ -148,7 +148,7 @@ def getRaDecHD(name, gdr3):
                 name_match = True
                 break
         if not name_match:
-            print("Failed to find a match for {}/{}".format(gdr3,name))
+            #print("Failed to find a match for {}/{}".format(gdr3,name))
             return "Not evaluated", "Not evaluted"
         DM      = star[6:18]
         RAh     = star[18:20]
@@ -168,12 +168,14 @@ def getRaDecHD(name, gdr3):
             dec_b1900 = 0 - (int(DEd) + float(DEm) / 60)
 
 
-        ra, dec = besselianPrecession(b1900, ra_b1900, dec_b1900, j2000)
+        #ra, dec = besselianPrecession(b1900, ra_b1900, dec_b1900, j2000)
+        #print(ra,dec)
+        ra,dec = equatorialCoordPrecession(b1900, j2000, np.radians(ra_b1900), np.radians(dec_b1900))
 
         #ra, dec = equatorialCoordPrecession(b1900,j2000, ra_b1900, dec_b1900)
 
 
-        return ra, dec
+        return np.degrees(ra), np.degrees(dec)
 
 
 
@@ -189,7 +191,7 @@ def getRaDecSAO(name, gdr3):
                 name_match = True
                 break
         if not name_match:
-            print("Failed to find a match for {}/{}".format(gdr3,name))
+            #print("Failed to find a match for {}/{}".format(gdr3,name))
             return "Not evaluated", "Not evaluated"
 
         RAh     = star[7:9]
@@ -249,7 +251,7 @@ def getRaDecTYC(name, gdr3):
                 break
 
     if not name_match:
-        print("Failed to find a match for {}/{}".format(gdr3,name, cat_name))
+        # print("Failed to find a match for {}/{}".format(gdr3,name, cat_name))
         return "Not evaluated", "Not evaluated"
 
     RAmdeg  = star[15:27]
