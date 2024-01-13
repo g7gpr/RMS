@@ -347,7 +347,7 @@ def createWorkArea(base_path=None):
 
     download("https://cdsarc.cds.unistra.fr/ftp/I/131A/sao.dat.gz", input_data, "smithsonianastrophysicalobservatory")
     download("https://cdsarc.cds.unistra.fr/ftp/I/131A/sao.dat.gz", input_data, "smithsonianastrophysicalobservatory")
-    download("http://rvrgm.asuscomm.com:8243/data/gaia_dr3/result_gaiadr3_20240107230522822_107_78_1.psv.gz", inputdata,"gaia_dr3")
+    download("http://rvrgm.asuscomm.com:8243/data/gaia_dr3/result_gaiadr3_20240107230522822_107_78_1.psv.gz", inputdata,"gaia")
 
     mkdirP(os.path.join(input_data, "TessInputCatalogVersion8"))
     mkdirP(os.path.join(input_data, "2micronallstarsurvey"))
