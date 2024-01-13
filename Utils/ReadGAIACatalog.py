@@ -41,22 +41,112 @@ To Do list
 # http://simbad.cds.unistra.fr/simbad/sim-id?Ident=Gaia+DR3+1137162861578295168
 
 j1900, j1950, j2000 = 2415020, 2433282.5,  2451545.0
+b1900, b1950 = 2415020.31352, 2433282.4235
 
 
-def getRaDecHD(name):
+
+def hms2Degrees(h,m,s):
+
+    return 360 * (((s / 60 ) + m / 60) + h / 24)
+
+def degrees2HMS(d):
+
+    h = d // (360/24)
+    m = (d - h  * 360/24) * 24 * 60 / 360 // 1
+    s = (d - h * 360/24 - m * 360 / (24*60)) * (24*60*60) / 360
+
+
+    return h, m, s, "{}h{}m{:.2f}s".format(int(h),int(m),float(s))
+
+def dms2Degrees(d,m,s):
+
+    return ((s / 60 ) + m / 60) + d,"{}°{}m{:.2f}s".format(int(d),int(m),float(s))
+
+def degrees2DMS(deg):
+
+    d = deg // 1
+    m = (deg - d)  * 60 // 1
+    s = (deg - d - (m / 60)) * 3600
+
+    return d,m,s,"{}°{}'{:.2f}".format(int(d),int(m),float(s))
+
+
+
+def besselianPrecession(jd_initial_epoch, ra_initial_epoch, dec_initial_epoch, jd_final_epoch, pm_ra = 0 , pm_dec = 0 ):
+
+    """
+
+    Takes degrees, return degrees
+    pm in arcseconds per annum
+
+    """
+
+
+    # from Meeus, Astromonical Algorithms p.134
+
+
+    # initially working in degrees
+
+    T = (jd_initial_epoch - 2451545.0) /  36525
+    t = (jd_final_epoch - jd_initial_epoch) / 36525         # time elapsed in julian centuries
+
+
+    # calculate proper motion
+
+    pm_ra_initial_2_final, pm_dec_initial_2_final = pm_ra * t * 100, pm_dec * t * 100
+    ra_initial_epoch_pm = ra_initial_epoch + (pm_ra_initial_2_final / 3600)
+    dec_initial_epoch_pm = dec_initial_epoch + (pm_dec_initial_2_final / 3600)
+
+    # to radians
+
+
+    zeta     = (2306.2181 + 1.39656 * T + 0.000139 * T ** 2) * t
+    zeta    += (0.30188 - 0.000344 * T) * t **2 + 0.017998 * t ** 3
+
+    ZETA     = (2306.2181 + 1.39656 * T + 0.000139 * T ** 2) * t
+    ZETA    += (1.09468 + 0.000066 * T) * t ** 2 + 0.018203 * t ** 3
+
+    theta    = (2004.3109 - 0.85330 * T - 0.000217 * T ** 2) * t
+    theta   -= (0.42665 + 0.000217 * T) * t ** 2
+    theta   -= 0.041833 * t ** 3
+
+    # convert arcseconds to degrees
+    zeta, ZETA, theta = zeta / 3600, ZETA / 3600, theta / 3600
+
+    # to radians
+    ra, dec = np.radians(ra_initial_epoch_pm), np.radians(dec_initial_epoch_pm)
+    zr, Zr, tr = np.radians(zeta), np.radians(ZETA), np.radians(theta)
+
+    A = np.cos(dec) * np.sin(ra + zr)
+    B = np.cos(tr) * np.cos(dec) * np.cos(ra + zr) - np.sin(tr) * np.sin(dec)
+    C = np.sin(tr) * np.cos(dec) * np.cos(ra + zr) + np.cos(tr) * np.sin(dec)
+
+    #to degrees
+    ra_final_epoch, dec_final_epoch = np.degrees(np.arctan2(A,B) + Zr), np.degrees(np.arcsin(C))
+
+    return ra_final_epoch, dec_final_epoch
+
+
+
+
+
+def getRaDecHD(name, gdr3):
 
     with open("/home/david/tmp/catalogueassembly/inputdata/henrydraper/catalog.dat" , 'r') as fh:
 
         name_match = False
         for star in fh:
+            #the catalogue name is a fixed width field - so needs padding out.
+            hd_cat_number = star[0:6]
+
             cat_name = "HD {}".format(star[0:6])
 
             if cat_name == name:
                 name_match = True
                 break
         if not name_match:
-            print("Failed to find a match for {}".format(name))
-            quit()
+            print("Failed to find a match for {}/{}".format(gdr3,name))
+            return "Not evaluated", "Not evaluted"
         DM      = star[6:18]
         RAh     = star[18:20]
         RAdm    = star[20:23]
@@ -68,21 +158,23 @@ def getRaDecHD(name):
 
 
 
-        ra_j1900 = np.radians((int(RAh) + int(RAdm) / 600)*(360/24))
+        ra_b1900 = np.radians((int(RAh) + int(RAdm) / 600)*(360/24))
         if DEsign == "+":
-            dec_j1900 = np.radians(int(DEd) + float(DEm) / 60)
+            dec_b1900 = (int(DEd) + float(DEm) / 60)
         else:
-            dec_j1900 = 0 - np.radians(int(DEd) + float(DEm) / 60)
+            dec_b1900 = 0 - (int(DEd) + float(DEm) / 60)
 
 
-        ra, dec = equatorialCoordPrecession(j1900,j2000, ra_j1900, dec_j1900)
+        ra, dec = besselianPrecession(b1900, ra_b1900, dec_b1900, j2000)
+
+        #ra, dec = equatorialCoordPrecession(b1900,j2000, ra_b1900, dec_b1900)
 
 
-        return [np.degrees(ra), np.degrees(dec)]
+        return ra, dec
 
 
 
-def getRaDecSAO(name):
+def getRaDecSAO(name, gdr3):
 
     with open("/home/david/tmp/catalogueassembly/inputdata/smithsonianastrophysicalobservatory/sao.dat" , 'r') as fh:
 
@@ -94,8 +186,8 @@ def getRaDecSAO(name):
                 name_match = True
                 break
         if not name_match:
-            print("Failed to find a match for {}".format(name))
-            quit()
+            print("Failed to find a match for {}/{}".format(gdr3,name))
+            return "Not evaluated", "Not evaluated"
 
         RAh     = star[7:9]
         RAm     = star[9:11]
@@ -129,12 +221,13 @@ def getRaDecSAO(name):
 
         return ra, dec
 
-def getRaDecTYC(name):
+def getRaDecTYC(name, gdr3):
 
-
-
-    # Name format TYC 3771-224-1
-
+    # Name format TYC 3771-224-1 needs padding
+    field_1 = name.split(" ")[1].split("-")[0].zfill(4)
+    field_2 = name.split(" ")[1].split("-")[1].zfill(5)
+    field_3 = name.split(" ")[1].split("-")[2]
+    name = "TYC {}-{}-{}".format(field_1,field_2,field_3)
 
     tycho_2_files_list = sorted(os.listdir("/home/david/tmp/catalogueassembly/inputdata/tycho-2"))
     for file in tycho_2_files_list:
@@ -144,8 +237,7 @@ def getRaDecTYC(name):
             name_match = False
 
             for star in fh:
-                cat_name = "TYC {}-{}-{}".format(str(int(star[0:4].strip())),str(int(star[5:10].strip())),str(int(star[11].strip())))
-
+                cat_name = "TYC {}-{}-{}".format(str((star[0:4].strip())),str((star[5:10].strip())),str((star[11].strip())))
                 if cat_name == name:
                     name_match = True
                     break
@@ -154,45 +246,46 @@ def getRaDecTYC(name):
                 break
 
     if not name_match:
-        print("Failed to find a match for {}".format(name))
-        quit()
+        print("Failed to find a match for {}/{}".format(gdr3,name, cat_name))
+        return "Not evaluated", "Not evaluated"
 
     RAmdeg  = star[15:27]
     DEcmdeg = star[28:40]
 
-    return float(RAmdeg), float(DEcmdeg)
-
-
-def getRaDecTIC(name):
-
-    return [0,0]
-
-
-def getRaDec2MASS(name):
-
-    return [0,0]
+    return RAmdeg, DEcmdeg
 
 
 
+def getRaDecTIC(name,gdr3):
+
+    return ["Not evaluated","Not evaluated"]
+
+
+def getRaDec2MASS(name, gdr3):
+
+    return ["Not evaluated","Not evaluated"]
 
 
 
-def getRaDec(name):
+
+
+
+def getRaDec(name, gdr3):
 
     #name_preference_list = ["NAME", "HD", "SAO", "TYC", "TIC", "2MASS", "GAIA_DR3"]
 
     catalogue_coords = ["Null","Null"]
 
     if name[0:len('HD')] == "HD":
-        catalogue_coords = getRaDecHD(name)
+        catalogue_coords = getRaDecHD(name, gdr3)
     elif name[0:len('SAO')] == "SAO":
-        catalogue_coords = getRaDecSAO(name)
+        catalogue_coords = getRaDecSAO(name, gdr3)
     elif name[0:len('TYC')] == "TYC":
-        catalogue_coords = getRaDecTYC(name)
+        catalogue_coords = getRaDecTYC(name, gdr3)
     elif name[0:len('TIC')] == "TIC":
-        catalogue_coords = getRaDecTIC(name)
+        catalogue_coords = getRaDecTIC(name, gdr3)
     elif name[0:len('2MASS')] == "2MASS":
-        catalogue_coords = getRaDec2MASS(name)
+        catalogue_coords = getRaDec2MASS(name, gdr3)
 
     deviation = 0
 
@@ -221,7 +314,7 @@ def createWorkArea(base_path=None):
     if base_path is None:
         base_path = ["~/tmp/"]
 
-    working_path = os.path.expanduser(base_path[0])
+    working_path = os.path.expanduser(os.path.expanduser(base_path[0]))
     working_path = os.path.join(working_path,"catalogueassembly")
     mkdirP(os.path.expanduser(working_path))
 
@@ -691,13 +784,14 @@ def generatePreferredNameLookUpList(input_filename,output_filename):
 
     name_preference_list = ["NAME","HD","SAO","TYC","TIC","2MASS","Gaia DR3"]
 
-
+    with open(input_filename, 'r') as fh:
+        num_lines = sum(1 for line in fh)
 
     with open(input_filename, "r") as fh:
         first_iteration = True
         look_up_list = []
 
-        for line in tqdm(fh):
+        for line in tqdm(fh, total = num_lines):
             line_list = line.split("|")
 
             # first time through do the initialisation
@@ -725,17 +819,17 @@ def generatePreferredNameLookUpList(input_filename,output_filename):
                         for name_preference in name_preference_list:
                             if name[0:len(name_preference)] == name_preference and name_preference_list.index(name_preference) < best_name_score:
                                 best_name_score = name_preference_list.index(name_preference)
-                                #remove problematic last letters
-                                if name[-1].isalpha():
+                                #remove problematic last letters in HD catalogue
+                                if name[-1].isalpha() and name[0:2] == "HD":
                                     original = name
                                     name = name[:-1]
-                                    print("Original {}, now {}".format(original, name))
+
 
                                 best_name = name
 
 
 
-                    ra, dec = getRaDec(best_name)
+                    ra, dec = getRaDec(best_name, Gaia_DR3_code)
                     look_up_list.append([Gaia_DR3_code, best_name, line_list[2], ra, dec])
 
                 #then reinitialise
@@ -983,6 +1077,14 @@ if __name__ == "__main__":
 
     cml_args = arg_parser.parse_args()
 
+    ### test besselian precession
+
+
+    print(degrees2HMS(41.054063))
+    print(degrees2DMS(49.348483))
+
+    ra, dec = besselianPrecession(j2000, 360 * (2/24 + 44 / (60*24) + 11.986 / (24 * 3600)), (49 + 13/60 + 42.48 / 3600), 2462088.69 ,  pm_ra = 0.03425 * 3600 * 360/(60*60*24), pm_dec = -0.0895)
+    print(ra,dec)
 
     working_path = createWorkArea(cml_args.workarea)
     pickle_path = os.path.join(working_path,"pickles")
@@ -993,7 +1095,7 @@ if __name__ == "__main__":
 
     #simbadBasicSortedByOID, simbad_columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
     #print("Simbad Basic read completed - oid2main_id file written")
-
+    print(getRaDecHD("HD    333","Gaia DR3 2861084531426930944" ))
 
 
     #Read in the Gaia catalogue
