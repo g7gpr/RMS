@@ -305,13 +305,10 @@ def download(url,directory_location, data_name, force_download=False):
     filename = os.path.join(download_path,os.path.basename(url))
     if (not os.path.exists(filename) and not os.path.exists(os.path.splitext(filename)[0])) or force_download:
         try:
-            print("Downloading {} from {}".format(filename, url))
             urllib.request.urlretrieve(url, filename)
-
             if os.path.splitext(filename)[1] == ".gz":
                 subprocess.run(["gunzip", filename])
         except:
-
             print("Download of {} from {} failed".format(filename, url))
 
 
@@ -358,7 +355,7 @@ def createWorkArea(base_path=None):
     for i in range(0,37):
         download_path = "http://rvrgm.asuscomm.com:8243/data/simbad/IDENT_{:0>{}}.txt.gz".format(i,2)
         print("Downloading from {}".format(download_path))
-        download(download_path, input_data, "simbad")
+        download(download_path, input_data, os.path.join("simbad","identtable"))
 
     mkdirP(os.path.join(input_data, "TessInputCatalogVersion8"))
     mkdirP(os.path.join(input_data, "2micronallstarsurvey"))
