@@ -356,7 +356,7 @@ def createWorkArea(base_path=None):
         download_path = "http://rvrgm.asuscomm.com:8243/data/simbad/IDENT_{:0>{}}.txt.gz".format(i,2)
         print("Downloading from {}".format(download_path))
         download(download_path, input_data, os.path.join("simbad","identtable"))
-    download_path = "http://rvrgm.asuscomm.com:8243/data/simbad/IDENT_18_1.txt".format(i, 2)
+    download_path = "http://rvrgm.asuscomm.com:8243/data/simbad/IDENT_18_1.txt.gz".format(i, 2)
     download(download_path, input_data, os.path.join("simbad", "identtable"))
     mkdirP(os.path.join(input_data, "TessInputCatalogVersion8"))
     mkdirP(os.path.join(input_data, "2micronallstarsurvey"))
@@ -725,8 +725,7 @@ def generateGaia2SimbadCodeFromIdentTables(input_directory, working_path,catalog
                     if first_line:
                         if int(last_files_last_oid_ref) < int(oid_ref):
                             print("Gap in oid_refs")
-                            print("Last files last_oid_ref {}, this files first_oid_ref {}".format(last_files_last_oid_ref,
-                                                                                                   oid_ref))
+                            print("Last files last_oid_ref {}, {} first_oid_ref {}".format(last_files_last_oid_ref,table_file, oid_ref))
                             quit()
                         else:
                             print("Last files last_oid_ref {}, this files first_oid_ref {}".format(last_files_last_oid_ref, oid_ref))
