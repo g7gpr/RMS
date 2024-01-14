@@ -821,7 +821,7 @@ def generatePreferredNameLookUpList(input_filename,output_filename):
         first_iteration = True
         look_up_list = []
         line_no = 0
-        start_time = datetime.utcnow()
+        start_time = datetime.datetime.utcnow()
         for line in fh:
             line_no += 1
             if line_no % 1000 == 0:
