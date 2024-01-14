@@ -71,16 +71,26 @@ def degrees2DMS(deg):
 
     return d,m,s,"{}°{}'{:.2f}".format(int(d),int(m),float(s))
 
-def seconds2DHMS(s):
+def seconds2DHMS(s, end_time = False):
 
     d  = s // (3600 * 24)
-    s -= d * 3600 * 24
+    r  = s - d * 3600 * 24
     h  = s // 3600
-    s -= h * 3600
+    r -= h * 3600
     m  = s // 60
-    s -= m * 60
+    r -= m * 60
 
-    return "{}d:{}h{}m{}s".format(int(d),str(int(h)).zfill(2),str(int(m)).zfill(2),str(int(s)).zfill(2))
+    if end_time:
+
+        end_time = datetime.datetime.now() + datetime.timedelta(seconds = s)
+
+        return end_time
+
+        pass
+
+    else:
+
+        return "{}d:{}h{}m{}s".format(int(d),str(int(h)).zfill(2),str(int(m)).zfill(2),str(int(r)).zfill(2))
 
 def besselianPrecession(jd_initial_epoch, ra_initial_epoch, dec_initial_epoch, jd_final_epoch, pm_ra = 0 , pm_dec = 0 ):
 
@@ -827,8 +837,8 @@ def generatePreferredNameLookUpList(input_filename,output_filename):
             if line_no % 1000 == 0:
                 elapsed_time = (datetime.datetime.utcnow() - start_time).total_seconds()
                 processing_rate = elapsed_time / line_no # in seconds per line
-                time_to_completion = (num_lines * processing_rate)
-                print(seconds2DHMS(time_to_completion), end= "\r")
+                time_to_completion = num_lines * processing_rate
+                print(seconds2DHMS(time_to_completion, end_time = True), end= "\r")
             line_list = line.split("|")
 
             # first time through do the initialisation
