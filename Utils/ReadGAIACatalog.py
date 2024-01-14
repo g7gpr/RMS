@@ -3,6 +3,7 @@ import numpy as np
 import argparse
 import pickle
 import subprocess
+import datetime
 
 import urllib.request
 import time
@@ -70,7 +71,16 @@ def degrees2DMS(deg):
 
     return d,m,s,"{}°{}'{:.2f}".format(int(d),int(m),float(s))
 
+def seconds2DHMS(s):
 
+    d  = s // (3600 * 24)
+    s -= d * 3600 * 24
+    h  = s // 3600
+    s -= h * 3600
+    m  = s // 60
+    s -= m * 60
+
+    return "{}d:{}h{}m{}s".format(int(d),str(int(h)).zfill(2),str(int(m)).zfill(2),str(int(s)).zfill(2))
 
 def besselianPrecession(jd_initial_epoch, ra_initial_epoch, dec_initial_epoch, jd_final_epoch, pm_ra = 0 , pm_dec = 0 ):
 
@@ -810,8 +820,15 @@ def generatePreferredNameLookUpList(input_filename,output_filename):
     with open(input_filename, "r") as fh:
         first_iteration = True
         look_up_list = []
-
-        for line in tqdm(fh, total = num_lines):
+        line_no = 0
+        start_time = datetime.utcnow()
+        for line in fh:
+            line_no += 1
+            if line_no % 1000 == 0:
+                elapsed_time = (datetime.utcnow() - start_time).total_seconds
+                processing_rate = elapsed_time / line_no
+                time_to_completion = (num_lines / processing_rate)
+                print(seconds2DHMS(time_to_completion), end= "\r")
             line_list = line.split("|")
 
             # first time through do the initialisation
@@ -1103,6 +1120,16 @@ if __name__ == "__main__":
 
     print(degrees2HMS(41.054063))
     print(degrees2DMS(49.348483))
+
+    print("one", end="\r")
+    print("two", end="\r")
+    start_time = datetime.datetime.utcnow()
+    time.sleep(10)
+    end_time = datetime.datetime.utcnow()
+    elapsed_time = (end_time - start_time).total_seconds()
+    print(elapsed_time)
+    print(seconds2DHMS((elapsed_time)))
+    print(seconds2DHMS(7652))
 
     ra, dec = besselianPrecession(j2000, 360 * (2/24 + 44 / (60*24) + 11.986 / (24 * 3600)), (49 + 13/60 + 42.48 / 3600), 2462088.69 ,  pm_ra = 0.03425 * 3600 * 360/(60*60*24), pm_dec = -0.0895)
     print(ra,dec)
