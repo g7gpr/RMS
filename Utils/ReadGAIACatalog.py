@@ -84,7 +84,7 @@ def seconds2DHMS(s, end_time = False):
 
         end_time = datetime.datetime.now() + datetime.timedelta(seconds = s)
 
-        return end_time
+        return "{}d:{}h{}m{}s {}".format(int(d),str(int(h)).zfill(2),str(int(m)).zfill(2),str(int(r)).zfill(2), end_time)
 
         pass
 
