@@ -75,9 +75,9 @@ def seconds2DHMS(s, end_time = False):
 
     d  = s // (3600 * 24)
     r  = s - d * 3600 * 24
-    h  = s // 3600
+    h  = r // 3600
     r -= h * 3600
-    m  = s // 60
+    m  = r // 60
     r -= m * 60
 
     if end_time:
