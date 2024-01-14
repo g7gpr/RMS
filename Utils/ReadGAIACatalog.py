@@ -230,12 +230,12 @@ def getRaDecTYC(name, gdr3):
 
     # Name format TYC 3771-224-1 needs padding
     try:
-        field_1 = name.split(" ")[1].split("-")[0].zfill(4)
-        field_2 = name.split(" ")[1].split("-")[1].zfill(5)
-        field_3 = name.split(" ")[1].split("-")[2]
+        field_1 = name.split()[1].split("-")[0].zfill(4)
+        field_2 = name.split()[1].split("-")[1].zfill(5)
+        field_3 = name.split()[1].split("-")[2]
         name = "TYC {}-{}-{}".format(field_1,field_2,field_3)
     except:
-        print("Failed to parse {}".format(name))
+        print("Failed to parse {} for {}".format(name,gdr3))
         return "Not evaluated", "Not evaluated"
 
 
@@ -1099,6 +1099,7 @@ if __name__ == "__main__":
 
     ### test besselian precession
 
+    getRaDecTYC("TYC   85-1075-1","Blah")
 
     print(degrees2HMS(41.054063))
     print(degrees2DMS(49.348483))
