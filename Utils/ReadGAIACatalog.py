@@ -837,8 +837,9 @@ def generatePreferredNameLookUpList(input_filename,output_filename):
             if line_no % 1000 == 0:
                 elapsed_time = (datetime.datetime.utcnow() - start_time).total_seconds()
                 processing_rate = elapsed_time / line_no # in seconds per line
-                time_to_completion = num_lines * processing_rate
-                print(seconds2DHMS(time_to_completion, end_time = True), end= "\r")
+                time_to_completion, per_cent_done = num_lines * processing_rate, 100 * line_no / num_lines
+                print("{} {:.2f}%".format(seconds2DHMS(time_to_completion, end_time=True), per_cent_done), end="\r")
+
             line_list = line.split("|")
 
             # first time through do the initialisation
