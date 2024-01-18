@@ -2303,7 +2303,7 @@ def gcDistDeg(lat1, lon1, lat2, lon2):
     if abs(abs(t1) - abs(t2)) < 1e-10:
         return 0
     else:
-        print("Distance {}".format(2 * np.arcsin((t1 + t2) ** 0.5) * 6371.009))
+
         return 2 * np.arcsin((t1 + t2) ** 0.5) * 6371.009
 
 def testRevAz():
