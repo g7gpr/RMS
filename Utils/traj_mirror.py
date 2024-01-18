@@ -34,9 +34,10 @@ import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colormaps
+from RMS.EventMonitor import gcDistDeg
 
 from sklearn.datasets import make_blobs
-import seaborn as sns
+
 
 
 
@@ -608,7 +609,7 @@ def createAllFile(traj_summary_all_file, drop_duplicates):
     print("Found {} suspected duplicate trajectories".format(duplicate_count))
     return duplicate_count
 
-def counttrajectories(target_file):
+def counttrajectories(target_file, lat,lon, range):
 
     """
     Perform analysis on trajectories
@@ -622,6 +623,7 @@ def counttrajectories(target_file):
     shower_list, camera_combination_list, camera_detections = [], [], []
     camera_dates = {}
     first_trajectory,first_northern, first_southern = True, "",""
+    within_range = 0
     with open (target_file, 'r') as fh:
         for line in fh:
             if line == "\n" or line[0] == "#":
@@ -666,6 +668,15 @@ def counttrajectories(target_file):
                     camera_detections.append(camera.split("_")[0])
                     camera_dates.update({camera.split("_")[0]: split_line[2]})
 
+            lat1, lon1 = float(split_line[15]), float(split_line[17])
+            lat2, lon2 = float(split_line[21]), float(split_line[23])
+
+            distance = gcDistDeg(lat1,lon1,lat,lon)
+            if distance < range:
+                within_range += 1
+
+
+
     shower_data = Counter(shower_list)
     shower_data.most_common()
 
@@ -680,7 +691,7 @@ def counttrajectories(target_file):
 
     return total,  northern, first_northern, southern, first_southern, \
         shower_data, camera_combination_data, camera_detection_data, \
-        first_date, last_date, sorted_camera_dates, time_between_southern_trajectories
+        first_date, last_date, sorted_camera_dates, time_between_southern_trajectories, within_range
 
 def generateStatistics(target_file, duplicate_count):
 
@@ -695,7 +706,8 @@ def generateStatistics(target_file, duplicate_count):
     total_trajectories, \
         northern_hemisphere_trajectories, first_northern, \
         southern_hemisphere_trajectories, first_southern, \
-        shower_data, camera_combination_data, camera_detection_data, first_date, last_date, camera_last_data, time_between_southern_trajectories = counttrajectories(target_file)
+        shower_data, camera_combination_data, camera_detection_data, first_date, last_date, camera_last_data, time_between_southern_trajectories, \
+        within_range = counttrajectories(target_file, -32.0, 115.6, 1000)
 
 
     print("\n")
@@ -738,6 +750,9 @@ def generateStatistics(target_file, duplicate_count):
     print("Total trajectories   : {}".format(total_trajectories))
     print("First northern       : {}".format(first_northern))
     print("Northern hemisphere  : {}".format(northern_hemisphere_trajectories))
+    print("Within range         : {}".format(within_range))
+    print("% within range total : {}".format(100 * within_range / total_trajectories))
+    print("% within range south : {}".format(100 * within_range / southern_hemisphere_trajectories))
     print("First southern       : {}".format(first_southern))
     print("Southern hemisphere  : {}".format(southern_hemisphere_trajectories))
     seconds_to_reach_10000 = (100000 - southern_hemisphere_trajectories) * time_between_southern_trajectories

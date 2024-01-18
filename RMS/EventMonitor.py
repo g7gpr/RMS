@@ -2297,7 +2297,7 @@ def gcDistDeg(lat1, lon1, lat2, lon2):
     t1 = np.sin(delta_lat) ** 2
     t2 = np.sin(delta_lon) ** 2 * np.cos(lat1) * np.cos(lat2)
 
-    if (abs(t1) - abs(t2)) < 1e-10:
+    if abs(abs(t1) - abs(t2)) < 1e-10:
         return 0
     else:
         return 2 * np.arcsin((t1 + t2) ** 0.5) * 6371.009
