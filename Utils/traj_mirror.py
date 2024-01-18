@@ -624,6 +624,8 @@ def counttrajectories(target_file, lat,lon, range):
     camera_dates = {}
     first_trajectory,first_northern, first_southern = True, "",""
     within_range = 0
+    count_2024 = 0
+    within_range_2024 = 0
     with open (target_file, 'r') as fh:
         for line in fh:
             if line == "\n" or line[0] == "#":
@@ -650,6 +652,16 @@ def counttrajectories(target_file, lat,lon, range):
 
             else:
                 pass
+
+            if split_line[0][0:3] == "2024":
+                count_2024 += 1
+                lat1, lon1 = float(split_line[63]), float(split_line[65])
+                lat2, lon2 = float(split_line[69]), float(split_line[71])
+                distance = gcDistDeg(lat1, lon1, lat, lon)
+                if distance < range:
+                    within_range_2024 += 1
+
+
 
             if len(split_line) >= 4:
                 shower_list.append(split_line[4])
@@ -692,7 +704,7 @@ def counttrajectories(target_file, lat,lon, range):
 
     return total,  northern, first_northern, southern, first_southern, \
         shower_data, camera_combination_data, camera_detection_data, \
-        first_date, last_date, sorted_camera_dates, time_between_southern_trajectories, within_range
+        first_date, last_date, sorted_camera_dates, time_between_southern_trajectories, within_range, count_2024, within_range_2024
 
 def generateStatistics(target_file, duplicate_count):
 
@@ -708,7 +720,7 @@ def generateStatistics(target_file, duplicate_count):
         northern_hemisphere_trajectories, first_northern, \
         southern_hemisphere_trajectories, first_southern, \
         shower_data, camera_combination_data, camera_detection_data, first_date, last_date, camera_last_data, time_between_southern_trajectories, \
-        within_range = counttrajectories(target_file, -32.0, 115.6, 1000)
+        within_range, total_trajectories_2024, within_range_2024 = counttrajectories(target_file, -32.0, 115.6, 1000)
 
 
     print("\n")
@@ -754,6 +766,7 @@ def generateStatistics(target_file, duplicate_count):
     print("Within range         : {}".format(within_range))
     print("% within range total : {}".format(100 * within_range / total_trajectories))
     print("% within range south : {}".format(100 * within_range / southern_hemisphere_trajectories))
+    print("Total 2024           : {}".format(total_trajectories_2024))
     print("First southern       : {}".format(first_southern))
     print("Southern hemisphere  : {}".format(southern_hemisphere_trajectories))
     seconds_to_reach_10000 = (100000 - southern_hemisphere_trajectories) * time_between_southern_trajectories
