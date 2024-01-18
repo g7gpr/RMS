@@ -668,8 +668,8 @@ def counttrajectories(target_file, lat,lon, range):
                     camera_detections.append(camera.split("_")[0])
                     camera_dates.update({camera.split("_")[0]: split_line[2]})
 
-            lat1, lon1 = float(split_line[15]), float(split_line[17])
-            lat2, lon2 = float(split_line[21]), float(split_line[23])
+            lat1, lon1 = float(split_line[63]), float(split_line[65])
+            lat2, lon2 = float(split_line[69]), float(split_line[71])
 
             distance = gcDistDeg(lat1,lon1,lat,lon)
 
