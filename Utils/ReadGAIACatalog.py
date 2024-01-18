@@ -254,33 +254,49 @@ def getRaDecTYC(name, gdr3):
         field_2 = name.split()[1].split("-")[1].zfill(5)
         field_3 = name.split()[1].split("-")[2]
         name = "TYC {}-{}-{}".format(field_1,field_2,field_3)
+        name_as_integer = int("{}{}{}".format(field_1, field_2, field_3))
     except:
         print("Failed to parse {} for {}".format(name,gdr3))
         return "Not evaluated", "Not evaluated"
 
 
     tycho_2_files_list = sorted(os.listdir("/home/david/tmp/catalogueassembly/inputdata/tycho-2"))
-    for file in tycho_2_files_list:
 
-        with open(os.path.join("/home/david/tmp/catalogueassembly/inputdata/tycho-2", file ), 'r') as fh:
+    first_iteration = True
+    for search_file in tycho_2_files_list:
 
-            name_match = False
+        with open(os.path.join("/home/david/tmp/catalogueassembly/inputdata/tycho-2", search_file ), 'r') as search_fh:
+            if first_iteration:
+                last_search_file = search_file
+                first_iteration = False
+            first_line_name = search_fh.readline().split("|")[0]
+            first_line_name_as_integer = int(first_line_name.replace(" ",""))
+            if first_line_name_as_integer > name_as_integer:
+                search_file = last_search_file
+                break
+            last_search_file = search_file
 
-            for star in fh:
-                cat_name = "TYC {}-{}-{}".format(str((star[0:4].strip())),str((star[5:10].strip())),str((star[11].strip())))
-                if cat_name == name:
-                    name_match = True
-                    break
 
-            if name_match:
+
+    #for file in tycho_2_files_list:
+
+    with open(os.path.join("/home/david/tmp/catalogueassembly/inputdata/tycho-2", search_file ), 'r') as fh:
+
+        name_match = False
+
+        for star in fh:
+            cat_name = "TYC {}-{}-{}".format(str((star[0:4].strip())),str((star[5:10].strip())),str((star[11].strip())))
+            if cat_name == name:
+                name_match = True
                 break
 
-    if not name_match:
-        # print("Failed to find a match for {}/{}".format(gdr3,name, cat_name))
-        return "Not evaluated", "Not evaluated"
 
-    RAmdeg  = star[15:27]
-    DEcmdeg = star[28:40]
+        if not name_match:
+            # print("Failed to find a match for {}/{}".format(gdr3,name, cat_name))
+            return "Not evaluated", "Not evaluated"
+
+        RAmdeg  = star[15:27]
+        DEcmdeg = star[28:40]
 
     return RAmdeg, DEcmdeg
 
@@ -838,7 +854,7 @@ def generatePreferredNameLookUpList(input_filename,output_filename):
                 elapsed_time = (datetime.datetime.utcnow() - start_time).total_seconds()
                 processing_rate = elapsed_time / line_no # in seconds per line
                 time_to_completion, per_cent_done = num_lines * processing_rate, 100 * line_no / num_lines
-                print("{} {:.2f}%".format(seconds2DHMS(time_to_completion, end_time=True), per_cent_done), end="\r")
+                print("{} {:.2f}% {}/{}".format(seconds2DHMS(time_to_completion, end_time=True), per_cent_done, line_no, num_lines), end="\r")
 
             line_list = line.split("|")
 
@@ -1127,7 +1143,7 @@ if __name__ == "__main__":
 
     ### test besselian precession
 
-    getRaDecTYC("TYC   85-1075-1","Blah")
+    print(getRaDecTYC("TYC   85-1075-1","Blah"))
 
     print(degrees2HMS(41.054063))
     print(degrees2DMS(49.348483))
