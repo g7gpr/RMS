@@ -2297,9 +2297,13 @@ def gcDistDeg(lat1, lon1, lat2, lon2):
     t1 = np.sin(delta_lat) ** 2
     t2 = np.sin(delta_lon) ** 2 * np.cos(lat1) * np.cos(lat2)
 
+    #print("lat1, lon1 {},{}".format(np.degrees(lat1),np.degrees(lon1)))
+    #print("lat2, lon2 {},{}".format(np.degrees(lat2),np.degrees(lon2)))
+
     if abs(abs(t1) - abs(t2)) < 1e-10:
         return 0
     else:
+        print("Distance {}".format(2 * np.arcsin((t1 + t2) ** 0.5) * 6371.009))
         return 2 * np.arcsin((t1 + t2) ** 0.5) * 6371.009
 
 def testRevAz():
