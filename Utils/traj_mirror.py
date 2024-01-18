@@ -767,6 +767,8 @@ def generateStatistics(target_file, duplicate_count):
     print("% within range total : {}".format(100 * within_range / total_trajectories))
     print("% within range south : {}".format(100 * within_range / southern_hemisphere_trajectories))
     print("Total 2024           : {}".format(total_trajectories_2024))
+    print("Within range 2024    : {}".format(within_range_2024))
+    print("Within range 2024    : {}%".format(100 * within_range_2024/ total_trajectories_2024))
     print("First southern       : {}".format(first_southern))
     print("Southern hemisphere  : {}".format(southern_hemisphere_trajectories))
     seconds_to_reach_10000 = (100000 - southern_hemisphere_trajectories) * time_between_southern_trajectories
