@@ -686,7 +686,7 @@ def counttrajectories(target_file, lat,lon, range):
             distance = gcDistDeg(lat1,lon1,lat,lon)
 
             if distance < range and split_line[85].strip() != ["AU0002,AU0003"]:
-                print(split_line[85])
+
                 within_range += 1
 
 
