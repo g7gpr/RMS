@@ -672,6 +672,7 @@ def counttrajectories(target_file, lat,lon, range):
             lat2, lon2 = float(split_line[21]), float(split_line[23])
 
             distance = gcDistDeg(lat1,lon1,lat,lon)
+
             if distance < range:
                 within_range += 1
 
