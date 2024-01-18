@@ -653,7 +653,7 @@ def counttrajectories(target_file, lat,lon, range):
             else:
                 pass
 
-            if split_line[0][0:3] == "2024":
+            if split_line[0][0:4] == "2024":
                 count_2024 += 1
                 lat1, lon1 = float(split_line[63]), float(split_line[65])
                 lat2, lon2 = float(split_line[69]), float(split_line[71])
