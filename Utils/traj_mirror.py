@@ -689,8 +689,7 @@ def counttrajectories(target_file, lat,lon, range):
 
                 within_range += 1
 
-            if split_line[85].strip() == "AU0002,AU0003":
-                print(split_line[85])
+
 
 
 
