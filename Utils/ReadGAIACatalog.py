@@ -878,7 +878,7 @@ def generatePreferredNameLookUpList(input_filename,output_filename):
                 # first handle the previous collection
                 if contains_DR3:
                     best_name_score = len(name_preference_list) - 1
-                    best_name = name_preference_list[best_name_score]
+                    best_name = Gaia_DR3_code #name_preference_list[best_name_score]
                     for name in reference_names_list:
                         for name_preference in name_preference_list:
                             if name[0:len(name_preference)] == name_preference and name_preference_list.index(name_preference) < best_name_score:
