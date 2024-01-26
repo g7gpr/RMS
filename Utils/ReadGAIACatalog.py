@@ -406,6 +406,30 @@ def createWorkArea(base_path=None):
     mkdirP(os.path.join(working_path, "pickles"))
     mkdirP(os.path.join(working_path, "outputdata"))
 
+
+
+
+    for dec in range(0,88,2):
+        dec_start_string = str(dec+2).zfill(2)
+        dec_end_string = str(dec).zfill(2)
+        if dec == 0:
+            download_path = "https://archive.stsci.edu/missions/tess/catalogs/tic_v82/tic_dec{}_00S__{}_00N.csv.gz".format(dec_start_string, dec_end_string)
+        else:
+            download_path = "https://archive.stsci.edu/missions/tess/catalogs/tic_v82/tic_dec{}_00S__{}_00S.csv.gz".format(dec_start_string, dec_end_string)
+        print("Downloading {}".format(download_path))
+        download(download_path, input_data,"tessinputcatalogueversion8")
+
+    for dec in range(0,88,2):
+        dec_start_string = str(dec).zfill(2)
+        dec_end_string = str(dec+2).zfill(2)
+        download_path = "https://archive.stsci.edu/missions/tess/catalogs/tic_v82/tic_dec{}_00N__{}_00N.csv.gz".format(dec_start_string, dec_end_string)
+        print("Downloading {}".format(download_path))
+        download(download_path, input_data,"tessinputcatalogueversion8")
+
+
+
+
+
     return working_path
 
 
@@ -1143,23 +1167,24 @@ if __name__ == "__main__":
 
     ### test besselian precession
 
-    print(getRaDecTYC("TYC   85-1075-1","Blah"))
+    if False:
+        print(getRaDecTYC("TYC   85-1075-1","Blah"))
 
-    print(degrees2HMS(41.054063))
-    print(degrees2DMS(49.348483))
+        print(degrees2HMS(41.054063))
+        print(degrees2DMS(49.348483))
 
-    print("one", end="\r")
-    print("two", end="\r")
-    start_time = datetime.datetime.utcnow()
-    time.sleep(10)
-    end_time = datetime.datetime.utcnow()
-    elapsed_time = (end_time - start_time).total_seconds()
-    print(elapsed_time)
-    print(seconds2DHMS((elapsed_time)))
-    print(seconds2DHMS(7652))
+        print("one", end="\r")
+        print("two", end="\r")
+        start_time = datetime.datetime.utcnow()
+        time.sleep(10)
+        end_time = datetime.datetime.utcnow()
+        elapsed_time = (end_time - start_time).total_seconds()
+        print(elapsed_time)
+        print(seconds2DHMS((elapsed_time)))
+        print(seconds2DHMS(7652))
 
-    ra, dec = besselianPrecession(j2000, 360 * (2/24 + 44 / (60*24) + 11.986 / (24 * 3600)), (49 + 13/60 + 42.48 / 3600), 2462088.69 ,  pm_ra = 0.03425 * 3600 * 360/(60*60*24), pm_dec = -0.0895)
-    print(ra,dec)
+        ra, dec = besselianPrecession(j2000, 360 * (2/24 + 44 / (60*24) + 11.986 / (24 * 3600)), (49 + 13/60 + 42.48 / 3600), 2462088.69 ,  pm_ra = 0.03425 * 3600 * 360/(60*60*24), pm_dec = -0.0895)
+        print(ra,dec)
 
     working_path = createWorkArea(cml_args.workarea)
     pickle_path = os.path.join(working_path,"pickles")
