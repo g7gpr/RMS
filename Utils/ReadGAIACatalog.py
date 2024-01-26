@@ -155,7 +155,7 @@ def besselianPrecession(jd_initial_epoch, ra_initial_epoch, dec_initial_epoch, j
 
 def getRaDecHD(name, gdr3):
 
-    with open("/home/david/tmp/catalogueassembly/inputdata/henrydraper/catalog.dat" , 'r') as fh:
+    with open(os.path.expanduser("~/tmp/catalogueassembly/inputdata/henrydraper/catalog.dat") , 'r') as fh:
 
         name_match = False
         for star in fh:
@@ -201,7 +201,7 @@ def getRaDecHD(name, gdr3):
 
 def getRaDecSAO(name, gdr3):
 
-    with open("/home/david/tmp/catalogueassembly/inputdata/smithsonianastrophysicalobservatory/sao.dat" , 'r') as fh:
+    with open(os.path.expanduser("~/tmp/catalogueassembly/inputdata/smithsonianastrophysicalobservatory/sao.dat") , 'r') as fh:
 
         name_match = False
         for star in fh:
@@ -260,12 +260,12 @@ def getRaDecTYC(name, gdr3):
         return "Not evaluated", "Not evaluated"
 
 
-    tycho_2_files_list = sorted(os.listdir("/home/david/tmp/catalogueassembly/inputdata/tycho-2"))
+    tycho_2_files_list = sorted(os.listdir(os.path.expanduser("~/tmp/catalogueassembly/inputdata/tycho-2")))
 
     first_iteration = True
     for search_file in tycho_2_files_list:
 
-        with open(os.path.join("/home/david/tmp/catalogueassembly/inputdata/tycho-2", search_file ), 'r') as search_fh:
+        with open(os.path.join(os.path.expanduser("~/tmp/catalogueassembly/inputdata/tycho-2"), search_file), 'r') as search_fh:
             if first_iteration:
                 last_search_file = search_file
                 first_iteration = False
@@ -280,7 +280,7 @@ def getRaDecTYC(name, gdr3):
 
     #for file in tycho_2_files_list:
 
-    with open(os.path.join("/home/david/tmp/catalogueassembly/inputdata/tycho-2", search_file ), 'r') as fh:
+    with open(os.path.join(os.path.expanduser("~/tmp/catalogueassembly/inputdata/tycho-2"), search_file ), 'r') as fh:
 
         name_match = False
 
@@ -782,11 +782,11 @@ def generateGaia2SimbadCodeFromIDSTables(catalogue, columns):
 
     cross_reference_list = []
 
-    table_files = sorted(os.listdir("/home/david/tmp/IDS_TABLE/"))
+    table_files = sorted(os.listdir(os.path.expanduser("~/tmp/IDS_TABLE/")))
 
 
     for table_file in table_files:
-        path_table_file =  os.path.join("/home/david/tmp/IDS_TABLE/", table_file)
+        path_table_file =  os.path.join(os.path.expanduser("~/tmp/IDS_TABLE/", table_file))
         print(path_table_file)
         with open(path_table_file,'r') as fh:
 
@@ -1238,8 +1238,8 @@ if __name__ == "__main__":
     #This provides a lookup table to go from Simbad oid key to main_id, which I think is the name that GMN wishes to use
     #print("Reading Simbad Basic ")
 
-    #simbadBasicSortedByOID, simbad_columns, main_id_list_simbad, oid_list_simbad = generateOID2Main_ID("/home/david/tmp/simbad_basic.txt", "/home/david/tmp/oid2main_id.txt", max_objects=cml_args.maxobjects)
-    #print("Simbad Basic read completed - oid2main_id file written")
+
+
     print(getRaDecHD("HD    333","Gaia DR3 2861084531426930944" ))
 
 
@@ -1278,7 +1278,7 @@ if __name__ == "__main__":
 
     else:
         print("Pickling name_2_oid_list and name_2_oid_list_dr3_only")
-        name_2_oid_list, name_2_oid_list_dr3_only = generateGaia2SimbadCodeFromIdentTables("/home/david/tmp/catalogueassembly/inputdata/simbad/identtable", working_path, gaia_list[0], gaia_list[1])
+        name_2_oid_list, name_2_oid_list_dr3_only = generateGaia2SimbadCodeFromIdentTables(os.path.expanduser("~/tmp/catalogueassembly/inputdata/simbad/identtable"), working_path, gaia_list[0], gaia_list[1])
 
         print("Pickling name_2_oid_list                                 2/8")
         with open(name_2_oid_list_pickle_file_path, 'wb') as fh:
@@ -1295,7 +1295,8 @@ if __name__ == "__main__":
 
     if os.path.exists(preferred_name_look_up_list_pickle_file_path) or True:
 
-        preferred_name_look_up_list = generatePreferredNameLookUpList("/home/david/tmp/catalogueassembly/name2oid.txt","/home/david/tmp/oid2preferredname.txt")
+        preferred_name_look_up_list = generatePreferredNameLookUpList(os.path.expanduser("~/tmp/catalogueassembly/name2oid.txt"),
+                                                                      os.path.expanduser("~/tmp/oid2preferredname.txt"))
 
         print("Pickling preferred_name_look_up_list                     4/8")
         with open(preferred_name_look_up_list_pickle_file_path,'wb') as fh:
@@ -1305,18 +1306,18 @@ if __name__ == "__main__":
     else:
 
         print("Reading preferred_name_look_up_list                      4/8")
-        with open('/home/david/tmp/pickles/gaiaDR3_2_preferred_name_DR3.pickle', 'rb') as fh:
+        with open(os.path.expanduser('~/tmp/pickles/gaiaDR3_2_preferred_name_DR3.pickle'), 'rb') as fh:
             gaiaDR3_2_preferred_name_DR3 = pickle.load(fh)
 
     print("Produce Gaia catalogue sorted by simbad code")
     catalogue_with_oid,gaia_columns = generateDR3CatalogueWithSimbadCode(gaia_list[0], gaia_list[1], name_2_oid_list[0], name_2_oid_list[2],
                                                             name_2_oid_list_dr3_only[0], name_2_oid_list_dr3_only[1],
                                                             preferred_name_look_up_list[0], preferred_name_look_up_list[1],
-                                                    "/home/david/tmp/gaiacatalogue_with_simbad_code.txt")
+                                                    os.path.expanduser("~/tmp/gaiacatalogue_with_simbad_code.txt"))
 
     print("Gaia catalogue sorted by simbad code produced")
 
-    with open ("/home/david/tmp/catalogue_with_oid_sorted_by_oid.txt", 'wb') as f:
+    with open (os.path.expanduser("~/tmp/catalogue_with_oid_sorted_by_oid.txt", 'wb')) as f:
 
         output_line = "|"
         for value in gaia_columns:
