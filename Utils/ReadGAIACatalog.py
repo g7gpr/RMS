@@ -346,6 +346,7 @@ def download(url,directory_location, data_name, force_download=False):
     filename = os.path.join(download_path,os.path.basename(url))
     if (not os.path.exists(filename) and not os.path.exists(os.path.splitext(filename)[0])) or force_download:
         try:
+            print("Downloading {} to {}".format(url, filename))
             urllib.request.urlretrieve(url, filename)
             if os.path.splitext(filename)[1] == ".gz":
                 subprocess.run(["gunzip", filename])
