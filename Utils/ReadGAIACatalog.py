@@ -301,6 +301,73 @@ def getRaDecTYC(name, gdr3):
     return RAmdeg, DEcmdeg
 
 
+def download2MASS(input_data):
+
+    names = ['aaa', 'aab', 'aac', 'aad', 'aae', 'aaf', 'aag', 'aah', 'aai', 'aaj', 'aak', 'aal',
+             'aam', 'aan', 'aao', 'aap', 'aaq', 'aar', 'aas', 'aat', 'aau', 'aav', 'aaw', 'aax', 'aay', 'aaz']
+
+    for name in names:
+        download_path = "https://irsa.ipac.caltech.edu/2MASS/download/allsky/psc_{}.gz".format(name)
+        print("Downloading {}".format(download_path))
+        download(download_path, input_data, "2micronallstarsurvey")
+
+    names = ['aba', 'abb', 'abc', 'abd', 'abe', 'abf', 'abg', 'abh', 'abi', 'abj', 'abk', 'abl',
+             'abm', 'abn', 'abo', 'abp', 'abq', 'abr', 'abs', 'abt', 'abu', 'abv', 'abw', 'abx', 'aby', 'abz']
+
+    for name in names:
+        download_path = "https://irsa.ipac.caltech.edu/2MASS/download/allsky/psc_{}.gz".format(name)
+        print("Downloading {}".format(download_path))
+        download(download_path, input_data, "2micronallstarsurvey")
+
+    names = ['aca', 'acb', 'acc', 'acd', 'ace']
+
+    for name in names:
+        download_path = "https://irsa.ipac.caltech.edu/2MASS/download/allsky/psc_{}.gz".format(name)
+        print("Downloading {}".format(download_path))
+        download(download_path, input_data, "2micronallstarsurvey")
+
+    names = ['baa', 'bab', 'bac', 'bad', 'bae', 'baf', 'bag', 'bah', 'bai', 'baj', 'bak', 'bal',
+             'bam', 'ban', 'bao', 'bap', 'baq', 'bar', 'bas', 'bat', 'bau', 'bav', 'baw', 'bax', 'bay', 'baz']
+
+    for name in names:
+        download_path = "https://irsa.ipac.caltech.edu/2MASS/download/allsky/psc_{}.gz".format(name)
+        print("Downloading {}".format(download_path))
+        download(download_path, input_data, "2micronallstarsurvey")
+
+    names = ['bba', 'bbb', 'bbc', 'bbd', 'bbe', 'bbf', 'bbg', 'bbh', 'bbi']
+
+    for name in names:
+        download_path = "https://irsa.ipac.caltech.edu/2MASS/download/allsky/psc_{}.gz".format(name)
+        print("Downloading {}".format(download_path))
+        download(download_path, input_data, "2micronallstarsurvey")
+
+    download_path = "https://irsa.ipac.caltech.edu/2MASS/download/allsky/scn_aaa.gz".format(name)
+    print("Downloading {}".format(download_path))
+    download(download_path, input_data, "2micronallstarsurvey")
+
+
+def downloadTIC(input_data):
+
+    for dec in range(0, 88, 2):
+        dec_start_string = str(dec + 2).zfill(2)
+        dec_end_string = str(dec).zfill(2)
+        if dec == 0:
+            download_path = "https://archive.stsci.edu/missions/tess/catalogs/tic_v82/tic_dec{}_00S__{}_00N.csv.gz".format(
+                    dec_start_string, dec_end_string)
+        else:
+            download_path = "https://archive.stsci.edu/missions/tess/catalogs/tic_v82/tic_dec{}_00S__{}_00S.csv.gz".format(
+                    dec_start_string, dec_end_string)
+        print("Downloading {}".format(download_path))
+        download(download_path, input_data, "tessinputcatalogueversion8")
+
+    for dec in range(0, 88, 2):
+        dec_start_string = str(dec).zfill(2)
+        dec_end_string = str(dec + 2).zfill(2)
+        download_path = "https://archive.stsci.edu/missions/tess/catalogs/tic_v82/tic_dec{}_00N__{}_00N.csv.gz".format(
+                dec_start_string, dec_end_string)
+        print("Downloading {}".format(download_path))
+        download(download_path, input_data, "tessinputcatalogueversion8")
+
 
 def getRaDecTIC(name,gdr3):
 
@@ -409,68 +476,9 @@ def createWorkArea(base_path=None):
 
 
 
-    if False:
-        for dec in range(0,88,2):
-            dec_start_string = str(dec+2).zfill(2)
-            dec_end_string = str(dec).zfill(2)
-            if dec == 0:
-                download_path = "https://archive.stsci.edu/missions/tess/catalogs/tic_v82/tic_dec{}_00S__{}_00N.csv.gz".format(dec_start_string, dec_end_string)
-            else:
-                download_path = "https://archive.stsci.edu/missions/tess/catalogs/tic_v82/tic_dec{}_00S__{}_00S.csv.gz".format(dec_start_string, dec_end_string)
-            print("Downloading {}".format(download_path))
-            download(download_path, input_data,"tessinputcatalogueversion8")
+    downloadTIC(input_data)
+    download2MASS(input_data)
 
-        for dec in range(0,88,2):
-            dec_start_string = str(dec).zfill(2)
-            dec_end_string = str(dec+2).zfill(2)
-            download_path = "https://archive.stsci.edu/missions/tess/catalogs/tic_v82/tic_dec{}_00N__{}_00N.csv.gz".format(dec_start_string, dec_end_string)
-            print("Downloading {}".format(download_path))
-            download(download_path, input_data,"tessinputcatalogueversion8")
-
-
-
-    names = ['aaa','aab','aac','aad','aae','aaf','aag','aah','aai','aaj','aak','aal',
-             'aam','aan','aao','aap','aaq','aar','aas','aat','aau','aav','aaw','aax','aay','aaz']
-
-    for name in names:
-        download_path = "https://irsa.ipac.caltech.edu/2MASS/download/allsky/psc_{}.gz".format(name)
-        print("Downloading {}".format(download_path))
-        download(download_path, input_data, "2micronallstarsurvey")
-
-    names = ['aba', 'abb', 'abc', 'abd', 'abe', 'abf', 'abg', 'abh', 'abi', 'abj', 'abk', 'abl',
-             'abm', 'abn', 'abo', 'abp', 'abq', 'abr', 'abs', 'abt', 'abu', 'abv', 'abw', 'abx', 'aby', 'abz']
-
-    for name in names:
-        download_path = "https://irsa.ipac.caltech.edu/2MASS/download/allsky/psc_{}.gz".format(name)
-        print("Downloading {}".format(download_path))
-        download(download_path, input_data, "2micronallstarsurvey")
-
-    names = ['aca','acb','acc','acd','ace']
-
-    for name in names:
-        download_path = "https://irsa.ipac.caltech.edu/2MASS/download/allsky/psc_{}.gz".format(name)
-        print("Downloading {}".format(download_path))
-        download(download_path, input_data, "2micronallstarsurvey")
-
-    names = ['baa', 'bab', 'bac', 'bad', 'bae', 'baf', 'bag', 'bah', 'bai', 'baj', 'bak', 'bal',
-             'bam', 'ban', 'bao', 'bap', 'baq', 'bar', 'bas', 'bat', 'bau', 'bav', 'baw', 'bax', 'bay', 'baz']
-
-    for name in names:
-        download_path = "https://irsa.ipac.caltech.edu/2MASS/download/allsky/psc_{}.gz".format(name)
-        print("Downloading {}".format(download_path))
-        download(download_path, input_data, "2micronallstarsurvey")
-
-    names = ['bba', 'bbb', 'bbc', 'bbd', 'bbe', 'bbf', 'bbg', 'bbh', 'bbi']
-
-    for name in names:
-        download_path = "https://irsa.ipac.caltech.edu/2MASS/download/allsky/psc_{}.gz".format(name)
-        print("Downloading {}".format(download_path))
-        download(download_path, input_data, "2micronallstarsurvey")
-
-
-    download_path = "https://irsa.ipac.caltech.edu/2MASS/download/allsky/scn_aaa.gz".format(name)
-    print("Downloading {}".format(download_path))
-    download(download_path, input_data, "2micronallstarsurvey")
 
 
 
