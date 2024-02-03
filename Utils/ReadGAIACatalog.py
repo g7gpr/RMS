@@ -348,6 +348,8 @@ def download2MASS(input_data):
 
 def downloadTIC(input_data):
 
+
+
     for dec in range(0, 88, 2):
         dec_start_string = str(dec + 2).zfill(2)
         dec_end_string = str(dec).zfill(2)
@@ -474,14 +476,8 @@ def createWorkArea(base_path=None):
     mkdirP(os.path.join(working_path, "pickles"))
     mkdirP(os.path.join(working_path, "outputdata"))
 
-
-
-    downloadTIC(input_data)
-    download2MASS(input_data)
-
-
-
-
+    #downloadTIC(input_data)
+    #download2MASS(input_data)
 
     return working_path
 
