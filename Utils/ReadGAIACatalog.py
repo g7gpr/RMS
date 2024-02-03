@@ -1070,7 +1070,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
         last_checked_oid_index = 0
         last_checked_preferred_name_index = 0
 
-        line_no = 0
+        line_no,num_lines = 0, len(gaia_catalogue)
         start_time = datetime.datetime.utcnow()
         for catalogue_line in gaia_catalogue:
             line_no += 1
