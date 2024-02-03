@@ -1070,7 +1070,17 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
         last_checked_oid_index = 0
         last_checked_preferred_name_index = 0
 
-        for catalogue_line in tqdm(gaia_catalogue):
+        line_no = 0
+        start_time = datetime.datetime.utcnow()
+        for catalogue_line in gaia_catalogue:
+            line_no += 1
+            if line_no % 100 == 0:
+                elapsed_time = (datetime.datetime.utcnow() - start_time).total_seconds()
+                processing_rate = elapsed_time / line_no  # in seconds per line
+                time_to_completion, per_cent_done = num_lines * processing_rate, 100 * line_no / num_lines
+                print("{} {:.2f}% {}/{}".format(seconds2DHMS(time_to_completion, end_time=True), per_cent_done,
+                                                line_no, num_lines), end="\r")
+
             gaia_dr3_ident = catalogue_line[0]
 
             main_id = ""
