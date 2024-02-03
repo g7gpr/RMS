@@ -1301,7 +1301,7 @@ if __name__ == "__main__":
 
 
 
-    if os.path.exists(preferred_name_look_up_list_pickle_file_path) or True:
+    if not os.path.exists(preferred_name_look_up_list_pickle_file_path):
 
         preferred_name_look_up_list = generatePreferredNameLookUpList(os.path.expanduser("~/tmp/catalogueassembly/name2oid.txt"),
                                                                       os.path.expanduser("~/tmp/oid2preferredname.txt"))
@@ -1314,13 +1314,13 @@ if __name__ == "__main__":
     else:
 
         print("Reading preferred_name_look_up_list                      4/8")
-        with open(os.path.expanduser('~/tmp/pickles/gaiaDR3_2_preferred_name_DR3.pickle'), 'rb') as fh:
+        with open(preferred_name_look_up_list_pickle_file_path, 'rb') as fh:
             gaiaDR3_2_preferred_name_DR3 = pickle.load(fh)
 
     print("Produce Gaia catalogue sorted by simbad code")
-    catalogue_with_oid,gaia_columns = generateDR3CatalogueWithSimbadCode(gaia_list[0], gaia_list[1], name_2_oid_list[0], name_2_oid_list[2],
+    catalogue_with_oid,gaia_columns = generateDR3CatalogueWithSimbadCode(gaia_list[0], gaia_list[1], name_2_oid_list[0], name_2_oid_list[1],
                                                             name_2_oid_list_dr3_only[0], name_2_oid_list_dr3_only[1],
-                                                            preferred_name_look_up_list[0], preferred_name_look_up_list[1],
+                                                            gaiaDR3_2_preferred_name_DR3[0], gaiaDR3_2_preferred_name_DR3[1],
                                                     os.path.expanduser("~/tmp/gaiacatalogue_with_simbad_code.txt"))
 
     print("Gaia catalogue sorted by simbad code produced")
