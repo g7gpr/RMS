@@ -318,9 +318,6 @@ def camStack(config_path_list, stack_time = datetime.datetime.utcnow() - datetim
     if darkbackground is True:
         vmin = np.quantile(stack_img[stack_img>0], 0.05)
     plt.imshow(stack_img, cmap='gray', vmin=vmin, vmax=256, interpolation='nearest')
-    if draw_constellations:
-        constellations_img = constellations_img[crop_box[0]:crop_box[1]+1, crop_box[2]:crop_box[3]+1]
-        plt.imshow(constellations_img)
 
     ax.set_axis_off()
 
