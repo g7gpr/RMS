@@ -21,20 +21,8 @@ from __future__ import print_function, division, absolute_import
 
 import os
 import sys
-import shutil
-
-import datetime
-import time
-import dateutil
-import glob
-import sqlite3
-import multiprocessing
 import logging
-import copy
-import uuid
-import random
-import string
-
+import subprocess
 
 if sys.version_info[0] < 3:
 
@@ -109,7 +97,7 @@ def generateOutput(output_file, lib="libx264",print_nicely=False):
     output_clause += "\n " if print_nicely else output_clause
     return output_clause
 
-def generateInputVideo(input_videos, print_nicely=False):
+def generateInputVideo(input_videos, tile_count, print_nicely=False):
 
     """
     Generate the video input line, format like
@@ -118,10 +106,14 @@ def generateInputVideo(input_videos, print_nicely=False):
     
     """
 
-    input = ""
+    input,vid_count = "", 0
     for video in input_videos:
         input += "-i  {} ".format(video)
-    input += "\n " if print_nicely else input
+        vid_count += 1
+        input += "\n " if print_nicely else input
+        if vid_count > tile_count:
+            break
+
 
 
     return input
@@ -138,20 +130,23 @@ def generateFilter(video_paths, resolution_list, layout_list,print_nicely = Fals
 
 
     video_counter,filter = 0, '-filter_complex " '
-
+    filter += null_video
+    filter += "\n " if print_nicely else filter
     for video in video_paths:
         filter += "[{}:v] setpts=PTS-STARTPTS,scale={}x{}[tile_{}]; ".format(video_counter,res_tile[0],res_tile[1],video_counter)
         video_counter += 1
+        if video_counter == layout_list[0] * layout_list[1]:
+            break
     filter += "\n " if print_nicely else filter
 
     tile_count,x_pos,y_pos = 0,0,0
     for tile_down in range(layout_list[1]):
         for tile_across in range(layout_list[0]):
-            #[tmp3][lowerright]overlay=shortest=1:x=320:y=240[tmp4]
-            filter += "[tmp_{}][tile_{}]overlay=shortest=1:x={},y={}".format(tile_count,tile_count,x_pos,y_pos)
+
+            filter += "[tmp_{}][tile_{}]overlay=shortest=1:x={}:y={}".format(tile_count,tile_count,x_pos,y_pos)
             tile_count += 1
             if tile_count != layout_list[0] * layout_list[1]:
-                filter += "[tmp_{}]".format(tile_count)
+                filter += "[tmp_{}] ; ".format(tile_count)
             else:
                 filter += '" '
             x_pos += res_tile[0]
@@ -166,9 +161,9 @@ def generateFilter(video_paths, resolution_list, layout_list,print_nicely = Fals
 
 def generateCommand(video_paths, resolution, shape, output_filename = "output.mp4", print_nicely = False):
 
-    ffmpeg_command_string = "ffmpeg "
 
-    ffmpeg_command_string += generateInputVideo(video_paths,print_nicely=print_nicely)
+    ffmpeg_command_string = "ffmpeg -y -r 30 "
+    ffmpeg_command_string += generateInputVideo(video_paths, shape[0] * shape[1],print_nicely=print_nicely)
     print(ffmpeg_command_string)
     ffmpeg_command_string += generateFilter(video_paths,resolution,shape,print_nicely=print_nicely)
     ffmpeg_command_string += generateOutput(output_filename, print_nicely=print_nicely)
@@ -210,7 +205,7 @@ if __name__ == "__main__":
     print("Output shape      {}".format(cml_args.shape))
     print("Output file       {}".format(cml_args.output))
 
-    print_nicely = False
+    print_nicely = True
     if cml_args.output is None:
         output_filename = "output.mp4"
     else:
@@ -225,7 +220,8 @@ if __name__ == "__main__":
         input_videos.sort()
         input_video_paths = []
         for video in input_videos:
-            input_video_paths.append(os.path.join(path_input_videos,video))
+            if video.endswith(".mp4"):
+                input_video_paths.append(os.path.join(path_input_videos,video))
         ffmpeg_command_string = generateCommand(input_video_paths, cml_args.resolution, cml_args.shape, cml_args.output[0],print_nicely)
     elif len(cml_args.inputs) == 0:
         print("No videos found to process")
@@ -233,3 +229,7 @@ if __name__ == "__main__":
 
 
     print("Returned command string \n {}".format(ffmpeg_command_string))
+    print()
+    print(ffmpeg_command_string.replace("\n"," "))
+    #subprocess.call(ffmpeg_command_string.replace("\n"," "), shell=True)
+    print()
