@@ -365,9 +365,8 @@ def archiveDetections(captured_path, archived_path, ff_detected, config, extra_f
         log.error('Generating stack failed with error:' + repr(e))
         log.error("".join(traceback.format_exception(*sys.exc_info())))
 
-
-    file_list = reduceTimeGaps(file_list, captured_path)
-
+    if config.upload_mode == 1:
+        file_list = reduceTimeGaps(file_list, captured_path)
 
     if file_list:
 
