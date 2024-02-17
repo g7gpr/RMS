@@ -394,12 +394,13 @@ if __name__ == "__main__":
     # Load the configuration file
     config = cr.parse(".config")
 
-    captured_path = "/home/david/RMS_data/CapturedFiles/AU0004_20240131_114920_457839"
+    if False:
+        captured_path = "/home/david/RMS_data/CapturedFiles/AU0004_20240131_114920_457839"
 
-    file_list = os.listdir("/home/david/RMS_data/ArchivedFiles/AU0004_20240131_114920_457839")
+        file_list = os.listdir("/home/david/RMS_data/ArchivedFiles/AU0004_20240131_114920_457839")
 
 
-    reduceTimeGaps(file_list, captured_path)
+        reduceTimeGaps(file_list, captured_path)
 
 
     ### Test the archive function
