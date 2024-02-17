@@ -1,21 +1,94 @@
 """ Selecting and zipping files with detections. """
-
-
+import datetime
 import os
 import sys
 import logging
 import traceback
 
 
+import RMS.Formats.FFfile
 from RMS.Formats.FFfile import validFFName
 from RMS.Misc import archiveDir
 from RMS.Routines import MaskImage
 from Utils.GenerateThumbnails import generateThumbnails
 from Utils.StackFFs import stackFFs
-
+from glob import glob
 
 # Get the logger from the main module
 log = logging.getLogger("logger")
+
+
+def addExtraFiles(file_list, captured_path):
+
+
+
+
+    fits_list = []
+
+    for path_file_to_check in file_list:
+        file_to_check = os.path.basename(path_file_to_check)
+        if file_to_check.endswith('.fits'):
+            fits_list.append(file_to_check)
+            log.info("{}".format(os.path.basename(file_to_check)))
+
+    fits_list.sort()
+    captured_fits_list = glob(os.path.join(captured_path,"*.fits"))
+    captured_fits_list.sort()
+    first_captured_fits_file = os.path.basename(captured_fits_list[0])
+    log.info("First fits file : {}".format(first_captured_fits_file))
+    time_previous_fits_file = RMS.Formats.FFfile.filenameToDatetime(first_captured_fits_file)
+    log.info("Time of first file {}".format(time_previous_fits_file))
+    max_time_between_fits = 1800
+    target_time_list = []
+
+    file_list.sort()
+
+    initial_max_interval = 0
+    last_time = RMS.Formats.FFfile.filenameToDatetime(first_captured_fits_file)
+    for file in file_list:
+        if file.endswith(".fits"):
+            interval = round((RMS.Formats.FFfile.filenameToDatetime(os.path.basename(file)) - last_time).total_seconds())
+            initial_max_interval = interval if interval > initial_max_interval else initial_max_interval
+            last_time = RMS.Formats.FFfile.filenameToDatetime(os.path.basename(file))
+
+    for fits in fits_list:
+
+        time_of_this_fits_file = RMS.Formats.FFfile.filenameToDatetime(fits)
+        time_elapsed = int((time_of_this_fits_file - time_previous_fits_file).total_seconds())
+        if time_elapsed > max_time_between_fits:
+            number_of_additional_files = time_elapsed // max_time_between_fits
+            interval_seconds = int(time_elapsed // (number_of_additional_files + 1))
+            for offset in range(interval_seconds,time_elapsed - interval_seconds,interval_seconds):
+                target_time = time_previous_fits_file + datetime.timedelta(seconds = offset)
+                target_time_list.append(target_time)
+            time_previous_fits_file = target_time
+        else:
+            time_previous_fits_file = time_of_this_fits_file
+
+
+    for target_time in target_time_list:
+        for fits_file in captured_fits_list:
+            if RMS.Formats.FFfile.filenameToDatetime(os.path.basename(fits_file)) > target_time:
+                log.info("Adding {} to the files to be uploaded".format(fits_file))
+                file_list.append(os.path.basename(fits_file))
+                break
+
+    file_list.sort()
+
+    final_max_interval = 0
+    last_time = RMS.Formats.FFfile.filenameToDatetime(first_captured_fits_file)
+    for file in file_list:
+        if file.endswith(".fits"):
+            interval = round((RMS.Formats.FFfile.filenameToDatetime(os.path.basename(file)) - last_time).total_seconds())
+            final_max_interval = interval if interval > final_max_interval else final_max_interval
+            last_time = RMS.Formats.FFfile.filenameToDatetime(os.path.basename(file))
+
+    log.info("Maximum interval before including extra files was {}".format(initial_max_interval))
+    log.info("Maximum interval after including {} extra files is {}".format(len(target_time_list),final_max_interval))
+    if final_max_interval > max_time_between_fits:
+        log.warning("Maximum time between fits was exceeded")
+
+    return file_list
 
 
 def selectFiles(config, dir_path, ff_detected):
@@ -242,6 +315,8 @@ def archiveDetections(captured_path, archived_path, ff_detected, config, extra_f
         log.error("".join(traceback.format_exception(*sys.exc_info())))
 
 
+    file_list = addExtraFiles(file_list, captured_path)
+
 
     if file_list:
 
@@ -266,6 +341,12 @@ if __name__ == "__main__":
     # Load the configuration file
     config = cr.parse(".config")
 
+    captured_path = "/home/david/RMS_data/CapturedFiles/AU0004_20240130_115003_082654"
+
+    file_list = os.listdir("/home/david/RMS_data/ArchivedFiles/AU0004_20240130_115003_082654")
+
+
+    addExtraFiles(file_list,captured_path)
 
 
     ### Test the archive function
