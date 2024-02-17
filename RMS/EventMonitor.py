@@ -176,10 +176,10 @@ class EventContainer(object):
         self.ht_std = float(value) if "EventHtStd" == variable_name else self.ht_std
         self.cart_std = float(value) if "EventCartStd" == variable_name else self.cart_std
         if "RequireFR" == variable_name:
-            if str(value) == "1" :
-                self.require_FR = 1
-            else:
+            if str(value) == "0" :
                 self.require_FR = 0
+            else:
+                self.require_FR = 1
 
         # Radii
         self.close_radius = float(value) if "CloseRadius" == variable_name else self.close_radius
