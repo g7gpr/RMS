@@ -18,7 +18,7 @@ from glob import glob
 log = logging.getLogger("logger")
 
 
-def addExtraFiles(file_list, captured_path, max_time_between_fits = 900):
+def reduceTimeGaps(file_list, captured_path, max_time_between_fits = 900):
 
     """
     Function takes a list of files, calculates the difference in time between
@@ -366,7 +366,7 @@ def archiveDetections(captured_path, archived_path, ff_detected, config, extra_f
         log.error("".join(traceback.format_exception(*sys.exc_info())))
 
 
-    file_list = addExtraFiles(file_list, captured_path)
+    file_list = reduceTimeGaps(file_list, captured_path)
 
 
     if file_list:
@@ -397,7 +397,7 @@ if __name__ == "__main__":
     file_list = os.listdir("/home/david/RMS_data/ArchivedFiles/AU0004_20240131_114920_457839")
 
 
-    addExtraFiles(file_list,captured_path)
+    reduceTimeGaps(file_list, captured_path)
 
 
     ### Test the archive function
