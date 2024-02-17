@@ -18,7 +18,7 @@ from glob import glob
 log = logging.getLogger("logger")
 
 
-def addExtraFiles(file_list, captured_path, max_time_between_fits = 3600):
+def addExtraFiles(file_list, captured_path, max_time_between_fits = 900):
 
     """
     Function takes a list of files, calculates the difference in time between
