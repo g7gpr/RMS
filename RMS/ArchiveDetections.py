@@ -399,11 +399,9 @@ if __name__ == "__main__":
         # captured path points to a captured directory
         # file_list is a list of all the files that are to be uploaded, for test purposes
         # use all the files in the already existing archived directory
+
         captured_path = "/home/user/RMS_data/CapturedFiles/sample_night_dir"
-
         file_list = os.listdir("/home/user/RMS_data/ArchivedFiles/sample_archived_dir")
-
-
         reduceTimeGaps(file_list, captured_path)
 
 
