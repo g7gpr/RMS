@@ -18,31 +18,67 @@ from glob import glob
 log = logging.getLogger("logger")
 
 
-def addExtraFiles(file_list, captured_path):
+def addExtraFiles(file_list, captured_path, max_time_between_fits = 3600):
 
+    """
+    Function takes a list of files, calculates the difference in time between
+    each fits file, and adds additional files from the CapturedPath to reduce the gap
+    to the max_time_between fits
 
+    Arguments:
+        file_list: [list] list of files to be uploaded.
+        captured_path: [str] path of the captured files directory corresponding to this list of files.
+        max_time_between_fits: [int] maximum time between two fits files default 900 seconds.
+
+    Return:
+        selected_files: [list] A list of files selected for compression.
+
+    """
 
 
     fits_list = []
 
+
+    # make a list of only fits files, sorted by time
     for path_file_to_check in file_list:
         file_to_check = os.path.basename(path_file_to_check)
         if file_to_check.endswith('.fits'):
             fits_list.append(file_to_check)
             log.info("{}".format(os.path.basename(file_to_check)))
-
     fits_list.sort()
+
+    # get a list of all the fits files that are available in the captured files directory, and sort
     captured_fits_list = glob(os.path.join(captured_path,"*.fits"))
+
+
+    # if there are no fits files, then return from this function
+    if len(captured_fits_list) == 0:
+        log.warning("No captured fits files so no extra files to add")
+        return file_list
+
+    # sort the list of files
     captured_fits_list.sort()
+
+    # calculate some statistics
+    original_fits_list_length = len(fits_list)
+
     first_captured_fits_file = os.path.basename(captured_fits_list[0])
     log.info("First fits file : {}".format(first_captured_fits_file))
     time_previous_fits_file = RMS.Formats.FFfile.filenameToDatetime(first_captured_fits_file)
     log.info("Time of first file {}".format(time_previous_fits_file))
-    max_time_between_fits = 1800
+    final_captured_fits_file = os.path.basename(captured_fits_list[-1])
+    log.info("Final fits file : {}".format(final_captured_fits_file))
+    time_final_fits_file = RMS.Formats.FFfile.filenameToDatetime(final_captured_fits_file)
+    log.info("Time of final file {}".format(time_final_fits_file))
+
+    # add the final captured file to the fits list
+    fits_list.append(final_captured_fits_file)
+
     target_time_list = []
 
     file_list.sort()
 
+    # compute the initial maximum interval between fits files
     initial_max_interval = 0
     last_time = RMS.Formats.FFfile.filenameToDatetime(first_captured_fits_file)
     for file in file_list:
@@ -51,21 +87,33 @@ def addExtraFiles(file_list, captured_path):
             initial_max_interval = interval if interval > initial_max_interval else initial_max_interval
             last_time = RMS.Formats.FFfile.filenameToDatetime(os.path.basename(file))
 
+
+    # go through all the fits files
     for fits in fits_list:
 
         time_of_this_fits_file = RMS.Formats.FFfile.filenameToDatetime(fits)
         time_elapsed = int((time_of_this_fits_file - time_previous_fits_file).total_seconds())
+        # if the time gap is too large
         if time_elapsed > max_time_between_fits:
+            # work out how many intervals there are
             number_of_additional_files = time_elapsed // max_time_between_fits
+            # how long is this interval
             interval_seconds = int(time_elapsed // (number_of_additional_files + 1))
+
+            # iterate across this interval, missing the first - because that fits file is already in place
+            # and add target times for fits files to find
             for offset in range(interval_seconds,time_elapsed - interval_seconds,interval_seconds):
                 target_time = time_previous_fits_file + datetime.timedelta(seconds = offset)
                 target_time_list.append(target_time)
+
+            # the time of the previous fits file is the time of the file we are going to add
             time_previous_fits_file = target_time
         else:
+            # otherwise the time of the previous fits file is the time of this file
             time_previous_fits_file = time_of_this_fits_file
 
 
+    # find files immediately after the target times - the intervals will not be perfect
     for target_time in target_time_list:
         for fits_file in captured_fits_list:
             if RMS.Formats.FFfile.filenameToDatetime(os.path.basename(fits_file)) > target_time:
@@ -75,18 +123,21 @@ def addExtraFiles(file_list, captured_path):
 
     file_list.sort()
 
-    final_max_interval = 0
+    final_max_interval,final_fits_count = 0,0
+
+    # recalculate the statistics
     last_time = RMS.Formats.FFfile.filenameToDatetime(first_captured_fits_file)
     for file in file_list:
         if file.endswith(".fits"):
             interval = round((RMS.Formats.FFfile.filenameToDatetime(os.path.basename(file)) - last_time).total_seconds())
             final_max_interval = interval if interval > final_max_interval else final_max_interval
             last_time = RMS.Formats.FFfile.filenameToDatetime(os.path.basename(file))
+            final_fits_count += 1
 
     log.info("Maximum interval before including extra files was {}".format(initial_max_interval))
     log.info("Maximum interval after including {} extra files is {}".format(len(target_time_list),final_max_interval))
-    if final_max_interval > max_time_between_fits:
-        log.warning("Maximum time between fits was exceeded")
+    log.info("Original file count {}".format(original_fits_list_length))
+    log.info("Final file count    {}".format(final_fits_count))
 
     return file_list
 
@@ -341,9 +392,9 @@ if __name__ == "__main__":
     # Load the configuration file
     config = cr.parse(".config")
 
-    captured_path = "/home/david/RMS_data/CapturedFiles/AU0004_20240130_115003_082654"
+    captured_path = "/home/david/RMS_data/CapturedFiles/AU0004_20240131_114920_457839"
 
-    file_list = os.listdir("/home/david/RMS_data/ArchivedFiles/AU0004_20240130_115003_082654")
+    file_list = os.listdir("/home/david/RMS_data/ArchivedFiles/AU0004_20240131_114920_457839")
 
 
     addExtraFiles(file_list,captured_path)
