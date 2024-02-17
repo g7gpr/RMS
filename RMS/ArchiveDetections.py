@@ -134,10 +134,10 @@ def reduceTimeGaps(file_list, captured_path, max_time_between_fits = 900):
             last_time = RMS.Formats.FFfile.filenameToDatetime(os.path.basename(file))
             final_fits_count += 1
 
-    log.info("Maximum interval before including extra files was {}".format(initial_max_interval))
-    log.info("Maximum interval after including {} extra files is {}".format(len(target_time_list),final_max_interval))
-    log.info("Original file count {}".format(original_fits_list_length))
-    log.info("Final file count    {}".format(final_fits_count))
+    log.info("Maximum interval before including extra files was {} seconds".format(initial_max_interval))
+    log.info("Maximum interval after including {} extra files is {} seconds".format(len(target_time_list),final_max_interval))
+    log.info("Original fits file count {}".format(original_fits_list_length))
+    log.info("Final fits file count    {}".format(final_fits_count))
 
     return file_list
 
