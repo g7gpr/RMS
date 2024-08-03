@@ -1,6 +1,5 @@
 # RPi Meteor Station
 # Copyright (C) 2024
-#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -15,7 +14,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 """
-This script programmatically generates and optionally executes a command to generate a matrix of videos
+This script downloads videos from the static part of the www.globalmeteornetwork.org website
+and programmatically generates and optionally executes a command to generate a matrix of videos
 
 It is based on the technique at
 
@@ -44,12 +44,11 @@ ffmpeg
 
 from __future__ import print_function, division, absolute_import
 
-
 import os
 import sys
 import logging
 import subprocess
-
+from RMS.Misc import mkdirP
 
 
 
@@ -78,32 +77,36 @@ import tempfile
 # Import Cython functions
 import pyximport
 pyximport.install(setup_args={'include_dirs':[np.get_include()]})
-
 log = logging.getLogger("logger")
 
+def downloadFilesToTmp(urls, station_id, working_dir=None):
 
-def downloadFilesToTmp(urls, stationIDs):
+    """
 
-    if cml_args.folder is None:
+    Args:
+        urls: a list of URLs to download
+        station_id: a list of stationIDs to download, required for naming
+        working_dir: the directory to keep files in, if not specified a temporary directory is generated
+
+    Returns:
+        working_dir: the directory which was used for working
+        video_paths: paths to the downloaded videos
+    """
+
+    # either create a working directory, or use the area the user has specified
+    if working_dir is None:
         working_dir = tempfile.mkdtemp()
-        delete_at_end = True
     else:
-        working_dir = cml_args.folder
-        delete_at_end = False
-    print("Folder for downloaded files {}".format(working_dir))
+        working_dir = os.path.expanduser(working_dir)
 
-
-    if len(urls) > 0:
-        temp_dir = working_dir
-        print("Working in {:s}".format(temp_dir))
+    # make sure working_dir exists
+    mkdirP(working_dir)
 
     video_paths = []
-    for video_url, stationID in zip(urls, stationIDs):
-
+    for video_url, stationID in zip(urls, station_id):
         print("Downloading from URL {:s}".format(video_url))
         video = requests.get(video_url, allow_redirects=True)
-        destination_file = os.path.join(temp_dir, "{:s}.mp4".format(stationID.lower()))
-        print("Saving into {}".format(destination_file))
+        destination_file = os.path.join(working_dir, "{:s}.mp4".format(stationID.lower()))
         open(destination_file,"wb").write(video.content)
         video_paths.append(destination_file)
 
@@ -111,8 +114,6 @@ def downloadFilesToTmp(urls, stationIDs):
 
 
 def convertListOfStationIDsToListOfUrls(station_ids):
-
-
     """
     
     Args:
@@ -130,24 +131,28 @@ def convertListOfStationIDsToListOfUrls(station_ids):
     
     """
 
-
-
-    video_urls = []
     video_url_template = "https://globalmeteornetwork.org/weblog/{:s}/{:s}/static/{:s}_timelapse_static.mp4"
-
-
+    video_urls = []
     for station in station_ids:
         country_code = station[0:2]
-        print("Station id {}, Country Code {}".format(station,country_code))
-        video_url = video_url_template.format(country_code,station,station)
-        video_urls.append(video_url)
-
-
+        video_urls.append(video_url_template.format(country_code,station,station))
 
     return video_urls
 
 def generateOutput(output_file, lib="libx264",print_nicely=False):
 
+    """
+
+    Geneate the output clause of the ffmpeg statement
+
+    Args:
+        output_file: name of the output file to be used
+        lib: generation library
+        print_nicely: optionally include \n characters, generally for debugging purposes
+
+    Returns:
+        output_clause: the string which forms the output part of the ffmpeg statement
+    """
 
     output_clause = " -c:v {} {}".format(lib,output_file)
     output_clause += "\n " if print_nicely else " "
@@ -156,11 +161,15 @@ def generateOutput(output_file, lib="libx264",print_nicely=False):
 def generateInputVideo(input_videos, tile_count, print_nicely=False):
 
     """
-    Generate the video input line, format like
-    
-    	-i 1.avi -i 2.avi -i 3.avi -i 4.avi
-    
+    Args:
+        input_videos: list of input videos
+        tile_count: the count of tiles to be generated
+        print_nicely: optionally include \n characters, generally for debugging purposes
+
+    Returns:
+        the input clause for the ffmpeg statement
     """
+
 
     input,vid_count = "", 0
     for video in input_videos:
@@ -169,21 +178,29 @@ def generateInputVideo(input_videos, tile_count, print_nicely=False):
         input += "\n " if print_nicely else " "
         if vid_count > tile_count:
             break
-        print(input)
 
-    print(input)
+
     return input
 
 def generateFilter(video_paths, resolution_list, layout_list,print_nicely = False):
 
-    print("Number of videos {}".format(len(video_paths)))
+    """
+
+    Args:
+        video_paths: list of input video paths
+        resolution_list: list of resolution  e.g.[x,y]
+        layout_list: the list of layout e.g.[3,2]
+        print_nicely: optionally include \n characters, generally for debugging purposes
+
+    Returns:
+        the filter section for the ffmpeg command
+    """
 
     null_video = "nullsrc=size={}x{}[tmp_0]; ".format(resolution_list[0],resolution_list[1])
     print(null_video)
     res_tile = []
     res_tile.append(int(resolution_list[0] / layout_list[0]))
     res_tile.append(int(resolution_list[1] / layout_list[1]))
-
 
     video_counter,filter = 0, '-filter_complex " '
     filter += null_video
@@ -210,21 +227,85 @@ def generateFilter(video_paths, resolution_list, layout_list,print_nicely = Fals
         x_pos = 0
         y_pos += res_tile[1]
 
-
     return filter
 
 
+def generateCommand(video_paths, resolution, shape, output_filename = "~/matrix_video.mp4", print_nicely=False):
 
-def generateCommand(video_paths, resolution, shape, output_filename = "output.mp4", print_nicely = False):
+    """
+    Calls the input, filter and output commands and assembled the full ffmpeg command string
+    for generating a video matrix
 
+    Args:
+        video_paths: paths to the videos
+        resolution: resolution for generated file e.g. [x,y]
+        shape: the shape of the video matrix e.g. [3,2]
+        output_filename: the output path and filename
+        print_nicely: optionally include \n characters, generally for debugging purposes
 
+    Returns:
+        command string
+    """
+
+    output_filename = os.path.expanduser(output_filename)
     ffmpeg_command_string = "ffmpeg -y -r 30 "
     ffmpeg_command_string += generateInputVideo(video_paths, shape[0] * shape[1],print_nicely=print_nicely)
     ffmpeg_command_string += generateFilter(video_paths,resolution,shape,print_nicely=print_nicely)
     ffmpeg_command_string += generateOutput(output_filename, print_nicely=print_nicely)
-    print(ffmpeg_command_string)
+
 
     return ffmpeg_command_string
+
+
+def videoMatrix(stationIDs, x_shape=2, y_shape=2, x_res=1280, y_res=720,
+                        generate=True, output_file_path="~/matrix_video.mp4", keep_files=False, working_directory=None):
+
+    """
+
+    Args:
+        stationIDs: a list of stationIDs which have been requested to be downloaded, and optionally combined into a montage
+        x_shape: number of tiles across e.g. 3
+        y_shape: number of tiles down e.g. 2
+        x_res: x resolution e.g. 1280
+        y_res: y resolution e.g. 720
+        generate: execute the command to generate the output
+        output_file_path: file path for the generate file
+        keep_files: keep the files downloaded into the temporary directory
+        working_directory: optional user specified directory for working, useful for downloading files
+
+    Returns:
+        [ffmpeg_command_string,working_directory]
+    """
+
+    if stationIDs == None:
+        return
+    if len(stationIDs) == 0:
+        return
+    if len(stationIDs) < x_shape * y_shape:
+        print("Too few stationIDs to create video of requested shape {:.f0} x {:.f0}".format(x_shape, y_shape))
+        return
+
+    if not working_directory is None and keep_files==False:
+        print("user has specified a directory, keeping files")
+        keep_files=True
+
+    url_list = convertListOfStationIDsToListOfUrls(stationIDs)
+    video_directory, input_video_paths = downloadFilesToTmp(url_list, stationIDs, working_directory)
+    output_file_path = os.path.expanduser(output_file_path)
+    ffmpeg_command_string = generateCommand(input_video_paths, [x_res, y_res],
+                                            [x_shape, y_shape], output_file_path)
+    if generate:
+        subprocess.call(ffmpeg_command_string.replace("\n", " "), shell=True)
+    if keep_files:
+        print("Downloaded files in {:s}".format(working_directory))
+    else:
+        for input_video in input_video_paths:
+            os.unlink(input_video)
+        os.rmdir(video_directory)
+
+
+
+    return ffmpeg_command_string, video_directory
 
 
 if __name__ == "__main__":
@@ -234,22 +315,30 @@ if __name__ == "__main__":
     def list_of_strings(arg):
         return arg.split(',')
 
+    description = ""
+    description += "Generate an n x n matrix of videos. Minimum required to generate a video is\n"
+    description += " python -m Utils.VideoMatrix \n\n"
+    description += "A more comprehensive example is \n"
+    description += " python -m Utils.VideoMatrix -c AU000U,AU000V,AU000W,AU000X,AU000Y,AU000Z -r "
+    description += "3840 1440 -s 3 2 -o ~/station_video.mpg \n \n"
+    description += "which creates a video of 6 cameras, resolution 3840 x 1440, 3 across, 2 down saved in users root as station_video.mpg\n"
+    description += " -n inhibits generating the video and only prints the ffmpeg command string"
+    description += " -k inhibits deletion of downloaded files"
 
-    arg_parser = argparse.ArgumentParser(description="Generate an n x n matrix of videos. \
-        """, formatter_class=argparse.RawTextHelpFormatter)
+    arg_parser = argparse.ArgumentParser(description=description, formatter_class=argparse.RawTextHelpFormatter)
 
-    arg_parser.add_argument('-i', '--inputs', nargs=1, metavar='INPUT_VIDEOS', type=str,
-                            help="Path to the input videos.")
 
     arg_parser.add_argument('-c', '--cameras', metavar='CAMERAS', type=list_of_strings,
                             help="Cameras to use.")
 
+    arg_parser.add_argument('-n', '--no_generate', dest='generate_video', default=True, action="store_false",
+                            help="Generate the command string but do not execute")
 
-    arg_parser.add_argument('-g', '--generate', dest='generate_video', default=False, action="store_true",
-                            help="Generate the video, instead of just the command")
+    arg_parser.add_argument('-k', '--keep_files', dest='keep_files', default=False, action="store_true",
+                            help="Do not delete files at end")
 
     arg_parser.add_argument('-r', '--resolution', nargs=2, metavar='RESOLUTION', type=int,
-                            help="outputresolution e.g 1024 768")
+                            help="outputresolution e.g 1280 720")
 
     arg_parser.add_argument('-s', '--shape', nargs=2, metavar='SHAPE', type=int,
                             help="Number of tiles across, number of tiles down e.g 4 3")
@@ -257,92 +346,46 @@ if __name__ == "__main__":
     arg_parser.add_argument('-o', '--output', nargs=1, metavar='OUTPUT', type=str,
                             help="Output filename")
 
-    arg_parser.add_argument('-w', '--weblog', nargs=1, dest='cameras', metavar='SHAPE', type=str,
-                            help="Pull the latest videos from the GMN weblog from the given list of cameras")
-
-    arg_parser.add_argument('-f', '--folder', nargs=1, dest='folder', metavar='SHAPE', type=str,
-                            help="Destination for downloaded files")
-
+    arg_parser.add_argument('-w', '--working_directory', metavar='WORKING', type=str,
+                            help="Working directory to use")
 
     cml_args = arg_parser.parse_args()
 
-
-    # Load the config file
-    # syscon = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
-
-    # Set the web page to monitor
-    if cml_args.inputs is None and cml_args.cameras is None:
-        print("No input arguments given, quitting")
-        exit()
-
-
-
-
-
-
-
-    if cml_args.resolution is None:
-        cml_args.resolution = [cml_args.shape[0] * 1280, cml_args.shape[1] * 720]
-
     if not cml_args.cameras is None:
-        stationIDs = cml_args.cameras
-        url_list = convertListOfStationIDsToListOfUrls(cml_args.cameras)
-        print(url_list)
-        delete_at_end = True
-        video_directory, input_video_paths = downloadFilesToTmp(url_list, stationIDs)
-
-
-    print("Input file path   {}".format(cml_args.inputs))
-    print("Input cameras     {}".format(cml_args.cameras))
-    print("Generate video    {}".format(cml_args.generate_video))
-
-    print("Output resolution {}".format(cml_args.resolution))
-    print("Output shape      {}".format(cml_args.shape))
-    print("Output file       {}".format(cml_args.output))
-    print("Weblog list of cameras {}".format(cml_args.cameras))
-
-
-
-    print_nicely = True
-    ffmpeg_command_string = ""
-
-    if cml_args.output is None:
-        output_filename = ["output.mp4"]
+        cameras = cml_args.cameras
     else:
-        output_filename = cml_args.output[0]
+        cameras = ["AU000A","AU000C","AU000D","AU000G"]
 
-    if type(cml_args.inputs) == int:
-
-        if len(cml_args.inputs) > 1:
-            ffmpeg_command_string = generateCommand(cml_args.inputs, cml_args.resolution, cml_args.shape, cml_args.output)
-        elif len(cml_args.inputs) == 1:
-            #possibly been passed a directory of videos
-            delete_at_end = False
-            input_videos = os.listdir(cml_args.inputs[0])
-            path_input_videos = cml_args.inputs[0]
-            input_videos.sort()
-            input_video_paths = []
-            for video in input_videos:
-                if video.endswith(".mp4"):
-                    input_video_paths.append(os.path.join(path_input_videos,video))
-
-        elif len(cml_args.inputs) == 0:
-            print("No videos found to process")
-            quit()
+    if not cml_args.shape is None:
+        x_shape,y_shape = cml_args.shape[0], cml_args.shape[1]
     else:
-        print("Number of files was not an integer")
+        x_shape, y_shape = 2,2
 
-    print_nicely= False
-    ffmpeg_command_string = generateCommand(input_video_paths, cml_args.resolution, cml_args.shape, cml_args.output[0],
-                                            print_nicely)
+    if not cml_args.resolution is None:
+        x_res,y_res = cml_args.resolution[0], cml_args.resolution[1]
+    else:
+        x_res,y_res = 1280,720
 
-    print("Returned command string \n {}".format(ffmpeg_command_string))
-    print()
-    print(ffmpeg_command_string.replace("\n"," "))
-    if cml_args.generate_video:
-        subprocess.call(ffmpeg_command_string.replace("\n"," "), shell=True)
-    if delete_at_end and False:
-        for input_video in input_video_paths:
-            os.unlink(input_video)
-        os.rmdir(video_directory)
-    print()
+    if not cml_args.generate_video is None:
+        generate = cml_args.generate_video
+    else:
+        generate = True
+
+    if not cml_args.output is None:
+        output = cml_args.output[0]
+    else:
+        output = "~/matrix_video.mp4"
+
+
+    if not cml_args.keep_files is None:
+        keep_files = cml_args.keep_files
+    else:
+        keep_files = False
+
+    if not cml_args.working_directory is None:
+        working_directory = cml_args.working_directory
+        print("Working in {}".format(working_directory))
+
+    print(videoMatrix(cameras,x_shape=x_shape, y_shape=y_shape,generate=generate,x_res=x_res,y_res=y_res,
+                                output_file_path=output, keep_files=keep_files, working_directory=working_directory)[0])
+
