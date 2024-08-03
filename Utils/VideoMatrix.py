@@ -1,5 +1,5 @@
 # RPi Meteor Station
-# Copyright (C) 2023
+# Copyright (C) 2024
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -51,7 +51,7 @@ import logging
 import subprocess
 
 
-TEMPLATE_WEB_ADDRESS = "https://globalmeteornetwork.org/weblog/$COUNTRY_CODE/$CAMERA/static/$CAMERA_timelapse_static.mp4"
+
 
 if sys.version_info[0] < 3:
 
@@ -82,11 +82,75 @@ pyximport.install(setup_args={'include_dirs':[np.get_include()]})
 log = logging.getLogger("logger")
 
 
+def downloadFilesToTmp(urls, stationIDs):
+
+    if cml_args.folder is None:
+        working_dir = tempfile.mkdtemp()
+        delete_at_end = True
+    else:
+        working_dir = cml_args.folder
+        delete_at_end = False
+    print("Folder for downloaded files {}".format(working_dir))
+
+
+    if len(urls) > 0:
+        temp_dir = working_dir
+        print("Working in {:s}".format(temp_dir))
+
+    video_paths = []
+    for video_url, stationID in zip(urls, stationIDs):
+
+        print("Downloading from URL {:s}".format(video_url))
+        video = requests.get(video_url, allow_redirects=True)
+        destination_file = os.path.join(temp_dir, "{:s}.mp4".format(stationID.lower()))
+        print("Saving into {}".format(destination_file))
+        open(destination_file,"wb").write(video.content)
+        video_paths.append(destination_file)
+
+    return working_dir, video_paths
+
+
+def convertListOfStationIDsToListOfUrls(station_ids):
+
+
+    """
+    
+    Args:
+        station_id: a list of stationIDs
+
+
+    Returns:
+        list of urls pointing to the latest static video for that station
+    
+    
+    e.g converts ["AU000A", "AU000C"] to 
+    ["https://globalmeteornetwork.org/weblog/AU/AU000A/static/AU000A_timelapse_static.mp4",
+    "https://globalmeteornetwork.org/weblog/AU/AU000C/static/AU000C_timelapse_static.mp4"]
+    
+    
+    """
+
+
+
+    video_urls = []
+    video_url_template = "https://globalmeteornetwork.org/weblog/{:s}/{:s}/static/{:s}_timelapse_static.mp4"
+
+
+    for station in station_ids:
+        country_code = station[0:2]
+        print("Station id {}, Country Code {}".format(station,country_code))
+        video_url = video_url_template.format(country_code,station,station)
+        video_urls.append(video_url)
+
+
+
+    return video_urls
+
 def generateOutput(output_file, lib="libx264",print_nicely=False):
 
 
-    output_clause = "-c:v {} {}".format(lib,output_file)
-    output_clause += "\n " if print_nicely else output_clause
+    output_clause = " -c:v {} {}".format(lib,output_file)
+    output_clause += "\n " if print_nicely else " "
     return output_clause
 
 def generateInputVideo(input_videos, tile_count, print_nicely=False):
@@ -102,12 +166,12 @@ def generateInputVideo(input_videos, tile_count, print_nicely=False):
     for video in input_videos:
         input += "-i  {} ".format(video)
         vid_count += 1
-        input += "\n " if print_nicely else input
+        input += "\n " if print_nicely else " "
         if vid_count > tile_count:
             break
+        print(input)
 
-
-
+    print(input)
     return input
 
 def generateFilter(video_paths, resolution_list, layout_list,print_nicely = False):
@@ -123,13 +187,13 @@ def generateFilter(video_paths, resolution_list, layout_list,print_nicely = Fals
 
     video_counter,filter = 0, '-filter_complex " '
     filter += null_video
-    filter += "\n " if print_nicely else filter
+    filter += "\n " if print_nicely else " "
     for video in video_paths:
         filter += "[{}:v] setpts=PTS-STARTPTS,scale={}x{}[tile_{}]; ".format(video_counter,res_tile[0],res_tile[1],video_counter)
         video_counter += 1
         if video_counter == layout_list[0] * layout_list[1]:
             break
-    filter += "\n " if print_nicely else filter
+    filter += "\n " if print_nicely else " "
 
     tile_count,x_pos,y_pos = 0,0,0
     for tile_down in range(layout_list[1]):
@@ -142,7 +206,7 @@ def generateFilter(video_paths, resolution_list, layout_list,print_nicely = Fals
             else:
                 filter += '" '
             x_pos += res_tile[0]
-            filter += "\n " if print_nicely else filter
+            filter += "\n " if print_nicely else " "
         x_pos = 0
         y_pos += res_tile[1]
 
@@ -156,10 +220,9 @@ def generateCommand(video_paths, resolution, shape, output_filename = "output.mp
 
     ffmpeg_command_string = "ffmpeg -y -r 30 "
     ffmpeg_command_string += generateInputVideo(video_paths, shape[0] * shape[1],print_nicely=print_nicely)
-    print(ffmpeg_command_string)
     ffmpeg_command_string += generateFilter(video_paths,resolution,shape,print_nicely=print_nicely)
     ffmpeg_command_string += generateOutput(output_filename, print_nicely=print_nicely)
-
+    print(ffmpeg_command_string)
 
     return ffmpeg_command_string
 
@@ -168,11 +231,19 @@ if __name__ == "__main__":
 
     import argparse
 
+    def list_of_strings(arg):
+        return arg.split(',')
+
+
     arg_parser = argparse.ArgumentParser(description="Generate an n x n matrix of videos. \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
     arg_parser.add_argument('-i', '--inputs', nargs=1, metavar='INPUT_VIDEOS', type=str,
                             help="Path to the input videos.")
+
+    arg_parser.add_argument('-c', '--cameras', metavar='CAMERAS', type=list_of_strings,
+                            help="Cameras to use.")
+
 
     arg_parser.add_argument('-g', '--generate', dest='generate_video', default=False, action="store_true",
                             help="Generate the video, instead of just the command")
@@ -193,52 +264,50 @@ if __name__ == "__main__":
                             help="Destination for downloaded files")
 
 
-
     cml_args = arg_parser.parse_args()
+
 
     # Load the config file
     # syscon = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
 
     # Set the web page to monitor
-    print("Input file path   {}".format(cml_args.inputs))
-    print("Generate video    {}".format(cml_args.generate_video))
+    if cml_args.inputs is None and cml_args.cameras is None:
+        print("No input arguments given, quitting")
+        exit()
+
+
+
+
+
+
 
     if cml_args.resolution is None:
         cml_args.resolution = [cml_args.shape[0] * 1280, cml_args.shape[1] * 720]
+
+    if not cml_args.cameras is None:
+        stationIDs = cml_args.cameras
+        url_list = convertListOfStationIDsToListOfUrls(cml_args.cameras)
+        print(url_list)
+        delete_at_end = True
+        video_directory, input_video_paths = downloadFilesToTmp(url_list, stationIDs)
+
+
+    print("Input file path   {}".format(cml_args.inputs))
+    print("Input cameras     {}".format(cml_args.cameras))
+    print("Generate video    {}".format(cml_args.generate_video))
+
     print("Output resolution {}".format(cml_args.resolution))
     print("Output shape      {}".format(cml_args.shape))
     print("Output file       {}".format(cml_args.output))
     print("Weblog list of cameras {}".format(cml_args.cameras))
 
-    if cml_args.folder is None:
-        working_dir = tempfile.mkdtemp()
-        delete_at_end = True
-    else:
-        working_dir = cml_args.folder
-        delete_at_end = False
-    print("Folder for downloaded files {}".format(working_dir))
-
-    input_video_paths = []
-    cameras_list = cml_args.cameras[0].split(",")
-    print(cameras_list)
-    if len(cameras_list) > 0:
-        temp_dir = tempfile.mkdtemp()
-        print("Working in {:s}".format(temp_dir))
-    for camera in cameras_list:
-        country_code = camera[0:2]
-        url = TEMPLATE_WEB_ADDRESS.replace("$COUNTRY_CODE", country_code).replace("$CAMERA",camera)
-        print("Downloading camera {:s} with country code {:s}".format(camera, country_code))
-        print("From URL {:s}".format(url))
-        video = requests.get(url, allow_redirects=True)
-        destination_file = os.path.join(temp_dir, "{:s}.mp4".format(camera.lower()))
-        open(destination_file,"wb").write(video.content)
-        input_video_paths.append(destination_file)
 
 
     print_nicely = True
     ffmpeg_command_string = ""
+
     if cml_args.output is None:
-        output_filename = "output.mp4"
+        output_filename = ["output.mp4"]
     else:
         output_filename = cml_args.output[0]
 
@@ -248,10 +317,11 @@ if __name__ == "__main__":
             ffmpeg_command_string = generateCommand(cml_args.inputs, cml_args.resolution, cml_args.shape, cml_args.output)
         elif len(cml_args.inputs) == 1:
             #possibly been passed a directory of videos
+            delete_at_end = False
             input_videos = os.listdir(cml_args.inputs[0])
             path_input_videos = cml_args.inputs[0]
             input_videos.sort()
-
+            input_video_paths = []
             for video in input_videos:
                 if video.endswith(".mp4"):
                     input_video_paths.append(os.path.join(path_input_videos,video))
@@ -262,6 +332,7 @@ if __name__ == "__main__":
     else:
         print("Number of files was not an integer")
 
+    print_nicely= False
     ffmpeg_command_string = generateCommand(input_video_paths, cml_args.resolution, cml_args.shape, cml_args.output[0],
                                             print_nicely)
 
@@ -270,9 +341,8 @@ if __name__ == "__main__":
     print(ffmpeg_command_string.replace("\n"," "))
     if cml_args.generate_video:
         subprocess.call(ffmpeg_command_string.replace("\n"," "), shell=True)
-    if delete_at_end:
-        for camera in cameras_list:
-            destination_file = os.path.join(temp_dir, "{:s}.mp4".format(camera.lower()))
-            os.unlink(destination_file)
-        os.rmdir(temp_dir)
+    if delete_at_end and False:
+        for input_video in input_video_paths:
+            os.unlink(input_video)
+        os.rmdir(video_directory)
     print()
