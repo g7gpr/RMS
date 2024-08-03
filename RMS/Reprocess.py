@@ -36,10 +36,15 @@ from Utils.PlotFieldsums import plotFieldsums
 from Utils.RMS2UFO import FTPdetectinfo2UFOOrbitInput
 from Utils.ShowerAssociation import showerAssociation
 from Utils.PlotTimeIntervals import plotFFTimeIntervals
+from Utils.TimestampRMSVideos import timestampRMSVideos
+from RMS.Formats.ObservationSummary import ObservationSummary
 
 # Get the logger from the main module
 log = logging.getLogger("logger")
 
+
+# Initialise an observation summary object
+observation_summary = ObservationSummary()
 
 
 def getPlatepar(config, night_data_dir):
@@ -142,6 +147,12 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
         detector: [QueuedPool instance] Handle to the detector.  
     """
 
+
+
+    # populate the observation summary object
+    observation_summary.gatherFileSystemInformation(os.path.split(night_data_dir)[0], config.stationID)
+    observation_summary.sensor_type = observation_summary.gatherCameraInformation(config)
+
     # Remove final slash in the night dir
     if night_data_dir.endswith(os.sep):
         night_data_dir = night_data_dir[:-1]
@@ -173,7 +184,8 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
             # If the files were previously detected, there is no detector
             detector = None
 
-
+        observation_summary.number_fits_detected = len(ff_detected)
+        observation_summary.detections_before_ml = len(readFTPdetectinfo(night_data_dir,ftpdetectinfo_name))
 
         # Filter out detections using machine learning
         if config.ml_filter > 0:
@@ -182,12 +194,18 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
 
             ff_detected = filterFTPdetectinfoML(config, os.path.join(night_data_dir, ftpdetectinfo_name), \
                 threshold=config.ml_filter, keep_pngs=False, clear_prev_run=True)
+            observation_summary.detections_after_ml = len(ff_detected)
 
+
+        observation_summary.detections_after_ml = len(readFTPdetectinfo(night_data_dir,ftpdetectinfo_name))
 
         # Get the platepar file
         platepar, platepar_path, platepar_fmt = getPlatepar(config, night_data_dir)
 
-
+        if not platepar is None:
+            observation_summary.camera_pointing = format("az {:.2f}°, alt {:.2f}°".format(platepar.az_centre,platepar.alt_centre))
+            observation_summary.camera_fov = format("horizontal {:.2f}°, vertical {:.2f}°".format(platepar.fov_h,platepar.fov_v))
+            observation_summary.lens = observation_summary.estimateLens(platepar.fov_h)
         # Run calibration check and auto astrometry refinement
         if (platepar is not None) and (calstars_name is not None):
 
@@ -203,14 +221,14 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
             if fit_status:
 
                 log.info('Astrometric calibration SUCCESSFUL!')
-
+                observation_summary.photometry_good = True
                 # Save the refined platepar to the night directory and as default
                 platepar.write(os.path.join(night_data_dir, config.platepar_name), fmt=platepar_fmt)
                 platepar.write(platepar_path, fmt=platepar_fmt)
 
             else:
                 log.info('Astrometric calibration FAILED!, Using old platepar for calibration...')
-
+                observation_summary.photometry_good = False
 
 
             # If a flat is used, disable vignetting correction
@@ -323,6 +341,7 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
 
 
 
+
     log.info('Plotting field sums...')
 
     # Plot field sums
@@ -337,6 +356,18 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
 
     # Archive all fieldsums to one archive
     archiveFieldsums(night_data_dir)
+
+
+    # If videos were saved, rename them with the timestamp of the first frame
+    # This command requires the FS archive to be present
+    if (config.raw_video_dir is not None) or config.raw_video_dir_night:
+
+        try:
+            timestampRMSVideos(night_data_dir, rename=True)
+
+        except Exception as e:
+            log.debug('Renaming videos failed with the message:\n' + repr(e))
+            log.debug(repr(traceback.format_exception(*sys.exc_info())))
 
 
     # List for any extra files which will be copied to the night archive directory. Full paths have to be 
@@ -398,11 +429,19 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
     # Plot timestamp intervals
     try:
         jitter_quality, dropped_frame_rate, intervals_path = plotFFTimeIntervals(night_data_dir, fps=config.fps)
-        log.info('Timestamp Intervals Analysis: Jitter Quality: {:.1f}%, Dropped Frame Rate: {:.1f}%'.format(
-            jitter_quality, dropped_frame_rate))
+
+        if jitter_quality is not None and dropped_frame_rate is not None:
+            log.info('Timestamp Intervals Analysis: Jitter Quality: {:.1f}%, Dropped Frame Rate: {:.1f}%'
+                     .format(jitter_quality, dropped_frame_rate))
+            
+        else:
+            log.info('Timestamp Intervals Analysis: Failed')
+
         # Add the timelapse to the extra files
         if intervals_path is not None:
             extra_files.append(intervals_path)
+        observation_summary.jitter_quality = jitter_quality
+        observation_summary.dropped_frame_rate = dropped_frame_rate
 
     except Exception as e:
         log.debug('Plotting timestamp interval failed with message:\n' + repr(e))
@@ -451,13 +490,14 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
     
         # If all FF files are not uploaded, add two FF files which were successfuly recalibrated
         recalibrated_ffs = []
-        for ff_name in recalibrated_platepars:
+        if recalibrated_platepars is not None:
+            for ff_name in recalibrated_platepars:
 
-            pp = recalibrated_platepars[ff_name]
+                pp = recalibrated_platepars[ff_name]
 
-            # Check if the FF was recalibrated
-            if pp.auto_recalibrated:
-                recalibrated_ffs.append(os.path.join(night_data_dir, ff_name))
+                # Check if the FF was recalibrated
+                if pp.auto_recalibrated:
+                    recalibrated_ffs.append(os.path.join(night_data_dir, ff_name))
 
         # Choose two files randomly
         if len(recalibrated_ffs) > 2:
@@ -475,7 +515,10 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
                 if validFFName(ff_name)]
 
             # Add any two FF files
-            extra_files += random.sample(ff_list, 2)
+            if len(ff_list) > 2:
+                extra_files += random.sample(ff_list, 2)
+            else:
+                extra_files += ff_list
         
 
     ### ###
@@ -519,8 +562,16 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
                     celestial_coords_given=(platepar is not None))
 
 
+    observation_summary_file_name = os.path.split(night_data_dir.strip(os.sep))[1] + '_observation_summary.txt'
+    observation_summary_path_file_name = os.path.join(night_data_dir, observation_summary_file_name)
+    observation_summary.writeToFile(observation_summary_path_file_name)
+
+    log.info("Observation summary file writen to {}".format(observation_summary_path_file_name))
+    extra_files.append(observation_summary_path_file_name)
     night_archive_dir = os.path.join(os.path.abspath(config.data_dir), config.archived_dir, 
         night_data_dir_name)
+
+
 
     log.info('Archiving detections to ' + night_archive_dir)
     
@@ -546,6 +597,11 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str, \
         help="Path to a config file which will be used instead of the default one.")
+    
+    arg_parser.add_argument('--num_cores', metavar='NUM_CORES', type=int, default=None, \
+        help="Number of cores to use for detection. Default is what is specific in the config file. " 
+        "If not given in the config file, all available cores will be used."
+        )
 
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
@@ -564,6 +620,16 @@ if __name__ == "__main__":
     log = logging.getLogger("logger")
 
     ######
+
+    
+    # Set the number of cores to use if given
+    if cml_args.num_cores is not None:
+        config.num_cores = cml_args.num_cores
+
+        if config.num_cores <= 0:
+            config.num_cores = -1
+
+            log.info("Using all available cores for detection.")
 
 
     # Process the night

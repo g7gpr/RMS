@@ -17,6 +17,11 @@
 from __future__ import print_function, division, absolute_import
 
 import os
+import sys
+import traceback
+
+import RMS.Reprocess
+
 # Set GStreamer debug level. Use '2' for warnings in production environments.
 os.environ['GST_DEBUG'] = '3'
 
@@ -31,9 +36,11 @@ import cv2
 import numpy as np
 
 from RMS.Misc import ping
+from RMS.Routines.GstreamerCapture import GstVideoFile
 
 # Get the logger from the main module
 log = logging.getLogger("logger")
+
 
 GST_IMPORTED = False
 try:
@@ -52,7 +59,7 @@ class BufferedCapture(Process):
     
     running = False
     
-    def __init__(self, array1, startTime1, array2, startTime2, config, video_file=None):
+    def __init__(self, array1, startTime1, array2, startTime2, config, video_file=None, night_data_dir=None):
         """ Populate arrays with (startTime, frames) after startCapture is called.
         
         Arguments:
@@ -63,6 +70,7 @@ class BufferedCapture(Process):
 
         Keyword arguments:
             video_file: [str] Path to the video file, if it was given as the video source. None by default.
+            night_data_dir: [str] Path to the directory where night data is stored. None by default.
 
         """
         
@@ -81,6 +89,8 @@ class BufferedCapture(Process):
 
         self.video_file = video_file
 
+        self.night_data_dir = night_data_dir
+
         # A frame will be considered dropped if it was late more then half a frame
         self.time_for_drop = 1.5*(1.0/config.fps)
 
@@ -97,7 +107,7 @@ class BufferedCapture(Process):
         self.start_timestamp = 0
         self.frame_shape = None
         self.convert_to_gray = False
-                    
+
 
     def startCapture(self, cameraID=0):
         """ Start capture using specified camera.
@@ -132,6 +142,15 @@ class BufferedCapture(Process):
         if self.is_alive():
             log.info('Terminating capture...')
             self.terminate()
+        
+        # Free shared memory after the compressor is done
+        try:
+            log.debug('Freeing frame buffers in BufferedCapture...')
+            del self.array1
+            del self.array2
+        except Exception as e:
+            log.debug('Freeing frame buffers failed with error:' + repr(e))
+            log.debug(repr(traceback.format_exception(*sys.exc_info())))
 
         return self.dropped_frames.value
 
@@ -341,7 +360,7 @@ class BufferedCapture(Process):
         if self.n > self.last_calculated_fps_n:
             self.last_calculated_fps = 1e9/m
             self.last_calculated_fps_n = self.n
-
+            RMS.Reprocess.observation_summary.last_calculated_fps = self.last_calculated_fps
         # On initial run or after a reset
         if self.n == 1:
             smoothed_pts = new_pts
@@ -392,13 +411,13 @@ class BufferedCapture(Process):
             # GStreamer
             if GST_IMPORTED and (self.config.media_backend == 'gst') and (not self.media_backend_override):
 
-                # Pull a sample from the appsink
+                # Pull a frame from the GStreamer pipeline
                 sample = self.device.emit("pull-sample")
                 if not sample:
                     log.info("GStreamer pipeline did not emit a sample.")
                     return False, None, None
-
-                # Try to get the buffer from the sample
+                
+                # Extract the frame buffer and timestamp
                 buffer = sample.get_buffer()
                 if not buffer:
                     log.error("Failed to get buffer from sample.")
@@ -468,6 +487,10 @@ class BufferedCapture(Process):
         Return True if all color channels contain identical data.
         """
 
+        # If the frame is one-dimensional, it is grayscale
+        if len(frame.shape) == 2:
+            return True
+
         # Check if the R, G, and B channels are equal
         b, g, r = cv2.split(frame)
         if np.array_equal(r, g) and np.array_equal(g, b):
@@ -478,6 +501,11 @@ class BufferedCapture(Process):
     
     def handleGrayscaleConversion(self, map_info):
         """Handle conversion of frame to grayscale if necessary."""
+
+        # If the frame is already grayscale, return it as is
+        if len(self.frame_shape) == 2:
+            return np.ndarray(shape=self.frame_shape, buffer=map_info.data, dtype=np.uint8)
+
         if not self.convert_to_gray:
             return np.ndarray(shape=self.frame_shape, buffer=map_info.data, dtype=np.uint8)
 
@@ -487,7 +515,8 @@ class BufferedCapture(Process):
         return gray_frame
 
 
-    def createGstreamDevice(self, video_format, max_retries=5, retry_interval=1):
+    def createGstreamDevice(self, video_format, gst_decoder='decodebin', 
+                            video_file_dir=None, segment_duration_sec=30, max_retries=5, retry_interval=1):
         """
         Creates a GStreamer pipeline for capturing video from an RTSP source and 
         initializes playback with specific configurations.
@@ -497,9 +526,15 @@ class BufferedCapture(Process):
         Arguments:
             video_format: [str] The desired video format for the conversion, 
                 e.g., 'BGR', 'GRAY8', etc.
+            
+        Keyword arguments:
+            gst_decoder: [str] The gst_decoder to use for the Gstreamer video stream. Default is 'decodebin'.
+            video_file_dir: [str] The directory where the raw video stream should be saved. 
+                If None, the raw stream will not be saved to disk. Default is None.
+            segment_duration_sec: [int] The duration of each video segment in seconds. 
+                Default is 30.
             max_retries: [int] The maximum number of retry attempts
             retry_interval: [float] The number of seconds to wait between retries
-
 
         Returns:
             Gst.Element: The appsink element of the created GStreamer pipeline, 
@@ -508,16 +543,48 @@ class BufferedCapture(Process):
 
         device_url = self.extractRtspUrl(self.config.deviceID)
 
-        device_str = ("rtspsrc  buffer-mode=1 protocols=tcp tcp-timeout=5000000 retry=5 "
-                      "location=\"{}\" ! "
-                      "rtph264depay ! h264parse ! avdec_h264").format(device_url)
+        if self.config.protocol == 'udp':
+            protocol_str = "protocols=udp retry=5"
+            # rtspsrc_params = ("rtspsrc buffer-mode=1 protocols=udp retry=5")
+            RMS.Reprocess.observation_summary.protocol = 'udp'
 
-        conversion = "videoconvert ! video/x-raw,format={}".format(video_format)
-        pipeline_str = ("{} ! queue leaky=downstream max-size-buffers=100 max-size-bytes=0 max-size-time=0 ! "
-                        "{} ! queue max-size-buffers=100 max-size-bytes=0 max-size-time=0 ! "
-                        "appsink max-buffers=100 drop=true sync=0 name=appsink").format(device_str, conversion)
+        else:  
+            # Default to TCP
+            protocol_str = "protocols=tcp tcp-timeout=5000000 retry=5"
+            #rtspsrc_params = ("rtspsrc buffer-mode=1 protocols=tcp tcp-timeout=5000000 retry=5")
+            RMS.Reprocess.observation_summary.protocol = 'tcp'
+            
+        # Define the source up to the point where we want to branch off
+        source_to_tee = (
+            "rtspsrc buffer-mode=1 {:s} "
+            "location=\"{:s}\" ! "
+            "rtph264depay ! tee name=t"
+            ).format(protocol_str, device_url)
 
-        log.debug("GStreamer pipeline string: {}".format(pipeline_str))
+        # Branch for processing
+        processing_branch = (
+            "t. ! queue ! h264parse ! {:s} ! videoconvert ! video/x-raw,format={:s} ! "
+            "queue leaky=downstream max-size-buffers=100 max-size-bytes=0 max-size-time=0 ! "
+            "appsink max-buffers=100 drop=true sync=0 name=appsink"
+            ).format(gst_decoder, video_format)
+        
+         # Branch for storage - if video_file_dir is not None, save the raw stream to a file
+        if video_file_dir is not None:
+
+            video_location = os.path.join(video_file_dir, "video_%05d.mkv")
+            storage_branch = (
+                "t. ! queue ! h264parse ! "
+                "splitmuxsink location={:s} max-size-time={:d} muxer-factory=matroskamux"
+                ).format(video_location, int(segment_duration_sec*1e9))
+
+        # Otherwise, skip saving the raw stream to disk
+        else:
+            storage_branch = ""
+
+         # Combine all parts of the pipeline
+        pipeline_str = "{:s} {:s} {:s}".format(source_to_tee, processing_branch, storage_branch)
+
+        log.debug("GStreamer pipeline string: {:s}".format(pipeline_str))
 
         # Set the pipeline to PLAYING state with retries
         for attempt in range(max_retries):
@@ -548,7 +615,7 @@ class BufferedCapture(Process):
                 start_time_str = (datetime.datetime.fromtimestamp(self.start_timestamp)
                                   .strftime('%Y-%m-%d %H:%M:%S.%f'))
 
-                log.info("Start time is {}".format(start_time_str))
+                log.info("Start time is {:s}".format(start_time_str))
 
                 return self.pipeline.get_by_name("appsink")
 
@@ -571,8 +638,17 @@ class BufferedCapture(Process):
 
         # Use a file as the video source
         if self.video_file is not None:
-            self.device = cv2.VideoCapture(self.video_file)
 
+            # If the video file is a GStreamer file, use the GstVideoFile class
+            if GST_IMPORTED and (self.config.media_backend == 'gst'):
+
+                self.device = GstVideoFile(self.video_file, decoder=self.config.gst_decoder,
+                                           video_format=self.config.gst_colorspace)
+                RMS.Reprocess.observation_summary.media_backend = 'gst'
+            # Fall back to OpenCV if GStreamer is not available
+            else:
+                self.device = cv2.VideoCapture(self.video_file)
+                RMS.Reprocess.observation_summary.media_backend = 'OpenCV'
         # Use a device as the video source
         else:
 
@@ -627,7 +703,7 @@ class BufferedCapture(Process):
             if (self.config.media_backend == 'gst') and (not GST_IMPORTED):
                 log.info("GStreamer is not available. Switching to alternative.")
                 self.media_backend_override = True
-
+                RMS.Reprocess.observation_summary.media_backend = None
             if (self.config.media_backend == 'gst') and GST_IMPORTED:
                 
                 log.info("Initialize GStreamer Standalone Device.")
@@ -646,13 +722,32 @@ class BufferedCapture(Process):
                 self.last_m_err = float('inf')
                 self.last_m_err_n = 0
 
-                try:
+
+                try: 
+
                     # Initialize GStreamer
                     Gst.init(None)
 
+                    # Determine if which directory to save the raw video, if any
+                    raw_video_dir = None
+                    if self.config.raw_video_dir_night:
+                        raw_video_dir = self.night_data_dir
+
+                    else:
+                        raw_video_dir = self.config.raw_video_dir
+
                     # Create and start a GStreamer pipeline
-                    self.device = self.createGstreamDevice('BGR', max_retries=5, retry_interval=1)
-                    self.pts_buffer = []  # Reset pts buffer
+                    log.info("Creating GStreamer pipeline...")
+                    self.device = self.createGstreamDevice(
+                        self.config.gst_colorspace, gst_decoder=self.config.gst_decoder,
+                        video_file_dir=raw_video_dir, segment_duration_sec=self.config.raw_video_duration,
+                        max_retries=5, retry_interval=1
+                        )
+                    
+                    log.info("GStreamer pipeline created!")   
+                    
+                    # Reset presentation time stamp buffer
+                    self.pts_buffer = []
 
                     # Attempt to get a sample and determine the frame shape
                     sample = self.device.emit("pull-sample")
@@ -676,23 +771,32 @@ class BufferedCapture(Process):
                     # Extract width, height, and format, and create frame
                     width = structure.get_value('width')
                     height = structure.get_value('height')
-                    self.frame_shape = (height, width, 3)
+
+                    if self.config.gst_colorspace == 'GRAY8':
+                        self.frame_shape = (height, width)
+                    else:
+                        self.frame_shape = (height, width, 3)
+
                     frame = np.ndarray(shape=self.frame_shape, buffer=map_info.data, dtype=np.uint8)
+
+                    # Unmap the buffer
+                    buffer.unmap(map_info)
                     
                     # Check if frame is grayscale and set flag
                     self.convert_to_gray = self.isGrayscale(frame)
-                    log.info("Video format: BGR, {}P, color: {}".format(height, not self.convert_to_gray))
+                    log.info("Video format: {}, {}P, color: {}".format(self.config.gst_colorspace, height, 
+                                                                       not self.convert_to_gray))
 
                     # Set the video device type
                     self.video_device_type = "gst"
-
+                    RMS.Reprocess.observation_summary.media_backend = "gst"
                     return True
 
                 except Exception as e:
                     log.info("Error initializing GStreamer, switching to alternative. Error: {}".format(e))
                     self.media_backend_override = True
                     self.releaseResources()
-
+                    RMS.Reprocess.observation_summary.media_backend = "OpenCV"
 
             if self.config.media_backend == 'v4l2':
                 try:
@@ -738,10 +842,10 @@ class BufferedCapture(Process):
 
                 time.sleep(5)
                 log.info('GStreamer Video device released!')
-
+                RMS.Reprocess.observation_summary.media_backend = "gst"
             except Exception as e:
                 log.error('Error releasing GStreamer pipeline: {}'.format(e))
-                
+                RMS.Reprocess.observation_summary.media_backend = "gst not successfully released"
         if self.device:
 
             try:
@@ -749,13 +853,29 @@ class BufferedCapture(Process):
                 if self.video_device_type == "cv2":
                     self.device.release()
                     log.info('OpenCV Video device released!')
-
+                    RMS.Reprocess.observation_summary.media_backend = "OpenCV"
             except Exception as e:
                 log.error('Error releasing OpenCV device: {}'.format(e))
-
+                RMS.Reprocess.observation_summary.media_backend = "OpenCV not successfully released"
             finally:
                 self.device = None  # Reset device to None after releasing
 
+
+        # Release the video device if running Gstreamer
+        if self.video_file is not None:
+
+            if GST_IMPORTED and (self.config.media_backend == 'gst'):
+
+                try:
+                    self.device.release()
+                    log.info('GStreamer Video device released!')
+
+                except Exception as e:
+                    log.error('Error releasing GStreamer device: {}'.format(e))
+
+                finally:
+                    self.device = None
+            
 
     def run(self):
         """ Capture frames.
@@ -956,7 +1076,7 @@ class BufferedCapture(Process):
                     if self.config.report_dropped_frames:
                         log.info("{}/{} frames dropped or late! Time for frame: {:.3f}, convert: {:.3f}, assignment: {:.3f}".format(
                             str(n_dropped), str(self.dropped_frames.value), t_frame, t_convert, t_assignment))
-
+                    RMS.Reprocess.observation_summary.dropped_frames = self.dropped_frames.value
 
                 # If cv2:
                 if (self.config.media_backend != 'gst') and not self.media_backend_override:
@@ -1071,3 +1191,122 @@ class BufferedCapture(Process):
 
         log.info('Releasing video device...')
         self.releaseResources()
+
+
+if __name__ == "__main__":
+
+    import argparse
+    import ctypes
+
+    import multiprocessing
+
+    import RMS.ConfigReader as cr
+    from RMS.Logger import initLogging
+
+    ###
+
+    arg_parser = argparse.ArgumentParser(description='Test capturing frames from a video source defined in the config file. ')
+
+    arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str, \
+        help="Path to a config file which will be used instead of the default one.")
+    
+    arg_parser.add_argument('--video_file', metavar='VIDEO_FILE', type=str, \
+        help="Path to a video file to be used as a video source instead of a camera.")
+    
+
+     # Parse the command line arguments
+    cml_args = arg_parser.parse_args()
+
+    ###
+    
+    # Load the config file
+    config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
+
+    # Initialize the logger
+    initLogging(config)
+
+    # Get the logger handle
+    log = logging.getLogger("logger")
+
+    # Print the kind of media backend
+    print("Station code: {}".format(config.stationID))
+    print('Media backend: {}'.format(config.media_backend))
+
+
+    # Init dummy shared memory
+    sharedArrayBase = multiprocessing.Array(ctypes.c_uint8, 256*(config.width)*(config.height))
+    sharedArray = np.ctypeslib.as_array(sharedArrayBase.get_obj())
+    sharedArray = sharedArray.reshape(256, (config.height), (config.width))
+    startTime = multiprocessing.Value('d', 0.0)
+
+
+    # If a video is given, use it as the video source
+    if cml_args.video_file:
+
+        print("Using video file: {}".format(cml_args.video_file))
+
+        bc = BufferedCapture(sharedArray, startTime, sharedArray, startTime, config, 
+                             video_file=cml_args.video_file)
+        
+        bc.initVideoDevice()
+        
+
+        # Read at least 256 frames from the video file
+        for i in range(256):
+            ret, frame = bc.device.read()
+
+            print('Frame read: {}'.format(i))
+            if not ret:
+                print("End of video file!")
+                break
+                
+        # Close the device
+        bc.releaseResources()
+
+        
+    
+    # Capture from a camera
+    else:
+
+        # Init the BufferedCapture object
+        bc = BufferedCapture(sharedArray, startTime, sharedArray, startTime, config)
+
+        device = bc.createGstreamDevice('BGR', video_file_dir=None, segment_duration_sec=config.raw_video_duration)
+
+        print('GStreamer device created!')
+
+        ### TEST
+        print("Pulling a sample...", end=' ')
+        sample = device.emit("pull-sample")
+        print('Sample pulled!')
+
+        print('Mapping buffer...', end=' ')
+        buffer = sample.get_buffer()
+        ret, map_info = buffer.map(Gst.MapFlags.READ)
+        print('Buffer mapped!')
+
+        print('Getting caps...', end=' ')
+        caps = sample.get_caps()
+        print('Caps obtained!')
+
+        print('Getting structure...', end=' ')
+        structure = caps.get_structure(0)
+        print('Structure obtained!')
+
+        print('Extracting width and height...', end=' ')
+        width = structure.get_value('width')
+        height = structure.get_value('height')
+        print('Width and height extracted!')
+
+        print('Creating frame...', end=' ')
+        frame_shape = (height, width, 3)
+        frame = np.ndarray(shape=frame_shape, buffer=map_info.data, dtype=np.uint8)
+        print('Frame created!')
+
+        print('Unmapping buffer...', end=' ')
+        buffer.unmap(map_info)
+        print('Buffer unmapped!')
+        ###
+
+        # Close the device
+        bc.releaseResources()
