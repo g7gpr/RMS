@@ -11,6 +11,7 @@ import time
 import logging
 import glob
 import argparse
+import subprocess
 
 import ephem
 
@@ -75,7 +76,7 @@ def availableSpace(dirname):
         return st.f_bavail*st.f_frsize
 
 
-def usedSpace(obj_path):
+def usedSpaceRecursive(obj_path):
 
     """
 
@@ -83,24 +84,67 @@ def usedSpace(obj_path):
         obj_path : path from which to start searching
 
     Returns:
-        file size of files found in directory path
+        GB file size of files found in directory path
     """
 
     n = 0
     if os.path.isdir(obj_path):
-        n += 4 / (1024 ** 2) # allowance for size of directory node 4.0k
+        n += 4.024 / (1024 ** 2) # allowance for size of directory node 4.0k
         for directory_entry in os.listdir(obj_path):
             directory_entry_path = os.path.join(obj_path, directory_entry)
             if os.path.islink(directory_entry_path):
                 continue
-            n += os.path.getsize(directory_entry_path) / 1024 ** 3 if os.path.isfile(directory_entry_path) else usedSpace(directory_entry_path)
+            if os.path.isfile(directory_entry_path):
+                n += os.path.getsize(directory_entry_path) / 1024 ** 3
+            else:
+                n += usedSpace(directory_entry_path)
     else:
         n += os.path.getsize(obj_path) / 1024 ** 3
-
     return n
 
+def usedSpaceFromOS(obj_path):
 
-def objectsToDelete(object_path, stationID, quota_gb = 0, bz2=False):
+    """
+
+    Args:
+        obj_path : path from which to start searching
+
+    Returns:
+        GB file size of files found in directory path
+    """
+
+    byte_encode = subprocess.check_output(["du", "-d0", obj_path])
+    text = byte_encode.decode(encoding="utf-8")
+    value = text.split("\t")[0]
+
+    return float(value) / (1024 ** 2)
+
+
+def usedSpaceNoRecursion(obj_path):
+    """
+
+        Args:
+            obj_path : path from which to start searching
+
+        Returns:
+            GB file size of files found in directory path
+        """
+
+
+    path_list, n = os.walk(obj_path), 0
+    for root, directory_list, file_list in path_list:
+        for _ in directory_list:
+            n += 4.024 / 1024 ** 2
+        for file_name in file_list:
+            n += os.path.getsize(os.path.join(root, file_name)) / 1024 ** 3
+    return n
+
+def usedSpace(obj):
+
+    return usedSpaceNoRecursion(obj)
+
+
+def objectsToDelete(object_path, stationID, quota_gb=0, bz2=False):
 
     """
 
@@ -110,18 +154,12 @@ def objectsToDelete(object_path, stationID, quota_gb = 0, bz2=False):
         bz2: look at bz2 files if set true, else only work on directories
 
     Returns:
-
+        list of full paths to file system objects for deletion
     """
 
     if quota_gb == 0 or quota_gb == None:
         log.info("Disc quota system disabled for {:s}".format(object_path))
         return []
-    else:
-        if bz2:
-            log.info("Quota for bz2 files set at {:.1f}GB".format(quota_gb))
-        else:
-            log.info("Quota for directory {:s} set at {:.1f}GB".format(object_path,quota_gb))
-
 
     # get a list of objects
     if bz2:
@@ -608,7 +646,10 @@ if __name__ == '__main__':
     arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str, help="Path to a config file")
     cml_args = arg_parser.parse_args()
 
-
+    print("Disc use routine checks -these should all produce similar results")
+    print("Used space no recursion   {:.5f}GB".format(usedSpaceNoRecursion("/home/david/RMS_data")))
+    print("Used space with recursion {:.5f}GB".format(usedSpaceRecursive("/home/david/RMS_data")))
+    print("Used space from OS        {:.5f}GB".format(usedSpaceFromOS("/home/david/RMS_data")))
 
     cfg_path = os.path.abspath('.') # default to using config from current folder
     cfg_file = '.config'
