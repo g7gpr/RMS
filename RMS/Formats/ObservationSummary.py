@@ -172,8 +172,8 @@ class ObservationSummary:
 
     def writeToFile(self, file_path_and_name):
         with open(file_path_and_name, "w") as summary_file_handle:
-            as_utf8 = self.serialize().encode("ascii", errors="ignore")
-            summary_file_handle.write(as_utf8)
+            as_ascii = self.serialize().encode("ascii", errors="ignore").decode("utf8")
+            summary_file_handle.write(as_ascii)
 
     def readFromFile(self, file_path_and_name):
 
