@@ -193,12 +193,16 @@ def objectsToDelete(object_path, stationID, quota_gb=0, bz2=False):
 def rmList(delete_list, dummy_run=True):
 
     for full_path in delete_list:
+        full_path = os.path.expanuser(full_path)
         try:
             if dummy_run:
                 log.info("Config setting inhibited deletion of {}".format(os.path.basename(full_path)))
             else:
-                shutil.rmtree(full_path)
-                log.info("Deleted {}".format(os.path.basename(full_path)))
+                if os.path.exists(full_path):
+                    shutil.rmtree(full_path)
+                    log.info("Deleted {}".format(os.path.basename(full_path)))
+                else:
+                    log.warning("Attempted to delete {}, which did not exist".format(full_path))
         except:
             log.info("Could not delete {}".format(os.path.basename(full_path)))
 
@@ -434,16 +438,7 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
             log.warning("No quota allocation remains for captured directories, please increase rms_data_quota")
             capt_dir_quota = 0
 
-        log.info(quotaReport(archived_dir, captured_dir, capt_dir_quota, config))
-
-        delete_list = objectsToDelete(captured_dir, config.stationID, capt_dir_quota,bz2=False)
-        rmList(delete_list, dummy_run=config.quota_management_disabled)
-        delete_list = objectsToDelete(archived_dir, config.stationID, config.arch_dir_quota, bz2=False)
-        rmList(delete_list, dummy_run=config.quota_management_disabled)
-        delete_list = objectsToDelete(archived_dir, config.stationID, config.bz2_files_quota, bz2=True)
-        rmList(delete_list, dummy_run=config.quota_management_disabled)
-
-        log.info(quotaReport(archived_dir, captured_dir, capt_dir_quota, config, after=True))
+        deleteByQuota(archived_dir, capt_dir_quota, captured_dir, config)
 
     # Calculate the approximate needed disk space for the next night
 
@@ -572,6 +567,23 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
 
 
     return True
+
+
+def deleteByQuota(archived_dir, capt_dir_quota, captured_dir, config):
+
+
+    log.info(quotaReport(archived_dir, captured_dir, capt_dir_quota, config), after=False)
+
+    delete_list = objectsToDelete(captured_dir, config.stationID, capt_dir_quota, bz2=False)
+    rmList(delete_list, dummy_run=config.quota_management_disabled)
+
+    delete_list = objectsToDelete(archived_dir, config.stationID, config.arch_dir_quota, bz2=False)
+    rmList(delete_list, dummy_run=config.quota_management_disabled)
+
+    delete_list = objectsToDelete(archived_dir, config.stationID, config.bz2_files_quota, bz2=True)
+    rmList(delete_list, dummy_run=config.quota_management_disabled)
+
+    log.info(quotaReport(archived_dir, captured_dir, capt_dir_quota, config, after=True))
 
 
 def deleteOldDirs(data_dir, config):
