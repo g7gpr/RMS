@@ -196,7 +196,7 @@ def objectsToDelete(object_path, stationID, quota_gb=0, bz2=False):
 def rmList(delete_list, dummy_run=True):
 
     for full_path in delete_list:
-        full_path = os.path.expanuser(full_path)
+        full_path = os.path.expanduser(full_path)
         try:
             if dummy_run:
                 log.info("Config setting inhibited deletion of {}".format(os.path.basename(full_path)))
