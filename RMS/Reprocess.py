@@ -565,7 +565,7 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
     observation_summary_file_name = os.path.split(night_data_dir.strip(os.sep))[1] + '_observation_summary.txt'
     observation_summary_path_file_name = os.path.join(night_data_dir, observation_summary_file_name)
     observation_summary.writeToFile(observation_summary_path_file_name)
-    log.info("\n\n " + observation_summary.serialize + "\n\n")
+    log.info("\n\n " + observation_summary.serialize() + "\n\n")
 
     log.info("Observation summary file writen to {}".format(observation_summary_path_file_name))
     extra_files.append(observation_summary_path_file_name)
