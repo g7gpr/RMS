@@ -510,7 +510,7 @@ def isBetweenVelocity(line, min_v, max_v):
 
 
 def fileAppendFilter(output_fh, file_to_append, ignore_line_marker, drop_duplicates, sl_set, sl_start, sl_end,
-                     radius_set, radius_ra, radius_dec, radius_radius, velocity_set, velocity_min, velocity_max):
+                     radius_set, radius_ra, radius_dec, radius_radius, velocity_set, velocity_min, velocity_max, included_count):
 
     """
     sl_set, sl_start, sl_end, radius_set, radius_ra, radius_dec, radius_radius, velocity_set, velocity_min, velocity_max)
@@ -524,7 +524,7 @@ def fileAppendFilter(output_fh, file_to_append, ignore_line_marker, drop_duplica
     :return: output_fh, duplicate_count
     """
 
-    duplicate_count, included_count = 0, 0
+    duplicate_count = 0
     with open(file_to_append) as input_fh:
         previous_line = ""
         for line in input_fh:
@@ -548,6 +548,7 @@ def fileAppendFilter(output_fh, file_to_append, ignore_line_marker, drop_duplica
                 else:
                     output_fh.write(line)
                     included_count += 1
+
             previous_line = line
 
     return output_fh, duplicate_count, included_count
@@ -886,13 +887,17 @@ def exportRange(source_file_path, sl_start = 0, sl_end = 360, ra=180, dec=0,
     directory_list = os.listdir(daily_directory)
     directory_list.sort()
 
-    duplicate_count, included = 0,0
+    duplicate_count, traj_count = 0,0
     for traj_file in directory_list:
         if traj_file[13:20].isnumeric():
+
+
+
             output_fh, duplicates, traj_count = fileAppendFilter(fh, os.path.join(daily_directory, traj_file),
                                                      "#", drop_duplicates, sl_set, sl_start, sl_end, radius_set, ra,
-                                                     dec, radius, velocity_set, v_min, v_max)
+                                                     dec, radius, velocity_set, v_min, v_max, traj_count)
             duplicate_count += duplicates
+
         else:
             print("Not adding {} to the {} file".format(traj_file, source_file_path))
 
@@ -960,9 +965,9 @@ if __name__ == "__main__":
     radius = 10
     v_dev = 5
 
-    for sl in range(0,360,5):
-        for ra in range(0,360,5):
-            for dec in range(-90,90,5):
+    for sl in range(240,260,5):
+        for ra in range(100,120,1):
+            for dec in range(25,35,5):
                 for v in range(5,100,5):
                     export_filename, trajectory_count = exportRange(trajectory_summary_all_file, sl-sl_dev, sl+sl_dev, ra, dec, radius, v-v_dev, v+v_dev)
                     print(export_filename,trajectory_count)
