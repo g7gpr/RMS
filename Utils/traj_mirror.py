@@ -961,14 +961,14 @@ if __name__ == "__main__":
     header_list,i = getHeaders(trajectory_summary_all_file),0
 
 
-    sl_dev = 10
+    sl_dev = 3
     radius = 10
     v_dev = 5
 
-    for sl in range(240,260,5):
-        for ra in range(100,120,1):
-            for dec in range(25,35,5):
-                for v in range(5,100,5):
+    for sl in range(0,360,2):
+        for ra in range(0,360,1):
+            for dec in range(-90,+90,5):
+                for v in range(5,120,5):
                     export_filename, trajectory_count = exportRange(trajectory_summary_all_file, sl-sl_dev, sl+sl_dev, ra, dec, radius, v-v_dev, v+v_dev)
                     print(export_filename,trajectory_count)
                     file_name = os.path.basename(export_filename)
