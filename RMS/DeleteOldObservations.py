@@ -36,9 +36,11 @@ else:
         return date.timestamp()
 
 
-def quotaReport(archived_dir, captured_dir, capt_dir_quota, config, after=False):
+def quotaReport(capt_dir_quota, config, after=False):
 
     rep = "\n\n"
+
+    archived_dir, captured_dir = config.archived_dir, config.captured_dir
 
     rep += ("--------------------------------------------\n")
     if after:
@@ -572,8 +574,7 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
 
 def deleteByQuota(archived_dir, capt_dir_quota, captured_dir, config):
 
-
-    log.info(quotaReport(archived_dir, captured_dir, capt_dir_quota, config, after=False))
+    log.info(quotaReport(capt_dir_quota, config, after=False))
 
     delete_list = objectsToDelete(captured_dir, config.stationID, capt_dir_quota, bz2=False)
     rmList(delete_list, dummy_run=config.quota_management_disabled)
@@ -584,7 +585,7 @@ def deleteByQuota(archived_dir, capt_dir_quota, captured_dir, config):
     delete_list = objectsToDelete(archived_dir, config.stationID, config.bz2_files_quota, bz2=True)
     rmList(delete_list, dummy_run=config.quota_management_disabled)
 
-    log.info(quotaReport(archived_dir, captured_dir, capt_dir_quota, config, after=True))
+    log.info(quotaReport(capt_dir_quota, config, after=True))
 
 
 def deleteOldDirs(data_dir, config):

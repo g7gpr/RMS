@@ -168,7 +168,7 @@ class ObservationSummary:
         output += "" if self.camera_pointing is None else "camera_pointing: {:s}\n".format(self.camera_pointing)
         output += "" if self.camera_fov is None else "camera_fov: {:s}\n".format(self.camera_fov)
         output += "" if self.lens is None else "lens: {}\n".format(self.lens)
-        output += "" if self.protcol is None else "protocol: {}\n".format(self.protocol)
+        output += "" if self.protocol is None else "protocol: {}\n".format(self.protocol)
         output += "" if self.media_backend is None else "media_backend: {}\n".format(self.media_backend)
 
 
