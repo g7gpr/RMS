@@ -164,7 +164,7 @@ class ObservationSummary:
         try:
             output += "jitter_quality: {:.3f}\n".format(self.jitter_quality)
         except:
-            output += "jitter_quality: {:s}\n".format(self.jitter_quality)
+            output += "" if self.jitter_quality is None else "jitter_quality: {:s}\n".format(self.jitter_quality)
         output += "dropped_frame_rate: {:.3f}%\n".format(self.dropped_frame_rate)
         output += "last_calculated_fps: {}\n".format(self.last_calculated_fps)
         output += "sensor_type: {}\n".format(self.sensor_type)
