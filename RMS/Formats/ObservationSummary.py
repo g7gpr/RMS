@@ -162,7 +162,7 @@ class ObservationSummary:
         output += "" if self.lens is None else "lens: {:s}\n".format(self.lens)
         output += "" if self.protocol is None else "protocol: {:s}\n".format(self.protocol)
         output += "" if self.media_backend is None else "media_backend: {:s}\n".format(self.media_backend)
-        output = output.decode('utf8') if utf8 else output
+        output = output.encode('utf8') if utf8 else output
 
         if format_nicely:
             return niceFormat(output)
