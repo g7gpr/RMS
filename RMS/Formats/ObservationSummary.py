@@ -172,7 +172,7 @@ class ObservationSummary:
 
     def writeToFile(self, file_path_and_name):
         with open(file_path_and_name, "w") as summary_file_handle:
-            as_utf8 = self.serialize().encode("utf8")
+            as_utf8 = self.serialize().encode("ascii", errors="ignore")
             summary_file_handle.write(as_utf8)
 
     def readFromFile(self, file_path_and_name):
