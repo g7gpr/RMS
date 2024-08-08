@@ -38,21 +38,24 @@ else:
 
 def quotaReport(archived_dir, captured_dir, capt_dir_quota, config, after=False):
 
-    if after:
-        log.info("Directory quotas after management")
-    else:
-        log.info("Directory quotas before management")
-    log.info("----------------------------------------")
-    log.info("Space used                              ")
-    log.info("    Archive directory space used: {:.2f}GB".format(usedSpace(archived_dir)))
-    log.info("   Captured directory space used: {:.2f}GB".format(usedSpace(captured_dir)))
-    log.info("Quotas allowed                          ")
-    log.info("        Total quota for RMS_data: {:.2f}GB".format(config.rms_data_quota))
-    log.info("      Archived directories quota: {:.2f}GB".format(config.arch_dir_quota))
-    log.info("                  bz2 file quota: {:.2f}GB".format(config.bz2_files_quota))
-    log.info("          Remaining for captured: {:.2f}GB".format(capt_dir_quota))
-    log.info("----------------------------------------")
+    rep = "\n"
 
+    if after:
+        rep += ("Directory quotas after management\n")
+    else:
+        rep += ("Directory quotas before management\n")
+    rep += ("----------------------------------------\n")
+    rep += ("Space used                              \n")
+    rep += ("    Archive directory space used: {:.2f}GB\n".format(usedSpace(archived_dir)))
+    rep += ("   Captured directory space used: {:.2f}GB\n".format(usedSpace(captured_dir)))
+    rep += ("Quotas allowed                          \n")
+    rep += ("        Total quota for RMS_data: {:.2f}GB\n".format(config.rms_data_quota))
+    rep += ("      Archived directories quota: {:.2f}GB\n".format(config.arch_dir_quota))
+    rep += ("                  bz2 file quota: {:.2f}GB\n".format(config.bz2_files_quota))
+    rep += ("          Remaining for captured: {:.2f}GB\n".format(capt_dir_quota))
+    rep += ("----------------------------------------\n")
+
+    return rep
 
 def availableSpace(dirname):
     """
@@ -87,6 +90,7 @@ def usedSpaceRecursive(obj_path):
         GB file size of files found in directory path
     """
 
+    obj_path = os.path.expanduser(obj_path)
     n = 0
     if os.path.isdir(obj_path):
         n += 4.024 / (1024 ** 2) # allowance for size of directory node 4.0k
@@ -112,7 +116,7 @@ def usedSpaceFromOS(obj_path):
     Returns:
         GB file size of files found in directory path
     """
-
+    obj_path = os.path.expanduser(obj_path)
     byte_encode = subprocess.check_output(["du", "-d0", obj_path])
     text = byte_encode.decode(encoding="utf-8")
     value = text.split("\t")[0]
@@ -130,7 +134,7 @@ def usedSpaceNoRecursion(obj_path):
             GB file size of files found in directory path
         """
 
-
+    obj_path = os.path.expanduser(obj_path)
     path_list, n = os.walk(obj_path), 0
     for root, directory_list, file_list in path_list:
         for _ in directory_list:
@@ -141,6 +145,7 @@ def usedSpaceNoRecursion(obj_path):
 
 def usedSpace(obj):
 
+    obj = os.path.expanduser((obj))
     return usedSpaceNoRecursion(obj)
 
 
@@ -257,6 +262,8 @@ def getNightDirs(dir_path, stationID):
     """
 
     # Get a list of directories in the given directory
+    if not os.path.exists(dir_path):
+        return []
     dir_list = [dir_name for dir_name in os.listdir(dir_path) if os.path.isdir(os.path.join(dir_path, dir_name))]
 
     # Get a list of directories which conform to the captured directories names
@@ -281,6 +288,8 @@ def getBz2Files(dir_path, stationID):
     """
 
     # Get a list of files in the given directory
+    if not os.path.exists(dir_path):
+        return []
     bz2_list = [bz2_name for bz2_name in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, bz2_name))]
 
     # Get a list of files which conform to the required pattern
@@ -425,7 +434,7 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
             log.warning("No quota allocation remains for captured directories, please increase rms_data_quota")
             capt_dir_quota = 0
 
-        quotaReport(archived_dir, captured_dir, capt_dir_quota, config)
+        log.info(quotaReport(archived_dir, captured_dir, capt_dir_quota, config))
 
         delete_list = objectsToDelete(captured_dir, config.stationID, capt_dir_quota,bz2=False)
         rmList(delete_list, dummy_run=config.quota_management_disabled)
@@ -434,7 +443,7 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
         delete_list = objectsToDelete(archived_dir, config.stationID, config.bz2_files_quota, bz2=True)
         rmList(delete_list, dummy_run=config.quota_management_disabled)
 
-        quotaReport(archived_dir, captured_dir, capt_dir_quota, config, after=True)
+        log.info(quotaReport(archived_dir, captured_dir, capt_dir_quota, config, after=True))
 
     # Calculate the approximate needed disk space for the next night
 
@@ -589,7 +598,8 @@ def deleteOldDirs(data_dir, config):
         final_count = len(captdir_list)
     log.info('Purged {} older folders from Captured Files'.format(orig_count - final_count))
 
-
+    orig_count = 0
+    final_count = 0
     if config.bz2_files_to_keep > 0:
         bz2_list = getBz2Files(archived_dir, config.stationID)
         orig_count = len(bz2_list)
@@ -647,9 +657,9 @@ if __name__ == '__main__':
     cml_args = arg_parser.parse_args()
 
     print("Disc use routine checks -these should all produce similar results")
-    print("Used space no recursion   {:.5f}GB".format(usedSpaceNoRecursion("/home/david/RMS_data")))
-    print("Used space with recursion {:.5f}GB".format(usedSpaceRecursive("/home/david/RMS_data")))
-    print("Used space from OS        {:.5f}GB".format(usedSpaceFromOS("/home/david/RMS_data")))
+    print("Used space no recursion   {:.5f}GB".format(usedSpaceNoRecursion("~/source/RMS")))
+    print("Used space with recursion {:.5f}GB".format(usedSpaceRecursive("~/source/RMS")))
+    print("Used space from OS        {:.5f}GB".format(usedSpaceFromOS("~/source/RMS")))
 
     cfg_path = os.path.abspath('.') # default to using config from current folder
     cfg_file = '.config'
