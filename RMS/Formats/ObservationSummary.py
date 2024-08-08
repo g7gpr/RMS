@@ -160,8 +160,8 @@ class ObservationSummary:
         output += "detections_after_ml: {}\n".format(self.detections_after_ml)
         output += "number_fits_detected: {}\n".format(self.number_fits_detected)
         output += "photometry_good: {}\n".format(self.photometry_good)
-
-        output += "" if self.dropped_frames is None else "dropped_frames: {}\n".format(self.dropped_frames)
+        try:
+            output += "" if self.dropped_frames is None else "dropped_frames: {:s}\n".format(self.dropped_frames)
         try:
             output += "jitter_quality: {:.3f}\n".format(self.jitter_quality)
         except:
