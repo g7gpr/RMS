@@ -162,6 +162,7 @@ class ObservationSummary:
         output += "photometry_good: {}\n".format(self.photometry_good)
         try:
             output += "" if self.dropped_frames is None else "dropped_frames: {:s}\n".format(self.dropped_frames)
+        except:
         try:
             output += "jitter_quality: {:.3f}\n".format(self.jitter_quality)
         except:
