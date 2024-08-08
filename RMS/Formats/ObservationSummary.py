@@ -161,7 +161,6 @@ class ObservationSummary:
         output += "number_fits_detected: {}\n".format(self.number_fits_detected)
         output += "photometry_good: {}\n".format(self.photometry_good)
         output += "" if self.dropped_frames is None else "dropped_frames: {:s}\n".format(self.dropped_frames)
-        output += "jitter_quality: {:.3f}\n".format(self.jitter_quality)
         output += "" if self.jitter_quality is None else "jitter_quality: {:s}\n".format(self.jitter_quality)
         output += "" if self.dropped_frame_rate is None else "dropped_frame_rate: {:.3f}%\n".format(self.dropped_frame_rate)
         output += "" if self.last_calculated_fps is None else "last_calculated_fps: {}\n".format(self.last_calculated_fps)
