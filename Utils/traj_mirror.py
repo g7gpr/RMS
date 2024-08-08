@@ -35,6 +35,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colormaps
 from RMS.EventMonitor import gcDistDeg
+from RMS.Misc import mkdirP
 
 from sklearn.datasets import make_blobs
 
@@ -406,6 +407,7 @@ def createFileWithHeaders(destination_file_path, header_source_file):
 
     if os.path.exists(destination_file_path):
         os.remove(destination_file_path)
+    mkdirP(os.path.dirname(destination_file_path))
     output_handle = open(destination_file_path,"w")
 
     with open(header_source_file) as input_handle:
@@ -507,7 +509,8 @@ def isBetweenVelocity(line, min_v, max_v):
 
 
 
-def fileAppendFilter(output_fh, file_to_append, ignore_line_marker, drop_duplicates, sl_set, sl_start, sl_end, radius_set, radius_ra, radius_dec, radius_radius, velocity_set, velocity_min, velocity_max):
+def fileAppendFilter(output_fh, file_to_append, ignore_line_marker, drop_duplicates, sl_set, sl_start, sl_end,
+                     radius_set, radius_ra, radius_dec, radius_radius, velocity_set, velocity_min, velocity_max):
 
     """
     sl_set, sl_start, sl_end, radius_set, radius_ra, radius_dec, radius_radius, velocity_set, velocity_min, velocity_max)
@@ -521,7 +524,7 @@ def fileAppendFilter(output_fh, file_to_append, ignore_line_marker, drop_duplica
     :return: output_fh, duplicate_count
     """
 
-    duplicate_count = 0
+    duplicate_count, included_count = 0, 0
     with open(file_to_append) as input_fh:
         previous_line = ""
         for line in input_fh:
@@ -533,7 +536,7 @@ def fileAppendFilter(output_fh, file_to_append, ignore_line_marker, drop_duplica
                 continue
             else:
                 pass
-                #print(line)
+
             if velocity_set and not isBetweenVelocity(line, velocity_min, velocity_max):
                 continue
             if previous_line != "":
@@ -541,11 +544,13 @@ def fileAppendFilter(output_fh, file_to_append, ignore_line_marker, drop_duplica
                     duplicate_count += 1
                     if not drop_duplicates:
                         output_fh.write(line)
+                        included_count += 1
                 else:
                     output_fh.write(line)
+                    included_count += 1
             previous_line = line
 
-    return output_fh, duplicate_count
+    return output_fh, duplicate_count, included_count
 
 
 
@@ -578,6 +583,13 @@ def fileAppend(output_fh, file_to_append, ignore_line_marker, drop_duplicates):
             previous_line = line
 
     return output_fh, duplicate_count
+
+def filter(sol_lon_centre, sol_lon_dev, ra_centre, ra_dev, dec_centre, dec_dev):
+
+    print(getHeaders("~/RMS_data/traj_summary_data/traj_summary_all.txt"))
+
+    pass
+
 
 def createAllFile(traj_summary_all_file, drop_duplicates):
 
@@ -767,11 +779,14 @@ def generateStatistics(target_file, duplicate_count):
     print("First northern       : {}".format(first_northern))
     print("Northern hemisphere  : {}".format(northern_hemisphere_trajectories))
     print("Within range         : {}".format(within_range))
-    print("% within range total : {}".format(100 * within_range / total_trajectories))
-    print("% within range south : {}".format(100 * within_range / southern_hemisphere_trajectories))
+    if total_trajectories > 0:
+        print("% within range total : {}".format(100 * within_range / total_trajectories))
+    if southern_hemisphere_trajectories > 0:
+        print("% within range south : {}".format(100 * within_range / southern_hemisphere_trajectories))
     print("Total 2024           : {}".format(total_trajectories_2024))
     print("Within range 2024    : {}".format(within_range_2024))
-    print("Within range 2024    : {}%".format(100 * within_range_2024/ total_trajectories_2024))
+    if total_trajectories_2024 > 0:
+        print("Within range 2024    : {}%".format(100 * within_range_2024/ total_trajectories_2024))
     print("First southern       : {}".format(first_southern))
     print("Southern hemisphere  : {}".format(southern_hemisphere_trajectories))
     seconds_to_reach_10000 = (100000 - southern_hemisphere_trajectories) * time_between_southern_trajectories
@@ -816,7 +831,7 @@ def plot(query_filename):
     plt.savefig(plot_filename)
 
 
-def exportRange(query_SL, query_radius, query_velocity, source_file_path, drop_duplicates = False):
+def exportRangeFromQuery(query_SL, query_radius, query_velocity, source_file_path, drop_duplicates = False):
     print("Export solar longitude range {}".format(query_SL))
     print("Export radius          range {}".format(query_radius))
     print("Export velocity        range {}".format(query_velocity))
@@ -825,12 +840,10 @@ def exportRange(query_SL, query_radius, query_velocity, source_file_path, drop_d
     radius_set, radius_ra, radius_dec, radius_radius = False,0,0,0
     velocity_set, velocity_min, velocity_max = False,0,0
 
-    query_export_file_name = "query_results"
 
     if query_SL != "":
         sl_start = float(query_SL.split()[0])
         sl_end = float(query_SL.split()[1])
-        query_export_file_name += "_sl_{}_{}".format(sl_start,sl_end)
         sl_set = True
 
 
@@ -838,18 +851,32 @@ def exportRange(query_SL, query_radius, query_velocity, source_file_path, drop_d
         radius_ra = float(query_radius.split()[0])
         radius_dec = float(query_radius.split()[1])
         radius_radius = float(query_radius.split()[2])
-        query_export_file_name += "_Ra_{}_Dec_{}_Radius_{}".format(radius_ra, radius_dec,radius_radius )
         radius_set = True
 
     if query_velocity != "":
         velocity_min = float(query_velocity.split()[0])
         velocity_max = float(query_velocity.split()[1])
-        query_export_file_name += "_VMin_{}_VMax_{}".format(velocity_min, velocity_max)
         velocity_set = True
 
+    return sl_set, sl_start, sl_end, radius_set, radius_ra, radius_dec, radius_radius, velocity_set, velocity_min, velocity_max
+
+def exportRange(source_file_path, sl_start = 0, sl_end = 360, ra=180, dec=0,
+                radius=90, v_min = 0, v_max = 200):
+
+
+    sl_set, radius_set, velocity_set, drop_duplicates = True,True,True,True
+
+    query_export_file_name = "query_results"
+    query_export_file_name += "_sl_{}_{}".format(sl_start, sl_end)
+    query_export_file_name += "_Ra_{}_Dec_{}_Radius_{}".format(ra, dec, radius)
+    query_export_file_name += "_VMin_{}_VMax_{}".format(v_min, v_max)
+
     query_export_file_name += ".txt"
-    ifNotExistCreate(query_exports)
-    query_export_file_path = os.path.join(query_exports, query_export_file_name)
+    #directory_path = os.path.join(query_exports, "Ra_"+ str(ra), "Dec_" + str(dec), "V_" + str((v_min + v_max) /2))
+    #ifNotExistCreate(directory_path)
+
+
+    query_export_file_path = os.path.join(query_exports, str(ra), str(dec), str((v_min + v_max) /2) , query_export_file_name)
     print("Creating file {}".format(query_export_file_path))
     directory = os.listdir(daily_directory)
     directory.sort()
@@ -859,15 +886,19 @@ def exportRange(query_SL, query_radius, query_velocity, source_file_path, drop_d
     directory_list = os.listdir(daily_directory)
     directory_list.sort()
 
-    duplicate_count = 0
+    duplicate_count, included = 0,0
     for traj_file in directory_list:
         if traj_file[13:20].isnumeric():
-            output_fh, duplicates = fileAppendFilter(fh, os.path.join(daily_directory, traj_file), "#", drop_duplicates, sl_set, sl_start, sl_end, radius_set, radius_ra, radius_dec, radius_radius, velocity_set, velocity_min, velocity_max)
+            output_fh, duplicates, traj_count = fileAppendFilter(fh, os.path.join(daily_directory, traj_file),
+                                                     "#", drop_duplicates, sl_set, sl_start, sl_end, radius_set, ra,
+                                                     dec, radius, velocity_set, v_min, v_max)
             duplicate_count += duplicates
         else:
             print("Not adding {} to the {} file".format(traj_file, source_file_path))
 
-    return query_export_file_path
+    fh.close()
+    print("File closed with {} trajectories".format(traj_count))
+    return query_export_file_path, traj_count
 
 if __name__ == "__main__":
 
@@ -912,13 +943,37 @@ if __name__ == "__main__":
     if cml_args.all:
         duplicate_count = createAllFile(trajectory_summary_all_file,cml_args.drop_duplicates)
     if cml_args.statistics:
-        generateStatistics(trajectory_summary_all_file,duplicate_count)
+        # generateStatistics(trajectory_summary_all_file,duplicate_count)
+        pass
+
+
+
     if cml_args.solar_longitude != "" or cml_args.radius != "" or cml_args.velocity != "":
         export_filename = exportRange(cml_args.solar_longitude, cml_args.radius, cml_args.velocity, trajectory_summary_all_file)
         print("Created {}".format(export_filename))
         if cml_args.plot:
             plot(export_filename)
     header_list,i = getHeaders(trajectory_summary_all_file),0
+
+
+    sl_dev = 10
+    radius = 10
+    v_dev = 5
+
+    for sl in range(0,360,5):
+        for ra in range(0,360,5):
+            for dec in range(-90,90,5):
+                for v in range(5,100,5):
+                    export_filename, trajectory_count = exportRange(trajectory_summary_all_file, sl-sl_dev, sl+sl_dev, ra, dec, radius, v-v_dev, v+v_dev)
+                    print(export_filename,trajectory_count)
+                    file_name = os.path.basename(export_filename)
+                    print("Basename {}".format(file_name))
+                    dir_name = os.path.dirname(export_filename)
+                    print("Directory ",format(dir_name))
+                    new_name = "{:0>8}_{}".format(int(trajectory_count),file_name)
+                    new_path = os.path.join(dir_name, new_name)
+                    print("Moving to {}".format(new_path))
+                    os.rename(export_filename, new_path)
 
     data = readTrajFileMultiCol(trajectory_summary_all_file, ["Sol lon deg","BETgeo deg","LAMhel deg","Vgeo km/s"], convert_to_radians=True, solar_lon_range=[191, 197])
 
