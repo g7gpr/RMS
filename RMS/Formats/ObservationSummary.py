@@ -163,6 +163,7 @@ class ObservationSummary:
         try:
             output += "" if self.dropped_frames is None else "dropped_frames: {:s}\n".format(self.dropped_frames)
         except:
+            pass
         try:
             output += "jitter_quality: {:.3f}\n".format(self.jitter_quality)
         except:
