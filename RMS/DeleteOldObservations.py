@@ -52,7 +52,7 @@ def quotaReport(archived_dir, captured_dir, capt_dir_quota, config, after=False)
     rep += ("        Total quota for RMS_data: {:s}GB\n".format(str(config.rms_data_quota)).zfill(4))
     rep += ("      Archived directories quota: {:s}GB\n".format(str(config.arch_dir_quota)).zfill(4))
     rep += ("                  bz2 file quota: {:s}GB\n".format(str(config.bz2_files_quota)).zfill(4))
-    rep += ("          Remaining for captured: {:s}GB\n".format(str(capt_dir_quota).zfill(4))
+    rep += ("          Remaining for captured: {:s}GB\n".format(str(capt_dir_quota).zfill(4)))
     rep += ("-------------------------------------------\n")
 
     return rep
