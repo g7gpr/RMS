@@ -38,7 +38,7 @@ else:
 
 def quotaReport(archived_dir, captured_dir, capt_dir_quota, config, after=False):
 
-    rep = "\n"
+    rep = "\n\n"
 
     if after:
         rep += ("Directory quotas after management\n")
