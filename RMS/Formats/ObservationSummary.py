@@ -165,14 +165,15 @@ class ObservationSummary:
 
 
         if format_nicely:
-            return niceFormat(output).encode('utf8')
+            return niceFormat(output)
 
-        return output.encode('utf8')
+        return output
 
 
     def writeToFile(self, file_path_and_name):
         with open(file_path_and_name, "w") as summary_file_handle:
-            summary_file_handle.write(self.serialize())
+            as_utf8 = self.serialize().encode("utf8")
+            summary_file_handle.write(as_utf8)
 
     def readFromFile(self, file_path_and_name):
 
