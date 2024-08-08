@@ -38,10 +38,10 @@ else:
 
 def quotaReport(capt_dir_quota, config, after=False):
 
+    captured_dir = os.path.join(config.data_dir, config.captured_dir)
+    archived_dir = os.path.join(config.data_dir, config.archived_dir)
+
     rep = "\n\n"
-
-    archived_dir, captured_dir = config.archived_dir, config.captured_dir
-
     rep += ("--------------------------------------------\n")
     if after:
         rep += ("Directory quotas after management\n")
