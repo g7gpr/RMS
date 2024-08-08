@@ -160,16 +160,16 @@ class ObservationSummary:
         output += "detections_after_ml: {}\n".format(self.detections_after_ml)
         output += "number_fits_detected: {}\n".format(self.number_fits_detected)
         output += "photometry_good: {}\n".format(self.photometry_good)
-        output += "" if self.dropped_frames is None else "dropped_frames: {:s}\n".format(self.dropped_frames)
-        output += "" if self.jitter_quality is None else "jitter_quality: {:s}\n".format(self.jitter_quality)
+        output += "" if self.dropped_frames is None else "dropped_frames: {:.0f}\n".format(self.dropped_frames)
+        output += "" if self.jitter_quality is None else "jitter_quality: {:.3f}\n".format(self.jitter_quality)
         output += "" if self.dropped_frame_rate is None else "dropped_frame_rate: {:.3f}%\n".format(self.dropped_frame_rate)
-        output += "" if self.last_calculated_fps is None else "last_calculated_fps: {}\n".format(self.last_calculated_fps)
+        output += "" if self.last_calculated_fps is None else "last_calculated_fps: {.3f}\n".format(self.last_calculated_fps)
         output += "" if self.sensor_type is None else "sensor_type: {}\n".format(self.sensor_type)
         output += "" if self.camera_pointing is None else "camera_pointing: {:s}\n".format(self.camera_pointing)
         output += "" if self.camera_fov is None else "camera_fov: {:s}\n".format(self.camera_fov)
-        output += "" if self.lens is None else "lens: {}\n".format(self.lens)
-        output += "" if self.protocol is None else "protocol: {}\n".format(self.protocol)
-        output += "" if self.media_backend is None else "media_backend: {}\n".format(self.media_backend)
+        output += "" if self.lens is None else "lens: {:s}\n".format(self.lens)
+        output += "" if self.protocol is None else "protocol: {:s}\n".format(self.protocol)
+        output += "" if self.media_backend is None else "media_backend: {:s}\n".format(self.media_backend)
 
 
         if format_nicely:
