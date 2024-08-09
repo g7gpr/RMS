@@ -394,7 +394,7 @@ def mirror(force_reload,page,max_downloads):
             if files_downloaded >= max_downloads:
                 return
 
-def createFileWithHeaders(destination_file_path, header_source_file):
+def createFileWithHeaders(destination_file_path, reference_directory):
 
     """
 
@@ -405,6 +405,10 @@ def createFileWithHeaders(destination_file_path, header_source_file):
     :return: file handle of the newly created file
     """
 
+    directory = os.listdir(reference_directory)
+    directory.sort()
+    header_source_file = os.path.join(reference_directory, directory[-1])
+    #print("Using file {} to create headers".format(header_source_file))
     if os.path.exists(destination_file_path):
         os.remove(destination_file_path)
     mkdirP(os.path.dirname(destination_file_path))
@@ -417,8 +421,8 @@ def createFileWithHeaders(destination_file_path, header_source_file):
                 line_no += 1
                 if line[0] == "#":
                     output_handle.write(line)
-
-    return output_handle
+    output_handle.close()
+    return destination_file_path
 
 def isDuplicate(line_1,line_2):
 
@@ -555,7 +559,7 @@ def fileAppendFilter(output_fh, file_to_append, ignore_line_marker, drop_duplica
 
 
 
-def fileAppend(output_fh, file_to_append, ignore_line_marker, drop_duplicates):
+def fileAppend(output_full_file_path, file_to_append, ignore_line_marker, drop_duplicates):
 
     """
 
@@ -568,22 +572,22 @@ def fileAppend(output_fh, file_to_append, ignore_line_marker, drop_duplicates):
     :return: output_fh, duplicate_count
     """
 
-    duplicate_count = 0
-    with open(file_to_append) as input_fh:
-        previous_line = ""
-        for line in input_fh:
-            if line[0] == "\n" or line[0] == ignore_line_marker:
-                continue
-            if previous_line != "":
-                if isDuplicate(previous_line, line):
-                    duplicate_count += 1
-                    if not drop_duplicates:
+    with open(output_full_file_path, 'a') as output_fh:
+        duplicate_count = 0
+        with open(file_to_append) as input_fh:
+            previous_line = ""
+            for line in input_fh:
+                if line[0] == "\n" or line[0] == ignore_line_marker:
+                    continue
+                if previous_line != "":
+                    if isDuplicate(previous_line, line):
+                        duplicate_count += 1
+                        if not drop_duplicates:
+                            output_fh.write(line)
+                    else:
                         output_fh.write(line)
-                else:
-                    output_fh.write(line)
-            previous_line = line
-
-    return output_fh, duplicate_count
+                previous_line = line
+    return duplicate_count
 
 def filter(sol_lon_centre, sol_lon_dev, ra_centre, ra_dev, dec_centre, dec_dev):
 
@@ -595,7 +599,6 @@ def filter(sol_lon_centre, sol_lon_dev, ra_centre, ra_dev, dec_centre, dec_dev):
 def createAllFile(traj_summary_all_file, drop_duplicates):
 
     """
-
     :param traj_summary_all_file:path to the file to hold the daily files combined
     :param drop_duplicates: [bool] detect and drop duplicates
     :return: duplicate_count
@@ -603,18 +606,16 @@ def createAllFile(traj_summary_all_file, drop_duplicates):
 
     print("\n\n")
     print("Creating {}".format(traj_summary_all_file))
-    directory = os.listdir(daily_directory)
-    directory.sort()
-    last_file = directory[-1]
-    print("Using file {} to create headers".format(last_file))
-    fh = createFileWithHeaders(traj_summary_all_file, os.path.join(daily_directory, last_file))
+
+    full_file_path = createFileWithHeaders(traj_summary_all_file,daily_directory)
+
     directory_list = os.listdir(daily_directory)
     directory_list.sort()
 
     duplicate_count = 0
     for traj_file in directory_list:
         if traj_file[13:20].isnumeric():
-            output_fh, duplicates = fileAppend(fh,os.path.join(daily_directory,traj_file),"#", drop_duplicates)
+            duplicates = fileAppend(full_file_path,os.path.join(daily_directory,traj_file),"#", drop_duplicates)
             duplicate_count += duplicates
         else:
             print("Not adding {} to the {} file".format(traj_file, traj_summary_all_file))
@@ -797,6 +798,8 @@ def generateStatistics(target_file, duplicate_count):
     print("Check total          : {}".format(northern_hemisphere_trajectories + southern_hemisphere_trajectories))
 
 
+
+
 def plot(query_filename):
     print("Plot of {} requested".format(query_filename))
     apparent_radiants = readTrajFileMultiCol(query_filename,["Unique trajectory identifier", "RAgeo deg","DECgeo deg","Participating stations", "Sol lon deg"], convert_to_radians=False)
@@ -861,49 +864,93 @@ def exportRangeFromQuery(query_SL, query_radius, query_velocity, source_file_pat
 
     return sl_set, sl_start, sl_end, radius_set, radius_ra, radius_dec, radius_radius, velocity_set, velocity_min, velocity_max
 
-def exportRange(source_file_path, sl_start = 0, sl_end = 360, ra=180, dec=0,
+def createFileHeader(traj_summary_all_file, reference_directory):
+
+
+    full_file_path = createFileWithHeaders(traj_summary_all_file, reference_directory)
+
+
+    return full_file_path
+
+
+def exportRange(sl_start = 0, sl_end = 360, ra=180, dec=0,
                 radius=90, v_min = 0, v_max = 200):
 
 
     sl_set, radius_set, velocity_set, drop_duplicates = True,True,True,True
 
-    query_export_file_name = "query_results"
-    query_export_file_name += "_sl_{}_{}".format(sl_start, sl_end)
-    query_export_file_name += "_Ra_{}_Dec_{}_Radius_{}".format(ra, dec, radius)
-    query_export_file_name += "_VMin_{}_VMax_{}".format(v_min, v_max)
-
-    query_export_file_name += ".txt"
-    #directory_path = os.path.join(query_exports, "Ra_"+ str(ra), "Dec_" + str(dec), "V_" + str((v_min + v_max) /2))
-    #ifNotExistCreate(directory_path)
+    full_file_path, query_export_file_path = createQueryOutputFile(dec, ra, radius, sl_end, sl_start, v_max, v_min)
 
 
-    query_export_file_path = os.path.join(query_exports, str(ra), str(dec), str((v_min + v_max) /2) , query_export_file_name)
-    print("Creating file {}".format(query_export_file_path))
-    directory = os.listdir(daily_directory)
-    directory.sort()
-    last_file = directory[-1]
-    fh = createFileWithHeaders(query_export_file_path, os.path.join(daily_directory, last_file))
 
     directory_list = os.listdir(daily_directory)
     directory_list.sort()
 
-    duplicate_count, traj_count = 0,0
+    return query_export_file_path
+
+
+def notSureWhatThisWillDo(dec, directory_list, drop_duplicates, full_file_path, ra, radius, radius_set, sl_end, sl_set,
+                          sl_start, source_file_path, v_max, v_min, velocity_set):
+    duplicate_count, traj_count = 0, 0
     for traj_file in directory_list:
         if traj_file[13:20].isnumeric():
-
-
-
-            output_fh, duplicates, traj_count = fileAppendFilter(fh, os.path.join(daily_directory, traj_file),
-                                                     "#", drop_duplicates, sl_set, sl_start, sl_end, radius_set, ra,
-                                                     dec, radius, velocity_set, v_min, v_max, traj_count)
+            output_fh, duplicates, traj_count = fileAppendFilter(full_file_path,
+                                                                 os.path.join(daily_directory, traj_file),
+                                                                 "#", drop_duplicates, sl_set, sl_start, sl_end,
+                                                                 radius_set, ra,
+                                                                 dec, radius, velocity_set, v_min, v_max, traj_count)
             duplicate_count += duplicates
 
         else:
             print("Not adding {} to the {} file".format(traj_file, source_file_path))
 
-    fh.close()
-    print("File closed with {} trajectories".format(traj_count))
-    return query_export_file_path, traj_count
+            print("File closed with {} trajectories".format(traj_count))
+    return traj_count
+
+
+def createQueryOutputFile(dec, ra, radius, sl_end, sl_start, v_max, v_min, use_dir_structure=True):
+
+    query_export_file_name = "query_results"
+    query_export_file_name += "_sl_{:03d}_{:03d}".format(sl_start, sl_end)
+    query_export_file_name += "_Ra_{:03d}_Dec_{:03d}_Radius_{:03d}".format(ra, dec, radius)
+    query_export_file_name += "_VMin_{:03d}_VMax_{:03d}".format(v_min, v_max)
+    query_export_file_name += ".txt"
+    # directory_path = os.path.join(query_exports, "Ra_"+ str(ra), "Dec_" + str(dec), "V_" + str((v_min + v_max) /2))
+    # ifNotExistCreate(directory_path)
+
+    if use_dir_structure:
+        query_export_file_path = os.path.join(query_exports, str(ra).zfill(3), str(dec).zfill(3), str((v_min + v_max) / 2).zfill(3),
+                                          query_export_file_name)
+    else:
+        query_export_file_path = os.path.join(query_exports,query_export_file_name)
+    #print("Creating file {}".format(query_export_file_path))
+    full_file_path = createFileWithHeaders(query_export_file_path, os.path.join(daily_directory, daily_directory))
+
+    return full_file_path, query_export_file_path
+
+def createDirectoryStructure(sl_dev, radius, v_dev):
+
+    for sl in range(0,360,2):
+        for ra in range(0,360,1):
+            for dec in range(-90,+90,5):
+                for v in range(5,120,5):
+                    sl_start, sl_end  = sl - sl_dev, sl + sl_dev,
+                    v_min, v_max = v - v_dev, v + v_dev
+                    createQueryOutputFile(dec, ra, radius, sl_start, sl_end, v_max, v_min)
+
+
+                    #export_filename, trajectory_count = exportRange(trajectory_summary_all_file, sl-sl_dev, sl+sl_dev, ra, dec, radius, v-v_dev, v+v_dev)
+                    #print(export_filename,trajectory_count)
+                    #file_name = os.path.basename(export_filename)
+                    #print("Basename {}".format(file_name))
+                    #dir_name = os.path.dirname(export_filename)
+                    #print("Directory ",format(dir_name))
+                    #new_name = "{:0>8}_{}".format(int(trajectory_count),file_name)
+                    #new_path = os.path.join(dir_name, new_name)
+                    #print("Moving to {}".format(new_path))
+                    #os.rename(export_filename, new_path)
+
+
 
 if __name__ == "__main__":
 
@@ -951,7 +998,11 @@ if __name__ == "__main__":
         # generateStatistics(trajectory_summary_all_file,duplicate_count)
         pass
 
+    sl_dev = 3
+    radius = 10
+    v_dev = 5
 
+    createDirectoryStructure(sl_dev, radius, v_dev)
 
     if cml_args.solar_longitude != "" or cml_args.radius != "" or cml_args.velocity != "":
         export_filename = exportRange(cml_args.solar_longitude, cml_args.radius, cml_args.velocity, trajectory_summary_all_file)
@@ -961,24 +1012,7 @@ if __name__ == "__main__":
     header_list,i = getHeaders(trajectory_summary_all_file),0
 
 
-    sl_dev = 3
-    radius = 10
-    v_dev = 5
 
-    for sl in range(0,360,2):
-        for ra in range(0,360,1):
-            for dec in range(-90,+90,5):
-                for v in range(5,120,5):
-                    export_filename, trajectory_count = exportRange(trajectory_summary_all_file, sl-sl_dev, sl+sl_dev, ra, dec, radius, v-v_dev, v+v_dev)
-                    print(export_filename,trajectory_count)
-                    file_name = os.path.basename(export_filename)
-                    print("Basename {}".format(file_name))
-                    dir_name = os.path.dirname(export_filename)
-                    print("Directory ",format(dir_name))
-                    new_name = "{:0>8}_{}".format(int(trajectory_count),file_name)
-                    new_path = os.path.join(dir_name, new_name)
-                    print("Moving to {}".format(new_path))
-                    os.rename(export_filename, new_path)
 
     data = readTrajFileMultiCol(trajectory_summary_all_file, ["Sol lon deg","BETgeo deg","LAMhel deg","Vgeo km/s"], convert_to_radians=True, solar_lon_range=[191, 197])
 
@@ -1023,6 +1057,8 @@ if __name__ == "__main__":
     for label_code,count in label_code_counts.most_common():
         out_fh.write("{}:{} \n".format(count,label_code))
     out_fh.close
+
+
 
 
 
