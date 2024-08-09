@@ -247,7 +247,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
             log.error("Cannot copy the config file to the capture directory!")
 
     # Check for and get an updated mask
-    if config.mask_download_permissive:
+    if config.mask_download_permissive and not cml_args.test_mode:
         downloadNewMask(config)
 
     # Get the platepar file
@@ -760,6 +760,9 @@ if __name__ == "__main__":
         "If not given in the config file, all available cores will be used."
         )
 
+    arg_parser.add_argument('-t', '--test_mode', default=False, action="store_true", \
+                            help="""Do not make internet connections during startup.""")
+
 
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
@@ -817,7 +820,7 @@ if __name__ == "__main__":
     mkdirP(os.path.join(root_dir, config.archived_dir))
 
     # Check for and get an updated mask
-    if config.mask_download_permissive:
+    if config.mask_download_permissive and not cml_args.test_mode:
         downloadNewMask(config)
 
     # If the duration of capture was given, capture right away for a specified time
