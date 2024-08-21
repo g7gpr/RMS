@@ -14,10 +14,50 @@ from RMS.Misc import mkdirP
 from RMS.Math import angularSeparation
 from RMS.Formats.FFfile import read as readFF
 from RMS.Routines.MaskImage import loadMask, MaskStructure
+import ephem
 
 captured_dirs_list_of_lists = None
 file_list_of_lists_of_lists = None
 
+def timeFromDayLight(file_name):
+
+
+    pp = ppFromFileName(file_name)
+    o = ephem.Observer()
+    o.lat, o.long, o.elevation,o.date = str(pp.lat), str(pp.lon), pp.elev, rmsTimeExtractor(file_name)
+
+    o.horizon = '-5:26'
+    s = ephem.Sun()
+    s.compute()
+
+    time_to_rise = abs(o.date.datetime() - o .next_rising(s).datetime()).total_seconds()
+    time_to_set = abs(o.date.datetime() - o .previous_setting(s).datetime()).total_seconds()
+
+    return min(time_to_rise, time_to_set)
+
+def ppFromFileName(file_name):
+
+    station = file_name.split("_")[1]
+    pp = Platepar()
+    pp.read(os.path.join(os.path.expanduser("~/tmp/SkyChart/"),station,"platepar_cmn2010.cal"))
+
+    return pp
+
+def tooCloseToDay(file):
+
+    return timeFromDayLight(file) > 3600 * 2
+
+def removeTooCloseToDay(files_list_in):
+
+
+    files_list_out = []
+    for file in files_list_out:
+        if not tooCloseToDay(file):
+            files_list_out.append(file)
+        else:
+            print("File {} not used, too close to daylight".format(file))
+
+    return files_list_out
 
 
 def downloadIfNotExist(source_directory, file_name, target_directory, print_files=True, force=False):
@@ -417,6 +457,8 @@ def getDeviationsPerFits(r, d, temp_dir, station, files_list, dest_pp, s_pp, cor
         if file_name.startswith("FF_{}".format(station)) and file_name.endswith(".fits"):
             if file_name in corrupted_fits:
                 continue
+            if tooCloseToDay(file_name):
+                continue
             file_name_list.append(os.path.join(temp_dir, station, file_name))
             fits_time, fits_time_jd = rmsTimeExtractor(file_name, asTuple=True)
             delta = (dest_pp.time - fits_time).total_seconds()
@@ -456,6 +498,8 @@ def findFitsLocal(r,d, station_list, temp_dir,dest_pp, corrupted_fits):
         platepar_list.append(s_pp)
 
         files_list = os.listdir(os.path.join(temp_dir, station))
+
+        files_list = removeTooCloseToDay(files_list)
 
         angle_deviation_list_per_s , file_name_list_per_s, station_list_per_s, time_deviation_list_per_s = \
             getDeviationsPerFits(r, d, temp_dir, station, files_list, dest_pp, s_pp, corrupted_fits, print_values=False )
@@ -574,6 +618,9 @@ def searchRaDecCoverage(r,d, station_list, remote_path_list, dest_pp, config_lis
                 for file_name in file_name_list:
                     if file_name in corrupted_fits:
                         continue
+                    if tooCloseToDay(file_name):
+                        continue
+
                     ad_file_list.append(os.path.join(config.data_dir, config.captured_dir, captured_dir, os.path.basename(file_name)))
                     captured_dirs_list_by_fits.append(captured_dir)
                 ad_amount_list += ad_list
@@ -613,7 +660,6 @@ def getIntensities(look_up_table, temp_dir, pp_dest, station_list, remote_path_l
 
     loaded_fits_names, loaded_fits, loaded_pp = [], [], []
     loaded_ground_masks, loaded_camera_masks = [], []
-    intensity_list,plot_count = [], []
     max_pixel_arr = np.zeros(shape=(pp_dest.X_res, pp_dest.Y_res), dtype=int)
     ave_pixel_arr = np.zeros(shape=(pp_dest.X_res, pp_dest.Y_res), dtype=int)
     count_arr = np.zeros(shape=(pp_dest.X_res, pp_dest.Y_res), dtype=int)
@@ -622,8 +668,6 @@ def getIntensities(look_up_table, temp_dir, pp_dest, station_list, remote_path_l
     first_iteration = True
 
     for x, y, r, d in tqdm.tqdm(zip(x_coords, y_coords, ra, dec)):
-
-
 
         # First look in memory then the local file store
         sta_list, fn_list, td_list, ad_list = findFitsLocal(r, d, station_list, temp_dir, pp_dest, corrupted_fits)
@@ -774,7 +818,7 @@ def startGenerator(config_file_paths_list=None, daemon_delay=None, image_time=No
     station_list, config_list = getConfigsMasksPlatepars(config_file_paths_list)
 
     im_ppar = Platepar()
-    im_ppar = configurePlatepar(im_ppar, config_list, image_time, res=500)
+    im_ppar = configurePlatepar(im_ppar, config_list, image_time, res=50)
 
     dirs_list_of_lists = getCapturedDirs(config_file_paths_list, config_list)
     files_path_lists = getFilePaths(config_file_paths_list, config_list, dirs_list_of_lists, image_time)
