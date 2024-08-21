@@ -37,11 +37,12 @@ def timeFromDayLight(file_name):
 
 def ppFromFileName(file_name):
 
-    station = file_name.split("_")[1]
-    pp = Platepar()
-    pp.read(os.path.join(os.path.expanduser("~/tmp/SkyChart/"),station,"platepar_cmn2010.cal"))
+    if file_name.endswith(".fits"):
+        station = file_name.split("_")[1]
+        pp = Platepar()
+        pp.read(os.path.join(os.path.expanduser("~/tmp/SkyChart/"),station,"platepar_cmn2010.cal"))
 
-    return pp
+        return pp
 
 def tooCloseToDay(file):
 
@@ -52,10 +53,13 @@ def removeTooCloseToDay(files_list_in):
 
     files_list_out = []
     for file in files_list_in:
-        if not tooCloseToDay(file):
+        if not file.endswith(".fits"):
             files_list_out.append(file)
         else:
-            print("File {} not used, too close to daylight".format(file))
+            if not tooCloseToDay(file) or not file.endswith(".fits"):
+                files_list_out.append(file)
+            else:
+                print("File {} not used, too close to daylight".format(file))
 
     return files_list_out
 
