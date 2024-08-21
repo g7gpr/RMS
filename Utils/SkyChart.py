@@ -21,7 +21,7 @@ captured_dirs_list_of_lists = None
 file_list_of_lists_of_lists = None
 
 
-def progress(current, total, start_time=None, eta=False, bar_len = 20, char = "-"):
+def progress(current, total, start_time=None, eta=False, eta_date = False, bar_len = 20, char = "-", ):
 
 
     progress_bar_len = 20
@@ -33,7 +33,10 @@ def progress(current, total, start_time=None, eta=False, bar_len = 20, char = "-
             time_per_it = time_elapsed / current
             its_remaining = total - current
             time_remaining = time_per_it * its_remaining
-            eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%H:%M:%S')
+            if eta_date:
+                eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%YY:%m:%d-%H:%M:%S')
+            else
+                eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%H:%M:%S')
         except:
             eta = "         "
     else:
@@ -700,7 +703,7 @@ def getIntensities(look_up_table, temp_dir, pp_dest, station_list, remote_path_l
     start_time = time.time()
     for x, y, r, d in zip(x_coords, y_coords, ra, dec):
 
-        print(progress(hits+misses, pp_dest.X_res * pp_dest.Y_res, start_time, eta=True,bar_len=30, char="-"), end= " ")
+        print(progress(hits+misses, pp_dest.X_res * pp_dest.Y_res, start_time, eta=True,eta_date=True, bar_len=30, char="-"), end=" ")
 
         # First look in memory then the local file store
         sta_list, fn_list, td_list, ad_list = findFitsLocal(r, d, station_list, temp_dir, pp_dest, corrupted_fits)
