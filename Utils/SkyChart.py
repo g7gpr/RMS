@@ -56,7 +56,7 @@ def removeTooCloseToDay(files_list_in):
         if not file.endswith(".fits"):
             files_list_out.append(file)
         else:
-            if not tooCloseToDay(file) or not file.endswith(".fits"):
+            if not tooCloseToDay(file):
                 files_list_out.append(file)
             else:
                 print("File {} not used, too close to daylight".format(file))
