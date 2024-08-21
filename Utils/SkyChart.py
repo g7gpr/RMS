@@ -666,6 +666,7 @@ def getIntensities(look_up_table, temp_dir, pp_dest, station_list, remote_path_l
 
     hits, misses = 0,0
     first_iteration = True
+    best_file = ""
 
     for x, y, r, d in tqdm.tqdm(zip(x_coords, y_coords, ra, dec)):
 
@@ -718,6 +719,9 @@ def getIntensities(look_up_table, temp_dir, pp_dest, station_list, remote_path_l
                 download_path_and_file = os.path.join(target_directory, best_file)
                 loaded_fits, loaded_fits_names, loaded_pp, corrupted_fits, loaded_camera_masks, loaded_ground_masks = \
                         loadFits(best_station, download_path_and_file, loaded_fits_names, loaded_pp, loaded_fits, loaded_camera_masks, loaded_ground_masks, temp_dir, corrupted_fits)
+
+        if best_file == "":
+            continue
 
         # Get the index for this file
         if best_file in loaded_fits_names:
