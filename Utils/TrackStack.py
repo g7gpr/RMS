@@ -362,6 +362,7 @@ def stackFrame(ff_name, recalibrated_platepars, mask, border, pp_ref, img_size, 
     max_deaveraged = getArray(img_size, max_deaveraged_arr)
 
     # Read the FF file
+    # Read the FF file
     ff = readFF(*os.path.split(ff_name))
 
     # Load the recalibrated platepar
@@ -369,8 +370,8 @@ def stackFrame(ff_name, recalibrated_platepars, mask, border, pp_ref, img_size, 
     pp_temp.loadFromDict(recalibrated_platepars[ff_name], use_flat=conf.use_flat)
 
     # Make a list of X and Y image coordinates
-    x_coords, y_coords = np.meshgrid(np.arange(border, pp_ref.X_res - border),
-                                     np.arange(border, pp_ref.Y_res - border))
+    x_coords, y_coords = np.meshgrid(np.arange(border, pp_ref.X_res - border), np.arange(border, pp_ref.Y_res - border))
+
     x_coords = x_coords.ravel()
     y_coords = y_coords.ravel()
     # Map image pixels to sky
