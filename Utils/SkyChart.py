@@ -46,7 +46,7 @@ def ppFromFileName(file_name):
 
 def tooCloseToDay(file):
 
-    return timeFromDayLight(file) > 3600 * 1
+    return timeFromDayLight(file) < 3600 * 1
 
 def removeTooCloseToDay(files_list_in):
 
