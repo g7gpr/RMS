@@ -35,7 +35,7 @@ def progress(current, total, start_time=None, eta=False, eta_date = False, bar_l
             time_remaining = time_per_it * its_remaining
             if eta_date:
                 eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%YY:%m:%d-%H:%M:%S')
-            else
+            else:
                 eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%H:%M:%S')
         except:
             eta = "         "
