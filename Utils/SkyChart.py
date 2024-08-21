@@ -15,9 +15,40 @@ from RMS.Math import angularSeparation
 from RMS.Formats.FFfile import read as readFF
 from RMS.Routines.MaskImage import loadMask, MaskStructure
 import ephem
+import time
 
 captured_dirs_list_of_lists = None
 file_list_of_lists_of_lists = None
+
+
+def progress(current, total, start_time=None, eta=False, bar_len = 20, char = "-"):
+
+
+    progress_bar_len = 20
+    progress = int(progress_bar_len * current / total)
+    percent = 100 * current / total
+    if not start_time is None and current > 0:
+        try:
+            time_elapsed = time.time() - start_time
+            time_per_it = time_elapsed / current
+            its_remaining = total - current
+            time_remaining = time_per_it * its_remaining
+            eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%H:%M:%S')
+        except:
+            eta = "         "
+    else:
+        _start_time = time.time()
+        eta = "         "
+    if eta:
+        p = "\rProgress : {:02.0f}%|{}{}| {}/{}  ETA: {:s}".format(percent, char * progress,
+                                                        " " * (progress_bar_len - progress), current, total, eta)
+    else:
+        p = "\rProgress : {:02.0f}%|{}{}| {}/{}" .format(percent, char * progress,
+                                                         " " * (progress_bar_len - progress), current, total)
+    if current == total:
+        print("")
+
+    return p
 
 def timeFromDayLight(file_name):
 
@@ -666,8 +697,10 @@ def getIntensities(look_up_table, temp_dir, pp_dest, station_list, remote_path_l
     hits, misses = 0,0
     first_iteration = True
     best_file = ""
+    start_time = time.time()
+    for x, y, r, d in zip(x_coords, y_coords, ra, dec):
 
-    for x, y, r, d in tqdm.tqdm(zip(x_coords, y_coords, ra, dec)):
+        print(progress(hits+misses, pp_dest.X_res * pp_dest.Y_res, start_time, eta=True,bar_len=30, char="-"), end= " ")
 
         # First look in memory then the local file store
         sta_list, fn_list, td_list, ad_list = findFitsLocal(r, d, station_list, temp_dir, pp_dest, corrupted_fits)
