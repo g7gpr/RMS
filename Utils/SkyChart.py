@@ -433,9 +433,6 @@ def createLookUpTable(pp):
     print("Mapping output image to sky coordinates")
     jd_arr, ra_coords, dec_coords, _ = xyToRaDecPP(time_arr, x_coords, y_coords, level_arr ,pp, jd_time=True)
 
-    for r,d, x, y in zip(ra_coords, dec_coords, x_coords, y_coords):
-        print("r {:.2f}, d{:.2f}, x {:.2f} y {:.2f}".format(r,d,x,y))
-
     return (x_coords, y_coords, ra_coords, dec_coords)
 
 
