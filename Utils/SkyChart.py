@@ -51,7 +51,7 @@ def removeTooCloseToDay(files_list_in):
 
 
     files_list_out = []
-    for file in files_list_out:
+    for file in files_list_in:
         if not tooCloseToDay(file):
             files_list_out.append(file)
         else:
