@@ -93,7 +93,7 @@ def removeTooCloseToDay(files_list_in):
     return files_list_out
 
 
-def downloadIfNotExist(source_directory, file_name, target_directory, print_files=True, force=False):
+def downloadIfNotExist(source_directory, file_name, target_directory, print_files=False, force=False):
 
     """
     Use rsync with compression to download a file from remote
