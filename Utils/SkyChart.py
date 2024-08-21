@@ -799,7 +799,7 @@ def loadFits(station, fits_file, loaded_fits_names, loaded_pp, loaded_fits, load
     return loaded_fits, loaded_fits_names, loaded_pp, loaded_camera_masks, loaded_ground_masks, corrupted_fits
 
 
-def startGenerator(config_file_paths_list=None, daemon_delay=None, image_time=None):
+def startGenerator(config_file_paths_list=None, daemon_delay=None, image_time=None, resolution = 300):
 
     config_file_paths_list_unvalidated = config_file_paths_list
 
@@ -826,7 +826,7 @@ def startGenerator(config_file_paths_list=None, daemon_delay=None, image_time=No
     station_list, config_list = getConfigsMasksPlatepars(config_file_paths_list)
 
     im_ppar = Platepar()
-    im_ppar = configurePlatepar(im_ppar, config_list, image_time, res=50)
+    im_ppar = configurePlatepar(im_ppar, config_list, image_time, res=resolution)
 
     dirs_list_of_lists = getCapturedDirs(config_file_paths_list, config_list)
     files_path_lists = getFilePaths(config_file_paths_list, config_list, dirs_list_of_lists, image_time)
@@ -918,6 +918,9 @@ if __name__ == '__main__':
     arg_parser.add_argument('-p', '--paths', type=str, nargs='*',   \
                             help="Paths to the .config files for the cameras to be used")
 
+    arg_parser.add_argument('-r', '--resolution', type=str, nargs=1,   \
+                            help="Output image resolution, always square")
+
     arg_parser.add_argument('-a', '--angle', type=int, \
                             help="Angle of the simulated lens")
 
@@ -936,7 +939,11 @@ if __name__ == '__main__':
 
     testRmsTimeConverter()
 
+    if cml_args.resolution is None:
+        resolution = 300
+    else:
+        resolution = int(cml_args.resolution[0])
 
     testPlatePar()
-    startGenerator(config_file_paths_list=cml_args.paths, daemon_delay=cml_args.daemon, image_time=image_time)
+    startGenerator(config_file_paths_list=cml_args.paths, daemon_delay=cml_args.daemon, image_time=image_time, resolution=resolution)
     display()
