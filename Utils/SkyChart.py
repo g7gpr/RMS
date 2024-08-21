@@ -58,8 +58,6 @@ def removeTooCloseToDay(files_list_in):
         else:
             if not tooCloseToDay(file):
                 files_list_out.append(file)
-            else:
-                print("File {} not used, too close to daylight".format(file))
 
     return files_list_out
 
@@ -752,7 +750,7 @@ def getIntensities(look_up_table, temp_dir, pp_dest, station_list, remote_path_l
 
         # If these source coordinates are within the image bounds, plot a point
         if 0 < source_x < s_pp.X_res and 0 < source_y < s_pp.Y_res:
-            #print("plotting {},{} intensity {} from {},{}".format(x,y,max_pixel[source_y][source_x], source_x, source_y))
+            print("plotting {},{} intensity {} from {} {},{}".format(x,y,max_pixel[source_y][source_x], best_file, source_x, source_y))
             max_pixel_arr[x, y] = max_pixel[source_y][source_x]
             ave_pixel_arr[x, y] = ave_pixel[source_y][source_x]
             count_arr[x, y] = count_arr[x, y] + 1
