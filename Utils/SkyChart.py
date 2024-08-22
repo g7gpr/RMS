@@ -219,7 +219,7 @@ def getConfigsMasksPlatepars(config_file_paths_list,temp_dir="~/tmp/SkyChart"):
     station_list = []
     temp_dir = os.path.expanduser(temp_dir)
 
-    print("Getting configuration files, masks and platepars for {}".format(getStations(config_file_paths_list)))
+
     i, start_time = 0, time.time()
     for config_path in config_file_paths_list:
         i, str = progress(i, len(config_file_paths_list), start_time,  work_name="Get configs")
@@ -544,7 +544,7 @@ def createLookUpTable(pp):
     time_arr, level_arr = pixels * [pp.JD], pixels * [1]
 
     # Map output image pixels to sky coordinates
-    print("Mapping output image to sky coordinates")
+
     jd_arr, ra_coords, dec_coords, _ = xyToRaDecPP(time_arr, x_coords, y_coords, level_arr ,pp, jd_time=True)
 
     return (x_coords, y_coords, ra_coords, dec_coords)
