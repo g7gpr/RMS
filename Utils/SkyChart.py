@@ -449,7 +449,6 @@ def configurePlatepar(ppar, config_list, image_time, az=0, el=90, rot =0, angle=
 def getCapturedDirs(path_list, config_list, reverse=False):
 
     dir_names_list_of_lists = []
-    print("Getting captured directory lists")
     i, start_time = 0, time.time()
     for path, config in zip(path_list, config_list):
         i, str = progress(i, len(path_list), start_time, "Getting captured directories")
@@ -526,7 +525,6 @@ def retrieveFiles(files_path_lists, temp_dir):
     for file_paths_list, path, config in files_path_lists:
         i, str = progress(i,len(files_path_lists), start_time, work_name = "Retrieve initial files", show_eta=True, show_remaining=True)
         print(str, end=" ")
-        station = config.stationID
         destination_path = os.path.join(temp_dir, config.stationID)
         user_domain = path.split(':')[0]
         for file_paths in file_paths_list:
@@ -703,7 +701,7 @@ def getFitsAllStations(remote_path_list, config_list):
         print("Getting remote directory structure {}".format(len(remote_path_list)))
         for path, captured_dirs_list, config in zip(remote_path_list, captured_dirs_list_of_lists, config_list):
             file_list_of_lists = []
-            print("{}".format(path))
+
             for captured_dir in tqdm.tqdm(captured_dirs_list):
                 captured_dir_full_path = os.path.join(config.data_dir, config.captured_dir, captured_dir)
                 files = lsRemote(path, captured_dir_full_path, "FF_{}".format(config.stationID), "fits")
