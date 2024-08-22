@@ -9,23 +9,71 @@ import shutil
 from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, JD2HourAngle, datetime2JD, altAz2RADec, raDec2AltAz
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP
 from RMS.Formats.Platepar import Platepar
-from datetime import datetime
+from datetime import datetime, timedelta
 from RMS.Misc import mkdirP
 from RMS.Math import angularSeparation
 from RMS.Formats.FFfile import read as readFF
 from RMS.Routines.MaskImage import loadMask, MaskStructure
 import ephem
 import time
+import pickle
+
+import sys
+import traceback
+
+if sys.version_info[0] < 3:
+
+    import urllib2
+
+    # Fix Python 2 SSL certs
+    try:
+        import os
+        import ssl
+        if (not os.environ.get('PYTHONHTTPSVERIFY', '') and
+            getattr(ssl, '_create_unverified_context', None)):
+            ssl._create_default_https_context = ssl._create_unverified_context
+    except:
+        # Print the error
+        print("Error: {}".format(sys.exc_info()[0]))
+
+else:
+    import urllib.request
+
 
 captured_dirs_list_of_lists = None
 file_list_of_lists_of_lists = None
 
+def createTransformationPPToRADEC(pp_dest):
 
-def progress(current, total, start_time=None, eta=False, eta_date = False, bar_len = 20, char = "-", ):
+    x_coords_dest, y_coords_dest = np.meshgrid(np.arange(0, pp_dest.X_res), np.arange(0, pp_dest.Y_res))
+    x_coords_dest, y_coords_dest = x_coords_dest.ravel(), y_coords_dest.ravel()
+    pixels = pp_dest.X_res * pp_dest.Y_res
+    time_arr, level_arr = pixels * [pp_dest.JD], pixels * [1]
+
+    jd_arr, ra_coords, dec_coords, mag = xyToRaDecPP(time_arr, x_coords_dest, y_coords_dest,
+                                                     level_arr, pp_dest, jd_time=True, precompute_pointing_corr=True)
+
+    return x_coords_dest, y_coords_dest, ra_coords, dec_coords
+
+def createTransformationRADECtoImage(file_name, ra_coords, dec_coords):
 
 
-    progress_bar_len = 20
-    progress = int(progress_bar_len * current / total)
+    pp_source = ppFromFileName(file_name)
+    x_coords_source, y_coords_source = raDecToXYPP(ra_coords, dec_coords, pp_source.JD, pp_source)
+
+    return x_coords_source, y_coords_source
+
+def createTransformationDestinationPPtoImage(pp_dest, file_name):
+
+    x_coords_dest, y_coords_dest, ra_coords, dec_coords = createTransformationPPToRADEC(pp_dest)
+    x_coords_source, y_coords_source = createTransformationRADECtoImage(file_name, ra_coords, dec_coords)
+
+    return x_coords_dest, y_coords_dest, x_coords_source, y_coords_source
+
+def progress(current, total, start_time=None, work_name = "Progress", show_eta=True, show_remaining = True, show_eta_date=False, bar_len=20, char="-"):
+
+
+    progress, time_elapsed = int(bar_len * current / total), 0
     percent = 100 * current / total
     if not start_time is None and current > 0:
         try:
@@ -33,28 +81,35 @@ def progress(current, total, start_time=None, eta=False, eta_date = False, bar_l
             time_per_it = time_elapsed / current
             its_remaining = total - current
             time_remaining = time_per_it * its_remaining
-            if eta_date:
-                eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%YY:%m:%d-%H:%M:%S')
+            if show_eta_date:
+                eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%Y-%m-%d %H:%M:%S')
             else:
                 eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%H:%M:%S')
         except:
             eta = "         "
+            time_remaining = 0
     else:
         _start_time = time.time()
         eta = "         "
-    if eta:
-        p = "\rProgress : {:02.0f}%|{}{}| {}/{}  ETA: {:s}".format(percent, char * progress,
-                                                        " " * (progress_bar_len - progress), current, total, eta)
-    else:
-        p = "\rProgress : {:02.0f}%|{}{}| {}/{}" .format(percent, char * progress,
-                                                         " " * (progress_bar_len - progress), current, total)
+        time_remaining = 0
+
+
+    p = "\r{} : {:03.0f}%|{}>{}| {}/{}".format(work_name, percent, char * progress,
+                                                        " " * (1 + bar_len - progress), current, total, eta)
+
+    if show_remaining:
+        p += " Remaining {:s}".format(str(timedelta(seconds=round(time_remaining))))
+
+    if show_eta:
+        p += " ETA: {:s}".format(eta)
+
     if current == total:
         print("")
 
-    return p
+    current += 1
+    return current, p
 
 def timeFromDayLight(file_name):
-
 
     pp = ppFromFileName(file_name)
     o = ephem.Observer()
@@ -69,13 +124,20 @@ def timeFromDayLight(file_name):
 
     return min(time_to_rise, time_to_set)
 
+def setPPTime(pp,file_name):
+
+    pp.time, pp.JD = rmsTimeExtractor(file_name, asTuple=True)
+    pp.Ho = JD2HourAngle(pp.JD)
+
+    return pp
+
 def ppFromFileName(file_name):
 
     if file_name.endswith(".fits"):
         station = file_name.split("_")[1]
         pp = Platepar()
         pp.read(os.path.join(os.path.expanduser("~/tmp/SkyChart/"),station,"platepar_cmn2010.cal"))
-
+        setPPTime(pp, file_name)
         return pp
 
 def tooCloseToDay(file):
@@ -94,7 +156,6 @@ def removeTooCloseToDay(files_list_in):
                 files_list_out.append(file)
 
     return files_list_out
-
 
 def downloadIfNotExist(source_directory, file_name, target_directory, print_files=False, force=False):
 
@@ -120,7 +181,6 @@ def downloadIfNotExist(source_directory, file_name, target_directory, print_file
         if print_files:
             print("Downloading {} to {}".format(os.path.join(source_directory, file_name),final_destination_file))
         subprocess.run(["rsync", "-z", file_path, final_destination_file])
-
 
 def getStations(paths):
 
@@ -159,17 +219,15 @@ def getConfigsMasksPlatepars(config_file_paths_list,temp_dir="~/tmp/SkyChart"):
     station_list = []
     temp_dir = os.path.expanduser(temp_dir)
 
-
-
     print("Getting configuration files, masks and platepars for {}".format(getStations(config_file_paths_list)))
-    for config_path in tqdm.tqdm(config_file_paths_list):
-
-
+    i, start_time = 0, time.time()
+    for config_path in config_file_paths_list:
+        i, str = progress(i, len(config_file_paths_list), work_name="Get configs")
+        print(str, end="")
         config_filename = os.path.basename(config_path.split(':')[1])
         temp_destination_path_and_filename = os.path.join(temp_dir,config_filename)
 
         while not os.path.exists(temp_destination_path_and_filename):
-
             subprocess.run(["rsync", "-z", config_path, temp_destination_path_and_filename])
         config = cr.parse(temp_destination_path_and_filename)
         local_user = os.path.basename(os.path.expanduser("~"))
@@ -187,7 +245,6 @@ def getConfigsMasksPlatepars(config_file_paths_list,temp_dir="~/tmp/SkyChart"):
 
 
     return station_list, config_list
-
 
 def getPositionsFromConfigs(config_list):
 
@@ -240,17 +297,19 @@ def testRmsTimeConverter():
 
 
     test_cases = []
+    test_cases.append("20240820_1600")
+    test_cases.append("20240820_160000")
+
     test_cases.append("log_AU0006_20000101_120000.365999.log")
     test_cases.append("FF_AU0006_20000101_120000_123.fits")
     test_cases.append("FF_AU0006_20000101_120000_123456.fits")
     test_cases.append("FF_AU0006_000101_120000_123456.fits")
     test_cases.append("/home/au0006/RMS_data/CapturedFiles/AU0006_20240820_101710_566632")
     test_cases.append("/home/au0006/RMS_data/CapturedFiles/AU0006_20240820_101710_566632_1345")
+
     testLoop(test_cases)
 
     return 0
-
-
 
 def rmsTimeExtractor(rms_time, asTuple = False, asJD = False):
     """
@@ -315,6 +374,10 @@ def rmsTimeExtractor(rms_time, asTuple = False, asJD = False):
                 str_time = field_list[field_no]
                 hour, minute, second = int(str_time[:2]), int(str_time[2:4]), int(str_time[4:6])
                 dt = datetime(year, month , day, hour, minute, second)
+            elif len(field) == 4:
+                str_time = field_list[field_no]
+                hour, minute, second = int(str_time[:2]), int(str_time[2:4]), 0
+                dt = datetime(year, month, day, hour, minute, second)
             else:
                 # if the second field is not of length 6 then reset the counter
                 consecutive_time_date_fields = 0
@@ -351,6 +414,7 @@ def configurePlatepar(ppar, config_list, image_time, az=0, el=90, rot =0, angle=
     ppar.resetDistortionParameters()
     ppar.equal_aspect = True
     ppar.time, ppar.JD = rmsTimeExtractor(image_time), rmsTimeExtractor(image_time, asJD=True)
+    ppar.Ho = JD2HourAngle(ppar.JD)
     ppar.X_res, ppar.Y_res, ppar.pos_angle_ref = res, res, rot
     average_lat, average_lon, average_elevation = getAveragePosition(config_list)
     ppar.lat, ppar.lon, ppar.ele = average_lat, average_lon, average_elevation
@@ -386,7 +450,9 @@ def getCapturedDirs(path_list, config_list, reverse=False):
 
     dir_names_list_of_lists = []
     print("Getting captured directory lists")
-    for path, config in tqdm.tqdm(zip(path_list, config_list)):
+    i, start_time = 0, time.time()
+    for path, config in zip(path_list, config_list):
+        i, str = progress(i, len(path_list), start_time, "Getting captured directories")
         dir_name_list = []
         user_domain = path.split(':')[0]
         target_dir = os.path.join(config.data_dir, config.captured_dir)
@@ -402,58 +468,74 @@ def getCapturedDirs(path_list, config_list, reverse=False):
             dir_name_list.reverse()
         else:
             dir_name_list.sort()
-        dir_names_list_of_lists.append(dir_name_list)
+        dir_names_list_of_lists.append([path, config, dir_name_list])
 
     return dir_names_list_of_lists
 
-def getFilePaths(config_file_paths_list, config_list, dirs_list_of_lists, image_time):
+def getFilePaths(config_file_paths_list, image_time):
 
-    files_path_lists = []
-    print("Getting file paths lists")
-    for path, config, dirs_list in tqdm.tqdm(zip(config_file_paths_list, config_list, dirs_list_of_lists)):
 
-        #reverse the dirs_list, and find the first dir before the time
-        dirs_list.reverse()
-        for directory in dirs_list:
+    files_path_list = []
 
-                rms_time = "{}_{}".format(directory.split("_")[1], directory.split("_")[2])
-                if rmsTimeExtractor(rms_time) < rmsTimeExtractor(image_time):
-                    break
-
+    start_time, i = time.time(), 0
+    for path, config, dirs_list in config_file_paths_list:
+        i, str = progress(i, len(config_file_paths_list), start_time, work_name="Get file paths", show_remaining = True, show_eta = True)
+        print(str, end= " ")
+        directory = getDirectoryByTime(dirs_list, image_time)
         user_domain = path.split(':')[0]
-        target_directory = os.path.join(config.data_dir, config.captured_dir, directory)
-        output = subprocess.run(["rsync", "-z", "{}:{}/*.fits".format(user_domain, target_directory)],
-                                                                                                 capture_output=True)
-        dir_string = output.stdout.decode("utf-8")
+        target = os.path.join(config.data_dir, config.captured_dir, directory)
+
+        o = subprocess.run(["rsync", "-z", "{}:{}/*.fits".format(user_domain, target)],capture_output=True)
+        dir_string = o.stdout.decode("utf-8")
         dir_list = dir_string.split("\n")
+        prefix, station_id, suffix = "FF", config.stationID, "fits"
+        files_path_list.append([getFilePathsbyTime(dir_list, image_time, target, prefix, station_id, suffix), path, config])
 
-        file_name_list = []
-        for item in dir_list:
-            if len(item.split()) == 5:
-                file_name = item.split()[4]
-                if file_name.startswith("FF_{}".format(config.stationID)):
-                    file_dt, image_dt = rmsTimeExtractor(file_name), rmsTimeExtractor(image_time)
-                    if abs((file_dt - image_dt).total_seconds()) < 30:
-                            file_path_name = os.path.join(target_directory, file_name)
-                            file_name_list.append(file_path_name)
-        files_path_lists.append(file_name_list)
+    return files_path_list
+
+def getDirectoryByTime(dirs_list, image_time):
+    # reverse the dirs_list, and find the first dir before the time
+    dirs_list.reverse()
+    for directory in dirs_list:
+
+        rms_time = "{}_{}".format(directory.split("_")[1], directory.split("_")[2])
+        if rmsTimeExtractor(rms_time) < rmsTimeExtractor(image_time):
+            break
+    return directory
+
+def getFilePathsbyTime(dir_list, image_time, target_directory, prefix, stationID, suffix):
+
+    file_name_list, files_path_list = [], []
+    for item in dir_list:
+        if len(item.split()) == 5:
+            file_name = item.split()[4]
+            if file_name.startswith("{}_{}".format(prefix, stationID)) and file_name.endswith(suffix):
+                file_dt, image_dt = rmsTimeExtractor(file_name), rmsTimeExtractor(image_time)
+                if abs((file_dt - image_dt).total_seconds()) < 30:
+                    file_path_name = os.path.join(target_directory, file_name)
+                    file_name_list.append(file_path_name)
+    files_path_list.append(file_name_list)
+    return files_path_list
 
 
-    return files_path_lists
-
-def retrieveFiles(files_path_lists, station_list, config_file_paths_list, temp_dir):
-
-    print("Retrieving initial files")
-    for station, config_file_path, file_paths in tqdm.tqdm(zip(station_list, config_file_paths_list, files_path_lists)):
-        destination_path = os.path.join(temp_dir, station)
-        user_domain = config_file_path.split(':')[0]
-        for file_path in file_paths:
-                destination_path_name = os.path.join(destination_path, os.path.basename(file_path))
-                file_name = os.path.basename(file_path)
-                file_path = os.path.dirname(file_path)
-                downloadIfNotExist("{}:{}".format(user_domain, file_path), file_name,destination_path)
+def retrieveFiles(files_path_lists, temp_dir):
 
 
+    destination_path_list = []
+    start_time, i = time.time(), 0
+    for file_paths_list, path, config in files_path_lists:
+        i, str = progress(i,len(files_path_lists), start_time, work_name = "Retrieve initial files", show_eta=True, show_remaining=True)
+        print(str, end=" ")
+        station = config.stationID
+        destination_path = os.path.join(temp_dir, config.stationID)
+        user_domain = path.split(':')[0]
+        for file_paths in file_paths_list:
+                for file_path in file_paths:
+                    file_path, file_name = os.path.dirname(file_path), os.path.basename(file_path)
+                    downloadIfNotExist("{}:{}".format(user_domain, file_path), file_name, destination_path)
+                    destination_path_list.append(os.path.join(destination_path,file_name))
+
+    return destination_path_list
 
 def createLookUpTable(pp):
 
@@ -703,7 +785,7 @@ def getIntensities(look_up_table, temp_dir, pp_dest, station_list, remote_path_l
     start_time = time.time()
     for x, y, r, d in zip(x_coords, y_coords, ra, dec):
 
-        print(progress(hits+misses, pp_dest.X_res * pp_dest.Y_res, start_time, eta=True,eta_date=True, bar_len=30, char="-"), end=" ")
+        print(progress(hits+misses, pp_dest.X_res * pp_dest.Y_res, start_time,eta=True,eta_date=True, bar_len=30, char="-"), end=" ")
 
         # First look in memory then the local file store
         sta_list, fn_list, td_list, ad_list = findFitsLocal(r, d, station_list, temp_dir, pp_dest, corrupted_fits)
@@ -797,6 +879,10 @@ def getIntensities(look_up_table, temp_dir, pp_dest, station_list, remote_path_l
 
     return max_pixel_arr, ave_pixel_arr, count_arr
 
+def createTargetImage(pp_dest):
+
+    pass
+    return
 
 def loadFits(station, fits_file, loaded_fits_names, loaded_pp, loaded_fits, loaded_camera_masks, loaded_ground_masks, temp_dir, corrupted_fits):
 
@@ -829,10 +915,41 @@ def loadFits(station, fits_file, loaded_fits_names, loaded_pp, loaded_fits, load
 
     return loaded_fits, loaded_fits_names, loaded_pp, loaded_camera_masks, loaded_ground_masks, corrupted_fits
 
+def addDirToAccountNameHostName(config_file_paths_list, target_dir = "source/RMS/.config"):
+
+    config_file_paths_list_with_dir = []
+    for config_file in config_file_paths_list:
+        if ":" in config_file:
+            config_file_paths_list_with_dir.append(config_file)
+        else:
+            config_file_paths_list_with_dir.append("{}:{}".format(config_file, target_dir))
+
+    return config_file_paths_list_with_dir
+
+def makeTransformations(pp_dest,file_list):
+
+    transformation_list = []
+    print("File list {}".format(file_list))
+    start_time, i = time.time(), 0
+    for file_name in file_list:
+        i, str = progress(i,len(file_list), start_time, work_name = "Make transforms")
+        print(str, end = " ")
+        transformation_list.append([file_name, createTransformationDestinationPPtoImage(pp_dest, file_name)])
+
+    return transformation_list
+
+def makeTransformationPickleFromFileList(pp_dest, file_list, pickle_path):
+
+    with open(os.path.expanduser(pickle_path),'wb') as f:
+        pickle.dump(pp_dest,f)
+        pickle.dump(makeTransformations(pp_dest,file_list), f)
+
+    return pickle_path
 
 def startGenerator(config_file_paths_list=None, daemon_delay=None, image_time=None, resolution = 300):
 
-    config_file_paths_list_unvalidated = config_file_paths_list
+    if config_file_paths_list is None:
+        return
 
     if daemon_delay is None:
         print("Not running in daemon mode")
@@ -840,34 +957,23 @@ def startGenerator(config_file_paths_list=None, daemon_delay=None, image_time=No
         print("Running in daemon mode")
 
     temp_dir = "~/tmp/SkyChart"
-
     temp_dir = os.path.expanduser(temp_dir)
     mkdirP(temp_dir)
 
-    if config_file_paths_list_unvalidated is None:
-        return
-
-    config_file_paths_list = []
-    for config_file in config_file_paths_list_unvalidated:
-        if ":" in config_file:
-            config_file_paths_list.append(config_file)
-        else:
-            config_file_paths_list.append("{}:{}".format(config_file, "source/RMS/.config"))
-
     station_list, config_list = getConfigsMasksPlatepars(config_file_paths_list)
 
-    im_ppar = Platepar()
-    im_ppar = configurePlatepar(im_ppar, config_list, image_time, res=resolution)
+    pp_dest = Platepar()
+    pp_dest = configurePlatepar(pp_dest, config_list, image_time, res=resolution)
 
     dirs_list_of_lists = getCapturedDirs(config_file_paths_list, config_list)
-    files_path_lists = getFilePaths(config_file_paths_list, config_list, dirs_list_of_lists, image_time)
-    retrieveFiles(files_path_lists,station_list,config_file_paths_list,temp_dir)
-    max_pixel_arr, ave_pixel_arr, count_arr = getIntensities(createLookUpTable(im_ppar), temp_dir, im_ppar, station_list, config_file_paths_list, config_list)
+    files_path_lists = getFilePaths(dirs_list_of_lists, image_time)
+    local_file_path_list = retrieveFiles(files_path_lists,temp_dir)
 
-    with open("/home/david/skychart", 'wb') as f:
-        np.save(f, max_pixel_arr)
-        np.save(f, ave_pixel_arr)
-        np.save(f, count_arr)
+    makeTransformationPickleFromFileList(pp_dest, local_file_path_list,"~/tmp/SkyChart/transformation.pickle")
+
+#   max_pixel_arr, ave_pixel_arr, count_arr = getIntensities(createLookUpTable(pp_dest), temp_dir, pp_dest, station_list, config_file_paths_list, config_list)
+
+
 
 def display():
 
@@ -880,6 +986,51 @@ def display():
     plt.imshow(ave_pixel_arr, cmap="gray")
     plt.show()
     pass
+
+def resolveNameToIP(account_name_hostname):
+    hostname_list = ['coorinja', 'lemongum', 'pemberton', 'pioneer', 'rhodesdale', 'walnut', 'youndegin']
+    ip_address_server = "http://rvrgm.asuscomm.com:8243/stations"
+    ip = 0
+
+    account_name, hostname = account_name_hostname.split("@")
+
+    if hostname in hostname_list:
+        url_for_ip_address = "{}/{}.ip".format(ip_address_server, hostname)
+    else:
+        return account_name_hostname
+
+    try:
+        if sys.version_info[0] < 3:
+            web_page = urllib2.urlopen(url_for_ip_address).read().splitlines()
+        else:
+            web_page = urllib.request.urlopen(url_for_ip_address).read().decode("utf-8").splitlines()
+
+    except Exception:
+        # Return an empty list
+        traceback.print_exc()
+
+        return None
+
+    address_list = web_page[0].split()
+    for address in address_list:
+        if address.startswith("10.8.0"):
+            return account_name_hostname.replace(hostname,address)
+
+
+    print("Returned {}".format(web_page))
+
+    return account_name_hostname
+
+def resolveListToIP(accountname_hostname_list):
+
+    output_list = []
+    for accountname_hostname in accountname_hostname_list:
+        output_list.append(resolveNameToIP(accountname_hostname))
+    return output_list
+
+def testIPResolver():
+
+    print(resolveNameToIP("au0001u@coorinja"))
 
 def testPlatePar():
 
@@ -976,5 +1127,8 @@ if __name__ == '__main__':
         resolution = int(cml_args.resolution[0])
 
     testPlatePar()
-    startGenerator(config_file_paths_list=cml_args.paths, daemon_delay=cml_args.daemon, image_time=image_time, resolution=resolution)
+    account_name_hostname_list = resolveListToIP(cml_args.paths)
+    account_name_hostname_list = addDirToAccountNameHostName(account_name_hostname_list)
+    print(account_name_hostname_list)
+    startGenerator(config_file_paths_list=account_name_hostname_list, daemon_delay=cml_args.daemon, image_time=image_time, resolution=resolution)
     display()
