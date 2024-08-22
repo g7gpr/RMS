@@ -927,7 +927,6 @@ def addDirToAccountNameHostName(config_file_paths_list, target_dir = "source/RMS
 def makeTransformations(pp_dest,file_list):
 
     transformation_list = []
-    print("File list {}".format(file_list))
     start_time, i = time.time(), 0
     for file_name in file_list:
         i, str = progress(i,len(file_list), start_time, work_name = "Make transforms")
