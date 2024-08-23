@@ -169,33 +169,30 @@ def testRmsTimeConverter():
     return 0
 
 def progress(current, total, start_time=None, task_name = "Progress", task_name_space=30, show_time_per_it = True, show_total = True, show_eta=True,
-            show_remaining = True, show_eta_date=False, bar_len=20, char="-", pointer=">", newline_at_end=False):
+            show_remaining = True, show_eta_date=False, bar_len=20, char="-", pointer=">", newline_at_end=False, iteration_estimate = 60):
 
 
-    progress, time_elapsed = int(bar_len * current / total), 0
+
+    progress = int(bar_len * current / total)
     percent = 100 * current / total
-    time_per_it = 0
-    if not start_time is None and current > 0:
-        try:
-            time_elapsed = time.time() - start_time
-            time_per_it = time_elapsed / current
-            its_remaining = total - current
-            time_remaining = time_per_it * its_remaining
-            total_time = time_per_it * total
 
-            if show_eta_date:
-                eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%Y-%m-%d %H:%M:%S')
-            else:
-                eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%H:%M:%S')
-        except:
-            eta = "         "
-            time_remaining = 0
-            total_time = 0
+    time_elapsed = time.time() - start_time
+    if current == 0:
+        time_per_it = iteration_estimate
     else:
-        _start_time = time.time()
-        eta = "         "
-        time_remaining, total_time = 0, 0
+        time_per_it = time_elapsed / current
 
+    total_time = time_per_it * total
+    its_remaining = total - current
+    time_remaining = time_per_it * its_remaining
+
+    if show_eta:
+        if show_eta_date:
+            eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%H:%M:%S')
+    else:
+        eta = 10 * "  "
 
     if task_name_space > len(task_name):
         task_name = "{}{}".format(task_name, " " * (task_name_space - len(task_name)))
@@ -978,7 +975,7 @@ def generateContemporaryImageTransformations(config_file_paths_list=None, pickle
     station_list, config_list = getConfigsMasksPlatepars(config_file_paths_list)
 
     pp_dest = Platepar()
-    pp_dest = configurePlatepar(pp_dest, config_list, image_time, res=resolution)
+    pp_dest = configurePlatepar(pp_dest, config_list, image_time, res=resolution, angle=120)
 
     dirs_list_of_lists = getCapturedDirs(config_file_paths_list, config_list)
     files_path_lists = getFilePaths(dirs_list_of_lists, image_time)
@@ -987,25 +984,76 @@ def generateContemporaryImageTransformations(config_file_paths_list=None, pickle
 
     return pickle_path
 
+def createArrayList(pp_dest, count):
+
+    array_list = []
+    for n in range(0, count):
+        array_list.append(np.zeros(shape=(pp_dest.X_res, pp_dest.Y_res), dtype=int))
+
+    return array_list
+
+def inLimits(x,y,pp):
+
+    return 0 < x < pp.X_res and 0 < y < pp.X_res
+
+def transformPixel(array_list,pp_source, ff, x_s, y_s, x_d, y_d):
+
+
+    x_s, y_s = round(x_s), round(y_s)
+    if inLimits(x_s, y_s, pp_source):
+        array_list[0][x_d, y_d] = ff.maxpixel[x_s, y_s]
+        array_list[1][x_d, y_d] = ff.avepixel[x_s, y_s]
+        array_list[2][x_d, y_d] += 1
+
+    return array_list
+
+def transformFF(pp_dest, file_name, transformation):
+
+    print("Transforming image with resolution {}, {}".format(pp_dest.X_res, pp_dest.Y_res))
+    pp_source = ppFromFileName(file_name)
+    ff_dir, ff_name = os.path.dirname(file_name), os.path.basename(file_name)
+    ff = readFF(ff_dir, ff_name)
+    array_list = createArrayList(pp_dest, 3)
+    x_d_arr, y_d_arr, x_s_arr, y_s_arr = transformation
+    i, start_time = 0, time.time()
+    for x_d, y_d, x_s, y_s in zip(x_d_arr, y_d_arr, x_s_arr, y_s_arr):
+        array_list = transformPixel(array_list, pp_source, ff, x_s, y_s, x_d, y_d)
+
+    return array_list
+
 def applyTransformations(pickle_path):
 
     with open(os.path.expanduser(pickle_path),'rb') as f:
         pp_dest = pickle.load(f)
         transformation_list = pickle.load(f)
 
-    print(pp_dest)
+    [max_pixel_arr, ave_pixel_arr, count_arr] = createArrayList(pp_dest,3)
+    i, start_time = 0, time.time()
+    for data_list in transformation_list:
+        file_name, transformation = data_list
+        i, p = progress(i, len(transformation_list), start_time, task_name="{}".format(os.path.basename(file_name)), iteration_estimate=60)
+        print(p, end=" ")
+        [ff_max_pixel_arr, ff_ave_pixel_arr, ff_count_arr] = transformFF(pp_dest, file_name, transformation)
+        max_pixel_arr = ff_max_pixel_arr
+        ave_pixel_arr = ff_ave_pixel_arr
+        count_arr = ff_count_arr
+        display(max_pixel_arr)
+        display(ave_pixel_arr)
+        display(count_arr)
 
 
 
-def display():
+    with open("image_array", 'wb') as fh:
+        pickle.dump(max_pixel_arr, fh)
+        pickle.dump(ave_pixel_arr, fh)
+        pickle.dump(count_arr, fh)
 
-    with open("/home/david/skychart", 'rb') as f:
-        max_pixel_arr = np.load(f)
-        ave_pixel_arr = np.load(f)
-        count_arr = np.load(f)
 
-    plt.imshow(max_pixel_arr, cmap="gray")
-    plt.imshow(ave_pixel_arr, cmap="gray")
+def display(arr):
+
+
+
+    plt.imshow(arr, cmap="gray")
     plt.show()
     pass
 
@@ -1152,11 +1200,14 @@ if __name__ == '__main__':
     else:
         resolution = int(cml_args.resolution[0])
 
+    pickle_path = "~/tmp/SkyChart/ContemporaryTransformations.pickle"
+
     #testPlatePar()
     if cml_args.transformations:
         account_name_hostname_list = resolveListToIP(cml_args.paths)
         account_name_hostname_list = addDirToAccountNameHostName(account_name_hostname_list)
-        generateContemporaryImageTransformations(config_file_paths_list=account_name_hostname_list, daemon_delay=cml_args.daemon, image_time=image_time, resolution=resolution, pickle_path = "~/tmp/SkyChart/ContemporaryTransformations.pickle")
+        generateContemporaryImageTransformations(config_file_paths_list=account_name_hostname_list,
+                                                 image_time=image_time, resolution=resolution, pickle_path=pickle_path)
 
-    max_pixel, ave_pixel, count_pixel = applyTransformations()
+    applyTransformations(pickle_path=pickle_path)
 
