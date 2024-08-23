@@ -396,11 +396,11 @@ def createTransformationDestinationPPtoImage(pp_dest, file_name):
     x_coords_dest, y_coords_dest, ra_coords, dec_coords = createTransformationPPToRADEC(pp_dest)
     x_coords_source, y_coords_source = createTransformationRADECtoImage(file_name, ra_coords, dec_coords)
 
-    return x_coords_dest, y_coords_dest, x_coords_source, y_coords_source
+    return x_coords_dest, y_coords_dest, ra_coords, dec_coords, x_coords_source, y_coords_source
 
 def setPPTime(pp,file_name):
 
-    pp.time, pp.JD = rmsTimeExtractor(file_name, asTuple=True)
+    pp.time, pp.JD = rmsTimeExtractor(file_name), rmsTimeExtractor(file_name, asJD=True)
     pp.Ho = JD2HourAngle(pp.JD)
 
     return pp
@@ -419,13 +419,13 @@ def configurePlatepar(ppar, config_list, image_time, az=0, el=90, rot =0, angle=
 
     ppar.resetDistortionParameters()
     ppar.equal_aspect = True
-    ppar.time, ppar.JD = rmsTimeExtractor(image_time, asTuple=True)
+    ppar.time, ppar.JD = rmsTimeExtractor(image_time), rmsTimeExtractor(image_time, asJD=True)
     ppar.Ho = JD2HourAngle(ppar.JD)
     ppar.X_res, ppar.Y_res, ppar.pos_angle_ref = res, res, rot
     average_lat, average_lon, average_elevation = getAveragePosition(config_list)
     ppar.lat, ppar.lon, ppar.ele = average_lat, average_lon, average_elevation
     ppar.fov_h, ppar.fov_v = angle, angle
-    ppar.az_centre, ppar.alt_centre = 0, 90
+    ppar.az_centre, ppar.alt_centre = 0, 88
     ppar.F_scale = res / angle
 
     # calculate hour angle
@@ -654,7 +654,7 @@ def getFilePathsbyTime(dir_list, image_time, target_directory, prefix, stationID
             file_name = item.split()[4]
             if file_name.startswith("{}_{}".format(prefix, stationID)) and file_name.endswith(suffix):
                 file_dt, image_dt = rmsTimeExtractor(file_name), rmsTimeExtractor(image_time)
-                if abs((file_dt - image_dt).total_seconds()) < 30:
+                if abs((file_dt - image_dt).total_seconds()) < 10:
                     file_path_name = os.path.join(target_directory, file_name)
                     file_name_list.append(file_path_name)
     files_path_list.append(file_name_list)
@@ -967,7 +967,7 @@ def makeTransformationPickleFromFileList(pp_dest, file_list, pickle_path=None):
 
     return pickle_path
 
-def generateContemporaryImageTransformations(config_file_paths_list=None, pickle_path=None, daemon_delay=None, image_time=None, resolution = 300):
+def generateContemporaryImageTransformations(config_file_paths_list=None, pickle_path=None, daemon_delay=None, image_time=None, resolution = 300, angle=90):
 
     if config_file_paths_list is None:
 
@@ -985,7 +985,7 @@ def generateContemporaryImageTransformations(config_file_paths_list=None, pickle
     station_list, config_list = getConfigsMasksPlatepars(config_file_paths_list)
 
     pp_dest = Platepar()
-    pp_dest = configurePlatepar(pp_dest, config_list, image_time, res=resolution, angle=120)
+    pp_dest = configurePlatepar(pp_dest, config_list, image_time, res=resolution, angle=angle)
 
     dirs_list_of_lists = getCapturedDirs(config_file_paths_list, config_list)
     files_path_lists = getFilePaths(dirs_list_of_lists, image_time)
@@ -1011,7 +1011,7 @@ def transformPixel(a_lst,pp_source, mask, ff, x_s, y_s, x_d, y_d):
 
     x_s, y_s = round(x_s), round(y_s)
     if inLimits(x_s, y_s, pp_source):
-        if mask[y_s, x_s] == 255 or True:
+        if mask[y_s, x_s] == 255:
             a_lst[0][y_d, x_d], a_lst[1][y_d, x_d] = ff.maxpixel[y_s, x_s], ff.avepixel[y_s, x_s]
             a_lst[2][y_d, x_d] += 1
 
@@ -1025,9 +1025,9 @@ def transformFF(pp_dest, temp_dir, file_name, transformation):
     ff_dir, ff_name = os.path.dirname(file_name), os.path.basename(file_name)
     ff = readFF(ff_dir, ff_name)
     array_list = createArrayList(pp_dest, 3)
-    x_d_arr, y_d_arr, x_s_arr, y_s_arr = transformation
-
-    for x_d, y_d, x_s, y_s in zip(x_d_arr, y_d_arr, x_s_arr, y_s_arr):
+    x_d_arr, y_d_arr, ra_coords, dec_coords, x_s_arr, y_s_arr = transformation
+    print("FF:{}".format(ff_name))
+    for x_d, y_d, ra, dec, x_s, y_s in zip(x_d_arr, y_d_arr, ra_coords, dec_coords, x_s_arr, y_s_arr):
         array_list = transformPixel(array_list, pp_source, m.img, ff, x_s, y_s, x_d, y_d)
 
     return array_list
@@ -1055,11 +1055,18 @@ def applyTransformations(temp_dir, pickle_path):
         pickle.dump(count_arr, fh)
 
 
-def display(arr):
+def display(temp_dir, pickle_path):
 
-
-
-    plt.imshow(arr, cmap="gray")
+    temp_dir = os.path.expanduser(temp_dir)
+    with open(os.path.join("image_array"), 'rb') as f:
+        max_p = pickle.load(f)
+        ave_p = pickle.load(f)
+        count = pickle.load(f)
+    plt.imshow(max_p, cmap="gray")
+    plt.show()
+    plt.imshow(ave_p, cmap="gray")
+    plt.show()
+    plt.imshow(count, cmap="gray")
     plt.show()
     pass
 
@@ -1214,7 +1221,8 @@ if __name__ == '__main__':
         account_name_hostname_list = resolveListToIP(cml_args.paths)
         account_name_hostname_list = addDirToAccountNameHostName(account_name_hostname_list)
         generateContemporaryImageTransformations(config_file_paths_list=account_name_hostname_list,
-                                                 image_time=image_time, resolution=resolution, pickle_path=pickle_path)
+                                                 image_time=image_time, resolution=resolution, pickle_path=pickle_path,
+                                                 angle=cml_args.angle)
 
-    applyTransformations("~/tmp/SkyChart", pickle_path=pickle_path,)
-
+    applyTransformations("~/tmp/SkyChart", pickle_path=pickle_path)
+    display("~/tmp/SkyChart", pickle_path=pickle_path)
