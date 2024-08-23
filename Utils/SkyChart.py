@@ -44,6 +44,127 @@ captured_dirs_list_of_lists = None
 file_list_of_lists_of_lists = None
 
 
+def getIntensities(look_up_table, temp_dir, pp_dest, station_list, remote_path_list, config_list):
+
+    corrupted_fits = []
+    x_coords, y_coords, ra, dec = look_up_table
+    centre_ra, centre_dec = altAz2RADec(0,90, pp_dest.JD, pp_dest.lat, pp_dest.lon)
+    print("Ra,Dec {},{}".format(centre_ra, centre_dec))
+
+    jd_arr = np.array([pp_dest.JD])
+    x_arr = np.array([pp_dest.X_res / 2])
+    y_arr = np.array([pp_dest.Y_res / 2])
+    mag_arr = np.array([1])
+
+    _, centre_ra, centre_dec, _ = xyToRaDecPP(jd_arr, x_arr, y_arr, mag_arr, pp_dest,  jd_time=True)
+    print("Ra,Dec {},{}".format(centre_ra, centre_dec))
+
+    loaded_fits_names, loaded_fits, loaded_pp = [], [], []
+    loaded_ground_masks, loaded_camera_masks = [], []
+    max_pixel_arr = np.zeros(shape=(pp_dest.X_res, pp_dest.Y_res), dtype=int)
+    ave_pixel_arr = np.zeros(shape=(pp_dest.X_res, pp_dest.Y_res), dtype=int)
+    count_arr = np.zeros(shape=(pp_dest.X_res, pp_dest.Y_res), dtype=int)
+
+    hits, misses = 0,0
+    first_iteration = True
+    best_file = ""
+    start_time = time.time()
+    for x, y, r, d in zip(x_coords, y_coords, ra, dec):
+
+        print(progress(hits+misses, pp_dest.X_res * pp_dest.Y_res, start_time,eta=True,eta_date=True, bar_len=30, char="-"), end=" ")
+
+        # First look in memory then the local file store
+        sta_list, fn_list, td_list, ad_list = findFitsLocal(r, d, station_list, temp_dir, pp_dest, corrupted_fits)
+        if len(ad_list):
+
+            # Find the image locally with the closest centre RaDec to the target
+            min_ad = min(ad_list)
+            index = ad_list.index(min_ad)
+            best_file = os.path.basename(fn_list[index])
+            station = sta_list[index]
+            loaded_fits, loaded_fits_names, loaded_pp, loaded_camera_masks, loaded_ground_masks, corrupted_fits  =  \
+                            loadFits(station, best_file, loaded_fits_names, loaded_pp, loaded_fits,
+                                    loaded_camera_masks, loaded_ground_masks, temp_dir, corrupted_fits)
+            pp_source = loaded_pp[loaded_fits_names.index(best_file)]
+
+            # If this image does not contain the required RaDec then look remotely
+            if not plateparContainsRaDec(r, d, pp_source, pp_dest, best_file,temp_dir):
+
+                fits_time_jd = rmsTimeExtractor(best_file, asJD=True)
+                az_fits, el_fits = raDec2AltAz(r, d, fits_time_jd, pp_source.lat, pp_source.lon)
+                print("Found local non matching file {} for r,d {:.1f},{:.1f}, x, y {:.1f},{:.1f} az el of {:.1f},{:.1f}"
+                            .format(best_file, r, d, x,y, az_fits, el_fits))
+                print("Looking for any remote files that could contain the RaDec {:.1f},{:.1f}".format(r,d))
+
+                best_station, best_captured_dir, best_unretrieved_file, best_ad = \
+                                            searchRaDecCoverage(r,d, station_list,
+                                                    remote_path_list, pp_dest, config_list,
+                                                                        temp_dir, corrupted_fits)
+
+
+                if best_station is None:
+                    misses += 1
+                    continue
+
+                print("Station {:s} has file {:s}, with angular deviation of {:.1f}"
+                            .format(best_station, os.path.basename(best_unretrieved_file), best_ad))
+
+                # Download this file
+
+                station_index = station_list.index(best_station)
+                remote_path = remote_path_list[station_index].split(':')[0]
+                source_directory = "{}:{}".format(remote_path, os.path.dirname(best_unretrieved_file))
+
+                target_directory = os.path.join(temp_dir, best_station)
+                best_file = os.path.basename(best_unretrieved_file)
+
+                downloadIfNotExist(source_directory, best_file, target_directory)
+                download_path_and_file = os.path.join(target_directory, best_file)
+                loaded_fits, loaded_fits_names, loaded_pp, corrupted_fits, loaded_camera_masks, loaded_ground_masks = \
+                        loadFits(best_station, download_path_and_file, loaded_fits_names, loaded_pp, loaded_fits, loaded_camera_masks, loaded_ground_masks, temp_dir, corrupted_fits)
+
+        if best_file == "":
+            continue
+
+        # Get the index for this file
+        if best_file in loaded_fits_names:
+            fits_index = loaded_fits_names.index(best_file)
+
+
+        # Get the az and el for the centre of this image
+        fits_time_jd = rmsTimeExtractor(best_file, asJD=True)
+        az_fits, el_fits = raDec2AltAz(r,d, fits_time_jd, pp_source.lat, pp_source.lon)
+                #print("Found file {} for r,d {:.1f},{:.1f}, az el for that station of {},{}".format(best_file,r,d, az_fits, el_fits))
+
+        # Convert plain numbers to arrays
+        r_array, d_array = np.array([r]), np.array([d])
+
+        # Get the platepar for this image
+        s_pp = loaded_pp[fits_index]
+
+        # Get the source image coordinates for this RaDec at the source image time
+        source_x, source_y = raDecToXYPP(r_array, d_array, fits_time_jd, s_pp)
+        source_x, source_y = round(source_x[0]), round(source_y[0])
+        max_pixel = loaded_fits[fits_index].maxpixel
+        ave_pixel = loaded_fits[fits_index].avepixel
+
+
+        # If these source coordinates are within the image bounds, plot a point
+        if 0 < source_x < s_pp.X_res and 0 < source_y < s_pp.Y_res:
+            print("plotting {},{} intensity {} from {} {},{}".format(x,y,max_pixel[source_y][source_x], best_file, source_x, source_y))
+            max_pixel_arr[x, y] = max_pixel[source_y][source_x]
+            ave_pixel_arr[x, y] = ave_pixel[source_y][source_x]
+            count_arr[x, y] = count_arr[x, y] + 1
+            hits += 1
+        else:
+            misses += 1
+
+
+
+
+
+    return max_pixel_arr, ave_pixel_arr, count_arr
+
 def angSepDeg(ra1, dec1, ra2, dec2):
 
     ra1, dec1, ra2, dec2 =  np.radians(ra1), np.radians(dec1) , np.radians(ra2), np.radians(dec2)
@@ -68,7 +189,7 @@ def rmsTimeExtractor(rms_time, asTuple = False, asJD = False, delimiter = None):
     # remove any dots, might be filename extension
     rms_time = rms_time.split(".")[0] if "." in rms_time else rms_time
 
-    # find the delimiter, which is probably the first non alpha numberic character
+    # find the delimiter, which is probably the first non alpha numeric character
     if delimiter == None:
         for c in rms_time:
             if c.isnumeric() or c.isalpha():
@@ -171,12 +292,10 @@ def testRmsTimeConverter():
 def progress(current, total, start_time=None, task_name = "Progress", task_name_space=30, show_time_per_it = True, show_total = True, show_eta=True,
             show_remaining = True, show_eta_date=False, bar_len=20, char="-", pointer=">", newline_at_end=False, iteration_estimate = 60):
 
-
-
     progress = int(bar_len * current / total)
     percent = 100 * current / total
-
     time_elapsed = time.time() - start_time
+
     if current == 0:
         time_per_it = iteration_estimate
     else:
@@ -300,7 +419,7 @@ def configurePlatepar(ppar, config_list, image_time, az=0, el=90, rot =0, angle=
 
     ppar.resetDistortionParameters()
     ppar.equal_aspect = True
-    ppar.time, ppar.JD = rmsTimeExtractor(image_time), rmsTimeExtractor(image_time, asJD=True)
+    ppar.time, ppar.JD = rmsTimeExtractor(image_time, asTuple=True)
     ppar.Ho = JD2HourAngle(ppar.JD)
     ppar.X_res, ppar.Y_res, ppar.pos_angle_ref = res, res, rot
     average_lat, average_lon, average_elevation = getAveragePosition(config_list)
@@ -649,6 +768,16 @@ def checkMaskxy(x,y,file_name, temp_dir):
     else:
         return False
 
+
+def getMask(temp_dir,file_name):
+
+    station_id = file_name.split("_")[1]
+    mask_path_file = os.path.join(os.path.expanduser(temp_dir), station_id, "mask.bmp")
+    if os.path.exists(mask_path_file):
+        return loadMask(mask_path_file)
+    else:
+        return None
+
 def plateparContainsRaDec(r, d, source_pp, dest_pp, file_name, temp_dir, check_mask = True):
 
 
@@ -767,126 +896,7 @@ def searchRaDecCoverage(r,d, station_list, remote_path_list, dest_pp, config_lis
 
     return None, None, None, None
 
-def getIntensities(look_up_table, temp_dir, pp_dest, station_list, remote_path_list, config_list):
 
-    corrupted_fits = []
-    x_coords, y_coords, ra, dec = look_up_table
-    centre_ra, centre_dec = altAz2RADec(0,90, pp_dest.JD, pp_dest.lat, pp_dest.lon)
-    print("Ra,Dec {},{}".format(centre_ra, centre_dec))
-
-    jd_arr = np.array([pp_dest.JD])
-    x_arr = np.array([pp_dest.X_res / 2])
-    y_arr = np.array([pp_dest.Y_res / 2])
-    mag_arr = np.array([1])
-
-    _, centre_ra, centre_dec, _ = xyToRaDecPP(jd_arr, x_arr, y_arr, mag_arr, pp_dest,  jd_time=True)
-    print("Ra,Dec {},{}".format(centre_ra, centre_dec))
-
-    loaded_fits_names, loaded_fits, loaded_pp = [], [], []
-    loaded_ground_masks, loaded_camera_masks = [], []
-    max_pixel_arr = np.zeros(shape=(pp_dest.X_res, pp_dest.Y_res), dtype=int)
-    ave_pixel_arr = np.zeros(shape=(pp_dest.X_res, pp_dest.Y_res), dtype=int)
-    count_arr = np.zeros(shape=(pp_dest.X_res, pp_dest.Y_res), dtype=int)
-
-    hits, misses = 0,0
-    first_iteration = True
-    best_file = ""
-    start_time = time.time()
-    for x, y, r, d in zip(x_coords, y_coords, ra, dec):
-
-        print(progress(hits+misses, pp_dest.X_res * pp_dest.Y_res, start_time,eta=True,eta_date=True, bar_len=30, char="-"), end=" ")
-
-        # First look in memory then the local file store
-        sta_list, fn_list, td_list, ad_list = findFitsLocal(r, d, station_list, temp_dir, pp_dest, corrupted_fits)
-        if len(ad_list):
-
-            # Find the image locally with the closest centre RaDec to the target
-            min_ad = min(ad_list)
-            index = ad_list.index(min_ad)
-            best_file = os.path.basename(fn_list[index])
-            station = sta_list[index]
-            loaded_fits, loaded_fits_names, loaded_pp, loaded_camera_masks, loaded_ground_masks, corrupted_fits  =  \
-                            loadFits(station, best_file, loaded_fits_names, loaded_pp, loaded_fits,
-                                            loaded_camera_masks, loaded_ground_masks, temp_dir, corrupted_fits)
-            pp_source = loaded_pp[loaded_fits_names.index(best_file)]
-
-            # If this image does not contain the required RaDec then look remotely
-            if not plateparContainsRaDec(r, d, pp_source, pp_dest, best_file,temp_dir):
-
-                fits_time_jd = rmsTimeExtractor(best_file, asJD=True)
-                az_fits, el_fits = raDec2AltAz(r, d, fits_time_jd, pp_source.lat, pp_source.lon)
-                print("Found local non matching file {} for r,d {:.1f},{:.1f}, x, y {:.1f},{:.1f} az el of {:.1f},{:.1f}"
-                            .format(best_file, r, d, x,y, az_fits, el_fits))
-                print("Looking for any remote files that could contain the RaDec {:.1f},{:.1f}".format(r,d))
-
-                best_station, best_captured_dir, best_unretrieved_file, best_ad = \
-                                            searchRaDecCoverage(r,d, station_list,
-                                                    remote_path_list, pp_dest, config_list,
-                                                                        temp_dir, corrupted_fits)
-
-
-                if best_station is None:
-                    misses += 1
-                    continue
-
-                print("Station {:s} has file {:s}, with angular deviation of {:.1f}"
-                            .format(best_station, os.path.basename(best_unretrieved_file), best_ad))
-
-                # Download this file
-
-                station_index = station_list.index(best_station)
-                remote_path = remote_path_list[station_index].split(':')[0]
-                source_directory = "{}:{}".format(remote_path, os.path.dirname(best_unretrieved_file))
-
-                target_directory = os.path.join(temp_dir, best_station)
-                best_file = os.path.basename(best_unretrieved_file)
-
-                downloadIfNotExist(source_directory, best_file, target_directory)
-                download_path_and_file = os.path.join(target_directory, best_file)
-                loaded_fits, loaded_fits_names, loaded_pp, corrupted_fits, loaded_camera_masks, loaded_ground_masks = \
-                        loadFits(best_station, download_path_and_file, loaded_fits_names, loaded_pp, loaded_fits, loaded_camera_masks, loaded_ground_masks, temp_dir, corrupted_fits)
-
-        if best_file == "":
-            continue
-
-        # Get the index for this file
-        if best_file in loaded_fits_names:
-            fits_index = loaded_fits_names.index(best_file)
-
-
-        # Get the az and el for the centre of this image
-        fits_time_jd = rmsTimeExtractor(best_file, asJD=True)
-        az_fits, el_fits = raDec2AltAz(r,d, fits_time_jd, pp_source.lat, pp_source.lon)
-                #print("Found file {} for r,d {:.1f},{:.1f}, az el for that station of {},{}".format(best_file,r,d, az_fits, el_fits))
-
-        # Convert plain numbers to arrays
-        r_array, d_array = np.array([r]), np.array([d])
-
-        # Get the platepar for this image
-        s_pp = loaded_pp[fits_index]
-
-        # Get the source image coordinates for this RaDec at the source image time
-        source_x, source_y = raDecToXYPP(r_array, d_array, fits_time_jd, s_pp)
-        source_x, source_y = round(source_x[0]), round(source_y[0])
-        max_pixel = loaded_fits[fits_index].maxpixel
-        ave_pixel = loaded_fits[fits_index].avepixel
-
-
-        # If these source coordinates are within the image bounds, plot a point
-        if 0 < source_x < s_pp.X_res and 0 < source_y < s_pp.Y_res:
-            print("plotting {},{} intensity {} from {} {},{}".format(x,y,max_pixel[source_y][source_x], best_file, source_x, source_y))
-            max_pixel_arr[x, y] = max_pixel[source_y][source_x]
-            ave_pixel_arr[x, y] = ave_pixel[source_y][source_x]
-            count_arr[x, y] = count_arr[x, y] + 1
-            hits += 1
-        else:
-            misses += 1
-
-
-
-
-
-    return max_pixel_arr, ave_pixel_arr, count_arr
 
 def createTargetImage(pp_dest):
 
@@ -994,34 +1004,35 @@ def createArrayList(pp_dest, count):
 
 def inLimits(x,y,pp):
 
-    return 0 < x < pp.X_res and 0 < y < pp.X_res
+    return 0 < x < pp.X_res and 0 < y < pp.Y_res
 
-def transformPixel(array_list,pp_source, ff, x_s, y_s, x_d, y_d):
+def transformPixel(a_lst,pp_source, mask, ff, x_s, y_s, x_d, y_d):
 
 
     x_s, y_s = round(x_s), round(y_s)
     if inLimits(x_s, y_s, pp_source):
-        array_list[0][x_d, y_d] = ff.maxpixel[x_s, y_s]
-        array_list[1][x_d, y_d] = ff.avepixel[x_s, y_s]
-        array_list[2][x_d, y_d] += 1
+        if mask[y_s, x_s] == 255 or True:
+            a_lst[0][y_d, x_d], a_lst[1][y_d, x_d] = ff.maxpixel[y_s, x_s], ff.avepixel[y_s, x_s]
+            a_lst[2][y_d, x_d] += 1
 
-    return array_list
+    return a_lst
 
-def transformFF(pp_dest, file_name, transformation):
+def transformFF(pp_dest, temp_dir, file_name, transformation):
 
     print("Transforming image with resolution {}, {}".format(pp_dest.X_res, pp_dest.Y_res))
+    m = getMask(temp_dir, os.path.basename(file_name))
     pp_source = ppFromFileName(file_name)
     ff_dir, ff_name = os.path.dirname(file_name), os.path.basename(file_name)
     ff = readFF(ff_dir, ff_name)
     array_list = createArrayList(pp_dest, 3)
     x_d_arr, y_d_arr, x_s_arr, y_s_arr = transformation
-    i, start_time = 0, time.time()
+
     for x_d, y_d, x_s, y_s in zip(x_d_arr, y_d_arr, x_s_arr, y_s_arr):
-        array_list = transformPixel(array_list, pp_source, ff, x_s, y_s, x_d, y_d)
+        array_list = transformPixel(array_list, pp_source, m.img, ff, x_s, y_s, x_d, y_d)
 
     return array_list
 
-def applyTransformations(pickle_path):
+def applyTransformations(temp_dir, pickle_path):
 
     with open(os.path.expanduser(pickle_path),'rb') as f:
         pp_dest = pickle.load(f)
@@ -1033,15 +1044,10 @@ def applyTransformations(pickle_path):
         file_name, transformation = data_list
         i, p = progress(i, len(transformation_list), start_time, task_name="{}".format(os.path.basename(file_name)), iteration_estimate=60)
         print(p, end=" ")
-        [ff_max_pixel_arr, ff_ave_pixel_arr, ff_count_arr] = transformFF(pp_dest, file_name, transformation)
-        max_pixel_arr = ff_max_pixel_arr
-        ave_pixel_arr = ff_ave_pixel_arr
-        count_arr = ff_count_arr
-        display(max_pixel_arr)
-        display(ave_pixel_arr)
-        display(count_arr)
-
-
+        [ff_max_pixel_arr, ff_ave_pixel_arr, ff_count_arr] = transformFF(pp_dest,temp_dir, file_name, transformation)
+        max_pixel_arr += ff_max_pixel_arr
+        ave_pixel_arr += ff_ave_pixel_arr
+        count_arr += ff_count_arr
 
     with open("image_array", 'wb') as fh:
         pickle.dump(max_pixel_arr, fh)
@@ -1180,6 +1186,7 @@ if __name__ == '__main__':
                             help="Generate contemporary transformations")
 
 
+
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
 
@@ -1209,5 +1216,5 @@ if __name__ == '__main__':
         generateContemporaryImageTransformations(config_file_paths_list=account_name_hostname_list,
                                                  image_time=image_time, resolution=resolution, pickle_path=pickle_path)
 
-    applyTransformations(pickle_path=pickle_path)
+    applyTransformations("~/tmp/SkyChart", pickle_path=pickle_path,)
 
