@@ -43,6 +43,218 @@ else:
 captured_dirs_list_of_lists = None
 file_list_of_lists_of_lists = None
 
+
+def angSepDeg(ra1, dec1, ra2, dec2):
+
+    ra1, dec1, ra2, dec2 =  np.radians(ra1), np.radians(dec1) , np.radians(ra2), np.radians(dec2)
+    return np.degrees(angularSeparation(ra1,dec1,ra2,dec2))
+def rmsTimeExtractor(rms_time, asTuple = False, asJD = False, delimiter = None):
+    """
+    General purpose function to convert *20240819*010235*123 | 123456 into a datetime object or JD
+    Offsets can be given for the positions of date, time, and fractional seconds, however
+    the code will try to parse any string that is given.
+
+
+    Args:
+        rms_time (): Any string containing YYYYMMDD and HHMMSS separated by the delimited
+        asJD (): optional, default false, if true return julian date, if false return datetime object
+
+    Returns:
+        a datetime object or a julian date number
+
+    """
+
+    rms_time = os.path.basename(rms_time)
+    # remove any dots, might be filename extension
+    rms_time = rms_time.split(".")[0] if "." in rms_time else rms_time
+
+    # find the delimiter, which is probably the first non alpha numberic character
+    if delimiter == None:
+        for c in rms_time:
+            if c.isnumeric() or c.isalpha():
+                continue
+            else:
+                delim = c
+                break
+
+    field_list = rms_time.split(delim)
+    field_count = len(field_list)
+    str_us = "0"
+
+    consecutive_time_date_fields = 0
+
+    # Parse rms filename, datestring into a date time object
+    for field, field_no in zip(field_list, range (0, field_count)):
+        field = field.split(".")[0] if "." in field else field
+        if field.isnumeric():
+            consecutive_time_date_fields += 1
+
+        # Handle year month day
+        if consecutive_time_date_fields == 1:
+            if len(field) == 8 or len(field) == 6:
+                # This looks like a date field so process the date field
+                str_date = field_list[field_no]
+                if len(str_date) == 8:
+                    year, month, day = int(str_date[:4]), int(str_date[4:6]), int(str_date[6:8])
+                    dt = datetime(year=int(year), month=int(month), day=int(day))
+                # Handle 2 digit year format
+                if len(str_date) == 6:
+                    year, month, day = 2000 + int(str_date[:2]), int(str_date[2:4]), int(str_date[4:6])
+                    dt = datetime(year=int(year), month=month, day=day)
+            else:
+                dt = 0
+
+        # Handle hour minute second
+        if consecutive_time_date_fields == 2:
+            if len(field) == 6:
+                # Found two consecutive numeric fields followed by a non numeric
+                # These are date and time
+                str_time = field_list[field_no]
+                hour, minute, second = int(str_time[:2]), int(str_time[2:4]), int(str_time[4:6])
+                dt = datetime(year, month , day, hour, minute, second)
+            elif len(field) == 4:
+                str_time = field_list[field_no]
+                hour, minute, second = int(str_time[:2]), int(str_time[2:4]), 0
+                dt = datetime(year, month, day, hour, minute, second)
+            else:
+                # if the second field is not of length 6 then reset the counter
+                consecutive_time_date_fields = 0
+
+        # Handle fractional seconds
+        if consecutive_time_date_fields == 3:
+            if field.isnumeric():
+                # Convert any arbitrary length next field to microseconds
+                us = int(field) * (10 ** (6 - len(field)))
+                dt = datetime(year, month, day, hour, minute, second, microsecond=int(us))
+                # Stop looping in all cases
+                break
+            else:
+                # Stop looping in call cases
+                break
+
+
+    if asTuple:
+        return dt, datetime2JD(dt)
+
+    if asJD:
+        return datetime2JD(dt)
+    else:
+        return dt
+
+def testRmsTimeConverter():
+
+    def testLoop(test_cases):
+
+        for input in test_cases:
+
+            dt = rmsTimeExtractor(input)
+            jd = rmsTimeExtractor(input, asJD=True)
+            print("Input {} gives {} julian date {}".format(input, dt, jd))
+
+
+
+    test_cases = []
+    test_cases.append("20240820_1600")
+    test_cases.append("20240820_160000")
+
+    test_cases.append("log_AU0006_20000101_120000.365999.log")
+    test_cases.append("FF_AU0006_20000101_120000_123.fits")
+    test_cases.append("FF_AU0006_20000101_120000_123456.fits")
+    test_cases.append("FF_AU0006_000101_120000_123456.fits")
+    test_cases.append("/home/au0006/RMS_data/CapturedFiles/AU0006_20240820_101710_566632")
+    test_cases.append("/home/au0006/RMS_data/CapturedFiles/AU0006_20240820_101710_566632_1345")
+
+    testLoop(test_cases)
+
+    return 0
+
+def progress(current, total, start_time=None, task_name = "Progress", task_name_space=30, show_time_per_it = True, show_total = True, show_eta=True,
+            show_remaining = True, show_eta_date=False, bar_len=20, char="-", pointer=">", newline_at_end=False):
+
+
+    progress, time_elapsed = int(bar_len * current / total), 0
+    percent = 100 * current / total
+    time_per_it = 0
+    if not start_time is None and current > 0:
+        try:
+            time_elapsed = time.time() - start_time
+            time_per_it = time_elapsed / current
+            its_remaining = total - current
+            time_remaining = time_per_it * its_remaining
+            total_time = time_per_it * total
+
+            if show_eta_date:
+                eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%H:%M:%S')
+        except:
+            eta = "         "
+            time_remaining = 0
+            total_time = 0
+    else:
+        _start_time = time.time()
+        eta = "         "
+        time_remaining, total_time = 0, 0
+
+
+    if task_name_space > len(task_name):
+        task_name = "{}{}".format(task_name, " " * (task_name_space - len(task_name)))
+
+    p = "\r{:s} : {:3.0f}%|{}{}{}| {}/{}".format(task_name, percent, char * progress, pointer,
+                                                        " " * (len(pointer) + bar_len - progress), current, total, eta)
+
+    if show_time_per_it:
+        p += " TPI: {:s}".format(str(timedelta(seconds=round(time_per_it))))
+
+    if show_remaining:
+        p += " REM: {:s}".format(str(timedelta(seconds=round(time_remaining))))
+
+    if show_total:
+        p += " TOT: {:s}".format(str(timedelta(seconds=round(total_time))))
+
+    if show_eta:
+        p += " ETA: {:s}".format(eta)
+
+    if current == total:
+        print("")
+
+    current += 1
+    if current > total:
+        p += "\n"
+    return current, p
+
+def timeFromDayLight(file_name):
+
+    pp = ppFromFileName(file_name)
+    o = ephem.Observer()
+    o.lat, o.long, o.elevation,o.date = str(pp.lat), str(pp.lon), pp.elev, rmsTimeExtractor(file_name)
+
+    o.horizon = '-5:26'
+    s = ephem.Sun()
+    s.compute()
+
+    time_to_rise = abs(o.date.datetime() - o .next_rising(s).datetime()).total_seconds()
+    time_to_set = abs(o.date.datetime() - o .previous_setting(s).datetime()).total_seconds()
+
+    return min(time_to_rise, time_to_set)
+
+def tooCloseToDay(file):
+
+    return timeFromDayLight(file) < 3600 * 1
+
+def removeTooCloseToDay(files_list_in):
+
+
+    files_list_out = []
+    for file in files_list_in:
+        if not file.endswith(".fits"):
+            files_list_out.append(file)
+        else:
+            if not tooCloseToDay(file):
+                files_list_out.append(file)
+
+    return files_list_out
+
 def createTransformationPPToRADEC(pp_dest):
 
     x_coords_dest, y_coords_dest = np.meshgrid(np.arange(0, pp_dest.X_res), np.arange(0, pp_dest.Y_res))
@@ -70,60 +282,6 @@ def createTransformationDestinationPPtoImage(pp_dest, file_name):
 
     return x_coords_dest, y_coords_dest, x_coords_source, y_coords_source
 
-def progress(current, total, start_time=None, work_name = "Progress", show_eta=True, show_remaining = True, show_eta_date=False, bar_len=20, char="-"):
-
-
-    progress, time_elapsed = int(bar_len * current / total), 0
-    percent = 100 * current / total
-    if not start_time is None and current > 0:
-        try:
-            time_elapsed = time.time() - start_time
-            time_per_it = time_elapsed / current
-            its_remaining = total - current
-            time_remaining = time_per_it * its_remaining
-            if show_eta_date:
-                eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%Y-%m-%d %H:%M:%S')
-            else:
-                eta = datetime.fromtimestamp((time.time() + time_remaining)).strftime('%H:%M:%S')
-        except:
-            eta = "         "
-            time_remaining = 0
-    else:
-        _start_time = time.time()
-        eta = "         "
-        time_remaining = 0
-
-
-    p = "\r{} : {:03.0f}%|{}>{}| {}/{}".format(work_name, percent, char * progress,
-                                                        " " * (1 + bar_len - progress), current, total, eta)
-
-    if show_remaining:
-        p += " Remaining {:s}".format(str(timedelta(seconds=round(time_remaining))))
-
-    if show_eta:
-        p += " ETA: {:s}".format(eta)
-
-    if current == total:
-        print("")
-
-    current += 1
-    return current, p
-
-def timeFromDayLight(file_name):
-
-    pp = ppFromFileName(file_name)
-    o = ephem.Observer()
-    o.lat, o.long, o.elevation,o.date = str(pp.lat), str(pp.lon), pp.elev, rmsTimeExtractor(file_name)
-
-    o.horizon = '-5:26'
-    s = ephem.Sun()
-    s.compute()
-
-    time_to_rise = abs(o.date.datetime() - o .next_rising(s).datetime()).total_seconds()
-    time_to_set = abs(o.date.datetime() - o .previous_setting(s).datetime()).total_seconds()
-
-    return min(time_to_rise, time_to_set)
-
 def setPPTime(pp,file_name):
 
     pp.time, pp.JD = rmsTimeExtractor(file_name, asTuple=True)
@@ -140,22 +298,65 @@ def ppFromFileName(file_name):
         setPPTime(pp, file_name)
         return pp
 
-def tooCloseToDay(file):
-
-    return timeFromDayLight(file) < 3600 * 1
-
-def removeTooCloseToDay(files_list_in):
+def configurePlatepar(ppar, config_list, image_time, az=0, el=90, rot =0, angle=90, res=600, print_values=False):
 
 
-    files_list_out = []
-    for file in files_list_in:
-        if not file.endswith(".fits"):
-            files_list_out.append(file)
-        else:
-            if not tooCloseToDay(file):
-                files_list_out.append(file)
+    ppar.resetDistortionParameters()
+    ppar.equal_aspect = True
+    ppar.time, ppar.JD = rmsTimeExtractor(image_time), rmsTimeExtractor(image_time, asJD=True)
+    ppar.Ho = JD2HourAngle(ppar.JD)
+    ppar.X_res, ppar.Y_res, ppar.pos_angle_ref = res, res, rot
+    average_lat, average_lon, average_elevation = getAveragePosition(config_list)
+    ppar.lat, ppar.lon, ppar.ele = average_lat, average_lon, average_elevation
+    ppar.fov_h, ppar.fov_v = angle, angle
+    ppar.az_centre, ppar.alt_centre = 0, 90
+    ppar.F_scale = res / angle
 
-    return files_list_out
+    # calculate hour angle
+    ppar.Ho = JD2HourAngle(ppar.JD)
+    ppar.RA_d, ppar.dec_d = altAz2RADec(az, el, ppar.JD, ppar.lat, ppar.lon)
+
+    jd_arr = np.array([ppar.JD])
+    x_arr = np.array([-0.5 + ppar.X_res / 2])
+    y_arr = np.array([-0.5 + ppar.Y_res / 2])
+    mag_arr = np.array([1])
+
+
+    _, centre_ra_2, centre_dec_2, _ = xyToRaDecPP(jd_arr, x_arr, y_arr, mag_arr, ppar,  jd_time=True)
+
+    ang_sep = angSepDeg(ppar.RA_d, ppar.dec_d, centre_ra_2, centre_dec_2)
+
+    if print_values:
+        print(ppar)
+        print("Field of view {},{} Resolution {},{}".format(ppar.fov_h, ppar.fov_v, ppar.X_res, ppar.Y_res))
+        print("Target RADEC {},{} Platepar RADEC {} {} Angle difference {}"
+                .format(ppar.RA_d, ppar.dec_d, centre_ra_2[0],  centre_dec_2[0], ang_sep))
+
+
+
+    return ppar
+
+def getAveragePosition(config_list):
+
+
+    position_list = getPositionsFromConfigs(config_list)
+
+    ecef_list = []
+    x_list, y_list, z_list = [], [], []
+
+    for position in position_list:
+        lat, lon, ele = position
+        lat_rads, lon_rads = np.radians(lat), np.radians(lon)
+        x,y,z, = latLonAlt2ECEF(lat_rads,lon_rads,ele)
+        x_list.append(x)
+        y_list.append(y)
+        z_list.append(z)
+
+    average_x, average_y, average_z = np.average(x_list), np.average(y_list), np.average(z_list)
+    lat_rads, lon_rads,  ele = ecef2LatLonAlt(average_x, average_y, average_z)
+    lat, lon = np.degrees(lat_rads), np.degrees(lon_rads)
+
+    return lat, lon, ele
 
 def downloadIfNotExist(source_directory, file_name, target_directory, print_files=False, force=False):
 
@@ -222,7 +423,7 @@ def getConfigsMasksPlatepars(config_file_paths_list,temp_dir="~/tmp/SkyChart"):
 
     i, start_time = 0, time.time()
     for config_path in config_file_paths_list:
-        i, str = progress(i, len(config_file_paths_list), start_time,  work_name="Get configs")
+        i, str = progress(i, len(config_file_paths_list), start_time,  task_name="Get configs", pointer="*>")
         print(str, end="")
         config_filename = os.path.basename(config_path.split(':')[1])
         temp_destination_path_and_filename = os.path.join(temp_dir,config_filename)
@@ -262,189 +463,26 @@ def getPositionsFromConfigs(config_list):
         position_list.append([config.latitude, config.longitude, config.elevation])
     return position_list
 
-def getAveragePosition(config_list):
+def getFilePaths(config_file_paths_list, image_time):
 
 
-    position_list = getPositionsFromConfigs(config_list)
+    files_path_list = []
 
-    ecef_list = []
-    x_list, y_list, z_list = [], [], []
+    start_time, i = time.time(), 0
+    for path, config, dirs_list in config_file_paths_list:
+        i, str = progress(i, len(config_file_paths_list), start_time, task_name="Get file paths", show_remaining = True, show_eta = True)
+        print(str, end= " ")
+        directory = getDirectoryByTime(dirs_list, image_time)
+        user_domain = path.split(':')[0]
+        target = os.path.join(config.data_dir, config.captured_dir, directory)
 
-    for position in position_list:
-        lat, lon, ele = position
-        lat_rads, lon_rads = np.radians(lat), np.radians(lon)
-        x,y,z, = latLonAlt2ECEF(lat_rads,lon_rads,ele)
-        x_list.append(x)
-        y_list.append(y)
-        z_list.append(z)
+        o = subprocess.run(["rsync", "-z", "{}:{}/*.fits".format(user_domain, target)],capture_output=True)
+        dir_string = o.stdout.decode("utf-8")
+        dir_list = dir_string.split("\n")
+        prefix, station_id, suffix = "FF", config.stationID, "fits"
+        files_path_list.append([getFilePathsbyTime(dir_list, image_time, target, prefix, station_id, suffix), path, config])
 
-    average_x, average_y, average_z = np.average(x_list), np.average(y_list), np.average(z_list)
-    lat_rads, lon_rads,  ele = ecef2LatLonAlt(average_x, average_y, average_z)
-    lat, lon = np.degrees(lat_rads), np.degrees(lon_rads)
-
-    return lat, lon, ele
-
-def testRmsTimeConverter():
-
-    def testLoop(test_cases):
-
-        for input in test_cases:
-
-            dt = rmsTimeExtractor(input)
-            jd = rmsTimeExtractor(input, asJD=True)
-            print("Input {} gives {} julian date {}".format(input, dt, jd))
-
-
-
-    test_cases = []
-    test_cases.append("20240820_1600")
-    test_cases.append("20240820_160000")
-
-    test_cases.append("log_AU0006_20000101_120000.365999.log")
-    test_cases.append("FF_AU0006_20000101_120000_123.fits")
-    test_cases.append("FF_AU0006_20000101_120000_123456.fits")
-    test_cases.append("FF_AU0006_000101_120000_123456.fits")
-    test_cases.append("/home/au0006/RMS_data/CapturedFiles/AU0006_20240820_101710_566632")
-    test_cases.append("/home/au0006/RMS_data/CapturedFiles/AU0006_20240820_101710_566632_1345")
-
-    testLoop(test_cases)
-
-    return 0
-
-def rmsTimeExtractor(rms_time, asTuple = False, asJD = False):
-    """
-    General purpose function to convert *20240819*010235*123 | 123456 into a datetime object or JD
-    Offsets can be given for the positions of date, time, and fractional seconds, however
-    the code will try to parse any string that is given.
-
-
-    Args:
-        rms_time (): Any string containing YYYYMMDD and HHMMSS separated by the delimited
-        asJD (): optional, default false, if true return julian date, if false return datetime object
-
-    Returns:
-        a datetime object or a julian date number
-
-    """
-
-    rms_time = os.path.basename(rms_time)
-    # remove any dots, might be filename extension
-    rms_time = rms_time.split(".")[0] if "." in rms_time else rms_time
-
-    # find the delimiter, which is probably the first non alpha numberic character
-    delim = "_"
-    for c in rms_time:
-        if c.isnumeric() or c.isalpha():
-            continue
-        else:
-            delim = c
-
-    field_list = rms_time.split(delim)
-    field_count = len(field_list)
-    str_us = "0"
-
-    consecutive_time_date_fields = 0
-
-    # Parse rms filename, datestring into a date time object
-    for field, field_no in zip(field_list, range (0, field_count)):
-        field = field.split(".")[0] if "." in field else field
-        if field.isnumeric():
-            consecutive_time_date_fields += 1
-
-        # Handle year month day
-        if consecutive_time_date_fields == 1:
-            if len(field) == 8 or len(field) == 6:
-                # This looks like a date field so process the date field
-                str_date = field_list[field_no]
-                if len(str_date) == 8:
-                    year, month, day = int(str_date[:4]), int(str_date[4:6]), int(str_date[6:8])
-                    dt = datetime(year=int(year), month=int(month), day=int(day))
-                # Handle 2 digit year format
-                if len(str_date) == 6:
-                    year, month, day = 2000 + int(str_date[:2]), int(str_date[2:4]), int(str_date[4:6])
-                    dt = datetime(year=int(year), month=month, day=day)
-            else:
-                dt = 0
-
-        # Handle hour minute second
-        if consecutive_time_date_fields == 2:
-            if len(field) == 6:
-                # Found two consecutive numeric fields followed by a non numeric
-                # These are date and time
-                str_time = field_list[field_no]
-                hour, minute, second = int(str_time[:2]), int(str_time[2:4]), int(str_time[4:6])
-                dt = datetime(year, month , day, hour, minute, second)
-            elif len(field) == 4:
-                str_time = field_list[field_no]
-                hour, minute, second = int(str_time[:2]), int(str_time[2:4]), 0
-                dt = datetime(year, month, day, hour, minute, second)
-            else:
-                # if the second field is not of length 6 then reset the counter
-                consecutive_time_date_fields = 0
-
-        # Handle fractional seconds
-        if consecutive_time_date_fields == 3:
-            if field.isnumeric():
-                # Convert any arbitrary length next field to microseconds
-                us = int(field) * (10 ** (6 - len(field)))
-                dt = datetime(year, month, day, hour, minute, second, microsecond=int(us))
-                # Stop looping in all cases
-                break
-            else:
-                # Stop looping in call cases
-                break
-
-
-    if asTuple:
-        return dt, datetime2JD(dt)
-
-    if asJD:
-        return datetime2JD(dt)
-    else:
-        return dt
-
-def angSepDeg(ra1, dec1, ra2, dec2):
-
-    ra1, dec1, ra2, dec2 =  np.radians(ra1), np.radians(dec1) , np.radians(ra2), np.radians(dec2)
-    return np.degrees(angularSeparation(ra1,dec1,ra2,dec2))
-
-def configurePlatepar(ppar, config_list, image_time, az=0, el=90, rot =0, angle=90, res=600, print_values=False):
-
-
-    ppar.resetDistortionParameters()
-    ppar.equal_aspect = True
-    ppar.time, ppar.JD = rmsTimeExtractor(image_time), rmsTimeExtractor(image_time, asJD=True)
-    ppar.Ho = JD2HourAngle(ppar.JD)
-    ppar.X_res, ppar.Y_res, ppar.pos_angle_ref = res, res, rot
-    average_lat, average_lon, average_elevation = getAveragePosition(config_list)
-    ppar.lat, ppar.lon, ppar.ele = average_lat, average_lon, average_elevation
-    ppar.fov_h, ppar.fov_v = angle, angle
-    ppar.az_centre, ppar.alt_centre = 0, 90
-    ppar.F_scale = res / angle
-
-    # calculate hour angle
-    ppar.Ho = JD2HourAngle(ppar.JD)
-    ppar.RA_d, ppar.dec_d = altAz2RADec(az, el, ppar.JD, ppar.lat, ppar.lon)
-
-    jd_arr = np.array([ppar.JD])
-    x_arr = np.array([-0.5 + ppar.X_res / 2])
-    y_arr = np.array([-0.5 + ppar.Y_res / 2])
-    mag_arr = np.array([1])
-
-
-    _, centre_ra_2, centre_dec_2, _ = xyToRaDecPP(jd_arr, x_arr, y_arr, mag_arr, ppar,  jd_time=True)
-
-    ang_sep = angSepDeg(ppar.RA_d, ppar.dec_d, centre_ra_2, centre_dec_2)
-
-    if print_values:
-        print(ppar)
-        print("Field of view {},{} Resolution {},{}".format(ppar.fov_h, ppar.fov_v, ppar.X_res, ppar.Y_res))
-        print("Target RADEC {},{} Platepar RADEC {} {} Angle difference {}"
-                .format(ppar.RA_d, ppar.dec_d, centre_ra_2[0],  centre_dec_2[0], ang_sep))
-
-
-
-    return ppar
+    return files_path_list
 
 def getCapturedDirs(path_list, config_list, reverse=False):
 
@@ -471,27 +509,6 @@ def getCapturedDirs(path_list, config_list, reverse=False):
 
     return dir_names_list_of_lists
 
-def getFilePaths(config_file_paths_list, image_time):
-
-
-    files_path_list = []
-
-    start_time, i = time.time(), 0
-    for path, config, dirs_list in config_file_paths_list:
-        i, str = progress(i, len(config_file_paths_list), start_time, work_name="Get file paths", show_remaining = True, show_eta = True)
-        print(str, end= " ")
-        directory = getDirectoryByTime(dirs_list, image_time)
-        user_domain = path.split(':')[0]
-        target = os.path.join(config.data_dir, config.captured_dir, directory)
-
-        o = subprocess.run(["rsync", "-z", "{}:{}/*.fits".format(user_domain, target)],capture_output=True)
-        dir_string = o.stdout.decode("utf-8")
-        dir_list = dir_string.split("\n")
-        prefix, station_id, suffix = "FF", config.stationID, "fits"
-        files_path_list.append([getFilePathsbyTime(dir_list, image_time, target, prefix, station_id, suffix), path, config])
-
-    return files_path_list
-
 def getDirectoryByTime(dirs_list, image_time):
     # reverse the dirs_list, and find the first dir before the time
     dirs_list.reverse()
@@ -501,6 +518,17 @@ def getDirectoryByTime(dirs_list, image_time):
         if rmsTimeExtractor(rms_time) < rmsTimeExtractor(image_time):
             break
     return directory
+
+def getPlatePars(station_list, config_list, temp_dir):
+
+    platepar_list = []
+
+    for station, config in zip(station_list, config_list):
+        pp = Platepar()
+        pp.read(os.path.join(temp_dir,station,config.platepar_name))
+        platepar_list.append(pp)
+
+    return platepar_list
 
 def getFilePathsbyTime(dir_list, image_time, target_directory, prefix, stationID, suffix):
 
@@ -516,14 +544,13 @@ def getFilePathsbyTime(dir_list, image_time, target_directory, prefix, stationID
     files_path_list.append(file_name_list)
     return files_path_list
 
-
 def retrieveFiles(files_path_lists, temp_dir):
 
 
     destination_path_list = []
     start_time, i = time.time(), 0
     for file_paths_list, path, config in files_path_lists:
-        i, str = progress(i,len(files_path_lists), start_time, work_name = "Retrieve initial files", show_eta=True, show_remaining=True)
+        i, str = progress(i,len(files_path_lists), start_time, task_name="Retrieve initial files", show_eta=True, show_remaining=True)
         print(str, end=" ")
         destination_path = os.path.join(temp_dir, config.stationID)
         user_domain = path.split(':')[0]
@@ -548,19 +575,6 @@ def createLookUpTable(pp):
     jd_arr, ra_coords, dec_coords, _ = xyToRaDecPP(time_arr, x_coords, y_coords, level_arr ,pp, jd_time=True)
 
     return (x_coords, y_coords, ra_coords, dec_coords)
-
-
-def getPlatePars(station_list, config_list, temp_dir):
-
-    platepar_list = []
-
-    for station, config in zip(station_list, config_list):
-        pp = Platepar()
-        pp.read(os.path.join(temp_dir,station,config.platepar_name))
-        platepar_list.append(pp)
-
-    return platepar_list
-
 
 def getDeviationsPerFits(r, d, temp_dir, station, files_list, dest_pp, s_pp, corrupted_fits, print_values=False):
 
@@ -929,23 +943,27 @@ def makeTransformations(pp_dest,file_list):
     transformation_list = []
     start_time, i = time.time(), 0
     for file_name in file_list:
-        i, str = progress(i,len(file_list), start_time, work_name = "Make transforms")
+        i, str = progress(i,len(file_list), start_time, task_name="Make transforms")
         print(str, end = " ")
         transformation_list.append([file_name, createTransformationDestinationPPtoImage(pp_dest, file_name)])
 
     return transformation_list
 
-def makeTransformationPickleFromFileList(pp_dest, file_list, pickle_path):
+def makeTransformationPickleFromFileList(pp_dest, file_list, pickle_path=None):
 
+    if pickle_path is None:
+        pickle_path = "~/tmp/SkyChart/ContemporaryTransformations.pickle"
+    mkdirP(os.path.dirname(pickle_path))
     with open(os.path.expanduser(pickle_path),'wb') as f:
         pickle.dump(pp_dest,f)
         pickle.dump(makeTransformations(pp_dest,file_list), f)
 
     return pickle_path
 
-def startGenerator(config_file_paths_list=None, daemon_delay=None, image_time=None, resolution = 300):
+def generateContemporaryImageTransformations(config_file_paths_list=None, pickle_path=None, daemon_delay=None, image_time=None, resolution = 300):
 
     if config_file_paths_list is None:
+
         return
 
     if daemon_delay is None:
@@ -965,10 +983,17 @@ def startGenerator(config_file_paths_list=None, daemon_delay=None, image_time=No
     dirs_list_of_lists = getCapturedDirs(config_file_paths_list, config_list)
     files_path_lists = getFilePaths(dirs_list_of_lists, image_time)
     local_file_path_list = retrieveFiles(files_path_lists,temp_dir)
+    pickle_path = makeTransformationPickleFromFileList(pp_dest, local_file_path_list,pickle_path=pickle_path)
 
-    makeTransformationPickleFromFileList(pp_dest, local_file_path_list,"~/tmp/SkyChart/transformation.pickle")
+    return pickle_path
 
-#   max_pixel_arr, ave_pixel_arr, count_arr = getIntensities(createLookUpTable(pp_dest), temp_dir, pp_dest, station_list, config_file_paths_list, config_list)
+def applyTransformations(pickle_path):
+
+    with open(os.path.expanduser(pickle_path),'rb') as f:
+        pp_dest = pickle.load(f)
+        transformation_list = pickle.load(f)
+
+    print(pp_dest)
 
 
 
@@ -1103,6 +1128,10 @@ if __name__ == '__main__':
     arg_parser.add_argument('-a', '--angle', type=int, \
                             help="Angle of the simulated lens")
 
+    arg_parser.add_argument('-t', '--transformations', default=False, action = 'store_true',
+                            help="Generate contemporary transformations")
+
+
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
 
@@ -1123,9 +1152,11 @@ if __name__ == '__main__':
     else:
         resolution = int(cml_args.resolution[0])
 
-    testPlatePar()
-    account_name_hostname_list = resolveListToIP(cml_args.paths)
-    account_name_hostname_list = addDirToAccountNameHostName(account_name_hostname_list)
-    print(account_name_hostname_list)
-    startGenerator(config_file_paths_list=account_name_hostname_list, daemon_delay=cml_args.daemon, image_time=image_time, resolution=resolution)
-    display()
+    #testPlatePar()
+    if cml_args.transformations:
+        account_name_hostname_list = resolveListToIP(cml_args.paths)
+        account_name_hostname_list = addDirToAccountNameHostName(account_name_hostname_list)
+        generateContemporaryImageTransformations(config_file_paths_list=account_name_hostname_list, daemon_delay=cml_args.daemon, image_time=image_time, resolution=resolution, pickle_path = "~/tmp/SkyChart/ContemporaryTransformations.pickle")
+
+    max_pixel, ave_pixel, count_pixel = applyTransformations()
+
