@@ -6,7 +6,8 @@ import numpy as np
 import subprocess
 import RMS.ConfigReader as cr
 import shutil
-from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, JD2HourAngle, datetime2JD, altAz2RADec, raDec2AltAz
+from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, altAz2RADec, raDec2AltAz
+from RMS.Astrometry.Conversions import jd2Date, datetime2JD, JD2HourAngle
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP
 from RMS.Formats.Platepar import Platepar
 from datetime import datetime, timedelta
@@ -438,7 +439,7 @@ def configurePlatepar(ppar, config_list, image_time, az=0, el=90, rot =0, angle=
     ppar.time, ppar.JD = rmsTimeExtractor(image_time), rmsTimeExtractor(image_time, asJD=True)
     ppar.Ho = JD2HourAngle(ppar.JD)
     ppar.X_res, ppar.Y_res, ppar.pos_angle_ref = res, res, rot
-    average_lat, average_lon, average_elevation = getAveragePosition(config_list)
+    average_lat, average_lon, average_elevation = getAveragePositionsFromConfigs(config_list)
     ppar.lat, ppar.lon, ppar.ele = average_lat, average_lon, average_elevation
     ppar.fov_h, ppar.fov_v = angle, angle
     ppar.az_centre, ppar.alt_centre = 0, 88
@@ -446,6 +447,7 @@ def configurePlatepar(ppar, config_list, image_time, az=0, el=90, rot =0, angle=
 
     # calculate hour angle
     ppar.Ho = JD2HourAngle(ppar.JD)
+    # set ra
     ppar.RA_d, ppar.dec_d = altAz2RADec(az, el, ppar.JD, ppar.lat, ppar.lon)
 
     jd_arr = np.array([ppar.JD])
@@ -466,29 +468,38 @@ def configurePlatepar(ppar, config_list, image_time, az=0, el=90, rot =0, angle=
 
 
 
+
     return ppar
 
-def getAveragePosition(config_list):
+def getAveragePosition(position_list):
 
-
-    position_list = getPositionsFromConfigs(config_list)
-
-    ecef_list = []
     x_list, y_list, z_list = [], [], []
-
     for position in position_list:
         lat, lon, ele = position
         lat_rads, lon_rads = np.radians(lat), np.radians(lon)
-        x,y,z, = latLonAlt2ECEF(lat_rads,lon_rads,ele)
+        x,y,z, = latLonAlt2ECEF(lat_rads, lon_rads, ele)
         x_list.append(x)
         y_list.append(y)
         z_list.append(z)
 
     average_x, average_y, average_z = np.average(x_list), np.average(y_list), np.average(z_list)
-    lat_rads, lon_rads,  ele = ecef2LatLonAlt(average_x, average_y, average_z)
+    lat_rads, lon_rads, ele = ecef2LatLonAlt(average_x, average_y, average_z)
     lat, lon = np.degrees(lat_rads), np.degrees(lon_rads)
 
     return lat, lon, ele
+
+
+def getPositionsFromConfigs(config_list):
+
+    position_list = []
+    for config in config_list:
+        position_list.append([config.latitude, config.longitude, config.elevation])
+
+    return position_list
+
+def getAveragePositionsFromConfigs(config_list):
+
+    return getAveragePosition(getPositionsFromConfigs(config_list))
 
 def downloadIfNotExist(source_directory, file_name, target_directory, print_files=False, force=False):
 
@@ -662,9 +673,9 @@ def getPlatePars(station_list, config_list, temp_dir):
 
     return platepar_list
 
-def getFilePathsbyTime(dir_list, image_time, target_directory, prefix, stationID, suffix):
+def getFilePathsbyTime(dir_list, image_time, target_directory, prefix, stationID, suffix, only_closest = True):
 
-    file_name_list, files_path_list = [], []
+    file_name_list, files_path_list, file_time_delta_list = [], [], []
     for item in dir_list:
         if len(item.split()) == 5:
             file_name = item.split()[4]
@@ -673,7 +684,16 @@ def getFilePathsbyTime(dir_list, image_time, target_directory, prefix, stationID
                 if abs((file_dt - image_dt).total_seconds()) < 30:
                     file_path_name = os.path.join(target_directory, file_name)
                     file_name_list.append(file_path_name)
-    files_path_list.append(file_name_list)
+                    file_name_time_delta =  \
+                        (rmsTimeExtractor(file_name) - rmsTimeExtractor(image_time)).total_seconds()
+                    file_time_delta_list.append(abs(file_name_time_delta))
+
+    if only_closest:
+        min_delta = min(file_time_delta_list)
+        min_delta_file_index = file_time_delta_list.index(min_delta)
+        files_path_list.append([file_name_list[min_delta_file_index]])
+    else:
+        files_path_list.append(file_name_list)
     return files_path_list
 
 def retrieveFiles(files_path_lists, temp_dir):
@@ -961,29 +981,56 @@ def addDirToAccountNameHostName(config_file_paths_list, target_dir = "source/RMS
 
     return config_file_paths_list_with_dir
 
-def makeTransformations(pp_dest,file_list):
+def stationFromFileName(file_name):
 
-    transformation_list = []
+    return os.path.basename(file_name).split("_")[1]
+
+def getDtFromPP(pp):
+
+    year, month, day, hour, minute, seconds, us = jd2Date(pp.JD)
+
+    return datetime(year, month, day, hour, minute, seconds, int(us))
+
+
+def timeDeltaFileNameToPP(file_name, pp):
+
+
+    dt = getDtFromPP(pp)
+    file_time = rmsTimeExtractor(file_name)
+    time_delta = (dt - file_time).total_seconds()
+    return time_delta
+
+def makeTransformations(pp_dest,file_list, temp_dir):
+
+
     start_time, i = time.time(), 0
     for file_name in file_list:
-        i, str = progress(i,len(file_list), start_time, task_name="Make transforms")
-        print(str, end = " ")
-        transformation_list.append([file_name, createTransformationDestinationPPtoImage(pp_dest, file_name)])
+        i, str = progress(i, len(file_list), start_time, task_name="Make transforms")
+        print(str, end=" ")
+        station_name = stationFromFileName(file_name)
+        time_delta = timeDeltaFileNameToPP(file_name, pp_dest)
+        if time_delta < 0:
+            td_sign = ""
+        else:
+            td_sign = "+"
+        transformation_file_name = ("{:s}_Delta_{:s}{:09.01f}.pickle"
+                                    .format(station_name, td_sign, time_delta))
+        transformation_file_path_name = os.path.join(temp_dir, station_name, transformation_file_name)
+        with open(transformation_file_path_name, 'wb') as fh:
+            pickle.dump(createTransformationDestinationPPtoImage(pp_dest, file_name),fh)
 
-    return transformation_list
+    return pp_dest
 
-def makeTransformationPickleFromFileList(pp_dest, file_list, pickle_path=None):
+def makeTransformationPickleFromFileList(pp_dest, file_list, temp_dir, pickle_path=None):
 
-    if pickle_path is None:
-        pickle_path = "~/tmp/SkyChart/ContemporaryTransformations.pickle"
-    mkdirP(os.path.dirname(pickle_path))
-    with open(os.path.expanduser(pickle_path),'wb') as f:
-        pickle.dump(pp_dest,f)
-        pickle.dump(makeTransformations(pp_dest,file_list), f)
+    temp_dir = makeTransformations(pp_dest,file_list, temp_dir)
 
-    return pickle_path
+    return temp_dir
 
-def generateContemporaryImageTransformations(config_file_paths_list=None, pickle_path=None, daemon_delay=None, image_time=None, resolution = 300, angle=90):
+def generateContemporaryImageTransformations(temp_dir, config_file_paths_list=None,
+                                             pickle_path=None, daemon_delay=None, image_time=None,
+                                             resolution = 300, angle=90):
+
 
     if config_file_paths_list is None:
 
@@ -994,30 +1041,32 @@ def generateContemporaryImageTransformations(config_file_paths_list=None, pickle
     else:
         print("Running in daemon mode")
 
-    temp_dir = "~/tmp/SkyChart"
+    reload = False
+
+    temp_dir = "~/tmp/SkyChart/"
     temp_dir = os.path.expanduser(temp_dir)
-    mkdirP(temp_dir)
+    file_path_and_dest_pp = os.path.join(temp_dir, "file_path_and_pp.pickle")
 
-    station_list, config_list = getConfigsMasksPlatepars(config_file_paths_list)
+    if reload:
 
-    pp_dest = Platepar()
-    pp_dest = configurePlatepar(pp_dest, config_list, image_time, res=resolution, angle=angle)
+        station_list, config_list = getConfigsMasksPlatepars(config_file_paths_list)
 
-    dirs_list_of_lists = getCapturedDirs(config_file_paths_list, config_list)
-    files_path_lists = getFilePaths(dirs_list_of_lists, image_time)
-    local_file_path_list = retrieveFiles(files_path_lists, temp_dir)
+        pp_dest = Platepar()
+        pp_dest = configurePlatepar(pp_dest, config_list, image_time, res=resolution, angle=angle)
 
-    with open("temporary_info", 'wb') as fh:
-        pickle.dump(local_file_path_list, fh)
-        pickle.dump(pp_dest, fh)
+        dirs_list_of_lists = getCapturedDirs(config_file_paths_list, config_list)
+        files_path_lists = getFilePaths(dirs_list_of_lists, image_time)
+        local_file_path_list = retrieveFiles(files_path_lists, temp_dir)
 
-    with open("temporary_info", 'rb') as fh:
+        with open(file_path_and_dest_pp, 'wb') as fh:
+            pickle.dump(local_file_path_list, fh)
+            pickle.dump(pp_dest, fh)
+
+    with open(file_path_and_dest_pp, 'rb') as fh:
         local_file_path_list = pickle.load(fh)
         pp_dest = pickle.load(fh)
 
-    pickle_path = makeTransformationPickleFromFileList(pp_dest, local_file_path_list, pickle_path=pickle_path)
-
-    return pickle_path
+    return makeTransformations(pp_dest, local_file_path_list, temp_dir)
 
 def createArrayList(pp_dest, count):
 
@@ -1057,32 +1106,77 @@ def transformFF(pp_dest, temp_dir, file_name, transformation):
 
     return array_list
 
-def applyTransformations(temp_dir, pickle_path):
+def getDeltaFromTransformation(file_name):
 
-    with open(os.path.expanduser(pickle_path),'rb') as f:
-        pp_dest = pickle.load(f)
-        transformation_list = pickle.load(f)
+    segment = file_name.split("_")[2].split(".")[0]
 
+    return timedelta(seconds = int(segment))
+
+def bestTransformation(station_dir, target_time, file_name):
+
+    print("Looking in {}".format(station_dir))
+    print("With an image time of {}".format(image_time))
+    print("Working with file_name {}".format(file_name))
+
+    # Calculate the delta between the fits file and the requested image time
+    # Positive values mean that the fits file is ahead of target time
+    desired_delta = target_time - rmsTimeExtractor(file_name)
+
+    deltas_by_transformation_list, transformation_list = [], []
+    for obj in os.listdir(station_dir):
+        if os.path.isfile(os.path.join(station_dir, obj)):
+            if obj.endswith(".pickle"):
+                print("Found transformation")
+                delta_after_transformation = (getDeltaFromTransformation(obj) - desired_delta)
+                deltas_by_transformation_list.append(delta_after_transformation)
+                transformation_list.append(obj)
+
+    best_transformation_index = deltas_by_transformation_list.index(min(deltas_by_transformation_list))
+    best_transformation = transformation_list[best_transformation_index]
+
+    return os.path.join(station_dir, file_name), os.path.join(station_dir, best_transformation)
+
+def applyTransformations(temp_dir, pp_dest):
+
+
+    image_time = pp_dest.time
+
+    station_list = []
     [max_pixel_arr, ave_pixel_arr, count_arr] = createArrayList(pp_dest,3)
     i, start_time = 0, time.time()
-    for data_list in transformation_list:
-        file_name, transformation = data_list
-        i, p = progress(i, len(transformation_list), start_time, task_name="{}".format(os.path.basename(file_name)), iteration_estimate=60)
+    for obj in os.listdir(temp_dir):
+        if os.path.isdir(os.path.join(temp_dir, obj)):
+            station_list.append(obj)
+
+    job_list = []
+    for station in station_list:
+        station_dir = os.path.join(temp_dir, station)
+        for obj in os.listdir(station_dir):
+            if os.path.isfile(os.path.join(station_dir,obj)):
+                if obj.startswith("FF") and obj.endswith(".fits"):
+                    job_list.append(bestTransformation(station_dir, image_time, obj))
+
+    [max_pixel_arr, ave_pixel_arr, count_arr] = createArrayList(pp_dest, 3)
+
+    for job in job_list:
+        file_name, transformation_file = job
+        i, p = progress(i, len(job_list), start_time,
+                        task_name="{}".format(os.path.basename(file_name)),
+                        iteration_estimate=60)
         print(p, end=" ")
+        with open (transformation_file, 'rb') as f:
+            transformation = pickle.load(f)
+
         [ff_max_pixel_arr, ff_ave_pixel_arr, ff_count_arr] = transformFF(pp_dest,temp_dir, file_name, transformation)
         max_pixel_arr += ff_max_pixel_arr
         ave_pixel_arr += ff_ave_pixel_arr
         count_arr += ff_count_arr
-        plt.imshow(ff_max_pixel_arr, cmap="gray")
-        plt.show()
+
 
     max_pixel_arr[count_arr > 0] /= count_arr[count_arr > 0]
     ave_pixel_arr[count_arr > 0] /= count_arr[count_arr > 0]
-    with open("image_array", 'wb') as fh:
-        pickle.dump(max_pixel_arr, fh)
-        pickle.dump(ave_pixel_arr, fh)
-        pickle.dump(count_arr, fh)
 
+    return max_pixel_arr, ave_pixel_arr, count_arr
 
 def display(temp_dir, pickle_path):
 
@@ -1221,6 +1315,8 @@ if __name__ == '__main__':
     arg_parser.add_argument('-t', '--transformations', default=False, action = 'store_true',
                             help="Generate contemporary transformations")
 
+    arg_parser.add_argument('-f', '--fill_gaps', default=False, action = 'store_true',
+                            help="Fill in gaps in the image by translating images through time")
 
 
     # Parse the command line arguments
@@ -1243,15 +1339,30 @@ if __name__ == '__main__':
     else:
         resolution = int(cml_args.resolution[0])
 
-    pickle_path = "~/tmp/SkyChart/ContemporaryTransformations.pickle"
+    temp_dir = "~/tmp/SkyChart"
+    temp_dir = os.path.expanduser(temp_dir)
+    pickle_path = temp_dir
 
     #testPlatePar()
     if cml_args.transformations:
         account_name_hostname_list = resolveListToIP(cml_args.paths)
         account_name_hostname_list = addDirToAccountNameHostName(account_name_hostname_list)
-        generateContemporaryImageTransformations(config_file_paths_list=account_name_hostname_list,
-                                                 image_time=image_time, resolution=resolution, pickle_path=pickle_path,
-                                                 angle=cml_args.angle)
+        pp_dest = generateContemporaryImageTransformations(temp_dir, config_file_paths_list=account_name_hostname_list,
+                                                 image_time=image_time, resolution=resolution,
+                                                 pickle_path=pickle_path, angle=cml_args.angle)
 
-    applyTransformations("~/tmp/SkyChart", pickle_path=pickle_path)
-    display("~/tmp/SkyChart", pickle_path=pickle_path)
+    max_image, ave_image, count = applyTransformations(temp_dir, pp_dest)
+
+    #display("~/tmp/SkyChart", pickle_path=pickle_path)
+
+    with open("image_array", 'wb') as fh:
+        pickle.dump(max_image, fh)
+        pickle.dump(ave_image, fh)
+        pickle.dump(count, fh)
+
+    plt.imshow(max_image, cmap="gray")
+    plt.show()
+    plt.imshow(ave_image, cmap="gray")
+    plt.show()
+    plt.imshow(count, cmap="gray")
+    plt.show()
