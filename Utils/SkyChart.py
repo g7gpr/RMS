@@ -379,29 +379,45 @@ def createTransformationPPToRADEC(pp_dest):
     time_arr, level_arr = pixels * [pp_dest.JD], pixels * [1]
 
     jd_arr, ra_coords, dec_coords, mag = xyToRaDecPP(time_arr, x_coords_dest, y_coords_dest,
-                                                     level_arr, pp_dest, jd_time=True, precompute_pointing_corr=True)
+                                                     level_arr, pp_dest, jd_time=True,
+                                                     precompute_pointing_corr=True)
 
     return x_coords_dest, y_coords_dest, ra_coords, dec_coords
 
-def createTransformationRADECtoImage(file_name, ra_coords, dec_coords):
+def createTransformationRADECtoImage(pp_source, ra_coords, dec_coords):
 
 
-    pp_source = ppFromFileName(file_name)
+
     x_coords_source, y_coords_source = raDecToXYPP(ra_coords, dec_coords, pp_source.JD, pp_source)
 
     return x_coords_source, y_coords_source
 
+
+
 def createTransformationDestinationPPtoImage(pp_dest, file_name):
 
     x_coords_dest, y_coords_dest, ra_coords, dec_coords = createTransformationPPToRADEC(pp_dest)
-    x_coords_source, y_coords_source = createTransformationRADECtoImage(file_name, ra_coords, dec_coords)
+    pp_source = ppFromFileName(file_name)
+    x_f, y_f  = [], []
+    ra_f, dec_f = [], []
+    angle_limit = 0.5 * (max(pp_source.fov_h, pp_source.fov_v))
+    for x, y, r, d in zip(x_coords_dest, y_coords_dest, ra_coords, dec_coords):
+        if angSepDeg(r, d, pp_source.RA_d, pp_source.dec_d) < angle_limit:
+            ra_f.append(r)
+            dec_f.append(d)
+            x_f.append(x)
+            y_f.append(y)
 
-    return x_coords_dest, y_coords_dest, ra_coords, dec_coords, x_coords_source, y_coords_source
+    x_f, y_f, ra_f, dec_f = np.array(x_f), np.array(y_f), np.array(ra_f), np.array(dec_f)
+    x_coords_source, y_coords_source = createTransformationRADECtoImage(pp_source, ra_f, dec_f)
+
+    return x_f, y_f, ra_f, dec_f, x_coords_source, y_coords_source
 
 def setPPTime(pp,file_name):
 
     pp.time, pp.JD = rmsTimeExtractor(file_name), rmsTimeExtractor(file_name, asJD=True)
     pp.Ho = JD2HourAngle(pp.JD)
+    pp.RA_d, pp.dec_d = altAz2RADec(pp.az_centre, pp.alt_centre, pp.JD, pp.lat, pp.lon)
 
     return pp
 
@@ -654,7 +670,7 @@ def getFilePathsbyTime(dir_list, image_time, target_directory, prefix, stationID
             file_name = item.split()[4]
             if file_name.startswith("{}_{}".format(prefix, stationID)) and file_name.endswith(suffix):
                 file_dt, image_dt = rmsTimeExtractor(file_name), rmsTimeExtractor(image_time)
-                if abs((file_dt - image_dt).total_seconds()) < 10:
+                if abs((file_dt - image_dt).total_seconds()) < 30:
                     file_path_name = os.path.join(target_directory, file_name)
                     file_name_list.append(file_path_name)
     files_path_list.append(file_name_list)
@@ -989,8 +1005,17 @@ def generateContemporaryImageTransformations(config_file_paths_list=None, pickle
 
     dirs_list_of_lists = getCapturedDirs(config_file_paths_list, config_list)
     files_path_lists = getFilePaths(dirs_list_of_lists, image_time)
-    local_file_path_list = retrieveFiles(files_path_lists,temp_dir)
-    pickle_path = makeTransformationPickleFromFileList(pp_dest, local_file_path_list,pickle_path=pickle_path)
+    local_file_path_list = retrieveFiles(files_path_lists, temp_dir)
+
+    with open("temporary_info", 'wb') as fh:
+        pickle.dump(local_file_path_list, fh)
+        pickle.dump(pp_dest, fh)
+
+    with open("temporary_info", 'rb') as fh:
+        local_file_path_list = pickle.load(fh)
+        pp_dest = pickle.load(fh)
+
+    pickle_path = makeTransformationPickleFromFileList(pp_dest, local_file_path_list, pickle_path=pickle_path)
 
     return pickle_path
 
@@ -998,7 +1023,7 @@ def createArrayList(pp_dest, count):
 
     array_list = []
     for n in range(0, count):
-        array_list.append(np.zeros(shape=(pp_dest.X_res, pp_dest.Y_res), dtype=int))
+        array_list.append(np.zeros(shape=(pp_dest.X_res, pp_dest.Y_res), dtype=float))
 
     return array_list
 
@@ -1026,7 +1051,7 @@ def transformFF(pp_dest, temp_dir, file_name, transformation):
     ff = readFF(ff_dir, ff_name)
     array_list = createArrayList(pp_dest, 3)
     x_d_arr, y_d_arr, ra_coords, dec_coords, x_s_arr, y_s_arr = transformation
-    print("FF:{}".format(ff_name))
+
     for x_d, y_d, ra, dec, x_s, y_s in zip(x_d_arr, y_d_arr, ra_coords, dec_coords, x_s_arr, y_s_arr):
         array_list = transformPixel(array_list, pp_source, m.img, ff, x_s, y_s, x_d, y_d)
 
@@ -1048,7 +1073,11 @@ def applyTransformations(temp_dir, pickle_path):
         max_pixel_arr += ff_max_pixel_arr
         ave_pixel_arr += ff_ave_pixel_arr
         count_arr += ff_count_arr
+        plt.imshow(ff_max_pixel_arr, cmap="gray")
+        plt.show()
 
+    max_pixel_arr[count_arr > 0] /= count_arr[count_arr > 0]
+    ave_pixel_arr[count_arr > 0] /= count_arr[count_arr > 0]
     with open("image_array", 'wb') as fh:
         pickle.dump(max_pixel_arr, fh)
         pickle.dump(ave_pixel_arr, fh)
