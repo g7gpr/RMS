@@ -1041,7 +1041,7 @@ def generateContemporaryImageTransformations(temp_dir, config_file_paths_list=No
     else:
         print("Running in daemon mode")
 
-    reload = False
+    reload = True
 
     temp_dir = "~/tmp/SkyChart/"
     temp_dir = os.path.expanduser(temp_dir)
