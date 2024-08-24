@@ -41,8 +41,6 @@ else:
     import urllib.request
 
 
-captured_dirs_list_of_lists = None
-file_list_of_lists_of_lists = None
 
 
 def getIntensities(look_up_table, temp_dir, pp_dest, station_list, remote_path_list, config_list):
@@ -334,6 +332,8 @@ def progress(current, total, start_time=None, task_name = "Progress", task_name_
 
     if current == total:
         print("")
+
+    p += " " * 5
 
     current += 1
     if current > total:
@@ -1093,7 +1093,7 @@ def transformPixel(a_lst,pp_source, mask, ff, x_s, y_s, x_d, y_d):
 
 def transformFF(pp_dest, temp_dir, file_name, transformation):
 
-    print("Transforming image with resolution {}, {}".format(pp_dest.X_res, pp_dest.Y_res))
+
     m = getMask(temp_dir, os.path.basename(file_name))
     pp_source = ppFromFileName(file_name)
     ff_dir, ff_name = os.path.dirname(file_name), os.path.basename(file_name)
@@ -1342,7 +1342,7 @@ if __name__ == '__main__':
     temp_dir = "~/tmp/SkyChart"
     temp_dir = os.path.expanduser(temp_dir)
     pickle_path = temp_dir
-
+    """
     #testPlatePar()
     if cml_args.transformations:
         account_name_hostname_list = resolveListToIP(cml_args.paths)
@@ -1359,6 +1359,12 @@ if __name__ == '__main__':
         pickle.dump(max_image, fh)
         pickle.dump(ave_image, fh)
         pickle.dump(count, fh)
+    """
+
+    with open("image_array", 'rb') as fh:
+        max_image = pickle.load(fh)
+        ave_image = pickle.load(fh)
+        count = pickle.load(fh)
 
     plt.imshow(max_image, cmap="gray")
     plt.show()
