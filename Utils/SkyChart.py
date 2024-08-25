@@ -346,18 +346,21 @@ def timeFromDayLight(file_name):
     o = ephem.Observer()
     o.lat, o.long, o.elevation,o.date = str(pp.lat), str(pp.lon), pp.elev, rmsTimeExtractor(file_name)
 
-    o.horizon = '-5:26'
-    s = ephem.Sun()
-    s.compute()
+    o.horizon = '-7:26'
+    s = ephem.Sun(o)
+    s.compute(o)
 
-    time_to_rise = abs(o.date.datetime() - o .next_rising(s).datetime()).total_seconds()
-    time_to_set = abs(o.date.datetime() - o .previous_setting(s).datetime()).total_seconds()
+    time_to_rise = (o.next_rising(s).datetime() - o.date.datetime()).total_seconds()
+    time_to_set = (o.date.datetime() - o.previous_setting(s).datetime()).total_seconds()
+
+
+
 
     return min(time_to_rise, time_to_set)
 
 def tooCloseToDay(file):
 
-    return timeFromDayLight(file) < 3600 * 1
+    return timeFromDayLight(file) < 3600 * 3
 
 def removeTooCloseToDay(files_list_in):
 
@@ -633,6 +636,7 @@ def getCapturedDirs(path_list, config_list, reverse=False):
     i, start_time = 0, time.time()
     for path, config in zip(path_list, config_list):
         i, str = progress(i, len(path_list), start_time, "Getting captured directories")
+        print(str, end=" ")
         dir_name_list = []
         user_domain = path.split(':')[0]
         target_dir = os.path.join(config.data_dir, config.captured_dir)
@@ -869,11 +873,12 @@ def getFitsAllStations(remote_path_list, config_list):
 
     captured_dirs_list_of_lists = getCapturedDirs(remote_path_list, config_list, reverse=True)
     file_list_of_lists_of_lists = []
-    print("Getting remote directory structure {}".format(len(remote_path_list)))
+
     i, start_time = 0, time.time()
     for path, config, captured_dirs_list in captured_dirs_list_of_lists:
         file_list_of_lists = []
-        i, str = progress(i, len(captured_dirs_list_of_lists), start_time, task_name="Retrieve remote file structure")
+        i, str = progress(i, len(captured_dirs_list_of_lists), start_time, task_name="Retrieve remote file structure",
+                          iteration_estimate=120)
         print(str, end=" ")
         for captured_dir in captured_dirs_list:
             captured_dir_full_path = os.path.join(config.data_dir, config.captured_dir, captured_dir)
@@ -886,11 +891,11 @@ def getFitsAllStations(remote_path_list, config_list):
 
 
 
-def searchRaDecCoverage(r,d, station_list, remote_path_list, dest_pp, config_list, temp_dir):
+def searchRaDecCoverage(r,d, station_list, remote_path_list, dest_pp, config_list, temp_dir, days_difference = 3):
 
     ad_amount_list, ad_file_list, station_list_by_fits, captured_dirs_list_by_fits = [], [], [], []
     pp_source_list = getPlatePars(station_list, config_list, temp_dir)
-    if True:
+    if False:
         captured_dirs_list_of_lists, file_list_of_lists_of_lists = getFitsAllStations(remote_path_list, config_list)
         with open("remote_file_structure", 'wb') as fh:
             pickle.dump(captured_dirs_list_of_lists, fh)
@@ -901,17 +906,26 @@ def searchRaDecCoverage(r,d, station_list, remote_path_list, dest_pp, config_lis
             file_list_of_lists_of_lists = pickle.load(fh)
     for station, captured_dirs_list, file_list_of_lists, s_pp, config in zip(station_list, captured_dirs_list_of_lists,
                                                                     file_list_of_lists_of_lists, pp_source_list, config_list):
-            for captured_dir, files_list in zip(captured_dirs_list, file_list_of_lists):
+            i, start_time = 0, time.time()
+            for files_list, captured_dir in zip(file_list_of_lists, captured_dirs_list[2]):
+                i, str = progress(i, len(file_list_of_lists), start_time,"Finding best files from {} {}" \
+                                                        .format(station, rmsTimeExtractor(captured_dir)))
+                print(str, end=" ")
+                if abs(timeDeltaFileNameToPP(captured_dir, dest_pp)) > 3600 * 24 * days_difference:
+                    continue
                 ad_list, file_name_list, station_list_by_dir, time_deviation_list = \
                     getDeviationsPerFits(r, d, temp_dir, station, files_list, dest_pp, s_pp,  print_values=False)
-                for file_name in file_name_list:
+                ad_list_by_fits, captured_dirs_list_by_captured_dir = [], []
+                for file_name, ad in zip(file_name_list, ad_list):
 
                     if tooCloseToDay(file_name):
                         continue
 
                     ad_file_list.append(os.path.join(config.data_dir, config.captured_dir, captured_dir, os.path.basename(file_name)))
-                    captured_dirs_list_by_fits.append(captured_dir)
-                ad_amount_list += ad_list
+                    captured_dirs_list_by_captured_dir.append(captured_dir)
+                    ad_list_by_fits.append(ad)
+                captured_dirs_list_by_fits += captured_dirs_list_by_captured_dir
+                ad_amount_list += ad_list_by_fits
                 station_list_by_fits += station_list_by_dir
 
     if len(ad_amount_list):
@@ -925,7 +939,7 @@ def searchRaDecCoverage(r,d, station_list, remote_path_list, dest_pp, config_lis
     print("Remote file from station {:s} provided best fits {:s} with dev {:.2f} from r, d {:.2f}, {:.2f}".format(best_station, best_fits, min_ad,r,d))
     s_pp = pp_source_list[station_list.index(best_station)]
 
-    if plateparContainsRaDec(r,d, s_pp, dest_pp, best_fits, temp_dir):
+    if plateparContainsRaDec(r, d, s_pp, dest_pp, best_fits, temp_dir):
         return best_station, best_captured_dir, best_fits, min_ad
 
 
@@ -1407,6 +1421,9 @@ if __name__ == '__main__':
 
     for r, d in zip(missing_radec[0], missing_radec[1]):
         print("Missing Ra,Dec {},{}".format(missing_radec[0], missing_radec[1]))
+        ang_sep = angSepDeg(r,d, pp_dest.RA_d, pp_dest.dec_d)
+        if ang_sep > (pp_dest.fov_v / 2):
+            continue
         best_station, best_captured_dir, best_unretrieved_file, best_ad = \
             searchRaDecCoverage(r, d, station_list,  remote_path_lists, pp_dest, config_list, temp_dir)
 
