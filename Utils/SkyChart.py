@@ -642,7 +642,7 @@ def getCapturedDirs(path_list, config_list, reverse=False):
         for item in dir_list:
             if len(item.split()) == 5:
                 dir_name = item.split()[4]
-                if dir_name[0:len(config.stationID)] == config.stationID:
+                if dir_name.startswith(config.stationID):
                     dir_name_list.append(dir_name)
         if reverse:
             dir_name_list.reverse()
@@ -654,7 +654,11 @@ def getCapturedDirs(path_list, config_list, reverse=False):
 
 def getDirectoryByTime(dirs_list, image_time):
     # reverse the dirs_list, and find the first dir before the time
+
+
+
     dirs_list.reverse()
+    directory = None
     for directory in dirs_list:
 
         rms_time = "{}_{}".format(directory.split("_")[1], directory.split("_")[2])
@@ -728,14 +732,13 @@ def createLookUpTable(pp):
 
     return (x_coords, y_coords, ra_coords, dec_coords)
 
-def getDeviationsPerFits(r, d, temp_dir, station, files_list, dest_pp, s_pp, corrupted_fits, print_values=False):
+def getDeviationsPerFits(r, d, temp_dir, station, files_list, dest_pp, s_pp, print_values=False):
 
 
     file_name_list, time_deviation_list, angle_deviation_list, station_list = [], [], [], []
     for file_name in files_list:
         if file_name.startswith("FF_{}".format(station)) and file_name.endswith(".fits"):
-            if file_name in corrupted_fits:
-                continue
+
             if tooCloseToDay(file_name):
                 continue
             file_name_list.append(os.path.join(temp_dir, station, file_name))
@@ -758,16 +761,12 @@ def findFitsLocal(r,d, station_list, temp_dir,dest_pp, corrupted_fits):
     # should look in memory here first
 
     az, el = raDec2AltAz(r,d,dest_pp.JD, dest_pp.lat, dest_pp.lon)
-    #print("Az,el {},{} r,d {},{}".format(az,el,r,d))
-
-
 
     files_list = []
     angle_deviation_list, file_name_list, sta_list, time_deviation_list = [], [], [], []
     for station in station_list:
         if station not in station_list and False:
             station_list.append(station)
-
 
         config_path = os.path.join(temp_dir, station, ".config")
         config = cr.parse(config_path)
@@ -867,46 +866,46 @@ def lsRemote(path, captured_dir, prefix, suffix, reverse=False):
 def getFitsAllStations(remote_path_list, config_list):
 
     # use a global variable to give persistence, so we don't have do this more than once
-    global captured_dirs_list_of_lists
-    global file_list_of_lists_of_lists
 
-    if captured_dirs_list_of_lists is None or file_list_of_lists_of_lists is None:
+    captured_dirs_list_of_lists = getCapturedDirs(remote_path_list, config_list, reverse=True)
+    file_list_of_lists_of_lists = []
+    print("Getting remote directory structure {}".format(len(remote_path_list)))
+    i, start_time = 0, time.time()
+    for path, config, captured_dirs_list in captured_dirs_list_of_lists:
+        file_list_of_lists = []
+        i, str = progress(i, len(captured_dirs_list_of_lists), start_time, task_name="Retrieve remote file structure")
+        print(str, end=" ")
+        for captured_dir in captured_dirs_list:
+            captured_dir_full_path = os.path.join(config.data_dir, config.captured_dir, captured_dir)
+            files = lsRemote(path, captured_dir_full_path, "FF_{}".format(config.stationID), "fits")
+            file_list_of_lists.append(files)
 
-        captured_dirs_list_of_lists = getCapturedDirs(remote_path_list, config_list, reverse=True)
-        file_list_of_lists_of_lists = []
-        print("Getting remote directory structure {}".format(len(remote_path_list)))
-        for path, captured_dirs_list, config in zip(remote_path_list, captured_dirs_list_of_lists, config_list):
-            file_list_of_lists = []
+        file_list_of_lists_of_lists.append(file_list_of_lists)
 
-            for captured_dir in tqdm.tqdm(captured_dirs_list):
-                captured_dir_full_path = os.path.join(config.data_dir, config.captured_dir, captured_dir)
-                files = lsRemote(path, captured_dir_full_path, "FF_{}".format(config.stationID), "fits")
-                file_list_of_lists.append(files)
-
-            file_list_of_lists_of_lists.append(file_list_of_lists)
-
-        return captured_dirs_list_of_lists, file_list_of_lists_of_lists
-
-    else:
-        return captured_dirs_list_of_lists, file_list_of_lists_of_lists
-
-def searchRaDecCoverage(r,d, station_list, remote_path_list, dest_pp, config_list, temp_dir, corrupted_fits):
+    return captured_dirs_list_of_lists, file_list_of_lists_of_lists
 
 
 
-
+def searchRaDecCoverage(r,d, station_list, remote_path_list, dest_pp, config_list, temp_dir):
 
     ad_amount_list, ad_file_list, station_list_by_fits, captured_dirs_list_by_fits = [], [], [], []
     pp_source_list = getPlatePars(station_list, config_list, temp_dir)
-    captured_dirs_list_of_lists, file_list_of_lists_of_lists = getFitsAllStations(remote_path_list, config_list)
+    if True:
+        captured_dirs_list_of_lists, file_list_of_lists_of_lists = getFitsAllStations(remote_path_list, config_list)
+        with open("remote_file_structure", 'wb') as fh:
+            pickle.dump(captured_dirs_list_of_lists, fh)
+            pickle.dump(file_list_of_lists_of_lists, fh)
+    else:
+        with open("remote_file_structure", 'rb') as fh:
+            captured_dirs_list_of_lists = pickle.load(fh)
+            file_list_of_lists_of_lists = pickle.load(fh)
     for station, captured_dirs_list, file_list_of_lists, s_pp, config in zip(station_list, captured_dirs_list_of_lists,
                                                                     file_list_of_lists_of_lists, pp_source_list, config_list):
             for captured_dir, files_list in zip(captured_dirs_list, file_list_of_lists):
                 ad_list, file_name_list, station_list_by_dir, time_deviation_list = \
-                    getDeviationsPerFits(r, d, temp_dir, station, files_list, dest_pp, s_pp, corrupted_fits, print_values=False)
+                    getDeviationsPerFits(r, d, temp_dir, station, files_list, dest_pp, s_pp,  print_values=False)
                 for file_name in file_name_list:
-                    if file_name in corrupted_fits:
-                        continue
+
                     if tooCloseToDay(file_name):
                         continue
 
@@ -1041,32 +1040,30 @@ def generateContemporaryImageTransformations(temp_dir, config_file_paths_list=No
     else:
         print("Running in daemon mode")
 
-    reload = True
-
     temp_dir = "~/tmp/SkyChart/"
     temp_dir = os.path.expanduser(temp_dir)
     file_path_and_dest_pp = os.path.join(temp_dir, "file_path_and_pp.pickle")
 
-    if reload:
+    station_list, config_list = getConfigsMasksPlatepars(config_file_paths_list)
 
-        station_list, config_list = getConfigsMasksPlatepars(config_file_paths_list)
+    pp_dest = Platepar()
+    pp_dest = configurePlatepar(pp_dest, config_list, image_time, res=resolution, angle=angle)
 
-        pp_dest = Platepar()
-        pp_dest = configurePlatepar(pp_dest, config_list, image_time, res=resolution, angle=angle)
+    dirs_list_of_lists = getCapturedDirs(config_file_paths_list, config_list)
+    files_path_lists = getFilePaths(dirs_list_of_lists, image_time)
+    local_file_path_list = retrieveFiles(files_path_lists, temp_dir)
 
-        dirs_list_of_lists = getCapturedDirs(config_file_paths_list, config_list)
-        files_path_lists = getFilePaths(dirs_list_of_lists, image_time)
-        local_file_path_list = retrieveFiles(files_path_lists, temp_dir)
-
-        with open(file_path_and_dest_pp, 'wb') as fh:
-            pickle.dump(local_file_path_list, fh)
-            pickle.dump(pp_dest, fh)
+    with open(file_path_and_dest_pp, 'wb') as fh:
+        pickle.dump(local_file_path_list, fh)
+        pickle.dump(pp_dest, fh)
 
     with open(file_path_and_dest_pp, 'rb') as fh:
         local_file_path_list = pickle.load(fh)
         pp_dest = pickle.load(fh)
 
-    return makeTransformations(pp_dest, local_file_path_list, temp_dir)
+    " pp_dest, station_list, config_list, dirs_list_of_lists, file_path_lists"
+    return makeTransformations(pp_dest, local_file_path_list, temp_dir),  \
+            station_list, config_list, dirs_list_of_lists, files_path_lists
 
 def createArrayList(pp_dest, count):
 
@@ -1139,7 +1136,7 @@ def bestTransformation(station_dir, target_time, file_name):
 def applyTransformations(temp_dir, pp_dest):
 
 
-    image_time = pp_dest.time
+    image_time = jd2Date(pp_dest.JD, dt_obj=True)
 
     station_list = []
     [max_pixel_arr, ave_pixel_arr, count_arr] = createArrayList(pp_dest,3)
@@ -1289,6 +1286,21 @@ def testPlatePar():
 
     pass
 
+def findUnmarkedPixels(count_array, threshold = 0):
+
+    return np.where(count_array == threshold)
+
+def pixelsToRaDec(pp, pixel_array):
+
+    pixels = len(pixel_array[0])
+    time_arr, level_arr = pixels * [pp.JD], pixels * [1]
+
+    _ , ra_coords, dec_coords, _ = xyToRaDecPP(time_arr, pixel_array[0], pixel_array[1], level_arr ,pp, jd_time=True)
+
+    return ra_coords, dec_coords
+
+
+
 if __name__ == '__main__':
     ### COMMAND LINE ARGUMENTS
 
@@ -1319,6 +1331,8 @@ if __name__ == '__main__':
                             help="Fill in gaps in the image by translating images through time")
 
 
+
+
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
 
@@ -1342,33 +1356,66 @@ if __name__ == '__main__':
     temp_dir = "~/tmp/SkyChart"
     temp_dir = os.path.expanduser(temp_dir)
     pickle_path = temp_dir
-    """
-    #testPlatePar()
+
+
     if cml_args.transformations:
         account_name_hostname_list = resolveListToIP(cml_args.paths)
         account_name_hostname_list = addDirToAccountNameHostName(account_name_hostname_list)
-        pp_dest = generateContemporaryImageTransformations(temp_dir, config_file_paths_list=account_name_hostname_list,
+        pp_dest, station_list, config_list, dirs_list_of_lists, file_path_lists =  \
+                                                 generateContemporaryImageTransformations(
+                                                 temp_dir, config_file_paths_list=account_name_hostname_list,
                                                  image_time=image_time, resolution=resolution,
                                                  pickle_path=pickle_path, angle=cml_args.angle)
 
-    max_image, ave_image, count = applyTransformations(temp_dir, pp_dest)
+        max_image, ave_image, count = applyTransformations(temp_dir, pp_dest)
 
     #display("~/tmp/SkyChart", pickle_path=pickle_path)
 
-    with open("image_array", 'wb') as fh:
-        pickle.dump(max_image, fh)
-        pickle.dump(ave_image, fh)
-        pickle.dump(count, fh)
-    """
+        with open("image_array", 'wb') as fh:
+            pickle.dump(max_image, fh)
+            pickle.dump(ave_image, fh)
+            pickle.dump(count, fh)
+            pickle.dump(pp_dest, fh)
+            pickle.dump(dirs_list_of_lists, fh)
+            pickle.dump(file_path_lists, fh)
+            pickle.dump(station_list, fh)
+            pickle.dump(config_list, fh)
 
     with open("image_array", 'rb') as fh:
         max_image = pickle.load(fh)
         ave_image = pickle.load(fh)
         count = pickle.load(fh)
+        pp_dest = pickle.load(fh)
+        dirs_lists_of_lists = pickle.load(fh)
+        file_path_lists = pickle.load(fh)
+        station_list = pickle.load(fh)
+        config_list = pickle.load(fh)
+
+    unmarked_pixels = findUnmarkedPixels(count)
+    missing_radec = pixelsToRaDec(pp_dest, unmarked_pixels)
+    print("Unmarked Pixels")
+    print(len(unmarked_pixels[0]))
+    print(len(unmarked_pixels[1]))
+    print("As Radec")
+    print(missing_radec)
+    print(image_time)
+
+    remote_path_lists = []
+
+    for directory, remote_path, config in file_path_lists:
+        remote_path_lists.append(os.path.join("{}:{}".format(remote_path.split(":")[0],config.data_dir), config.captured_dir))
+
+    for r, d in zip(missing_radec[0], missing_radec[1]):
+        print("Missing Ra,Dec {},{}".format(missing_radec[0], missing_radec[1]))
+        best_station, best_captured_dir, best_unretrieved_file, best_ad = \
+            searchRaDecCoverage(r, d, station_list,  remote_path_lists, pp_dest, config_list, temp_dir)
+
+            #searchRaDecCoverage(r,d, station_list, remote_path_list, dest_pp, config_list, temp_dir)
+
 
     plt.imshow(max_image, cmap="gray")
     plt.show()
-    plt.imshow(ave_image, cmap="gray")
-    plt.show()
-    plt.imshow(count, cmap="gray")
-    plt.show()
+    #plt.imshow(ave_image, cmap="gray")
+    #plt.show()
+    #plt.imshow(count, cmap="gray")
+    #plt.show()
