@@ -361,7 +361,7 @@ def getAveragePosition(position_list):
     for position in position_list:
         lat, lon, ele = position
         lat_rads, lon_rads = np.radians(lat), np.radians(lon)
-        x,y,z, = latLonAlt2ECEF(lat_rads, lon_rads, ele)
+        x, y, z = latLonAlt2ECEF(lat_rads, lon_rads, ele)
         x_list.append(x)
         y_list.append(y)
         z_list.append(z)
@@ -450,9 +450,12 @@ def getConfigsMasksPlatepars(config_file_paths_list,temp_dir="~/tmp/SkyChart"):
 
     i, start_time = 0, time.time()
     for config_path in config_file_paths_list:
-        i, str = progress(i, len(config_file_paths_list), start_time,  task_name="Get configs", pointer="*>", iteration_estimate=10)
-        print(str, end="")
+
+
         config_filename = os.path.basename(config_path.split(':')[1])
+        i, str = progress(i, len(config_file_paths_list), start_time, task_name="Get config from {}"
+                          .format(config_path.split("@")[0]), pointer="*>", iteration_estimate=10)
+        print(str, end="")
         temp_destination_path_and_filename = os.path.join(temp_dir,config_filename)
 
         while not os.path.exists(temp_destination_path_and_filename):
@@ -775,7 +778,7 @@ def searchRaDecCoverage(r,d, station_list, remote_path_list, dest_pp, config_lis
 
     ad_amount_list, ad_file_list, station_list_by_fits, captured_dirs_list_by_fits = [], [], [], []
     pp_source_list = getPlatePars(station_list, config_list, temp_dir)
-    if False:
+    if True:
         captured_dirs_list_of_lists, file_list_of_lists_of_lists = getFitsAllStations(remote_path_list, config_list)
         with open("remote_file_structure", 'wb') as fh:
             pickle.dump(captured_dirs_list_of_lists, fh)
@@ -1105,7 +1108,7 @@ def display(temp_dir, pickle_path):
 
 def resolveNameToIP(account_name_hostname):
     hostname_list = ['coorinja', 'lemongum', 'pemberton', 'pioneer', 'rhodesdale', 'walnut', 'youndegin']
-    ip_address_server = "http://rvrgm.asuscomm.com:8243/stations"
+    ip_address_server = "http://192.168.1.230/stations"
     ip = 0
 
     account_name, hostname = account_name_hostname.split("@")
