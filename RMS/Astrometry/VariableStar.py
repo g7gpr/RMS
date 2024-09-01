@@ -58,11 +58,15 @@ import glob as glob
 import pickle
 import sqlite3
 import tqdm
+import json
+import logging
 from RMS.Formats.CALSTARS import readCALSTARS
 from RMS.Formats.Platepar import Platepar
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP
 from RMS.Misc import rmsTimeExtractor
 from RMS.Astrometry.ApplyRecalibrate import recalibrateFF, recalibratePlateparsForFF
+from RMS.Logger import initLogging
+from RMS.Misc import getRMSStyleFileName
 from RMS.Astrometry.FFTalign import getMiddleTimeFF, alignPlatepar
 
 # Handle Python 2/3 compatibility
@@ -71,7 +75,7 @@ if sys.version_info.major == 3:
 
 EM_RAISE = True
 
-def readInArchivedCalstars(config, conn):
+def readInArchivedCalstars(config, conn, log):
 
 
     """
@@ -84,12 +88,24 @@ def readInArchivedCalstars(config, conn):
     Returns:
 
     """
+
     catalogue = loadGaiaCatalog("~/source/RMS/Catalogs", "gaia_dr2_mag_11.5.npy", lim_mag=11)
     archived_directories_path = os.path.join(config.data_dir, config.archived_dir)
     archived_directories = getNightDirs(archived_directories_path, config.stationID)
+    archived_directories.reverse()
+
+
     print("Archived Directories")
     calstar_list = []
-    for dir in archived_directories:
+    latest_jd = findMostRecentEntry(conn)
+    archived_directories_filtered_by_jd = []
+    for directory in archived_directories:
+        archived_directories_filtered_by_jd.append(directory)
+        if rmsTimeExtractor(directory, asJD=True) < latest_jd:
+            print("Excluding directories before {}, already processed".format(os.path.basename(directory)))
+            break
+    archived_directories_filtered_by_jd.reverse()
+    for dir in archived_directories_filtered_by_jd:
         full_path = os.path.join(archived_directories_path, dir)
         full_path_calstars = glob.glob(os.path.join(full_path,"*CALSTARS*" ))
         full_path_platepar = glob.glob(os.path.join(full_path, "platepar_cmn2010.cal"))
@@ -101,9 +117,10 @@ def readInArchivedCalstars(config, conn):
         calstars_path = os.path.dirname(full_path_calstars)
         calstars_name = os.path.basename(full_path_calstars)
         calstar = readCALSTARS(calstars_path, calstars_name)
-        pp = Platepar()
-        pp.read(full_path_platepar)
-        calstar_list.append(convertRaDec(calstar,pp, conn, catalogue))
+
+
+
+        calstar_list.append(convertRaDec(calstar, conn, catalogue, full_path, latest_jd))
     pass
 
 
@@ -123,7 +140,7 @@ def getCatalogueID(r, d, conn, margin=0.5):
     else:
         return 0, 0, 0, 0
 
-def convertRaDec(calstar,pp, conn, catalogue):
+def convertRaDec(calstar, conn, catalogue, archived_directories_path, latest_jd=0):
 
     """
     Parses a calstar data structure, retains all existing data but
@@ -131,7 +148,7 @@ def convertRaDec(calstar,pp, conn, catalogue):
 
     Args:
         calstar (): a calstar data structure
-        pp (): the platepar used for the date of the observation
+
 
     Returns:
 
@@ -139,15 +156,30 @@ def convertRaDec(calstar,pp, conn, catalogue):
 
     calstar_radec = []
     calstar_for_recal = dict(calstar)
-    fits_files_in_calstar = dict.keys(calstar_for_recal)
-    pp_recal = recalibratePlateparsForFF(pp, fits_files_in_calstar, calstar_for_recal, catalogue, config)
+    #fits_files_in_calstar = dict.keys(calstar_for_recal)
+    #full_path_all_recalibrated_json = getRMSStyleFileName(archived_directories_path, "pp_all_recalibrated.json")
+    #pp_recal = recalibratePlateparsForFF(pp, fits_files_in_calstar, calstar_for_recal, catalogue, config)
+
+    #with open(full_path_all_recalibrated_json, 'w') as f:
+    #    f.write(json.dumps(pp_recal, indent=4, sort_keys=True))
+
+
+    platepars_all_recalibrated_path = os.path.join(archived_directories_path, "platepars_all_recalibrated.json")
+    with open(platepars_all_recalibrated_path, 'r') as fh:
+        pp_recal = json.load(fh)
+
+
     for fits_file, star_list in calstar:
-        if len(star_list) < 50:
+        if len(star_list) < config.min_matched_stars:
             print("In {} only {} stars".format(fits_file, len(star_list)))
             continue
         date_time, jd = rmsTimeExtractor(fits_file, asTuple=True)
+        # Skip anything which has already been processed
+        if jd < latest_jd:
+            continue
         jd_list, x_list, y_list, bg_list, amp_list, FWHM_list = [], [], [], [], [], []
         for x, y, bg_intensity, amplitude, FWHM in star_list:
+
             jd_list.append(jd)
             x_list.append(x)
             y_list.append(y)
@@ -165,25 +197,21 @@ def convertRaDec(calstar,pp, conn, catalogue):
         pp_recal = alignPlatepar(config, pp, calstars_time, calstars_coords, show_plot=False)
         '''
 
-
-
-        if pp_recal is None:
-            print("Could not recalibrate {}".format(fits_file))
+        if not fits_file in pp_recal:
             continue
-        else:
-            print("Recalibrated {}".format(fits_file))
-            pp = pp_recal
-        jd, ra, dec, mag = xyToRaDecPP(jd_arr, x_data, y_data, level_data, pp, jd_time=True)
+        pp = Platepar()
+        pp.loadFromDict(pp_recal[fits_file])
+
+
+        jd, ra, dec, mag = xyToRaDecPP(jd_arr, x_data, y_data, level_data, pp, jd_time=True, extinction_correction=True)
         star_list_radec = []
         for j, x, y, r, d, bg, amp, FWHM, mag in zip(jd, x_list, y_list, ra, dec, bg_list, amp_list, FWHM_list, mag):
             cat_id, cat_mag, cat_r, cat_d = getCatalogueID(r, d, conn)
-
             star_list_radec.append([j, date_time, x, y, r, d, bg, amp, FWHM, mag, cat_id, cat_mag, cat_r, cat_d])
         if len(star_list_radec)  > 30:
+
             insertDB(conn, star_list_radec)
             print("In {},  {} stars, inserting".format(fits_file, len(star_list_radec)))
-        else:
-            print("In {}, only {} stars, too few".format(fits_file, len(star_list_radec)))
         calstar_radec.append([fits_file, star_list_radec])
     return calstar_radec
 
@@ -304,7 +332,17 @@ def createTableCatalogue(conn):
 
     return conn
 
+def findMostRecentEntry(conn):
 
+
+    sql_command = ""
+    sql_command += "SELECT max(jd) FROM star_observations \n"
+
+    jd = conn.cursor().execute(sql_command).fetchone()[0]
+    if jd is not None:
+        return jd
+    else:
+        return 0
 
 
 def loadGaiaCatalog(dir_path, file_name, lim_mag=None):
@@ -351,8 +389,12 @@ if __name__ == "__main__":
     config = cr.parse( os.path.expanduser("~/source/RMS/.config"))
     conn = getStationStarDBConn(config)
 
+    # Initialize the logger
+    initLogging(config)
+    # Get the logger handle
+    log = logging.getLogger("logger")
 
-    archived_calstars = readInArchivedCalstars(config, conn)
+    archived_calstars = readInArchivedCalstars(config, conn, log)
 
     with open("archived_calstars.pickle", 'wb') as fh:
         pickle.dump(archived_calstars, fh)
