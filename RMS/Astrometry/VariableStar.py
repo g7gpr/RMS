@@ -260,7 +260,7 @@ def insertDB(config, conn, star_list_radec):
         conn.execute(sql_command)
     conn.commit()
 
-def getStationStarDBConn(config, db_path, force_delete=False):
+def getStationStarDBConn(db_path, force_delete=False):
     """ Creates the station star database. Tries only once.
 
     arguments:
@@ -507,11 +507,12 @@ if __name__ == "__main__":
 
     dbpath = os.path.expanduser(dbpath)
 
-    conn = getStationStarDBConn(config, dbpath)
+    conn = getStationStarDBConn(dbpath)
 
 
     if cml_args.ra is None and cml_args.dec is None and cml_args.window is None:
         print("Collecting RaDec Data")
+        config = cr.parse(config_path)
         archived_calstars = readInArchivedCalstars(config, conn)
 
     else:
