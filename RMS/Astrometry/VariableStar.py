@@ -177,7 +177,7 @@ def photometry(config, pp_all, calstar, match_radius = 2.0):
                                         {jd_most: star_dict[jd_most]}, match_radius, ret_nmatch=True,
                                                                    lim_mag=lim_mag)
 
-
+    print("jd with most stars {} as date {}".format(jd_most, jd2Date(jd, dt_obj=True)))
     image_stars, matched_catalog_stars, distances = matched_stars[jd_most]
     star_intensities = image_stars[:, 2]
     cat_ra, cat_dec, cat_mags = matched_catalog_stars.T
@@ -289,7 +289,7 @@ def getStationStarDBConn(db_path, force_delete=False):
         os.makedirs(os.path.dirname(db_path))
 
     try:
-        conn = sqlite3.connect(db_path, timeout = 60)
+        conn = sqlite3.connect(db_path, timeout=60)
         createTableStarObservations(conn)
         createTableCatalogue(conn)
         return conn
