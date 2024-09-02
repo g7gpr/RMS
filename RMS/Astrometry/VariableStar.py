@@ -158,7 +158,7 @@ def photometry(config, pp_all, calstar, match_radius = 2.0):
 
     star_dict, ff_dict = {}, {}
     max_stars = 0
-
+    ff_most_stars = None
     for entry in calstar:
         ff_name, star_data = entry
         d = getMiddleTimeFF(ff_name, config.fps, ret_milliseconds=True)
@@ -170,6 +170,8 @@ def photometry(config, pp_all, calstar, match_radius = 2.0):
                 max_stars, ff_most_stars, jd_most = star_count, ff_name, jd
 
     pp = Platepar()
+    if ff_most_stars is None:
+        return None, None
     pp.loadFromDict(pp_all[ff_most_stars])
     n_matched, avg_dist, cost, matched_stars = matchStarsResiduals(config, pp, catalog_stars,
                                         {jd_most: star_dict[jd_most]}, match_radius, ret_nmatch=True,
@@ -208,7 +210,9 @@ def convertRaDec(calstar, conn, catalogue, archived_directories_path, latest_jd=
         pp_recal = json.load(fh)
 
     offset, vignetting = photometry(config, pp_recal, calstar)
-
+    if offset is None or vignetting is None:
+        print("Nothing found in {}, moving on".format(archived_directories_path))
+        return
     for fits_file, star_list in tqdm.tqdm(calstar):
         if len(star_list) < config.min_matched_stars:
             continue
