@@ -62,12 +62,16 @@ import json
 import logging
 from RMS.Formats.CALSTARS import readCALSTARS
 from RMS.Formats.Platepar import Platepar
-from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP
+from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP, correctVignetting, photometryFitRobust
 from RMS.Misc import rmsTimeExtractor
 from RMS.Astrometry.ApplyRecalibrate import recalibrateFF, recalibratePlateparsForFF
 from RMS.Logger import initLogging
 from RMS.Misc import getRMSStyleFileName
 from RMS.Astrometry.FFTalign import getMiddleTimeFF, alignPlatepar
+import matplotlib.pyplot as plt
+from RMS.Astrometry.ApplyAstrometry import extinctionCorrectionTrueToApparent
+from RMS.Astrometry.CheckFit import matchStarsResiduals
+from RMS.Formats.StarCatalog import readStarCatalog
 
 # Handle Python 2/3 compatibility
 if sys.version_info.major == 3:
@@ -97,7 +101,7 @@ def readInArchivedCalstars(config, conn, log):
 
     print("Archived Directories")
     calstar_list = []
-    latest_jd = findMostRecentEntry(conn)
+    latest_jd = findMostRecentEntry(config, conn)
     archived_directories_filtered_by_jd = []
     for directory in archived_directories:
         archived_directories_filtered_by_jd.append(directory)
@@ -106,6 +110,7 @@ def readInArchivedCalstars(config, conn, log):
             break
     archived_directories_filtered_by_jd.reverse()
     for dir in archived_directories_filtered_by_jd:
+        print("Working on {}".format(dir))
         full_path = os.path.join(archived_directories_path, dir)
         full_path_calstars = glob.glob(os.path.join(full_path,"*CALSTARS*" ))
         full_path_platepar = glob.glob(os.path.join(full_path, "platepar_cmn2010.cal"))
@@ -124,7 +129,7 @@ def readInArchivedCalstars(config, conn, log):
     pass
 
 
-def getCatalogueID(r, d, conn, margin=0.5):
+def getCatalogueID(r, d, conn, margin=0.3):
 
     sql_command = ""
     sql_command += "SELECT id, mag, r, d FROM catalogue \n"
@@ -139,6 +144,47 @@ def getCatalogueID(r, d, conn, margin=0.5):
             return 0, 0, 0, 0
     else:
         return 0, 0, 0, 0
+
+
+def photometry(config, pp_all, calstar, match_radius = 2.0):
+
+
+    lim_mag = config.catalog_mag_limit + 1
+
+    catalog_stars, mag_band_str, config.star_catalog_band_ratios = readStarCatalog(config.star_catalog_path,
+                                            config.star_catalog_file, lim_mag=lim_mag,
+                                                mag_band_ratios=config.star_catalog_band_ratios)
+
+    star_dict, ff_dict = {}, {}
+    max_stars = 0
+
+    for entry in calstar:
+        ff_name, star_data = entry
+        d = getMiddleTimeFF(ff_name, config.fps, ret_milliseconds=True)
+        jd = date2JD(*d)
+        star_dict[jd], ff_dict[jd] = star_data, ff_name
+        star_count = len(star_dict[jd])
+        if star_count > max_stars:
+            if ff_name in pp_all:
+                max_stars, ff_most_stars, jd_most = star_count, ff_name, jd
+
+    pp = Platepar()
+    pp.loadFromDict(pp_all[ff_most_stars])
+    n_matched, avg_dist, cost, matched_stars = matchStarsResiduals(config, pp, catalog_stars,
+                                        {jd_most: star_dict[jd_most]}, match_radius, ret_nmatch=True,
+                                                                   lim_mag=lim_mag)
+
+
+    image_stars, matched_catalog_stars, distances = matched_stars[jd_most]
+    star_intensities = image_stars[:, 2]
+    cat_ra, cat_dec, cat_mags = matched_catalog_stars.T
+    radius_arr = np.hypot(image_stars[:, 0] - pp.Y_res / 2, image_stars[:, 1] - pp.X_res / 2)
+    mag_cat = extinctionCorrectionTrueToApparent(cat_mags, cat_ra, cat_dec, jd, pp)
+
+    photom_params, fit_stddev, fit_resid, star_intensities, radius_arr, catalog_mags = \
+        photometryFitRobust(star_intensities, radius_arr, mag_cat)
+
+    return photom_params
 
 def convertRaDec(calstar, conn, catalogue, archived_directories_path, latest_jd=0):
 
@@ -155,30 +201,27 @@ def convertRaDec(calstar, conn, catalogue, archived_directories_path, latest_jd=
     """
 
     calstar_radec = []
-    calstar_for_recal = dict(calstar)
-    #fits_files_in_calstar = dict.keys(calstar_for_recal)
-    #full_path_all_recalibrated_json = getRMSStyleFileName(archived_directories_path, "pp_all_recalibrated.json")
-    #pp_recal = recalibratePlateparsForFF(pp, fits_files_in_calstar, calstar_for_recal, catalogue, config)
-
-    #with open(full_path_all_recalibrated_json, 'w') as f:
-    #    f.write(json.dumps(pp_recal, indent=4, sort_keys=True))
-
 
     platepars_all_recalibrated_path = os.path.join(archived_directories_path, "platepars_all_recalibrated.json")
     with open(platepars_all_recalibrated_path, 'r') as fh:
         pp_recal = json.load(fh)
 
+    offset, vignetting = photometry(config, pp_recal, calstar)
 
-    for fits_file, star_list in calstar:
+    for fits_file, star_list in tqdm.tqdm(calstar):
         if len(star_list) < config.min_matched_stars:
-            print("In {} only {} stars".format(fits_file, len(star_list)))
             continue
         date_time, jd = rmsTimeExtractor(fits_file, asTuple=True)
         # Skip anything which has already been processed
         if jd < latest_jd:
             continue
-        jd_list, x_list, y_list, bg_list, amp_list, FWHM_list = [], [], [], [], [], []
-        for x, y, bg_intensity, amplitude, FWHM in star_list:
+        if not fits_file in pp_recal:
+            continue
+        pp = Platepar()
+        pp.loadFromDict(pp_recal[fits_file])
+
+        jd_list, y_list, x_list, bg_list, amp_list, FWHM_list = [], [], [], [], [], []
+        for y, x, bg_intensity, amplitude, FWHM in star_list:
 
             jd_list.append(jd)
             x_list.append(x)
@@ -188,42 +231,31 @@ def convertRaDec(calstar, conn, catalogue, archived_directories_path, latest_jd=
             FWHM_list.append(FWHM)
         jd_arr, x_data, y_data, level_data = np.array(jd_list), np.array(x_list), np.array(y_list), np.array(amp_list)
 
-        star_dict_ff = {jd: star_list}
-        '''
-        calstars_coords = np.array(star_list)
-        calstars_coords = np.array(calstars_coords[:, :2])
-        calstars_coords[:, [0, 1]] = calstars_coords[:, [1, 0]]
-        calstars_time = getMiddleTimeFF(fits_file, config.fps, ret_milliseconds=True)
-        pp_recal = alignPlatepar(config, pp, calstars_time, calstars_coords, show_plot=False)
-        '''
-
-        if not fits_file in pp_recal:
-            continue
-        pp = Platepar()
-        pp.loadFromDict(pp_recal[fits_file])
-
-
-        jd, ra, dec, mag = xyToRaDecPP(jd_arr, x_data, y_data, level_data, pp, jd_time=True, extinction_correction=True)
+        jd, ra, dec, mag = xyToRaDecPP(jd_arr, x_data, y_data, level_data, pp, jd_time=True, extinction_correction=False, measurement=True)
         star_list_radec = []
         for j, x, y, r, d, bg, amp, FWHM, mag in zip(jd, x_list, y_list, ra, dec, bg_list, amp_list, FWHM_list, mag):
             cat_id, cat_mag, cat_r, cat_d = getCatalogueID(r, d, conn)
-            star_list_radec.append([j, date_time, x, y, r, d, bg, amp, FWHM, mag, cat_id, cat_mag, cat_r, cat_d])
-        if len(star_list_radec)  > 30:
-
-            insertDB(conn, star_list_radec)
-            print("In {},  {} stars, inserting".format(fits_file, len(star_list_radec)))
+            az, el = raDec2AltAz(r, d, j, pp.lat, pp.lon)
+            radius = np.hypot(y - pp.Y_res / 2, x - pp.X_res / 2)
+            mag = 0 - 2.5 * np.log10(correctVignetting(amp, radius, vignetting)) + offset
+            star_list_radec.append([j, date_time, fits_file, x, y, az, el, r, d, bg, amp,
+                                                                    FWHM, mag, cat_id, cat_mag, cat_r, cat_d])
+        if len(star_list_radec) > config.min_matched_stars:
+            insertDB(config, conn, star_list_radec)
         calstar_radec.append([fits_file, star_list_radec])
     return calstar_radec
 
-def insertDB(conn, star_list_radec):
+def insertDB(config, conn, star_list_radec):
 
 
-    for jd, date_time, x, y, r, d, bg, amp, FWHM, mag, cat_id, cat_mag, cat_r, cat_d in star_list_radec:
+    for jd, date_time, fits, x, y, az, el, r, d,  bg, amp, FWHM, mag, cat_id, cat_mag, cat_r, cat_d in star_list_radec:
         sql_command = ""
         sql_command += "INSERT INTO star_observations \n"
-        sql_command += "(jd, date_time, x, y, r, d, bg, amp, FWHM, mag, cat_key, cat_mag, cat_r, cat_d )\n"
+        sql_command += "(jd, date_time, station_id, fits, x, y, az, el, r, d, bg, amp, FWHM, mag, cat_key, cat_mag, cat_r, cat_d )\n"
         sql_command += "VALUES\n"
-        sql_command += "({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})".format(jd, date_time, x, y, r, d, bg, amp, FWHM, mag, cat_id, cat_mag, cat_r, cat_d)
+        sql_command += ("({}, '{}', '{}', '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})"
+                        .format(jd, date_time, config.stationID, fits, x, y, az, el, r, d,
+                                                                bg, amp, FWHM, mag, cat_id, cat_mag, cat_r, cat_d))
         conn.execute(sql_command)
     conn.commit()
 
@@ -261,6 +293,31 @@ def getStationStarDBConn(config, force_delete=False):
     except:
         return None
 
+def retrieveMagnitudesAroundRaDec(conn, r,d, window=0.5, start_time=None, end_time=None):
+
+    """
+
+    Args:
+        r (): right ascension in degrees
+        d (): declination in degrees
+        window(): window width in degrees
+        start_time (): jd of start
+        end_time (): jd of end
+
+    Returns:
+
+    """
+    window = abs(window)
+    sql_command = ""
+    sql_command += "SELECT jd, station_id, r, d, mag, cat_mag\n"
+    sql_command += "FROM star_observations\n"
+    sql_command += "WHERE\n"
+    sql_command += "r > {} AND r < {} AND\n".format(r - window, r + window, )
+    sql_command += "d > {} AND d < {}".format(d - window, d + window)
+
+    values = conn.cursor().execute(sql_command).fetchall()
+
+    return values
 
 def createTableStarObservations(conn):
 
@@ -284,8 +341,12 @@ def createTableStarObservations(conn):
     # j, x, y, r, d, bg, amp, FWHM, mag
     sql_command += "jd FLOAT NOT NULL, \n"
     sql_command += "date_time DATETIME NOT NULL, \n"
-    sql_command += "x SMALLINT NOT NULL, \n"
-    sql_command += "y SMALLINT NOT NULL, \n"
+    sql_command += "station_id TEXT NOT NULL, \n"
+    sql_command += "fits TEXT NOT NULL, \n"
+    sql_command += "x FLOAT NOT NULL, \n"
+    sql_command += "y FLOAT NOT NULL, \n"
+    sql_command += "az FLOAT NOT NULL, \n"
+    sql_command += "el FLOAT NOT NULL, \n"
     sql_command += "r FLOAT NOT NULL, \n"
     sql_command += "d FLOAT NOT NULL, \n"
     sql_command += "bg FLOAT NOT NULL, \n"
@@ -332,11 +393,13 @@ def createTableCatalogue(conn):
 
     return conn
 
-def findMostRecentEntry(conn):
+def findMostRecentEntry(config, conn):
 
 
     sql_command = ""
     sql_command += "SELECT max(jd) FROM star_observations \n"
+    sql_command += "WHERE \n"
+    sql_command += "station_id = '{}' \n".format(config.stationID)
 
     jd = conn.cursor().execute(sql_command).fetchone()[0]
     if jd is not None:
@@ -382,13 +445,48 @@ def catalogueToDB(conn):
         conn.execute(sql_command)
     conn.commit()
 
+def createPlot(values):
+
+
+    x_vals, y_vals = [], []
+    for jd, stationID, r, d, mag, cat_mag in values:
+        x_vals.append(jd)
+        y_vals.append(mag)
+    f, ax = plt.subplots()
+    ax.scatter( x_vals,y_vals)
+    return ax
+
+
 
 if __name__ == "__main__":
 
 
+    # Init the command line arguments parser
+
+    arg_parser = argparse.ArgumentParser(
+        description=("Iterate over archived directories, using the CALSTARS file to generate \
+                      a database of stellar magnitudes against RaDec")
+
+    arg_parser.add_argument('dir_path', nargs=1, metavar='DIR_PATH', type=str, \
+                            help='Path to the folder with FF files.')
+
+    arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str, \
+                            help="Path to a config file which will be used instead of the default one.")
+
+    arg_parser.add_argument('--num_cores', metavar='NUM_CORES', type=int, default=None, \
+                            help="Number of cores to use for detection. Default is what is specific in the config file. "
+                                 "If not given in the config file, all available cores will be used."
+                            )
+
+    # Parse the command line arguments
+    cml_args = arg_parser.parse_args()
+
     config = cr.parse( os.path.expanduser("~/source/RMS/.config"))
     conn = getStationStarDBConn(config)
-
+    values = retrieveMagnitudesAroundRaDec(conn, 24.5, -57.2, window=1.0)
+    ax = createPlot(values)
+    ax.plot()
+    plt.show()
     # Initialize the logger
     initLogging(config)
     # Get the logger handle
