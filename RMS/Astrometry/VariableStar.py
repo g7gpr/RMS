@@ -243,6 +243,8 @@ def convertRaDec(calstar, conn, catalogue, archived_directories_path, latest_jd=
             az, el = raDec2AltAz(r, d, j, pp.lat, pp.lon)
             radius = np.hypot(y - pp.Y_res / 2, x - pp.X_res / 2)
             mag = 0 - 2.5 * np.log10(correctVignetting(amp, radius, vignetting)) + offset
+            if mag == np.inf:
+                continue
             star_list_radec.append([j, date_time, fits_file, x, y, az, el, r, d, bg, amp,
                                                                     FWHM, mag, cat_id, cat_mag, cat_r, cat_d])
         if len(star_list_radec) > config.min_matched_stars:
