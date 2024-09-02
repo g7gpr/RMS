@@ -176,6 +176,8 @@ def photometry(config, pp_all, calstar, match_radius = 2.0):
     if ff_most_stars not in pp_all:
         print("Key error, moving on")
         return None, None
+    print(ff_most_stars)
+    print(pp_all)
     pp.loadFromDict(pp_all[ff_most_stars])
     n_matched, avg_dist, cost, matched_stars = matchStarsResiduals(config, pp, catalog_stars,
                                         {jd_most: star_dict[jd_most]}, match_radius, ret_nmatch=True,
