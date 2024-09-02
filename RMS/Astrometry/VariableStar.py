@@ -289,7 +289,7 @@ def getStationStarDBConn(db_path, force_delete=False):
         os.makedirs(os.path.dirname(db_path))
 
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout = 60)
         createTableStarObservations(conn)
         createTableCatalogue(conn)
         return conn
