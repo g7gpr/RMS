@@ -497,7 +497,7 @@ if __name__ == "__main__":
     if cml_args.config is None:
         config_path = "~/source/RMS/.config"
     else:
-        config_path = cml_args.config
+        config_path = cml_args.config[0]
     config_path = os.path.expanduser(config_path)
 
     if cml_args.dbpath is None:
