@@ -79,7 +79,7 @@ if sys.version_info.major == 3:
 
 EM_RAISE = True
 
-def readInArchivedCalstars(config, conn, log):
+def readInArchivedCalstars(config, conn):
 
 
     """
@@ -106,7 +106,8 @@ def readInArchivedCalstars(config, conn, log):
     for directory in archived_directories:
         archived_directories_filtered_by_jd.append(directory)
         if rmsTimeExtractor(directory, asJD=True) < latest_jd:
-            print("Excluding directories before {}, already processed".format(os.path.basename(directory)))
+            print("Excluding directories before {}, already processed for {}".format(
+                                os.path.basename(directory), config.stationID))
             break
     archived_directories_filtered_by_jd.reverse()
     for dir in archived_directories_filtered_by_jd:
@@ -126,7 +127,7 @@ def readInArchivedCalstars(config, conn, log):
 
 
         calstar_list.append(convertRaDec(calstar, conn, catalogue, full_path, latest_jd))
-    pass
+
 
 
 def getCatalogueID(r, d, conn, margin=0.3):
@@ -259,7 +260,7 @@ def insertDB(config, conn, star_list_radec):
         conn.execute(sql_command)
     conn.commit()
 
-def getStationStarDBConn(config, force_delete=False):
+def getStationStarDBConn(config, db_path, force_delete=False):
     """ Creates the station star database. Tries only once.
 
     arguments:
@@ -272,9 +273,6 @@ def getStationStarDBConn(config, force_delete=False):
     """
 
     # Create the station star database
-    db_name = "station_star"
-
-    db_path = os.path.join(config.data_dir,"{}.db".format(db_name))
 
     if force_delete:
         os.unlink(db_path)
@@ -445,14 +443,22 @@ def catalogueToDB(conn):
         conn.execute(sql_command)
     conn.commit()
 
-def createPlot(values):
+def createPlot(values, r, d, w):
 
 
     x_vals, y_vals = [], []
+    title = "Plot of magnitudes at RA {} Dec {}".format(r,d)
     for jd, stationID, r, d, mag, cat_mag in values:
         x_vals.append(jd)
         y_vals.append(mag)
     f, ax = plt.subplots()
+
+    plt.title(title)
+    plt.grid()
+    plt.ylabel("Magnitude")
+    plt.xlabel("Julian Date")
+    plt.ylim((12,0))
+    ax.invert_yaxis()
     ax.scatter( x_vals,y_vals)
     return ax
 
@@ -463,36 +469,61 @@ if __name__ == "__main__":
 
     # Init the command line arguments parser
 
-    arg_parser = argparse.ArgumentParser(
-        description=("Iterate over archived directories, using the CALSTARS file to generate \
-                      a database of stellar magnitudes against RaDec")
+    description = "Iterate over archived directories, using the CALSTARS file to generate\n"
+    description += "a database of stellar magnitudes against RaDec\n\n"
+    description += "For multicamera operation, either start this as a process in each camera\n"
+    description += "user account, pointing to the same database location\n"
+    description += "Or run multiple proceses in one account, pointing to each cameras config file\n"
 
-    arg_parser.add_argument('dir_path', nargs=1, metavar='DIR_PATH', type=str, \
-                            help='Path to the folder with FF files.')
+    arg_parser = argparse.ArgumentParser(description=description)
 
-    arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str, \
-                            help="Path to a config file which will be used instead of the default one.")
+    arg_parser.add_argument('-r', '--ra', nargs=1, metavar='RA', type=float,
+                            help="Right ascension to plot")
 
-    arg_parser.add_argument('--num_cores', metavar='NUM_CORES', type=int, default=None, \
-                            help="Number of cores to use for detection. Default is what is specific in the config file. "
-                                 "If not given in the config file, all available cores will be used."
-                            )
+    arg_parser.add_argument('-d', '--dec', nargs=1, metavar='DEC', type=float,
+                            help="Declination to plot")
+
+    arg_parser.add_argument('-w', '--window', nargs=1, metavar='WINDOW', type=float,
+                            help="Width to plot")
+
+    arg_parser.add_argument("-p", '--dbpath', nargs=1, metavar='DBPATH', type=str,
+                            help="Path to Database")
+
+    arg_parser.add_argument("-c", '--config', nargs=1, metavar='CONFIGPATH', type=str,
+                            help="Config file to load")
 
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
+    if cml_args.config is None:
+        config_path = "~/source/RMS/.config"
+    else:
+        config_path = cml_args.config
+    config_path = os.path.expanduser(config_path)
 
-    config = cr.parse( os.path.expanduser("~/source/RMS/.config"))
-    conn = getStationStarDBConn(config)
-    values = retrieveMagnitudesAroundRaDec(conn, 24.5, -57.2, window=1.0)
-    ax = createPlot(values)
-    ax.plot()
-    plt.show()
-    # Initialize the logger
-    initLogging(config)
-    # Get the logger handle
-    log = logging.getLogger("logger")
+    if cml_args.dbpath is None:
+        dbpath = "~/RMS_data/magnitudes.db"
+    else:
+        dbpath = cml_args.dbpath
 
-    archived_calstars = readInArchivedCalstars(config, conn, log)
+    dbpath = os.path.expanduser(dbpath)
 
-    with open("archived_calstars.pickle", 'wb') as fh:
-        pickle.dump(archived_calstars, fh)
+    conn = getStationStarDBConn(config, dbpath)
+
+
+    if cml_args.ra is None and cml_args.dec is None and cml_args.window is None:
+        print("Collecting RaDec Data")
+        archived_calstars = readInArchivedCalstars(config, conn)
+
+    else:
+        if cml_args.window is None:
+            w = 0.1
+        else:
+            w = cml_args.window[0]
+        r, d  = cml_args.ra[0], cml_args.dec[0]
+        print("Producing plot around RaDec {}, {} width {}".format(r, d, w))
+
+        values = retrieveMagnitudesAroundRaDec(conn, r, d, window=w)
+        ax = createPlot(values, r, d, w)
+        ax.plot()
+        plt.savefig("magnitudes_at_Ra_{}_Dec_{}".format(r,d), format='png')
+
