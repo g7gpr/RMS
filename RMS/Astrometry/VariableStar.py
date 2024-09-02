@@ -170,7 +170,11 @@ def photometry(config, pp_all, calstar, match_radius = 2.0):
                 max_stars, ff_most_stars, jd_most = star_count, ff_name, jd
 
     pp = Platepar()
-    if ff_most_stars is None:
+    if ff_most_stars is None or max_stars < config.min_matched_stars:
+        print("Too few stars, moving on")
+        return None, None
+    if ff_most_stars is not in pp_all:
+        print("Key error, moving on")
         return None, None
     pp.loadFromDict(pp_all[ff_most_stars])
     n_matched, avg_dist, cost, matched_stars = matchStarsResiduals(config, pp, catalog_stars,
