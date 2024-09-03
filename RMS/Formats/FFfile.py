@@ -72,7 +72,10 @@ def read(directory, filename, fmt=None, array=False, full_filename=False, verbos
 
 
     elif fmt == 'fits':
-
+        if os.path.exists(os.path.join(directory, filename)):
+            print("Path exists")
+        else:
+            print("Path does not exist")
         try:
             # Read the file as FITS
             ff = readFFfits(directory, filename, array=array, full_filename=full_filename)
