@@ -71,6 +71,31 @@ if sys.version_info.major == 3:
 
 EM_RAISE = True
 
+def plateparContainsRaDec(r, d, source_pp, file_name, mask_dir, check_mask = True):
+
+
+    # Get the image time from the file_name
+    source_JD = rmsTimeExtractor(file_name, asJD=True)
+
+    # Convert r,d to source image coordinates
+    r_array = np.array([r])
+    d_array = np.array([d])
+    source_x, source_y = raDecToXYPP(r_array, d_array, source_JD, source_pp)
+    source_x, source_y = round(source_x[0]), round(source_y[0])
+
+    if 0 < source_x < source_pp.X_res and 0 < source_y < source_pp.Y_res:
+        if check_mask:
+            if checkMaskxy(source_x,source_y,file_name, mask_dir):
+                return True
+            else:
+                return False
+        else:
+            return True
+    else:
+        return False
+
+
+
 def filterDirectoriesByJD(path, earliest_jd, latest_jd):
 
     """
