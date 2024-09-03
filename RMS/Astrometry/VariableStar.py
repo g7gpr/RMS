@@ -55,6 +55,7 @@ import glob as glob
 import sqlite3
 import tqdm
 import json
+import pickle
 from RMS.Formats.CALSTARS import readCALSTARS
 from RMS.Formats.Platepar import Platepar
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP, correctVignetting, photometryFitRobust
@@ -65,6 +66,9 @@ from RMS.Astrometry.ApplyAstrometry import extinctionCorrectionTrueToApparent
 from RMS.Astrometry.CheckFit import matchStarsResiduals
 from RMS.Formats.StarCatalog import readStarCatalog
 from RMS.Routines.MaskImage import loadMask, MaskStructure
+from RMS.Formats.FFfile import read
+from matplotlib import pyplot as plt
+
 
 # Handle Python 2/3 compatibility
 if sys.version_info.major == 3:
@@ -113,7 +117,7 @@ def plateparContainsRaDec(r, d, source_pp, file_name, mask_dir, check_mask = Tru
 
     if 0 < source_x < source_pp.X_res and 0 < source_y < source_pp.Y_res:
         if check_mask:
-            if checkMaskxy(source_x,source_y,file_name, mask_dir):
+            if checkMaskxy(source_x,source_y, mask_dir):
                 return True, source_x, source_y
             else:
                 return False, 0, 0
@@ -142,7 +146,7 @@ def filterDirectoriesByJD(path, earliest_jd, latest_jd):
 
     directory_list = []
     for obj in os.listdir(os.path.expanduser(path)):
-        if os.path.isdir(obj):
+        if os.path.isdir(os.path.join(path,obj)):
             directory_list.append(os.path.join(path, obj))
 
     directory_list.sort(reverse=True)
@@ -150,8 +154,13 @@ def filterDirectoriesByJD(path, earliest_jd, latest_jd):
     filtered_by_jd = []
     for directory in directory_list:
 
+        # Get the jd of this directory, if it can't be parsed the continue
+        jd_dir = rmsTimeExtractor(directory, asJD=True)
+        if jd_dir is None:
+            continue
+
         # If the start time of this directory is less than the latest_target append to the list
-        if rmsTimeExtractor(directory, asJD=True) < latest_jd:
+        if jd_dir < latest_jd:
             filtered_by_jd.append(directory)
 
         # As soon as a directory has been added which is before the earliest_jd
@@ -264,7 +273,7 @@ def computePhotometry(config, pp_all, calstar, match_radius=2.0, star_margin = 1
 
     """
     Compute photometric offset and vignetting coefficient from CALSTARS
-    Best practice is to to use the vignetting coeffificnt from the platepar
+    Best practice is to use the vignetting coefficient from the platepar
     not a computed number
 
     Args:
@@ -339,42 +348,124 @@ def computePhotometry(config, pp_all, calstar, match_radius=2.0, star_margin = 1
 
     return photom_params
 
-def getFitsPaths(config, earliest_jd, latest_jd, r=None, d=None):
+def getFitsPathsAndCoords(config, earliest_jd, latest_jd, r=None, d=None):
 
     full_path_to_captured = os.path.expanduser(os.path.join(config.data_dir, config.captured_dir))
     directories_to_search = filterDirectoriesByJD(full_path_to_captured, earliest_jd, latest_jd)
     stationID = config.stationID
-
+    last_pp_path = ""
     fits_paths = []
-    for dir in directories_to_search:
-        for file_name in os.listdir(dir):
-            if file_name.beginswith('FF') and file_name.endswith('.fits') and len(file_name.split('_')) == 5:
+    for directory in tqdm.tqdm(directories_to_search):
+        pp_path = os.path.join(directory, "platepar_cmn2010.cal")
+        if os.path.exists(pp_path):
+            pp = Platepar()
+            pp.read(pp_path)
+        else:
+            # No platepar found - continue
+            continue
+        directory_list = os.listdir(directory)
+        directory_list.sort()
+        for file_name in directory_list:
+            if file_name.startswith('FF') and file_name.endswith('.fits') and len(file_name.split('_')) == 6:
                 if file_name.split('_')[1] == stationID:
-                    fits_paths.append(file_name)
+                    if r is None and d is None:
+                        contains_radec, x, y = True, 0, 0
+                    else:
+                        contains_radec, x, y = plateparContainsRaDec(r, d, pp, file_name,
+                                                                    config.mask_file, check_mask=True)
+                    if contains_radec:
+                        fits_paths.append([os.path.join(directory,file_name), x, y])
 
     return fits_paths
 
-def crop(path, x, y, width, height):
+def readCroppedFF(path, x, y, width=20, height=20, allow_drift_in = False):
+    """
 
-    ff =
+    Args:
+        path (): full path to the ff file to be read
+        x (): x coordinates of the centre of the cropped region
+        y (): y coordinates of the centre of the cropped region
+        width (): optional, default 50, width of crop
+        height (): optional, default 50, height of crop
 
-def createThumbnails(config, r, d, earliest_jd, latest_jd):
+    Returns:
+        array of pixels
+    """
 
-    path_list = getFitsPaths(config, earliest_jd, latest_jd, r, d)
-    thumbnail_list = []
-    for path in path_list:
+    ff = read(os.path.dirname(path), os.path.basename(path))
+    if ff is None:
+        return ff
 
-        # Instantiate a fresh platepar and read contemporary platepar file
-        pp = Platepar()
-        pp_path = os.path.join(os.dirname(path), "platepar_cmn2010.cal")
-        if os.path.exists(os.path.join(path, "platepar_cmn2010.cal")):
-            pp.read(pp_path)
+    return crop(ff, x, y, width, height, allow_drift_in)
+
+def crop(ff, x_centre, y_centre, width = 50, height = 50, allow_drift_in=False):
+
+    # Get resolution
+    x_res, y_res = ff.ncols, ff.nrows
+
+    if allow_drift_in:
+        # This allows an object to drift into the field of view
+        # Establish where we can safely place the centre
+        x_centre = max(0.5 * width, x_centre)
+        x_centre = min(x_res - 0.5 * width, x_centre)
+        y_centre = max(0.5 * height, y_centre)
+        y_centre = min(y_res - 0.5 * height, y_centre)
+
+        # Compute crop bounds
+        x_min, y_min = round(x_centre - 0.5 * width), round(y_centre - 0.5 * height)
+        x_max, y_max = x_min + width, y_min + height
+
+        # Crop into a new array
+        print("Cropping from {},{} to {},{}".format(x_min, x_max, y_min, y_max))
+        ff_cropped = ff.maxpixel[y_min:y_max, x_min:x_max]
+
+    else:
+        # This always keeps the centre of the target in the centre of thumbnail
+        # This allows an object to drift into the field of view
+        # Establish where we can safely place the centre
+
+
+        x_min, y_min = round(x_centre - 0.5 * width), round(y_centre - 0.5 * height)
+        x_max, y_max = x_min + width, y_min + height
+
+        if 0 < x_min and x_max < x_res and  0 < y_min and y_max < y_res:
+            # This is the simple case, the cropped section is fully contained within the source
+            ff_cropped = ff.maxpixel[y_min:y_max, x_min:x_max]
         else:
-            # No platepar found
-            continue
-        contains_radec, x, y =  plateparContainsRaDec(r, d, pp, os.path.basename(path), config.mask_file, check_mask=True)
-        if contains_radec:
-            thumbnail_list.append(crop(path, x, y, 50, 50))
+            # Create a new array of zero
+            ff_cropped = np.zeros((height, width))
+            for y_source in range (y_min, y_max):
+                for x_source in range (x_min, x_max):
+                    if 0 < y_source and y_source < y_res and 0 < x_source and x_source < x_res:
+                        x_dest, y_dest = x_source - x_min, y_source - y_min
+                        ff_cropped[y_dest, x_dest] = ff.maxpixel[y_source, x_source]
+
+    return ff_cropped
+
+
+def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
+
+    get_path_lists = False
+    get_cropped_to_radec = True
+
+    if get_path_lists:
+        path_list = getFitsPathsAndCoords(config, earliest_jd, latest_jd, r, d)
+        with open("path_list.pickle", 'wb') as f:
+            pickle.dump(path_list, f)
+    else:
+        with open("path_list.pickle", 'rb') as f:
+            path_list = pickle.load(f)
+
+    thumbnail_list = []
+    if get_cropped_to_radec:
+        for path, x, y in tqdm.tqdm(path_list):
+            thumbnail_list.append([path, readCroppedFF(path, x, y)])
+
+        with open("thumbnail_list.pickle", 'wb') as f:
+            pickle.dump(thumbnail_list, f)
+    else:
+        with open("thumbnail_list.pickle", 'rb') as f:
+            thumbnail_list = pickle.load(f)
 
 
     return thumbnail_list
@@ -739,7 +830,45 @@ def createPlot(values, r, d, w=0):
 
     return ax
 
+def goldenRatioCalculator(count):
 
+    gr = (1 + 5 ** 0.5) / 2
+    down = np.ceil((count * gr) ** 0.5)
+    across = np.ceil(count / down)
+
+    return int(across), int(down)
+
+def assembleContactSheet(thumbnail_list, x_across=None):
+
+    thumbnail_count = len(thumbnail_list)
+    if thumbnail_count < 1:
+        return
+
+    fits, thumbnail = thumbnail_list[0]
+
+    y_res, x_res = len(thumbnail), len(thumbnail[0])
+    pixels = y_res * x_res * thumbnail_count
+    if x_across is None:
+        # We are free to calculate our own dimensions, so use golden ratio
+        across, down = goldenRatioCalculator(pixels)
+        across = int(np.ceil(across / x_res) * x_res)
+        down = int(np.ceil(down / y_res) * y_res)
+
+        #create an array of zeros
+        contact_sheet_array = np.zeros((across, down))
+
+        tn = 0
+        for y in range(0, down, y_res):
+            for x in range(0, across, x_res):
+                if tn == thumbnail_count:
+                    break
+                print(fits)
+                fits, thumbnail = np.array(thumbnail_list[tn])
+                contact_sheet_array[x:x + x_res, y:y + y_res] = thumbnail
+                tn += 1
+
+
+    return contact_sheet_array
 
 if __name__ == "__main__":
 
@@ -782,12 +911,12 @@ if __name__ == "__main__":
     config = cr.parse(config_path)
 
     if cml_args.format is None:
-        format = "png"
+        plot_format = "png"
     else:
-        format = cml_args.format[0]
+        plot_format = cml_args.format[0]
 
-    if format not in ['png', 'jpg', 'bmp']:
-        format = 'png'
+    if plot_format not in ['png', 'jpg', 'bmp']:
+        plot_format = 'png'
 
 
 
@@ -799,7 +928,13 @@ if __name__ == "__main__":
 
     dbpath = os.path.expanduser(dbpath)
     conn = getStationStarDBConn(dbpath)
-    createThumbnails(config, 131.1, -54.7)
+    r, d, e_jd, l_jd, im_format = 247.3, -26.4, 2460556, 2460557, 'png'
+    thumbnail_list = createThumbnails(config, 247.3, -26.4, earliest_jd=e_jd, latest_jd=l_jd)
+    contact_sheet_array = assembleContactSheet(thumbnail_list)
+    plt.imshow(contact_sheet_array, cmap="gray")
+    plt.title("{} RA {}, Dec {} from jd {} to {}".format(config.stationID, d, e_jd, l_jd))
+    plot_filename = "{}_r_{}_d_{}_jd_{}_{}.{}".format(config.stationID,r,d,e_jd,l_jd, plot_format)
+    plt.savefig(plot_filename, format=plot_format)
 
     if cml_args.ra is None and cml_args.dec is None and cml_args.window is None:
         print("Collecting RaDec Data")
