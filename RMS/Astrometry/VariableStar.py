@@ -411,7 +411,7 @@ def readCroppedFF(path, x, y, width=20, height=20, allow_drift_in = False):
     """
     proc = psutil.Process()
     print("{} Open files {}".format(path, len(proc.open_files())))
-    ff = read(os.path.dirname(path), os.path.basename(path))
+    ff = read(os.path.dirname(path), os.path.basename(path), memmap=False)
     print("{} Open files {}".format(path, len(proc.open_files())))
     if ff is None:
         return ff
