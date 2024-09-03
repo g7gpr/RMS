@@ -56,12 +56,12 @@ import sqlite3
 import tqdm
 import json
 import pickle
+
 from RMS.Formats.CALSTARS import readCALSTARS
 from RMS.Formats.Platepar import Platepar
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP, correctVignetting, photometryFitRobust
 from RMS.Misc import rmsTimeExtractor
 from RMS.Astrometry.FFTalign import getMiddleTimeFF, alignPlatepar
-import matplotlib.pyplot as plt
 from RMS.Astrometry.ApplyAstrometry import extinctionCorrectionTrueToApparent
 from RMS.Astrometry.CheckFit import matchStarsResiduals
 from RMS.Formats.StarCatalog import readStarCatalog
@@ -146,7 +146,7 @@ def filterDirectoriesByJD(path, earliest_jd, latest_jd):
 
     directory_list = []
     for obj in os.listdir(os.path.expanduser(path)):
-        if os.path.isdir(os.path.join(path,obj)):
+        if os.path.isdir(os.path.join(path, obj)):
             directory_list.append(os.path.join(path, obj))
 
     directory_list.sort(reverse=True)
@@ -166,9 +166,9 @@ def filterDirectoriesByJD(path, earliest_jd, latest_jd):
         # As soon as a directory has been added which is before the earliest_jd
         # stop appending break the loop; everything else has already been processed
         if rmsTimeExtractor(directory, asJD=True) < earliest_jd:
-            print("Excluding directories before {}, already processed for {}".format(
-                                os.path.basename(directory), config.stationID))
+            print("{} Excluding directories before {}".format(config.stationID, os.path.basename(directory)))
             break
+
 
     # Sort the list so that the oldest is at the top.
     filtered_by_jd.sort()
@@ -901,6 +901,9 @@ if __name__ == "__main__":
     arg_parser.add_argument("-f", '--format', nargs=1, metavar='FORMAT', type=str,
                             help="Chart output format - default png")
 
+    arg_parser.add_argument("-j", '--jd_range', nargs=2, metavar='FORMAT', type=float,
+                            help="Range of julian dates to plot")
+
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
     if cml_args.config is None:
@@ -928,13 +931,7 @@ if __name__ == "__main__":
 
     dbpath = os.path.expanduser(dbpath)
     conn = getStationStarDBConn(dbpath)
-    r, d, e_jd, l_jd, im_format = 247.3, -26.4, 2460556, 2460557, 'png'
-    thumbnail_list = createThumbnails(config, 247.3, -26.4, earliest_jd=e_jd, latest_jd=l_jd)
-    contact_sheet_array = assembleContactSheet(thumbnail_list)
-    plt.imshow(contact_sheet_array, cmap="gray")
-    plt.title("{} RA {}, Dec {} from jd {} to {}".format(config.stationID, d, e_jd, l_jd))
-    plot_filename = "{}_r_{}_d_{}_jd_{}_{}.{}".format(config.stationID,r,d,e_jd,l_jd, plot_format)
-    plt.savefig(plot_filename, format=plot_format)
+
 
     if cml_args.ra is None and cml_args.dec is None and cml_args.window is None:
         print("Collecting RaDec Data")
@@ -942,15 +939,26 @@ if __name__ == "__main__":
         archived_calstars = readInArchivedCalstars(config, conn)
 
     else:
+
+        r, d = cml_args.ra[0], cml_args.dec[0]
+        e_jd, l_jd = cml_args.jd_range[0], cml_args.jd_range[1]
+        thumbnail_list = createThumbnails(config, r, d, earliest_jd=e_jd, latest_jd=l_jd)
+        contact_sheet_array = assembleContactSheet(thumbnail_list)
+        plt.imshow(contact_sheet_array, cmap="gray")
+        plt.title("{} RA {}, Dec {} from jd {} to {}".format(config.stationID, r, d, e_jd, l_jd))
+        plot_filename = "{}_r_{}_d_{}_jd_{}_{}.{}".format(config.stationID, r, d, e_jd, l_jd, plot_format)
+        plt.savefig(plot_filename, format=plot_format)
+
         if cml_args.window is None:
             w = 0.1
         else:
             w = cml_args.window[0]
-        r, d  = cml_args.ra[0], cml_args.dec[0]
+
         print("Producing plot around RaDec {}, {} width {}".format(r, d, w))
 
         values = retrieveMagnitudesAroundRaDec(conn, r, d, window=w)
         ax = createPlot(values, r, d, w)
         ax.plot()
         plt.savefig("magnitudes_at_Ra_{}_Dec_{}_Window_{}.{}".format(r, d, w, format), format=format)
+
 
