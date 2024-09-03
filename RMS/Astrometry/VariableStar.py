@@ -480,8 +480,6 @@ def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
     thumbnail_list = []
     if get_cropped_to_radec:
         for path, x, y in tqdm.tqdm(path_list):
-            proc = psutil.Process()
-            print("{} Open files {}".format(path, len(proc.open_files())))
             thumbnail_list.append([path, readCroppedFF(path, x, y)])
 
         with open("thumbnail_list.pickle", 'wb') as f:
