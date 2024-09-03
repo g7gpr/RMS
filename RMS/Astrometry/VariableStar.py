@@ -445,8 +445,8 @@ def crop(ff, x_centre, y_centre, width = 50, height = 50, allow_drift_in=False):
 
 def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
 
-    get_path_lists = True
-    get_cropped_to_radec = True
+    get_path_lists = False
+    get_cropped_to_radec = False
 
     if get_path_lists:
         path_list = getFitsPathsAndCoords(config, earliest_jd, latest_jd, r, d)
@@ -863,7 +863,7 @@ def assembleContactSheet(thumbnail_list, x_across=None):
                 if tn == thumbnail_count:
                     break
                 print(fits)
-                fits, thumbnail = np.array(thumbnail_list[tn])
+                fits, thumbnail = thumbnail_list[tn]
                 contact_sheet_array[x:x + x_res, y:y + y_res] = thumbnail
                 tn += 1
 
