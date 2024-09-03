@@ -463,7 +463,7 @@ def crop(ff, x_centre, y_centre, width = 50, height = 50, allow_drift_in=False):
 
 def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
 
-    get_path_lists = True
+    get_path_list = True
     get_cropped_to_radec = True
 
     if get_path_lists:
@@ -848,7 +848,7 @@ def createPlot(values, r, d, w=0):
 
     return ax
 
-def goldenRatioCalculator(count):
+def areaToGoldenRatioXY(count):
 
     gr = (1 + 5 ** 0.5) / 2
     down = np.ceil((count * gr) ** 0.5)
@@ -856,7 +856,7 @@ def goldenRatioCalculator(count):
 
     return int(across), int(down)
 
-def assembleContactSheet(thumbnail_list, x_across=None):
+def assembleContactSheet(thumbnail_list, x_across=None, border = 1):
 
     thumbnail_count = len(thumbnail_list)
     if thumbnail_count < 1:
@@ -864,11 +864,11 @@ def assembleContactSheet(thumbnail_list, x_across=None):
 
     fits, thumbnail = thumbnail_list[0]
 
-    y_res, x_res = len(thumbnail), len(thumbnail[0])
+    y_res, x_res = len(thumbnail) + border * 2, len(thumbnail[0]) + border * 2
     pixels = y_res * x_res * thumbnail_count
     if x_across is None:
         # We are free to calculate our own dimensions, so use golden ratio
-        across, down = goldenRatioCalculator(pixels)
+        across, down = areaToGoldenRatioXY(pixels)
         across = int(np.ceil(across / x_res) * x_res)
         down = int(np.ceil(down / y_res) * y_res)
 
@@ -876,17 +876,21 @@ def assembleContactSheet(thumbnail_list, x_across=None):
         contact_sheet_array = np.zeros((across, down))
 
         tn = 0
+        headings_list, position_list = [], []
         for y in range(0, down, y_res):
+            fits, _ = thumbnail_list[tn]
+            headings_list.append(rmsTimeExtractor(fits).strftime("%Y%m%d_%H%M%S"))
+            position_list.append(y)
             for x in range(0, across, x_res):
                 if tn == thumbnail_count:
                     break
 
                 fits, thumbnail = thumbnail_list[tn]
-                contact_sheet_array[x:x + x_res, y:y + y_res] = thumbnail
+                contact_sheet_array[x + border:x + x_res - border, y + border:y + y_res - border] = thumbnail
                 tn += 1
 
 
-    return contact_sheet_array
+    return contact_sheet_array, headings_list, position_list
 
 if __name__ == "__main__":
 
@@ -961,11 +965,17 @@ if __name__ == "__main__":
         r, d = cml_args.ra[0], cml_args.dec[0]
         e_jd, l_jd = cml_args.jd_range[0], cml_args.jd_range[1]
         thumbnail_list = createThumbnails(config, r, d, earliest_jd=e_jd, latest_jd=l_jd)
-        contact_sheet_array = assembleContactSheet(thumbnail_list)
-        plt.title("{} RA {}, Dec {} from jd {} to {}".format(config.stationID, r, d, e_jd, l_jd))
+        contact_sheet_array, headings_list, position_list = assembleContactSheet(thumbnail_list)
+
+        plt.figure(figsize = (16,12))
+        axes = plt.gca()
         plot_filename = "{}_r_{}_d_{}_jd_{}_{}.{}".format(config.stationID, r, d, e_jd, l_jd, plot_format)
-        plt.imshow(contact_sheet_array, cmap='gray')
+        axes.imshow(contact_sheet_array, cmap='gray')
+        axes.set_title("{} RA {}, Dec {} from jd {} to {}".format(config.stationID, r, d, e_jd, l_jd))
+        axes.title.set_size(20)
+        plt.xticks(position_list, headings_list, color='black', rotation=90, fontweight='normal', fontsize='10', horizontalalignment='center')
         plt.savefig(plot_filename, format=plot_format)
+        plt.show()
 
         if cml_args.window is None:
             w = 0.1
