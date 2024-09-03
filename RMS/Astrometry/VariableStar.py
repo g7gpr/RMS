@@ -732,7 +732,7 @@ if __name__ == "__main__":
 
     dbpath = os.path.expanduser(dbpath)
     conn = getStationStarDBConn(dbpath)
-    createThumbnails(config, 344.4, -29.6)
+    #createThumbnails(config, 344.4, -29.6)
 
     if cml_args.ra is None and cml_args.dec is None and cml_args.window is None:
         print("Collecting RaDec Data")
