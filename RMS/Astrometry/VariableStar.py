@@ -49,25 +49,16 @@ from RMS.Formats.FTPdetectinfo import (findFTPdetectinfoFile,
 from RMS.Math import angularSeparation, cartesianToPolar, polarToCartesian
 
 pyximport.install(setup_args={'include_dirs':[np.get_include()]})
-from RMS.Astrometry.CyFunctions import (cyraDecToXY, cyTrueRaDec2ApparentAltAz,
-                                        cyXYToRADec,
-                                        eqRefractionApparentToTrue,
-                                        equatorialCoordPrecession)
-from RMS.Misc import RmsDateTime
+
 import RMS.ConfigReader as cr
 import glob as glob
-import pickle
 import sqlite3
 import tqdm
 import json
-import logging
 from RMS.Formats.CALSTARS import readCALSTARS
 from RMS.Formats.Platepar import Platepar
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP, correctVignetting, photometryFitRobust
 from RMS.Misc import rmsTimeExtractor
-from RMS.Astrometry.ApplyRecalibrate import recalibrateFF, recalibratePlateparsForFF
-from RMS.Logger import initLogging
-from RMS.Misc import getRMSStyleFileName
 from RMS.Astrometry.FFTalign import getMiddleTimeFF, alignPlatepar
 import matplotlib.pyplot as plt
 from RMS.Astrometry.ApplyAstrometry import extinctionCorrectionTrueToApparent
@@ -79,6 +70,50 @@ if sys.version_info.major == 3:
     unicode = str
 
 EM_RAISE = True
+
+def filterDirectoriesByJD(path, earliest_jd, latest_jd):
+
+    """
+    Returns a list of directories inclusive of the earliest and latest jd
+    The earliest directory returned will be the first directory dated
+    before the earliest jd.
+    The latest directory returned will be the last directory dated before
+    the latest jd
+
+    Args:
+        path (): path to ierate over
+        earliest_jd (): directory of the earliest jd to include
+        latest_jd (): directory of the latest jd to include
+
+    Returns:
+        filtered list of directories
+    """
+
+    directory_list = []
+    for obj in os.listdir(os.path.expanduser(path)):
+        if os.path.isdir(obj):
+            directory_list.append(os.path.join(path, obj))
+
+    directory_list.sort(reverse=True)
+
+    filtered_by_jd = []
+    for directory in directory_list:
+
+        # If the start time of this directory is less than the latest_target append to the list
+        if rmsTimeExtractor(directory, asJD=True) < latest_jd:
+            filtered_by_jd.append(directory)
+
+        # As soon as a directory has been added which is before the earliest_jd
+        # stop appending break the loop; everything else has already been processed
+        if rmsTimeExtractor(directory, asJD=True) < earliest_jd:
+            print("Excluding directories before {}, already processed for {}".format(
+                                os.path.basename(directory), config.stationID))
+            break
+
+    # Sort the list so that the oldest is at the top.
+    filtered_by_jd.sort()
+
+    return filtered_by_jd
 
 def readInArchivedCalstars(config, conn):
 
@@ -256,6 +291,27 @@ def computePhotometry(config, pp_all, calstar, match_radius=2.0, star_margin = 1
 
     return photom_params
 
+
+def getFitsPaths(config, earliest_jd, latest_jd):
+
+    full_path_to_captured = os.path.expanduser(os.path.join(config.data_dir, config.captured_dir))
+    directories_to_search = filterDirectoriesByJD(full_path_to_captured, earliest_jd, latest_jd)
+    stationID = config.stationID
+
+    fits_paths = []
+    for dir in directories_to_search:
+        for file_name in os.listdir(dir):
+            if file_name.beginswith('FF') and file_name.endswith('.fits') and len(file_name.split('_')) == 5:
+                if file_name.split('_')[1] == stationID:
+                    fits_paths.append(file_name)
+
+def createThumbnails(config, r, d, earliest_jd, latest_jd):
+
+    paths = getFitsPaths(config, earliest_jd, latest_jd)
+    print(paths)
+    pass
+    return []
+
 def calstarToDb(calstar, conn, archived_directory_path, latest_jd=0):
 
     """
@@ -282,7 +338,7 @@ def calstarToDb(calstar, conn, archived_directory_path, latest_jd=0):
 
     # Compute photometry offset and vignetting using the best data from the night
     # vignetting coefficient will be overwritten by platepar value
-    offset, vignetting = photometry(config, pp_recal, calstar)
+    offset, vignetting = computePhotometry(config, pp_recal, calstar)
 
     # If this can't be computed, then probably the night was a poor observation session, so reject all
     if offset is None or vignetting is None:
@@ -412,11 +468,11 @@ def retrieveMagnitudesAroundRaDec(conn, r,d, window=0.5, start_time=None, end_ti
         end_time (): jd of end
 
     Returns:
-        list of tuples (jd, stationID, r, d, mag, cat_mag)
+        list of tuples (jd, stationID, r, d, amp, mag, cat_mag)
     """
     window = abs(window)
     sql_command = ""
-    sql_command += "SELECT jd, station_id, r, d, mag, cat_mag\n"
+    sql_command += "SELECT jd, station_id, r, d, amp, mag, cat_mag\n"
     sql_command += "FROM star_observations\n"
     sql_command += "WHERE\n"
     sql_command += "r > {} AND r < {} AND\n".format(r - window, r + window, )
@@ -602,18 +658,18 @@ def createPlot(values, r, d, w=0):
 
     x_vals, y_vals = [], []
     title = "Plot of magnitudes at RA {} Dec {}, window {}".format(r,d, w)
-    for jd, stationID, r, d, mag, cat_mag in values:
+    for jd, stationID, r, d, amp, mag, cat_mag in values:
         x_vals.append(jd)
-        y_vals.append(mag)
+        y_vals.append(amp)
     f, ax = plt.subplots()
 
     plt.title(title)
     plt.grid()
     plt.ylabel("Magnitude")
     plt.xlabel("Julian Date")
-    plt.ylim((12,0))
-    ax.invert_yaxis()
-    ax.scatter( x_vals,y_vals)
+    plt.ylim((min(y_vals) * 0.8, max(y_vals) * 1.2))
+    ax.scatter(x_vals, y_vals)
+
     return ax
 
 
@@ -646,6 +702,9 @@ if __name__ == "__main__":
     arg_parser.add_argument("-c", '--config', nargs=1, metavar='CONFIGPATH', type=str,
                             help="Config file to load")
 
+    arg_parser.add_argument("-f", '--format', nargs=1, metavar='FORMAT', type=str,
+                            help="Chart output format - default png")
+
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
     if cml_args.config is None:
@@ -653,20 +712,31 @@ if __name__ == "__main__":
     else:
         config_path = cml_args.config[0]
     config_path = os.path.expanduser(config_path)
+    config = cr.parse(config_path)
+
+    if cml_args.format is None:
+        format = "png"
+    else:
+        format = cml_args.format[0]
+
+    if format not in ['png', 'jpg', 'bmp']:
+        format = 'png'
+
+
 
     if cml_args.dbpath is None:
         dbpath = "~/RMS_data/magnitudes.db"
     else:
         dbpath = cml_args.dbpath
 
+
     dbpath = os.path.expanduser(dbpath)
-
     conn = getStationStarDBConn(dbpath)
-
+    createThumbnails(config, 344.4, -29.6)
 
     if cml_args.ra is None and cml_args.dec is None and cml_args.window is None:
         print("Collecting RaDec Data")
-        config = cr.parse(config_path)
+
         archived_calstars = readInArchivedCalstars(config, conn)
 
     else:
@@ -680,5 +750,5 @@ if __name__ == "__main__":
         values = retrieveMagnitudesAroundRaDec(conn, r, d, window=w)
         ax = createPlot(values, r, d, w)
         ax.plot()
-        plt.savefig("magnitudes_at_Ra_{}_Dec_{}".format(r,d), format='png')
+        plt.savefig("magnitudes_at_Ra_{}_Dec_{}_Window_{}.{}".format(r, d, w, format), format=format)
 
