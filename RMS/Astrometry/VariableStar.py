@@ -102,7 +102,10 @@ def checkMaskxy(x, y, mask_path):
         return False
 
 
+def angSepDeg(ra1, dec1, ra2, dec2):
 
+    ra1, dec1, ra2, dec2 =  np.radians(ra1), np.radians(dec1) , np.radians(ra2), np.radians(dec2)
+    return np.degrees(angularSeparation(ra1,dec1,ra2,dec2))
 def plateparContainsRaDec(r, d, source_pp, file_name, mask_dir, check_mask = True):
 
 
@@ -112,6 +115,7 @@ def plateparContainsRaDec(r, d, source_pp, file_name, mask_dir, check_mask = Tru
     # Convert r,d to source image coordinates
     r_array = np.array([r])
     d_array = np.array([d])
+
     source_x, source_y = raDecToXYPP(r_array, d_array, source_JD, source_pp)
     source_x, source_y = round(source_x[0]), round(source_y[0])
 
