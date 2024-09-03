@@ -34,7 +34,7 @@ import datetime
 import os
 import shutil
 import sys
-
+import psutil
 import numpy as np
 # Import Cython functions
 import pyximport
@@ -409,8 +409,10 @@ def readCroppedFF(path, x, y, width=20, height=20, allow_drift_in = False):
     Returns:
         array of pixels
     """
-
+    proc = psutil.Process()
+    print("{} Open files {}".format(path, len(proc.open_files())))
     ff = read(os.path.dirname(path), os.path.basename(path))
+    print("{} Open files {}".format(path, len(proc.open_files())))
     if ff is None:
         return ff
 
@@ -463,11 +465,12 @@ def crop(ff, x_centre, y_centre, width = 50, height = 50, allow_drift_in=False):
 
 def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
 
-    get_path_lists = True
+    get_path_lists = False
     get_cropped_to_radec = True
 
     if get_path_lists:
         path_list = getFitsPathsAndCoords(config, earliest_jd, latest_jd, r, d)
+
         with open("path_list.pickle", 'wb') as f:
             pickle.dump(path_list, f)
     else:
@@ -477,6 +480,8 @@ def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
     thumbnail_list = []
     if get_cropped_to_radec:
         for path, x, y in tqdm.tqdm(path_list):
+            proc = psutil.Process()
+            print("{} Open files {}".format(path, len(proc.open_files())))
             thumbnail_list.append([path, readCroppedFF(path, x, y)])
 
         with open("thumbnail_list.pickle", 'wb') as f:

@@ -9,7 +9,7 @@ from astropy.io import fits
 
 from RMS.Formats.FFStruct import FFStruct
 import datetime
-
+import weakref
 
 
 def filenameToDatetimeStr(file_name, iso8601=False):
@@ -84,48 +84,51 @@ def read(directory, filename, array=False, full_filename=False):
 
     # Make sure the file starts with "FF_"
     if (filename.startswith('FF') and ('.fits' in filename)) or full_filename:
-        fid = open(os.path.join(directory, filename), "rb")
+        full_path = os.path.join(directory, filename)
     else:
-        fid = open(os.path.join(directory, "FF_" + filename + ".fits"), "rb")
+        full_path = os.path.join(directory, "FF_" + filename + ".fits")
 
-    # Init an empty FF structure
-    ff = FFStruct()
+    with open(full_path, 'rb') as fid:
 
-    # Read in the FITS
-    hdulist = fits.open(fid)
+        fid = weakref.ref(fid)
+        # Init an empty FF structure
+        ff = FFStruct()
 
-    # Read the header
-    head = hdulist[0].header
+        # Read in the FITS
+        hdulist = fits.open(fid)
 
-    # Read in the data from the header
-    ff.nrows = head['NROWS']
-    ff.ncols = head['NCOLS']
-    ff.nbits = head['NBITS']
-    ff.nframes = head['NFRAMES']
-    ff.first = head['FIRST']
-    ff.camno = head['CAMNO']
-    ff.fps = head['FPS']
+        # Read the header
+        head = hdulist[0].header
 
-    # Check for the DATE-OBS field and read datetime from filename it if it doesn't exist
-    if 'DATE-OBS' in head:
-        ff.starttime = head['DATE-OBS']
-    else:
-        ff.starttime = filenameToDatetimeStr(filename, iso8601=True)
+        # Read in the data from the header
+        ff.nrows = head['NROWS']
+        ff.ncols = head['NCOLS']
+        ff.nbits = head['NBITS']
+        ff.nframes = head['NFRAMES']
+        ff.first = head['FIRST']
+        ff.camno = head['CAMNO']
+        ff.fps = head['FPS']
 
-    # Read in the image data
-    ff.maxpixel = hdulist[1].data
-    ff.maxframe = hdulist[2].data
-    ff.avepixel = hdulist[3].data
-    ff.stdpixel = hdulist[4].data
+        # Check for the DATE-OBS field and read datetime from filename it if it doesn't exist
+        if 'DATE-OBS' in head:
+            ff.starttime = head['DATE-OBS']
+        else:
+            ff.starttime = filenameToDatetimeStr(filename, iso8601=True)
 
-    if array:
-        ff.array = np.dstack([ff.maxpixel, ff.maxframe, ff.avepixel, ff.stdpixel])
+        # Read in the image data
+        ff.maxpixel = hdulist[1].data
+        ff.maxframe = hdulist[2].data
+        ff.avepixel = hdulist[3].data
+        ff.stdpixel = hdulist[4].data
 
-        ff.array = np.swapaxes(ff.array, 0, 1)
-        ff.array = np.swapaxes(ff.array, 0, 2)
+        if array:
+            ff.array = np.dstack([ff.maxpixel, ff.maxframe, ff.avepixel, ff.stdpixel])
 
-    # CLose the FITS file
-    hdulist.close()
+            ff.array = np.swapaxes(ff.array, 0, 1)
+            ff.array = np.swapaxes(ff.array, 0, 2)
+
+        # CLose the FITS file
+        hdulist.close()
 
     return ff
 

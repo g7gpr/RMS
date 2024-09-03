@@ -79,13 +79,13 @@ def read(directory, filename, fmt=None, array=False, full_filename=False, verbos
 
         except IOError:
             if verbose:
-                print('File {:s} is corrupted!'.format(filename))
+                print('File {:s} {:s} is corrupted!'.format(directory, filename))
 
             return None
 
         except TypeError:
             if verbose:
-                print('File {:s} is corrupted!'.format(filename))
+                print('File {:s} {:s} is corrupted!'.format(directory, filename))
                 
             return None
 
