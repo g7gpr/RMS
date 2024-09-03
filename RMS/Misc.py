@@ -740,6 +740,8 @@ def rmsTimeExtractor(rms_time, asTuple = False, asJD = False, delimiter = None):
             else:
                 delim = c
                 break
+    if delim not in rms_time:
+        return None
 
     field_list = rms_time.split(delim)
     field_count = len(field_list)
