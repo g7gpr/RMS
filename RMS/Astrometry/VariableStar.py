@@ -880,7 +880,7 @@ def assembleContactSheet(thumbnail_list, x_across=None):
             for x in range(0, across, x_res):
                 if tn == thumbnail_count:
                     break
-                print(fits)
+
                 fits, thumbnail = thumbnail_list[tn]
                 contact_sheet_array[x:x + x_res, y:y + y_res] = thumbnail
                 tn += 1
