@@ -944,7 +944,6 @@ if __name__ == "__main__":
         e_jd, l_jd = cml_args.jd_range[0], cml_args.jd_range[1]
         thumbnail_list = createThumbnails(config, r, d, earliest_jd=e_jd, latest_jd=l_jd)
         contact_sheet_array = assembleContactSheet(thumbnail_list)
-        plt.imshow(contact_sheet_array, cmap="gray")
         plt.title("{} RA {}, Dec {} from jd {} to {}".format(config.stationID, r, d, e_jd, l_jd))
         plot_filename = "{}_r_{}_d_{}_jd_{}_{}.{}".format(config.stationID, r, d, e_jd, l_jd, plot_format)
         plt.savefig(plot_filename, format=plot_format)
