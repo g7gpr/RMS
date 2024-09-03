@@ -62,11 +62,12 @@ from RMS.Formats.Platepar import Platepar
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP, correctVignetting, photometryFitRobust
 from RMS.Misc import rmsTimeExtractor
 from RMS.Astrometry.FFTalign import getMiddleTimeFF, alignPlatepar
-from RMS.Astrometry.ApplyAstrometry import extinctionCorrectionTrueToApparent
+from RMS.Astrometry.ApplyAstrometry import extinctionCorrectionTrueToApparent, xyToRaDecPP
 from RMS.Astrometry.CheckFit import matchStarsResiduals
 from RMS.Formats.StarCatalog import readStarCatalog
 from RMS.Routines.MaskImage import loadMask, MaskStructure
 from RMS.Formats.FFfile import read
+
 from matplotlib import pyplot as plt
 
 
@@ -115,6 +116,16 @@ def plateparContainsRaDec(r, d, source_pp, file_name, mask_dir, check_mask = Tru
     # Convert r,d to source image coordinates
     r_array = np.array([r])
     d_array = np.array([d])
+    jd_arr = np.array([rmsTimeExtractor(file_name, asJD=True)])
+    x_arr = np.array([source_pp.X_res / 2])
+    y_arr = np.array([source_pp.Y_res / 2])
+    level_arr = np.array([1])
+    _, r_centre_pp, dec_centre_pp, _ = xyToRaDecPP(jd_arr, x_arr, y_arr, level_arr, source_pp, jd_time=True)
+    # Check the angle, to prevent false positives for objects behind the camera
+    angle_from_centre = angSepDeg(r, d, r_centre_pp, dec_centre_pp)[0]
+    # this prevents spurious coordinates being generated for r, d outside fov
+    if angle_from_centre > max(source_pp.fov_h, source_pp.fov_v) / 2:
+        return False, 0, 0
 
     source_x, source_y = raDecToXYPP(r_array, d_array, source_JD, source_pp)
     source_x, source_y = round(source_x[0]), round(source_y[0])
@@ -122,6 +133,7 @@ def plateparContainsRaDec(r, d, source_pp, file_name, mask_dir, check_mask = Tru
     if 0 < source_x < source_pp.X_res and 0 < source_y < source_pp.Y_res:
         if check_mask:
             if checkMaskxy(source_x,source_y, mask_dir):
+
                 return True, source_x, source_y
             else:
                 return False, 0, 0
@@ -149,6 +161,8 @@ def filterDirectoriesByJD(path, earliest_jd, latest_jd):
     """
 
     directory_list = []
+    if not os.path.exists(path):
+        return directory_list
     for obj in os.listdir(os.path.expanduser(path)):
         if os.path.isdir(os.path.join(path, obj)):
             directory_list.append(os.path.join(path, obj))
@@ -379,7 +393,7 @@ def getFitsPathsAndCoords(config, earliest_jd, latest_jd, r=None, d=None):
                                                                     config.mask_file, check_mask=True)
                     if contains_radec:
                         fits_paths.append([os.path.join(directory,file_name), x, y])
-
+    print(fits_paths)
     return fits_paths
 
 def readCroppedFF(path, x, y, width=20, height=20, allow_drift_in = False):
@@ -449,8 +463,8 @@ def crop(ff, x_centre, y_centre, width = 50, height = 50, allow_drift_in=False):
 
 def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
 
-    get_path_lists = False
-    get_cropped_to_radec = False
+    get_path_lists = True
+    get_cropped_to_radec = True
 
     if get_path_lists:
         path_list = getFitsPathsAndCoords(config, earliest_jd, latest_jd, r, d)
