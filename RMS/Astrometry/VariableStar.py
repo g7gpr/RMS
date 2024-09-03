@@ -445,8 +445,8 @@ def crop(ff, x_centre, y_centre, width = 50, height = 50, allow_drift_in=False):
 
 def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
 
-    get_path_lists = True
-    get_cropped_to_radec = True
+    get_path_lists = False
+    get_cropped_to_radec = False
 
     if get_path_lists:
         path_list = getFitsPathsAndCoords(config, earliest_jd, latest_jd, r, d)
@@ -946,6 +946,7 @@ if __name__ == "__main__":
         contact_sheet_array = assembleContactSheet(thumbnail_list)
         plt.title("{} RA {}, Dec {} from jd {} to {}".format(config.stationID, r, d, e_jd, l_jd))
         plot_filename = "{}_r_{}_d_{}_jd_{}_{}.{}".format(config.stationID, r, d, e_jd, l_jd, plot_format)
+        plt.imshow(contact_sheet_array, cmap='gray')
         plt.savefig(plot_filename, format=plot_format)
 
         if cml_args.window is None:
