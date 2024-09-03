@@ -393,7 +393,7 @@ def getFitsPathsAndCoords(config, earliest_jd, latest_jd, r=None, d=None):
                                                                     config.mask_file, check_mask=True)
                     if contains_radec:
                         fits_paths.append([os.path.join(directory,file_name), x, y])
-    print(fits_paths)
+
     return fits_paths
 
 def readCroppedFF(path, x, y, width=20, height=20, allow_drift_in = False):
