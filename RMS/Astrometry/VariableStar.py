@@ -878,7 +878,7 @@ def assembleContactSheet(thumbnail_list, x_across=None, border = 1):
         tn = 0
         headings_list, position_list = [], []
         for y in range(0, down, y_res):
-            if tn = thumbnail_count:
+            if tn == thumbnail_count:
                 break
             fits, _ = thumbnail_list[tn]
             headings_list.append(rmsTimeExtractor(fits).strftime("%Y%m%d_%H%M%S"))
