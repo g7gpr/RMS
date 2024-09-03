@@ -64,7 +64,7 @@ import matplotlib.pyplot as plt
 from RMS.Astrometry.ApplyAstrometry import extinctionCorrectionTrueToApparent
 from RMS.Astrometry.CheckFit import matchStarsResiduals
 from RMS.Formats.StarCatalog import readStarCatalog
-from RMS.Formats.
+from RMS.Routines.MaskImage import loadMask, MaskStructure
 
 # Handle Python 2/3 compatibility
 if sys.version_info.major == 3:
@@ -121,8 +121,6 @@ def plateparContainsRaDec(r, d, source_pp, file_name, mask_dir, check_mask = Tru
             return True, source_x, source_y
     else:
         return False, 0, 0
-
-
 
 def filterDirectoriesByJD(path, earliest_jd, latest_jd):
 
@@ -234,8 +232,6 @@ def readInArchivedCalstars(config, conn):
         # Put the CALSTARS list into the database
         calstar_list.append(calstarToDb(calstar, conn, full_path, latest_jd))
 
-
-
 def getCatalogueID(r, d, conn, margin=0.3):
     """
     Get the local for the brightest star within margin degrees of passed radec
@@ -263,7 +259,6 @@ def getCatalogueID(r, d, conn, margin=0.3):
             return 0, 0, 0, 0
     else:
         return 0, 0, 0, 0
-
 
 def computePhotometry(config, pp_all, calstar, match_radius=2.0, star_margin = 1.2):
 
@@ -344,7 +339,6 @@ def computePhotometry(config, pp_all, calstar, match_radius=2.0, star_margin = 1
 
     return photom_params
 
-
 def getFitsPaths(config, earliest_jd, latest_jd, r=None, d=None):
 
     full_path_to_captured = os.path.expanduser(os.path.join(config.data_dir, config.captured_dir))
@@ -360,9 +354,14 @@ def getFitsPaths(config, earliest_jd, latest_jd, r=None, d=None):
 
     return fits_paths
 
+def crop(path, x, y, width, height):
+
+    ff =
+
 def createThumbnails(config, r, d, earliest_jd, latest_jd):
 
     path_list = getFitsPaths(config, earliest_jd, latest_jd, r, d)
+    thumbnail_list = []
     for path in path_list:
 
         # Instantiate a fresh platepar and read contemporary platepar file
@@ -373,11 +372,12 @@ def createThumbnails(config, r, d, earliest_jd, latest_jd):
         else:
             # No platepar found
             continue
-        contains, x, y =  plateparContainsRaDec(r, d, pp, os.path.basename(path), config.mask_file, check_mask=True)
+        contains_radec, x, y =  plateparContainsRaDec(r, d, pp, os.path.basename(path), config.mask_file, check_mask=True)
+        if contains_radec:
+            thumbnail_list.append(crop(path, x, y, 50, 50))
 
 
-
-    return []
+    return thumbnail_list
 
 def calstarToDb(calstar, conn, archived_directory_path, latest_jd=0):
 
