@@ -445,8 +445,8 @@ def crop(ff, x_centre, y_centre, width = 50, height = 50, allow_drift_in=False):
 
 def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
 
-    get_path_lists = False
-    get_cropped_to_radec = False
+    get_path_lists = True
+    get_cropped_to_radec = True
 
     if get_path_lists:
         path_list = getFitsPathsAndCoords(config, earliest_jd, latest_jd, r, d)
