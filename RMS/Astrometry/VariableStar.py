@@ -869,7 +869,7 @@ def assembleContactSheet(thumbnail_list, x_across=None):
     if x_across is None:
         # We are free to calculate our own dimensions, so use golden ratio
         across, down = goldenRatioCalculator(pixels)
-        across = int((np.ceil(across / x_res) - 1) * x_res)
+        across = int(np.ceil(across / x_res) * x_res)
         down = int(np.ceil(down / y_res) * y_res)
 
         #create an array of zeros
