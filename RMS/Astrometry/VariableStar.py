@@ -307,9 +307,21 @@ def getFitsPaths(config, earliest_jd, latest_jd):
 
 def createThumbnails(config, r, d, earliest_jd, latest_jd):
 
-    paths = getFitsPaths(config, earliest_jd, latest_jd)
-    print(paths)
-    pass
+    path_list = getFitsPaths(config, earliest_jd, latest_jd)
+    for path in path_list:
+
+        # Instantiate a fresh platepar and read contemporary platepar file
+        pp = Platepar()
+        pp_path = os.path.join(os.dirname(path), "platepar_cmn2010.cal")
+        if os.path.exists(os.path.join(path, "platepar_cmn2010.cal")):
+            pp.read(pp_path)
+        else:
+            # No platepar found
+            continue
+
+
+
+
     return []
 
 def calstarToDb(calstar, conn, archived_directory_path, latest_jd=0):
@@ -732,7 +744,7 @@ if __name__ == "__main__":
 
     dbpath = os.path.expanduser(dbpath)
     conn = getStationStarDBConn(dbpath)
-    #createThumbnails(config, 344.4, -29.6)
+    createThumbnails(config, 131.1, -54.7)
 
     if cml_args.ra is None and cml_args.dec is None and cml_args.window is None:
         print("Collecting RaDec Data")
