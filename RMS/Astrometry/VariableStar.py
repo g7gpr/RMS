@@ -64,12 +64,40 @@ import matplotlib.pyplot as plt
 from RMS.Astrometry.ApplyAstrometry import extinctionCorrectionTrueToApparent
 from RMS.Astrometry.CheckFit import matchStarsResiduals
 from RMS.Formats.StarCatalog import readStarCatalog
+from RMS.Formats.
 
 # Handle Python 2/3 compatibility
 if sys.version_info.major == 3:
     unicode = str
 
 EM_RAISE = True
+
+def checkMaskxy(x, y, mask_path):
+
+    """
+    Discover if mask obstructs points on image
+
+    Args:
+        x (): x image coordinates
+        y (): y image coordinates
+        mask_path (): path to the mask file
+
+    Returns:
+        True if mask does not obstruct the coordinates on the image else False
+        If mask is not found, returns True
+    """
+
+    if os.path.exists(mask_path):
+        m = loadMask(mask_path)
+    else:
+        return True
+
+    if m.img[y, x] == 255:
+        return True
+    else:
+        return False
+
+
 
 def plateparContainsRaDec(r, d, source_pp, file_name, mask_dir, check_mask = True):
 
@@ -86,13 +114,13 @@ def plateparContainsRaDec(r, d, source_pp, file_name, mask_dir, check_mask = Tru
     if 0 < source_x < source_pp.X_res and 0 < source_y < source_pp.Y_res:
         if check_mask:
             if checkMaskxy(source_x,source_y,file_name, mask_dir):
-                return True
+                return True, source_x, source_y
             else:
-                return False
+                return False, 0, 0
         else:
-            return True
+            return True, source_x, source_y
     else:
-        return False
+        return False, 0, 0
 
 
 
@@ -317,7 +345,7 @@ def computePhotometry(config, pp_all, calstar, match_radius=2.0, star_margin = 1
     return photom_params
 
 
-def getFitsPaths(config, earliest_jd, latest_jd):
+def getFitsPaths(config, earliest_jd, latest_jd, r=None, d=None):
 
     full_path_to_captured = os.path.expanduser(os.path.join(config.data_dir, config.captured_dir))
     directories_to_search = filterDirectoriesByJD(full_path_to_captured, earliest_jd, latest_jd)
@@ -330,9 +358,11 @@ def getFitsPaths(config, earliest_jd, latest_jd):
                 if file_name.split('_')[1] == stationID:
                     fits_paths.append(file_name)
 
+    return fits_paths
+
 def createThumbnails(config, r, d, earliest_jd, latest_jd):
 
-    path_list = getFitsPaths(config, earliest_jd, latest_jd)
+    path_list = getFitsPaths(config, earliest_jd, latest_jd, r, d)
     for path in path_list:
 
         # Instantiate a fresh platepar and read contemporary platepar file
@@ -343,7 +373,7 @@ def createThumbnails(config, r, d, earliest_jd, latest_jd):
         else:
             # No platepar found
             continue
-
+        contains, x, y =  plateparContainsRaDec(r, d, pp, os.path.basename(path), config.mask_file, check_mask=True)
 
 
 
