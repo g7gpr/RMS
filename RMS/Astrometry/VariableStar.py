@@ -915,7 +915,7 @@ def renderContactSheet(contact_sheet_array, headings_list, position_list):
 
     return plt, plot_filename
 
-def contactSheet(file_path=None, r, d, e_jd=0, l_jd=np.inf)
+def saveThumbnailsRaDec(r, d, e_jd=0, l_jd=np.inf, file_path=None)
 
     plt, fn = renderContactSheet(
                 assembleContactSheet(
@@ -1000,8 +1000,8 @@ if __name__ == "__main__":
 
         r, d = cml_args.ra[0], cml_args.dec[0]
         e_jd, l_jd = cml_args.jd_range[0], cml_args.jd_range[1]
-        #
 
+        saveThumbnailsRaDec(r, d, e_jd, l_jd)
 
 
         if cml_args.window is None:
