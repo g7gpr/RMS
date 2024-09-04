@@ -472,7 +472,8 @@ def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
 
     # initialise a list to hold the cropped image data
     thumbnail_list = []
-    thumbnail_list.append([path, readCroppedFF(path, x, y)])
+    for fits_path in path_list:
+        thumbnail_list.append([fits_path, readCroppedFF(path, x, y)])
 
     return thumbnail_list
 
