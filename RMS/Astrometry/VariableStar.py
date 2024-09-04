@@ -991,7 +991,7 @@ if __name__ == "__main__":
 
     dbpath = os.path.expanduser(dbpath)
     conn = getStationStarDBConn(dbpath)
-    # archived_calstars = readInArchivedCalstars(config, conn)
+    archived_calstars = readInArchivedCalstars(config, conn)
 
     if cml_args.ra is None and cml_args.dec is None and cml_args.window is None:
 
