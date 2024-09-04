@@ -903,9 +903,11 @@ def renderContactSheet(contact_sheet_array, headings_list, position_list):
 
 def saveThumbnailsRaDec(r, d, e_jd=0, l_jd=np.inf, file_path=None):
 
-    plt, fn = renderContactSheet(
-                assembleContactSheet(
-                    createThumbnails(config, r, d, earliest_jd=e_jd, latest_jd=l_jd)))
+    thumbnail_list = createThumbnails(config, r, d, earliest_jd=e_jd, latest_jd=l_jd)
+    contact_sheet, headings_list, position_list = assembleContactSheet(thumbnail_list)
+    plt, fn = renderContactSheet(contact_sheet, headings_list, position_list)
+
+
 
     filename = fn if file_path is None else file_path
 
