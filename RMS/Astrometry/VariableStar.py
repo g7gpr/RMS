@@ -1005,7 +1005,6 @@ if __name__ == "__main__":
         values = retrieveMagnitudesAroundRaDec(conn, r, d, window=w)
         ax = createPlot(values, r, d, w)
         ax.plot()
-        plt.show()
         plt.savefig("magnitudes_at_Ra_{}_Dec_{}_Window_{}.{}".format(r, d, w, plot_format), format=plot_format)
 
 
