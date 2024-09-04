@@ -238,7 +238,7 @@ def readInArchivedCalstars(config, conn):
     archived_directories_filtered_by_jd.reverse()
 
     # Working with each of the remaining archived directories write into the database
-    print("\nIterating through the archived directories startingf from {}\n"
+    print("\nIterating through the archived directories starting from {}\n"
                                                         .format(archived_directories_filtered_by_jd[0]))
     for dir in tqdm.tqdm(archived_directories_filtered_by_jd):
 
