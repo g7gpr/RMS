@@ -468,11 +468,11 @@ def crop(ff, x_centre, y_centre, width = 50, height = 50, allow_drift_in=False):
 def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
 
     # get the paths to all the fits files in the jd window
-    path_list = getFitsPathsAndCoords(config, earliest_jd, latest_jd, r, d)
+    path_coords_list = getFitsPathsAndCoords(config, earliest_jd, latest_jd, r, d)
 
     # initialise a list to hold the cropped image data
     thumbnail_list = []
-    for fits_path in path_list:
+    for fits_path, x, y in path_coords_list:
         thumbnail_list.append([fits_path, readCroppedFF(fits_path, x, y)])
 
     return thumbnail_list
