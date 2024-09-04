@@ -238,7 +238,8 @@ def readInArchivedCalstars(config, conn):
     archived_directories_filtered_by_jd.reverse()
 
     # Working with each of the remaining archived directories write into the database
-    print("\nIterating through the archived directories\n")
+    print("\nIterating through the archived directories startingf from {}\n"
+                                                        .format(archived_directories_filtered_by_jd[0]))
     for dir in tqdm.tqdm(archived_directories_filtered_by_jd):
 
         # Get full paths to critical files
@@ -842,7 +843,7 @@ def createPlot(values, r, d, w=0):
     title = "Plot of magnitudes at RA {} Dec {}, window {}".format(r,d, w)
     for jd, stationID, r, d, amp, mag, cat_mag in values:
         x_vals.append(jd)
-        y_vals.append(amp)
+        y_vals.append(mag)
     f, ax = plt.subplots()
 
     plt.title(title)
@@ -959,7 +960,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("-j", '--jd_range', nargs=2, metavar='FORMAT', type=float,
                             help="Range of julian dates to plot")
 
-    arg_parser.add_argument("-t", '--thumbnails', action="store_true", default="False",
+    arg_parser.add_argument("-t", '--thumbnails', action="store_true",
                             help="Plot thumbnails around Radec")
 
 
@@ -990,7 +991,7 @@ if __name__ == "__main__":
 
     dbpath = os.path.expanduser(dbpath)
     conn = getStationStarDBConn(dbpath)
-    archived_calstars = readInArchivedCalstars(config, conn)
+    # archived_calstars = readInArchivedCalstars(config, conn)
 
     if cml_args.ra is None and cml_args.dec is None and cml_args.window is None:
 
@@ -1015,6 +1016,7 @@ if __name__ == "__main__":
         values = retrieveMagnitudesAroundRaDec(conn, r, d, window=w)
         ax = createPlot(values, r, d, w)
         ax.plot()
-        plt.savefig("magnitudes_at_Ra_{}_Dec_{}_Window_{}.{}".format(r, d, w, format), format=format)
+        plt.show()
+        plt.savefig("magnitudes_at_Ra_{}_Dec_{}_Window_{}.{}".format(r, d, w, plot_format), format=plot_format)
 
 
