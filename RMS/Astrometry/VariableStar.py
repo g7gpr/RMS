@@ -572,7 +572,7 @@ def calstarToDb(calstar, conn, archived_directory_path, latest_jd=0):
             cat_id, cat_mag, cat_r, cat_d = getCatalogueID(r, d, conn)
             az, el = raDec2AltAz(r, d, j, pp.lat, pp.lon)
             radius = np.hypot(y - pp.Y_res / 2, x - pp.X_res / 2)
-            mag = 0 - 2.5 * np.log10(correctVignetting(bg, radius, vignett)) + offset
+            mag = 0 - 2.5 * np.log10(correctVignetting(bg, radius, vignetting)) + offset
             if mag == np.inf:
                 continue
             star_list_radec.append([j, date_time, fits_file, x, y, az, el, r, d, bg, amp,
@@ -915,7 +915,7 @@ def renderContactSheet(contact_sheet_array, headings_list, position_list):
 
     return plt, plot_filename
 
-def saveThumbnailsRaDec(r, d, e_jd=0, l_jd=np.inf, file_path=None)
+def saveThumbnailsRaDec(r, d, e_jd=0, l_jd=np.inf, file_path=None):
 
     plt, fn = renderContactSheet(
                 assembleContactSheet(
