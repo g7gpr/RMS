@@ -238,7 +238,8 @@ def readInArchivedCalstars(config, conn):
     archived_directories_filtered_by_jd.reverse()
 
     # Working with each of the remaining archived directories write into the database
-    for dir in archived_directories_filtered_by_jd:
+    print("\nIterating through the archived directories\n")
+    for dir in tqdm.tqdm(archived_directories_filtered_by_jd):
 
         # Get full paths to critical files
         full_path = os.path.join(archived_directories_path, dir)
@@ -373,6 +374,7 @@ def getFitsPathsAndCoords(config, earliest_jd, latest_jd, r=None, d=None):
     stationID = config.stationID
     last_pp_path = ""
     fits_paths = []
+    print("\nGetting all directories to be searched\n")
     for directory in tqdm.tqdm(directories_to_search):
         pp_path = os.path.join(directory, "platepar_cmn2010.cal")
         if os.path.exists(pp_path):
@@ -524,7 +526,8 @@ def calstarToDb(calstar, conn, archived_directory_path, latest_jd=0):
         return
 
     # Iterate through the calstar data structure for each image in the whole night
-    for fits_file, star_list in tqdm.tqdm(calstar):
+
+    for fits_file, star_list in calstar:
 
         # If too few stars on this specific observation, then ignore
         if len(star_list) < config.min_matched_stars:
@@ -815,6 +818,7 @@ def catalogueToDB(conn):
         Nothing
     """
     catalogue = loadGaiaCatalog("~/source/RMS/Catalogs", "gaia_dr2_mag_11.5.npy", lim_mag=11)
+    print("\nInserting data\n")
     for star in tqdm.tqdm(catalogue):
         sql_command = "INSERT INTO catalogue (r , d, mag) \n"
         sql_command += "Values ({} , {}, {})".format(star[0], star[1], star[2])
@@ -862,7 +866,7 @@ def assembleContactSheet(thumbnail_list, x_across=None, border = 1):
 
     thumbnail_count = len(thumbnail_list)
     if thumbnail_count < 1:
-        return
+        return [], [], []
 
     fits, thumbnail = thumbnail_list[0]
 
@@ -895,6 +899,23 @@ def assembleContactSheet(thumbnail_list, x_across=None, border = 1):
 
 
     return contact_sheet_array, headings_list, position_list
+
+def renderContactSheet(contact_sheet_array, headings_list, position_list):
+
+
+    if len(contact_sheet_array) and len(headings_list) and len(position_list):
+        plt.figure(figsize=(16, 12))
+        axes = plt.gca()
+        plot_filename = "{}_r_{}_d_{}_jd_{}_{}.{}".format(config.stationID, r, d, e_jd, l_jd, plot_format)
+        axes.imshow(contact_sheet_array, cmap='gray')
+        axes.set_title("{} RA {}, Dec {} from jd {} to {}".format(config.stationID, r, d, e_jd, l_jd))
+        axes.title.set_size(20)
+        plt.xticks(position_list, headings_list, color='black', rotation=90, fontweight='normal', fontsize='10',
+                   horizontalalignment='center')
+        plt.savefig(plot_filename, format=plot_format)
+        plt.show()
+
+
 
 if __name__ == "__main__":
 
@@ -957,29 +978,19 @@ if __name__ == "__main__":
 
     dbpath = os.path.expanduser(dbpath)
     conn = getStationStarDBConn(dbpath)
-
+    archived_calstars = readInArchivedCalstars(config, conn)
 
     if cml_args.ra is None and cml_args.dec is None and cml_args.window is None:
-        print("Collecting RaDec Data")
 
-        archived_calstars = readInArchivedCalstars(config, conn)
+        pass
 
     else:
 
         r, d = cml_args.ra[0], cml_args.dec[0]
         e_jd, l_jd = cml_args.jd_range[0], cml_args.jd_range[1]
-        thumbnail_list = createThumbnails(config, r, d, earliest_jd=e_jd, latest_jd=l_jd)
-        contact_sheet_array, headings_list, position_list = assembleContactSheet(thumbnail_list)
+        #renderContactSheet(assembleContactSheet(createThumbnails(config, r, d, earliest_jd=e_jd, latest_jd=l_jd)))
 
-        plt.figure(figsize = (16,12))
-        axes = plt.gca()
-        plot_filename = "{}_r_{}_d_{}_jd_{}_{}.{}".format(config.stationID, r, d, e_jd, l_jd, plot_format)
-        axes.imshow(contact_sheet_array, cmap='gray')
-        axes.set_title("{} RA {}, Dec {} from jd {} to {}".format(config.stationID, r, d, e_jd, l_jd))
-        axes.title.set_size(20)
-        plt.xticks(position_list, headings_list, color='black', rotation=90, fontweight='normal', fontsize='10', horizontalalignment='center')
-        plt.savefig(plot_filename, format=plot_format)
-        plt.show()
+
 
         if cml_args.window is None:
             w = 0.1
