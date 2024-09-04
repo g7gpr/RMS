@@ -29,24 +29,14 @@ from __future__ import (absolute_import, division, print_function,
 
 from RMS.DeleteOldObservations import getNightDirs
 import argparse
-import copy
-import datetime
 import os
-import shutil
 import sys
-import psutil
+
 import numpy as np
 # Import Cython functions
 import pyximport
-import RMS.Formats.Platepar
-import scipy.optimize
-from RMS.Astrometry.AtmosphericExtinction import \
-    atmosphericExtinctionCorrection
 from RMS.Astrometry.Conversions import J2000_JD, date2JD, jd2Date, raDec2AltAz
-from RMS.Formats.FFfile import filenameToDatetime
-from RMS.Formats.FTPdetectinfo import (findFTPdetectinfoFile,
-                                       readFTPdetectinfo, writeFTPdetectinfo)
-from RMS.Math import angularSeparation, cartesianToPolar, polarToCartesian
+from RMS.Math import angularSeparation
 
 pyximport.install(setup_args={'include_dirs':[np.get_include()]})
 
@@ -55,7 +45,7 @@ import glob as glob
 import sqlite3
 import tqdm
 import json
-import pickle
+
 
 from RMS.Formats.CALSTARS import readCALSTARS
 from RMS.Formats.Platepar import Platepar
