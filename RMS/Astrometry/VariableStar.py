@@ -959,7 +959,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("-j", '--jd_range', nargs=2, metavar='FORMAT', type=float,
                             help="Range of julian dates to plot")
 
-    arg_parser.add_argument("-t", '--thumbnail', nargs=1, action="store_true", default="False",
+    arg_parser.add_argument("-t", '--thumbnails', action="store_true", default="False",
                             help="Plot thumbnails around Radec")
 
 
@@ -1001,7 +1001,8 @@ if __name__ == "__main__":
         r, d = cml_args.ra[0], cml_args.dec[0]
         e_jd, l_jd = cml_args.jd_range[0], cml_args.jd_range[1]
 
-        saveThumbnailsRaDec(r, d, e_jd, l_jd)
+        if cml_args.thumbnails:
+            saveThumbnailsRaDec(r, d, e_jd, l_jd)
 
 
         if cml_args.window is None:
