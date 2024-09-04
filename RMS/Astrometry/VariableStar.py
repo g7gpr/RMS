@@ -572,7 +572,7 @@ def calstarToDb(calstar, conn, archived_directory_path, latest_jd=0):
             cat_id, cat_mag, cat_r, cat_d = getCatalogueID(r, d, conn)
             az, el = raDec2AltAz(r, d, j, pp.lat, pp.lon)
             radius = np.hypot(y - pp.Y_res / 2, x - pp.X_res / 2)
-            mag = 0 - 2.5 * np.log10(correctVignetting(amp, radius, pp.vignetting_coeff)) + offset
+            mag = 0 - 2.5 * np.log10(correctVignetting(bg, radius, vignett)) + offset
             if mag == np.inf:
                 continue
             star_list_radec.append([j, date_time, fits_file, x, y, az, el, r, d, bg, amp,
@@ -818,7 +818,7 @@ def catalogueToDB(conn):
         Nothing
     """
     catalogue = loadGaiaCatalog("~/source/RMS/Catalogs", "gaia_dr2_mag_11.5.npy", lim_mag=11)
-    print("\nInserting data\n")
+    print("\nInserting catalgue data\n")
     for star in tqdm.tqdm(catalogue):
         sql_command = "INSERT INTO catalogue (r , d, mag) \n"
         sql_command += "Values ({} , {}, {})".format(star[0], star[1], star[2])
@@ -912,10 +912,18 @@ def renderContactSheet(contact_sheet_array, headings_list, position_list):
         axes.title.set_size(20)
         plt.xticks(position_list, headings_list, color='black', rotation=90, fontweight='normal', fontsize='10',
                    horizontalalignment='center')
-        plt.savefig(plot_filename, format=plot_format)
-        plt.show()
 
+    return plt, plot_filename
 
+def contactSheet(file_path=None, r, d, e_jd=0, l_jd=np.inf)
+
+    plt, fn = renderContactSheet(
+                assembleContactSheet(
+                    createThumbnails(config, r, d, earliest_jd=e_jd, latest_jd=l_jd)))
+
+    filename = fn if file_path is None else file_path
+
+    plt.savefig(filename)
 
 if __name__ == "__main__":
 
@@ -950,6 +958,10 @@ if __name__ == "__main__":
 
     arg_parser.add_argument("-j", '--jd_range', nargs=2, metavar='FORMAT', type=float,
                             help="Range of julian dates to plot")
+
+    arg_parser.add_argument("-t", '--thumbnail', nargs=1, action="store_true", default="False",
+                            help="Plot thumbnails around Radec")
+
 
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
@@ -988,7 +1000,7 @@ if __name__ == "__main__":
 
         r, d = cml_args.ra[0], cml_args.dec[0]
         e_jd, l_jd = cml_args.jd_range[0], cml_args.jd_range[1]
-        #renderContactSheet(assembleContactSheet(createThumbnails(config, r, d, earliest_jd=e_jd, latest_jd=l_jd)))
+        #
 
 
 
