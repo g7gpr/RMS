@@ -897,7 +897,8 @@ def saveThumbnailsRaDec(r, d, e_jd=0, l_jd=np.inf, file_path=None):
     thumbnail_list = createThumbnails(config, r, d, earliest_jd=e_jd, latest_jd=l_jd)
     contact_sheet, headings_list, position_list = assembleContactSheet(thumbnail_list)
     plt, fn = renderContactSheet(contact_sheet, headings_list, position_list)
-    if plt is none:
+    if plt is None:
+        print("No transits found - cannot plot")
         return
     else:
         filename = fn if file_path is None else file_path
