@@ -467,29 +467,12 @@ def crop(ff, x_centre, y_centre, width = 50, height = 50, allow_drift_in=False):
 
 def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
 
-    get_path_lists = True
-    get_cropped_to_radec = True
+    # get the paths to all the fits files in the jd window
+    path_list = getFitsPathsAndCoords(config, earliest_jd, latest_jd, r, d)
 
-    if get_path_lists:
-        path_list = getFitsPathsAndCoords(config, earliest_jd, latest_jd, r, d)
-
-        with open("path_list.pickle", 'wb') as f:
-            pickle.dump(path_list, f)
-    else:
-        with open("path_list.pickle", 'rb') as f:
-            path_list = pickle.load(f)
-
+    # initialise a list to hold the cropped image data
     thumbnail_list = []
-    if get_cropped_to_radec:
-        for path, x, y in tqdm.tqdm(path_list):
-            thumbnail_list.append([path, readCroppedFF(path, x, y)])
-
-        with open("thumbnail_list.pickle", 'wb') as f:
-            pickle.dump(thumbnail_list, f)
-    else:
-        with open("thumbnail_list.pickle", 'rb') as f:
-            thumbnail_list = pickle.load(f)
-
+    thumbnail_list.append([path, readCroppedFF(path, x, y)])
 
     return thumbnail_list
 
@@ -963,6 +946,8 @@ if __name__ == "__main__":
     arg_parser.add_argument("-t", '--thumbnails', action="store_true",
                             help="Plot thumbnails around Radec")
 
+    arg_parser.add_argument("-n", '--no_read', action="store_true",
+                            help="Do not try to populate the database")
 
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
@@ -991,7 +976,11 @@ if __name__ == "__main__":
 
     dbpath = os.path.expanduser(dbpath)
     conn = getStationStarDBConn(dbpath)
-    archived_calstars = readInArchivedCalstars(config, conn)
+    if cml_args.no_read:
+        print("Skipping database population, no read selected")
+    else:
+        print("Started database population")
+        archived_calstars = readInArchivedCalstars(config, conn)
 
     if cml_args.ra is None and cml_args.dec is None and cml_args.window is None:
 
