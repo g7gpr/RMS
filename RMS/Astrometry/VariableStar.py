@@ -472,7 +472,8 @@ def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
 
     # initialise a list to hold the cropped image data
     thumbnail_list = []
-    for fits_path, x, y in path_coords_list:
+    print("Iterating over paths")
+    for fits_path, x, y in tqdm.tqdm(path_coords_list):
         thumbnail_list.append([fits_path, readCroppedFF(fits_path, x, y)])
 
     return thumbnail_list
