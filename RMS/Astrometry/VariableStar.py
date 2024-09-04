@@ -526,8 +526,8 @@ def calstarToDb(calstar, conn, archived_directory_path, latest_jd=0):
         return
 
     # Iterate through the calstar data structure for each image in the whole night
-    print("Iterating through calstar list for {}".format(rmsTimeExtractor(archived_directory_path)))
-    for fits_file, star_list in tqdm.tqdm(calstar):
+    # print("Iterating through calstar list for {}".format(rmsTimeExtractor(archived_directory_path)))
+    for fits_file, star_list in calstar:
 
         # If too few stars on this specific observation, then ignore
         if len(star_list) < config.min_matched_stars:
