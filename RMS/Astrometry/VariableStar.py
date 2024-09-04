@@ -888,20 +888,20 @@ def renderContactSheet(contact_sheet_array, headings_list, position_list):
         axes.title.set_size(20)
         plt.xticks(position_list, headings_list, color='black', rotation=90, fontweight='normal', fontsize='10',
                    horizontalalignment='center')
-
-    return plt, plot_filename
+        return plt, plot_filename
+    else:
+        return None, ""
 
 def saveThumbnailsRaDec(r, d, e_jd=0, l_jd=np.inf, file_path=None):
 
     thumbnail_list = createThumbnails(config, r, d, earliest_jd=e_jd, latest_jd=l_jd)
     contact_sheet, headings_list, position_list = assembleContactSheet(thumbnail_list)
     plt, fn = renderContactSheet(contact_sheet, headings_list, position_list)
-
-
-
-    filename = fn if file_path is None else file_path
-
-    plt.savefig(filename)
+    if plt is none:
+        return
+    else:
+        filename = fn if file_path is None else file_path
+        plt.savefig(filename)
 
 if __name__ == "__main__":
 
