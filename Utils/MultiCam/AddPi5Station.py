@@ -181,7 +181,7 @@ def configureFirstStation(path_to_config = "~/source/RMS/.config"):
     latitude = input("latitude (wgs84):")
     longitude = input("longitude (wgs84):")
     elevation = input("Elevation in metres above mean sea level:")
-    ip_address = input("first station camera ip address:")
+    ip_address = input("First station sensor ip address:")
 
     if os.path.exists(path_to_config):
         pass
