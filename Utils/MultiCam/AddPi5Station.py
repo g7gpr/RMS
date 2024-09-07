@@ -330,6 +330,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
         config = cr.parse(config_path)
 
         if "XX" in config.stationID:
+            mkdirP(os.path.expanduser("~/source/Stations"))
             return
 
         # If we are just migrating the first station, then use the stationID from the config file
