@@ -49,6 +49,7 @@ from Utils.MultiCam.Common import checkUserDesktopDirectoryEnvironment, uncommen
 from Utils.MultiCam.Common import moveIfExists, copyIfExists, changeOptionValue
 from Utils.MultiCam.Common import getStationsToAdd, customiseConfig, makeKeys
 import argparse
+import RMS.StartCapture
 
 MAX_STATION = 4	# maximum number of stations allowed on a Pi5
 
@@ -465,3 +466,9 @@ if __name__ == "__main__":
     for entry in station_list:
         path_to_config = os.path.join(os.path.expanduser("~/source/Stations"),entry.lower())
         setQuotas(path_to_config, quotas)
+
+    for entry in station_list:
+        print("Starting {}".format(entry))
+        path_to_config = os.path.join("~/source/Stations/",entry.lower())
+        launch_command = "python -m RMS.StartCapture -c {}".format(path_to_config)
+        print(launch_command)
