@@ -109,6 +109,7 @@ def isPi5():
 def firstStationConfigured(config_path = "~/source/RMS/.config"):
     """
     Examines the .config file in RMS path to discover if station is still set as XX0001
+    and there is nothing in ~/RMS/Stations
     This is a good indicator that no configuration work has been carried out
     Args:
         config_path: [path] optional default ~/source/RMS/.config
@@ -117,11 +118,12 @@ def firstStationConfigured(config_path = "~/source/RMS/.config"):
 
     """
     config_path = os.path.expanduser(config_path)
+    stations_path = os.path.expanduser("~RMS/Stations")
     if os.path.exists(config_path):
         config = cr.parse(config_path)
     else:
         return False
-    if config.stationID == "XX0001":
+    if config.stationID == "XX0001" and not os.path.exists(stations_path):
         return False
     else:
         return True
