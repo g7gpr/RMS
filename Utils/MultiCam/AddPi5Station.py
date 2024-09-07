@@ -427,7 +427,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
 
 def configureAutoStart(config_path):
 
-    config_pahe = os.path.expanduser(config_path)
+    config_path = os.path.expanduser(config_path)
     configuration_line = "rms = ~/source/RMS/Scripts/MultiCamLinux/Pi/RMS_StartCapture_MCP.sh"
     with open(config_path, 'r') as f:
 
