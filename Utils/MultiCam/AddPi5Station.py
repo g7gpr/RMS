@@ -432,7 +432,7 @@ if __name__ == "__main__":
 
     ignore_hardware = True
 
-    station_list = []
+    stations_list = []
     if cml_args.stations is not None:
         stations_list = cml_args.stations
     else:
@@ -458,10 +458,10 @@ if __name__ == "__main__":
     copyPiStation(first_station=True)
 
     # Get the list of station
-    station_list = getStationsToAdd(stations_list)
+    stations_list = getStationsToAdd(stations_list)
 
     # Work through the list of stations
-    for entry, ip in zip(station_list, ip_list):
+    for entry, ip in zip(stations_list, ip_list):
         s=sanitise(entry.lower())
         copyPiStation(new_station_id=s, first_station=False, ip=ip)
 
