@@ -118,7 +118,7 @@ def firstStationConfigured(config_path = "~/source/RMS/.config"):
 
     """
     config_path = os.path.expanduser(config_path)
-    stations_path = os.path.expanduser("~RMS/Stations")
+    stations_path = os.path.expanduser("~/source/Stations")
     if os.path.exists(config_path):
         config = cr.parse(config_path)
     else:
