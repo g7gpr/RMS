@@ -444,6 +444,7 @@ def configureAutoStart(config_path):
             already_configured = True
 
     if already_configured:
+        print("AutoStart already configured")
         return
     else:
         lines_list.append("\n[autostart]\n")
