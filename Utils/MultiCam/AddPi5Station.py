@@ -179,7 +179,7 @@ def configureFirstStation(path_to_config = "~/source/RMS/.config"):
     print("These values can be edited later")
     station_id = input("first station id:").upper()
     latitude = input("latitude (wgs84):")
-    longitude = input("latitude (wgs84):")
+    longitude = input("longitude (wgs84):")
     elevation = input("Elevation in metres above mean sea level:")
     ip_address = input("first station camera ip address:")
 
