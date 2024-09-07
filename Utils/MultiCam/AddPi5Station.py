@@ -476,7 +476,10 @@ if __name__ == "__main__":
     if cml_args.stations is not None:
         stations_list = cml_args.stations
     else:
-        stations_list = os.listdir(os.path.expanduser("~/source/Stations/"))
+        stations_path = os.path.expanduser("~/source/Stations/")
+        if not os.path.exists(stations_path):
+            mkdirP(stations_path)
+        stations_list = os.listdir(stations_path)
         stations_list.sort()
 
     if cml_args.addresses is not None:
@@ -532,11 +535,8 @@ if __name__ == "__main__":
     if cml_args.launch:
         for entry in stations_list:
             entry = sanitise(entry)
-            print("Starting {}".format(entry))
             path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
-
             launch_command = "lxterminal --title {} --command ".format(entry)
             launch_command += "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}; sleep 10'".format(path_to_config)
             os.system(launch_command)
-            print(launch_command)
             time.sleep(60)
