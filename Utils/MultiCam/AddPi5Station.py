@@ -125,6 +125,7 @@ def firstStationConfigured(config_path = "~/source/RMS/.config"):
         print("Returning because could not find config")
         return False
     if os.path.exists(stations_path):
+        print("Found station path")
         return True
     if config.stationID == "XX0001":
         print("Returning because could not find stations_path")
