@@ -224,7 +224,6 @@ def getMaskFromMaster(source_url = "https://raw.githubusercontent.com/CroatianMe
     urllib.request.urlretrieve(source_url, dest_path)
 
     if os.path.exists(dest_path):
-        print("Successful download of mask from github")
         return True
     else:
         print("Mask download from github failed")
@@ -248,7 +247,6 @@ def getConfigFromMaster(source_url = "https://raw.githubusercontent.com/Croatian
     urllib.request.urlretrieve(source_url, dest_path)
 
     if os.path.exists(dest_path):
-        print("Successful download of .config from github")
         return True
     else:
         print(".config download from github failed")
@@ -527,7 +525,6 @@ if __name__ == "__main__":
     if stations_list == [] or not cml_args.launch:
         stations_list, ip_list = getStationsToAdd(stations_list, ip_list)
 
-    print("Stations list is {}".format(stations_list))
     # Work through the list of stations
     for entry, ip in zip(stations_list, ip_list):
         s=sanitise(entry.lower())
