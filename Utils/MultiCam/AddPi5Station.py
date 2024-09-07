@@ -396,7 +396,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
                     print("Config for {} has already been migrated".format(new_station_id))
             else:
                 mkdirP(new_station_config_path)
-                copyIfExists(config_path, new_station_config_path, debug=True)
+                copyIfExists(config_path, new_station_config_path, debug=False)
 
 
         else:
@@ -460,7 +460,6 @@ def configureAutoStart(config_path):
                 already_configured = True
 
     if already_configured:
-        print("AutoStart already configured")
         return
     else:
         lines_list.append("\n[autostart]\n")
@@ -518,7 +517,7 @@ if __name__ == "__main__":
     # Is a station already configured
     if not firstStationConfigured() and not len(stations_list):
         # Get operator input to configure first station
-        print("Getting first station configuration")
+
         configureFirstStation()
         # Copy the first station to new location
         copyPiStation(first_station=True)
@@ -532,7 +531,7 @@ if __name__ == "__main__":
     # Work through the list of stations
     for entry, ip in zip(stations_list, ip_list):
         s=sanitise(entry.lower())
-        copyPiStation(new_station_id=s, first_station=False, ip=ip, debug=True)
+        copyPiStation(new_station_id=s, first_station=False, ip=ip, debug=False)
 
     # This prevents gui from placing windows directly on top of each other
     uncomment("~/.config/wayfire.ini", "mode")
