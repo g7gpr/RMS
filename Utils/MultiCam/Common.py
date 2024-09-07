@@ -295,7 +295,7 @@ def makeKeys(key_path = "~/.ssh", copy_pub_to = None):
 	else:
 		message += "Keys already created"
 	if copy_pub_to is None:
-		return
+		return ""
 
 	copy_pub_to = os.path.expanduser(copy_pub_to)
 	if os.path.exists(copy_pub_to) and not os.path.exists(

@@ -416,7 +416,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
 
 if __name__ == "__main__":
 
-
+    debug = False
     arg_parser = argparse.ArgumentParser(description=""" Deleting old observations.""")
     arg_parser.add_argument('-s', '--stations', nargs='*', metavar='STATIONS_TO_ADD', type=str, help="STATIONS_TO_ADD")
     cml_args = arg_parser.parse_args()
@@ -428,7 +428,8 @@ if __name__ == "__main__":
         stations_list = cml_args.stations
 
     if isPi5() or ignore_hardware:
-        print("Hardware reported as {}, continuing".format(piModel()))
+        if debug:
+            print("Hardware reported as {}, continuing".format(piModel()))
     else:
         print("Pi 5 or similar required for multicamera operation, quitting")
         exit(1)
