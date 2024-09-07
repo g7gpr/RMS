@@ -323,12 +323,14 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
 
     # Do not copy the default station
 
-    if "XX" in config.stationID:
-        return
+
 
     # Check the config path exists and the use to create stations
     if os.path.exists(config_path):
         config = cr.parse(config_path)
+
+        if "XX" in config.stationID:
+            return
 
         # If we are just migrating the first station, then use the stationID from the config file
         new_station_id = config.stationID if new_station_id is None else new_station_id
