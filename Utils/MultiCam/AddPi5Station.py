@@ -425,6 +425,37 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
 
         makeKeys()
 
+def configureAutoStart(config_path):
+
+    configuration_line = "rms = ~/source/RMS/Scripts/MultiCamLinux/Pi/RMS_StartCapture_MCP.sh"
+    with open(config_path, 'r') as f:
+
+        lines_list = f.readlines()
+
+    auto_start_section_exists = False
+    already_configured = False
+    in_autostart_section = True
+    for line in lines_list:
+        if line = "[autostart]":
+            autostart_section_exists = True
+            in_autostart_section = True
+        if in_autostart_section:
+            if line = configuration_line
+            already_configured = True
+
+    if already_configured:
+        return
+    else:
+        lines_list.append("\n[autostart]\n")
+        lines_list.append("\n{}".format(configuration_line))
+
+    with open(config_path, 'w') as f:
+
+        for line in lines_list:
+            f.write(line)
+
+
+
 if __name__ == "__main__":
 
     debug = False
@@ -486,6 +517,8 @@ if __name__ == "__main__":
     # Compute disc use quotas
     quotas = computeQuotas()
 
+    # Configure autostart in wayfire.ini
+    configureAutostart("~/.config/wayfire.ini")
 
     # And apply disc use quotas
     for entry in stations_list:
