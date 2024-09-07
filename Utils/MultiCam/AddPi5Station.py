@@ -492,7 +492,7 @@ if __name__ == "__main__":
         setQuotas(path_to_config, quotas)
 
 
-     if cml_args.launch:
+    if cml_args.launch:
         for entry in stations_list:
             entry = sanitise(entry)
             print("Starting {}".format(entry))
