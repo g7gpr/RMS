@@ -484,5 +484,5 @@ if __name__ == "__main__":
 
         launch_command = "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}'".format(path_to_config)
         print(launch_command)
-        os.system("lxterminal -e {} -t 'Station {}'".format(launch_command, entry))
+        os.system("lxterminal -e {} --title 'Station {}'".format(launch_command, entry))
         time.sleep(10)
