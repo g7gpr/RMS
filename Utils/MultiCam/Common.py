@@ -228,7 +228,7 @@ def changeOptionValue(lines_list, option, value, delimiter = ":"):
 
 
 
-def customiseConfig(path_to_config, stationid, data_dir, extra_space, ip=None reboot_after_processing=True):
+def customiseConfig(path_to_config, stationid, data_dir, extra_space, ip=None, reboot_after_processing=True):
 
 	"""
 	Make the changes to the .config file per station
