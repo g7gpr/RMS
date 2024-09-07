@@ -458,6 +458,7 @@ if __name__ == "__main__":
     # Is a station already configured
     if not firstStationConfigured():
         # Get operator input to configure first station
+        print("Getting first station configuration")
         configureFirstStation()
     # Copy the first station to new location
     copyPiStation(first_station=True)
