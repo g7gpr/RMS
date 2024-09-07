@@ -424,7 +424,7 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description=""" Deleting old observations.""")
     arg_parser.add_argument('-s', '--stations', nargs='*', metavar='STATIONS_TO_ADD', type=str, help="Station to run")
     arg_parser.add_argument('-a', '--addresses', nargs='*', metavar='IP_ADDRESSES', type=str, help="Camera ip addresses")
-    arg_parser.add_argument('-l', '--launch', metavar='LAUNCH', action='store_true', help="Launch stations")
+    arg_parser.add_argument('-l', '--launch', action='store_true', help="Launch stations")
     cml_args = arg_parser.parse_args()
 
 
