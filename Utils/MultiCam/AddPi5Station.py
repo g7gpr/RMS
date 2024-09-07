@@ -198,7 +198,7 @@ def configureFirstStation(path_to_config = "~/source/RMS/.config"):
     config_lines = changeOptionValue(config_lines, "stationID", station_id)
     config_lines = changeOptionValue(config_lines, "latitude", latitude)
     config_lines = changeOptionValue(config_lines, "longitude", longitude)
-    config_lines = changeOptionValue(config_lines, "altitude", elevation)
+    config_lines = changeOptionValue(config_lines, "elevation", elevation)
     config_lines = changeOptionValue(config_lines, "ip_address", ip_address)
 
     fh = open(path_to_config, "w")
