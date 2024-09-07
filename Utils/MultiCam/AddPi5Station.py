@@ -287,7 +287,7 @@ def cleanDesktop():
 
 
 
-def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, new_station_id = None, debug=False):
+def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, new_station_id = None, ip=None, debug=False):
 
     """
     Copies a station from ~/source/RMS to ~/source/Stations, and if it is the first station, migrates ~/RMS_data/etc
@@ -299,6 +299,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
         config_path:[path] path to config file
         first_station: [bool] is this the first station
         new_station_id: [str] id of new station
+        ip: [str] ip address for sensor of new station
         debug: [bool] prints debugging information
 
     Returns:
@@ -413,7 +414,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
         extra_space_gb = 40
 
         customiseConfig(new_station_config_path, new_station_id.upper(), new_station_data_dir,
-                                                    extra_space_gb, reboot_after_processing=False)
+                                                    extra_space_gb, ip, reboot_after_processing=False)
 
         makeKeys()
 
@@ -421,14 +422,21 @@ if __name__ == "__main__":
 
     debug = False
     arg_parser = argparse.ArgumentParser(description=""" Deleting old observations.""")
-    arg_parser.add_argument('-s', '--stations', nargs='*', metavar='STATIONS_TO_ADD', type=str, help="STATIONS_TO_ADD")
+    arg_parser.add_argument('-s', '--stations', nargs='*', metavar='STATIONS_TO_ADD', type=str, help="Station to run")
+    arg_parser.add_argument('-a', '--ip_addresses', nargs='*', metavar='ip_addresses', type=str, help="Camera ip addresses")
     cml_args = arg_parser.parse_args()
+
 
     ignore_hardware = True
 
     station_list = []
     if cml_args.stations is not None:
         stations_list = cml_args.stations
+
+    if cml_args.addresses is not None:
+        ip_list = cml_args.ip_addresses
+    else:
+        ip_list = []
 
     if isPi5() or ignore_hardware:
         if debug:
@@ -448,9 +456,9 @@ if __name__ == "__main__":
     station_list = getStationsToAdd(stations_list)
 
     # Work through the list of stations
-    for entry in station_list:
-        s=entry.lower()
-        copyPiStation(new_station_id=s, first_station=False)
+    for entry, ip in zip(station_list, ip_list):
+        s=sanitise(entry.lower())
+        copyPiStation(new_station_id=s, first_station=False, ip=ip)
 
     # This prevents gui from placing windows directly on top of each other
     uncomment("~/.config/wayfire.ini", "mode")
@@ -476,5 +484,5 @@ if __name__ == "__main__":
 
         launch_command = "'source ~/vRMS/bin/activate; sleep 10; python -m RMS.StartCapture -c {}'".format(path_to_config)
         print(launch_command)
-        os.system("lxterminal -e {}".format(launch_command))
+        os.system("lxterminal -e {} -t 'Station {}'".format(launch_command, entry))
         time.sleep(10)
