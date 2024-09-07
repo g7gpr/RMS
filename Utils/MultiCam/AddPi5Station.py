@@ -388,7 +388,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
                         print("Config for {} has already been migrated".format(new_station_id))
                 else:
                     mkdirP(new_station_config_path)
-                    copyIfExists(config_path, new_station_config_path, debug=False)
+                    copyIfExists(config_path, new_station_config_path, debug=True)
 
 
         else:
