@@ -471,7 +471,7 @@ if __name__ == "__main__":
 
     for entry in station_list:
         print("Starting {}".format(entry))
-        path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower()))
+        path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
 
         launch_command = "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}'".format(path_to_config)
         print(launch_command)
