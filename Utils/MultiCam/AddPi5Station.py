@@ -433,6 +433,8 @@ if __name__ == "__main__":
     station_list = []
     if cml_args.stations is not None:
         stations_list = cml_args.stations
+    else:
+        stations_list = []
 
     if cml_args.addresses is not None:
         ip_list = cml_args.addresses
