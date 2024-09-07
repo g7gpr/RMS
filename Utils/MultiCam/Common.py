@@ -414,10 +414,8 @@ def setQuotas(path_to_config, quotas_tuple, debug=False):
 		print("             arch_dir_quota {}".format(quotas_tuple[1]))
 		print("            bz2_files_quota {}".format(quotas_tuple[2]))
 
-	print("Path :{}".format(path_to_config))
-	if os.path.isfile(path_to_config):
-		path_to_config = os.path.dirname(path_to_config)
-	print("Path :{}".format(path_to_config))
+
+
 	fh = open(os.path.join(path_to_config,".config"),"r")
 	config_lines = []
 	for line in fh:
