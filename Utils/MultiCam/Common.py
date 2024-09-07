@@ -298,7 +298,8 @@ def makeKeys(key_path = "~/.ssh", copy_pub_to = None):
 		return
 
 	copy_pub_to = os.path.expanduser(copy_pub_to)
-	if os.path.exists(copy_pub_to):
+	if os.path.exists(copy_pub_to) and not os.path.exists(
+												os.path.join(copy_pub_to, os.path.basename(getPublicKeyPath()))):
 		copyIfExists(getPublicKeyPath(), copy_pub_to)
 		message += " in {}\n".format(key_path)
 		message += "Your new id_rsa.pub public key file is at {}\n".format(copy_pub_to)
