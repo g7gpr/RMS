@@ -416,7 +416,7 @@ def setQuotas(path_to_config, quotas_tuple, debug=False):
 
 	if os.path.isfile(path_to_config):
 		path_to_config = os.path.dirname(path_to_config)
-
+	print("Path :{}".format(path_to_config))
 	fh = open(os.path.join(path_to_config,".config"),"r")
 	config_lines = []
 	for line in fh:
