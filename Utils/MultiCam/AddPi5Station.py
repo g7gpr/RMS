@@ -329,6 +329,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
         new_station_id = config.stationID if new_station_id is None else new_station_id
 
         # Work out the existing paths
+
         platepar_path = os.path.expanduser(os.path.join(os.path.dirname(config_path), config.platepar_name))
         mask_path = os.path.expanduser(os.path.join(os.path.dirname(config_path),config.mask_file))
 
@@ -401,7 +402,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
                 copyIfExists(config_path, new_station_config_path, debug=False)
 
         # Move the platepar
-        copyIfExists(platepar_path, new_station_config_path, debug=False)
+        copyIfExists(platepar_path, os.path.join(new_station_config_path, config.platepar_name), debug=False)
 
         # Move the mask
         if os.path.exists(os.path.join(new_station_config_path,os.path.basename(mask_path))):
@@ -493,7 +494,6 @@ if __name__ == "__main__":
             mkdirP(stations_path)
         if cml_args.launch:
             stations_list = os.listdir(stations_path)
-            stations_list.sort()
 
     if cml_args.addresses is not None:
         ip_list = cml_args.addresses
@@ -522,7 +522,7 @@ if __name__ == "__main__":
     # Work through the list of stations
     for entry, ip in zip(stations_list, ip_list):
         s=sanitise(entry.lower())
-        copyPiStation(new_station_id=s, first_station=False, ip=ip)
+        copyPiStation(new_station_id=s, first_station=False, ip=ip, debug=True)
 
     # This prevents gui from placing windows directly on top of each other
     uncomment("~/.config/wayfire.ini", "mode")
