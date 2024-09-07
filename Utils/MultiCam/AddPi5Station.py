@@ -440,7 +440,7 @@ def configureAutoStart(config_path):
             autostart_section_exists = True
             in_autostart_section = True
         if in_autostart_section:
-            if line == configuration_line
+            if line == configuration_line:
             already_configured = True
 
     if already_configured:
