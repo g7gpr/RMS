@@ -435,6 +435,7 @@ if __name__ == "__main__":
     cml_args = arg_parser.parse_args()
 
 
+
     ignore_hardware = True
 
     stations_list = []
@@ -464,6 +465,7 @@ if __name__ == "__main__":
     copyPiStation(first_station=True)
 
     # Get the list of station
+
     stations_list = getStationsToAdd(stations_list)
 
     # Work through the list of stations
@@ -483,13 +485,15 @@ if __name__ == "__main__":
     # Compute disc use quotas
     quotas = computeQuotas()
 
+
     # And apply disc use quotas
-    for entry in station_list:
+    for entry in stations_list:
         path_to_config = os.path.join(os.path.expanduser("~/source/Stations"),entry.lower())
         setQuotas(path_to_config, quotas)
 
-    if cml_args.launch:
-        for entry in station_list:
+
+     if cml_args.launch:
+        for entry in stations_list:
             entry = sanitise(entry)
             print("Starting {}".format(entry))
             path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
