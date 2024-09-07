@@ -218,7 +218,8 @@ def getMaskFromMaster(source_url = "https://raw.githubusercontent.com/CroatianMe
 
     """
 
-    dest_path = os.path.expanduser(os.path.join(dest_path, os.path.basename(source_url)))
+
+    # dest_path = os.path.expanduser(os.path.join(dest_path, os.path.basename(source_url)))
     mkdirP(os.path.dirname(dest_path))
     urllib.request.urlretrieve(source_url, dest_path)
 
