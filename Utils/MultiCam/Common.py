@@ -162,7 +162,7 @@ def uncomment(file_path, setting, comment_marker = "#", backup_file_ext = "backu
 	return change_made
 
 
-def getStationsToAdd(stations_list=[], debug=False):
+def getStationsToAdd(stations_list=[], ip_list=[], debug=False):
 
 	"""
 	Request user input for which stations to add.
@@ -171,10 +171,7 @@ def getStationsToAdd(stations_list=[], debug=False):
 		list of stations to add
 	"""
 
-	if len(stations_list):
-		if debug:
-			print("Stations passed in from command line, not asking operator")
-		return stations_list
+
 
 	while True:
 		response = input("Enter station ID, <cr> to end: ")
@@ -182,9 +179,13 @@ def getStationsToAdd(stations_list=[], debug=False):
 			break
 		else:
 			stations_list.append(response)
+		response = input("Enter sensor ip for {}: ")
+		if response == "":
+			break
+		else:
+			ip_list.append(response)
 
-
-	return stations_list
+	return stations_list, ip_list
 
 def changeOptionValue(lines_list, option, value, delimiter = ":"):
 

@@ -219,7 +219,7 @@ def getMaskFromMaster(source_url = "https://raw.githubusercontent.com/CroatianMe
     """
 
 
-    # dest_path = os.path.expanduser(os.path.join(dest_path, os.path.basename(source_url)))
+    dest_path = os.path.expanduser(os.path.join(dest_path, os.path.basename(source_url)))
     mkdirP(os.path.dirname(dest_path))
     urllib.request.urlretrieve(source_url, dest_path)
 
@@ -462,6 +462,13 @@ def configureAutoStart(config_path):
         for line in lines_list:
             f.write(line)
 
+def removeExistingAutoStart(autostart_path):
+
+    autostart_path = os.path.expanduser(autostart_path)
+
+    dest = os.path.join(autostart_path, "hide")
+    mkdirP(dest)
+    moveIfExists(os.path.join(autostart_path, "RMS_FirstRun.desktop"), dest)
 
 
 if __name__ == "__main__":
@@ -484,8 +491,9 @@ if __name__ == "__main__":
         stations_path = os.path.expanduser("~/source/Stations/")
         if not os.path.exists(stations_path):
             mkdirP(stations_path)
-        stations_list = os.listdir(stations_path)
-        stations_list.sort()
+        if cml_args.launch:
+            stations_list = os.listdir(stations_path)
+            stations_list.sort()
 
     if cml_args.addresses is not None:
         ip_list = cml_args.addresses
@@ -509,7 +517,7 @@ if __name__ == "__main__":
 
     # Get the list of station
 
-    stations_list = getStationsToAdd(stations_list)
+    stations_list, ip_list = getStationsToAdd(stations_list, ip_list)
 
     # Work through the list of stations
     for entry, ip in zip(stations_list, ip_list):
@@ -536,6 +544,7 @@ if __name__ == "__main__":
         path_to_config = os.path.join(os.path.expanduser("~/source/Stations"),entry.lower())
         setQuotas(path_to_config, quotas)
 
+    removeExistingAutoStart("~/.config/autostart")
 
     if cml_args.launch:
         for entry in stations_list:
