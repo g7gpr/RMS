@@ -545,9 +545,10 @@ if __name__ == "__main__":
         setQuotas(path_to_config, quotas)
 
     removeExistingAutoStart("~/.config/autostart")
-
+    cameras = os.listdir(os.path.expanduser("~/source/Stations/"))
+    cameras.sort()
     if cml_args.launch:
-        for entry in os.listdir(os.path.expanduser("~/source/Stations/")):
+        for entry in cameras:
             entry = sanitise(entry)
             path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
             launch_command = "lxterminal --title {} --command ".format(entry)
