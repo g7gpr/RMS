@@ -424,7 +424,7 @@ if __name__ == "__main__":
     arg_parser.add_argument('-s', '--stations', nargs='*', metavar='STATIONS_TO_ADD', type=str, help="STATIONS_TO_ADD")
     cml_args = arg_parser.parse_args()
 
-    ignore_hardware = False
+    ignore_hardware = True
 
     station_list = []
     if cml_args.stations is not None:
