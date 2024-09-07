@@ -518,7 +518,7 @@ if __name__ == "__main__":
     quotas = computeQuotas()
 
     # Configure autostart in wayfire.ini
-    configureAutostart("~/.config/wayfire.ini")
+    configureAutoStart("~/.config/wayfire.ini")
 
     # And apply disc use quotas
     for entry in stations_list:
