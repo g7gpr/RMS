@@ -325,7 +325,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
 
 
 
-    # Check the config path exists and the use to create stations
+    # Check the config path exists and then use to create stations
     if os.path.exists(config_path):
         config = cr.parse(config_path)
 
@@ -529,6 +529,7 @@ if __name__ == "__main__":
     else:
         stations_list, ip_list = getStationsToAdd(stations_list, ip_list)
 
+    print("Stations list is {}".format(stations_list))
     # Work through the list of stations
     for entry, ip in zip(stations_list, ip_list):
         s=sanitise(entry.lower())
