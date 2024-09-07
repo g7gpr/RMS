@@ -243,8 +243,6 @@ def customiseConfig(path_to_config, stationid, data_dir, extra_space, ip=None, r
 		nothing
 	"""
 
-	if os.path.isfile(path_to_config):
-		path_to_config = os.path.dirname(path_to_config)
 
 	fh = open(os.path.join(path_to_config,".config"),"r")
 	config_lines = []
