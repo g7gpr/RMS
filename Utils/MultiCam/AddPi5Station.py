@@ -126,8 +126,8 @@ def firstStationConfigured(config_path = "~/source/RMS/.config"):
         return False
     if os.path.exists(stations_path):
         print("Found station path")
-        if len(os.listdir(stations_path)) == 0
-            print("No station yet configued")
+        if len(os.listdir(stations_path)) == 0:
+            print("No station yet configured")
             return False
         else:
             return True
