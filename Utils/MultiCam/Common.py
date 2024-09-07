@@ -365,15 +365,15 @@ def computeQuotas(stations_path="~/source/Stations", debug=False, allowance_for_
 		print("There are {} stations configured".format(number_of_stations))
 
 	# Compute and round the total allowance for rms_data per station
-	rms_data_quota = round((total_space_available_for_data_gb / number_of_stations) - allowance_for_one_night, 1)
+	rms_data_quota = round((total_space_available_for_data_gb / number_of_stations) - allowance_for_one_night, 0)
 	if debug:
 		print("Allowing {} per station".format(rms_data_quota))
 
 	# Allocate 0.1 of this space for archived directories
-	arch_dir_quota = round(rms_data_quota * 0.1 ,2)
+	arch_dir_quota = round(rms_data_quota * 0.1 ,0)
 
 	# Allocate 0.05 of this space for bz2 files
-	bz2_files_quota = round(rms_data_quota * 0.05,2)
+	bz2_files_quota = round(rms_data_quota * 0.05,0)
 	if debug:
 		print("Allowing {} for archived directories, and {} for bz2 files".format(arch_dir_quota, bz2_files_quota))
 
