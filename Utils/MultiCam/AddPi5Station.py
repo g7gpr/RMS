@@ -443,6 +443,7 @@ if __name__ == "__main__":
         stations_list = cml_args.stations
     else:
         stations_list = os.listdir(os.path.expanduser("~/source/Stations/"))
+        stations_list.sort()
 
     if cml_args.addresses is not None:
         ip_list = cml_args.addresses
