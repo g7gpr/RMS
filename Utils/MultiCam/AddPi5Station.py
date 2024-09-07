@@ -508,7 +508,7 @@ if __name__ == "__main__":
         exit(1)
 
     # Is a station already configured
-    if not firstStationConfigured():
+    if not firstStationConfigured() and not len(stations_list):
         # Get operator input to configure first station
         print("Getting first station configuration")
         configureFirstStation()
