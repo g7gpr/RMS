@@ -434,7 +434,7 @@ if __name__ == "__main__":
         stations_list = cml_args.stations
 
     if cml_args.addresses is not None:
-        ip_list = cml_args.ip_addresses
+        ip_list = cml_args.addresses
     else:
         ip_list = []
 
