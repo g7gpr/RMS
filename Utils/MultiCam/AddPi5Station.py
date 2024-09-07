@@ -383,7 +383,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
                     if debug:
                         print("Cannot find expected directories for {} in {}".format(new_station_id, config.data_dir))
 
-            if os.path.exists(new_station_config_path):
+            if os.path.exists(os.path.join(new_station_config_path,".config")):
                 if debug:
                     print("Config for {} has already been migrated".format(new_station_id))
             else:
