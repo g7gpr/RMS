@@ -516,8 +516,10 @@ if __name__ == "__main__":
     copyPiStation(first_station=True)
 
     # Get the list of station
-
-    stations_list, ip_list = getStationsToAdd(stations_list, ip_list)
+    if cml_args.launch and os.path.exists(os.path.expanduser("~/source/Stations")):
+        pass
+    else:
+        stations_list, ip_list = getStationsToAdd(stations_list, ip_list)
 
     # Work through the list of stations
     for entry, ip in zip(stations_list, ip_list):
