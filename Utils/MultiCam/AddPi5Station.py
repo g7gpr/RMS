@@ -475,5 +475,5 @@ if __name__ == "__main__":
 
         launch_command = "'sleep 10; source ~/vRMS/bin/activate; sleep 10; python -m RMS.StartCapture -c {}'".format(path_to_config)
         print(launch_command)
-        proc = subprocess.Popen(["/usr/bin/lxterminal -e {}".format(launch_command)])
+        proc = subprocess.Popen(["/usr/bin/lxterminal", "-e", "{}".format(launch_command)])
         time.sleep(60)
