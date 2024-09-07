@@ -307,7 +307,7 @@ def makeKeys(key_path = "~/.ssh", copy_pub_to = None):
 
 		return message
 	else:
-		return None
+		return ""
 
 def getPublicKeyPath(key_dir="~/.ssh"):
 	"""
