@@ -316,7 +316,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
     # Get the path to the config file
     config_path = os.path.expanduser(config_path)
 
-    # Check the config path exists and the use to creat stations
+    # Check the config path exists and the use to create stations
     if os.path.exists(config_path):
         config = cr.parse(config_path)
 
@@ -353,7 +353,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
             if os.path.exists(new_station_data_dir):
                 print("Data directory for {} has already been migrated".format(new_station_id))
             else:
-                # If it has not then work out where the existing archived and captured dir should be
+                # If it has not been migrated then work out where the existing archived and captured dir should be
                 expected_path_of_captured_dir = os.path.join(config.data_dir, config.captured_dir)
                 expected_path_of_archived_dir = os.path.join(config.data_dir, config.archived_dir)
 
@@ -426,6 +426,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
         makeKeys()
 
 def configureAutoStart(config_path):
+
 
     config_path = os.path.expanduser(config_path)
     configuration_line = "rms = ~/source/RMS/Scripts/MultiCamLinux/Pi/RMS_StartCapture_MCP.sh"
