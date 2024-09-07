@@ -473,7 +473,7 @@ if __name__ == "__main__":
         print("Starting {}".format(entry))
         path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
 
-        launch_command = "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}'".format(path_to_config)
+        launch_command = "'sleep 10; source ~/vRMS/bin/activate; sleep 10; python -m RMS.StartCapture -c {}'".format(path_to_config)
         print(launch_command)
         proc = subprocess.run(["/usr/bin/lxterminal","-e", "{}".format(launch_command)])
         time.sleep(60)
