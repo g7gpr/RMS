@@ -469,6 +469,6 @@ if __name__ == "__main__":
 
     for entry in station_list:
         print("Starting {}".format(entry))
-        path_to_config = os.path.join("~/source/Stations/",entry.lower())
-        launch_command = "python -m RMS.StartCapture -c {}".format(path_to_config)
-        print(launch_command)
+        path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower()))
+        launch_command = "source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}".format(path_to_config)
+        proc = subprocess.run(["lxterminal -e {}".format(launch_command)])
