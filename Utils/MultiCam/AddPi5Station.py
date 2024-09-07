@@ -520,13 +520,12 @@ if __name__ == "__main__":
         # Get operator input to configure first station
         print("Getting first station configuration")
         configureFirstStation()
-    # Copy the first station to new location
-    copyPiStation(first_station=True)
+        # Copy the first station to new location
+        copyPiStation(first_station=True)
 
-    # Get the list of station
-    if cml_args.launch and os.path.exists(os.path.expanduser("~/source/Stations")):
-        pass
-    else:
+    # If no stations were configured at first run or not trying to launch ask for more stations
+
+    if stations_list == [] or not cml_args.launch:
         stations_list, ip_list = getStationsToAdd(stations_list, ip_list)
 
     print("Stations list is {}".format(stations_list))
