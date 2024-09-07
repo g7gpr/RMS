@@ -245,7 +245,7 @@ def customiseConfig(path_to_config, stationid, data_dir, extra_space, ip=None, r
 	"""
 
 
-	fh = open(os.path.join(path_to_config,".config"),"r")
+	fh = open(path_to_config,"r")
 	config_lines = []
 	for line in fh:
 		config_lines.append(line)
