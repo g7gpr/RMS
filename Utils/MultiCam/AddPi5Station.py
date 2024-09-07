@@ -157,7 +157,7 @@ def computeNewStationPaths(config, new_station_id = None, stations_folder = "Sta
 
     if os.path.exists(existing_station_config_path):
         stations_config_directory = os.path.dirname(os.path.expanduser("~/source/RMS"))
-        new_station_config_location = os.path.join(stations_config_directory, stations_folder, new_station_id, ".config")
+        new_station_config_location = os.path.join(stations_config_directory, stations_folder, new_station_id)
         new_station_data_dir = os.path.join(config.data_dir, new_station_id)
 
     return new_station_config_location, new_station_data_dir
