@@ -373,7 +373,7 @@ def computeQuotas(stations_path="~/source/Stations", debug=False, allowance_for_
 	arch_dir_quota = int(rms_data_quota * 0.1)
 
 	# Allocate 0.05 of this space for bz2 files
-	bz2_files_quota = int(rms_data_quota * 0.05,0)
+	bz2_files_quota = int(rms_data_quota * 0.05)
 	if debug:
 		print("Allowing {} for archived directories, and {} for bz2 files".format(arch_dir_quota, bz2_files_quota))
 
