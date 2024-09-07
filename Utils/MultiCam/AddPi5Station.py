@@ -470,10 +470,11 @@ if __name__ == "__main__":
         setQuotas(path_to_config, quotas)
 
     for entry in station_list:
+        entry = sanitise(entry)
         print("Starting {}".format(entry))
         path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
 
-        launch_command = "'sleep 10; source ~/vRMS/bin/activate; sleep 10; python -m RMS.StartCapture -c {}'".format(path_to_config)
+        launch_command = "'source ~/vRMS/bin/activate; sleep 10; python -m RMS.StartCapture -c {}'".format(path_to_config)
         print(launch_command)
-        subprocess.run(["/usr/bin/lxterminal", "-e", "{}".format(launch_command)])
-        time.sleep(60)
+        os.system("lxterminal -e {}".format(launch_command))
+        time.sleep(10)
