@@ -547,7 +547,7 @@ if __name__ == "__main__":
     removeExistingAutoStart("~/.config/autostart")
 
     if cml_args.launch:
-        for entry in os.listdir(os.path.expanduser("~/RMS/Stations/")):
+        for entry in os.listdir(os.path.expanduser("~/source/Stations/")):
             entry = sanitise(entry)
             path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
             launch_command = "lxterminal --title {} --command ".format(entry)
