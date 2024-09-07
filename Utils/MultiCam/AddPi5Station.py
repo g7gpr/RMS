@@ -423,7 +423,8 @@ if __name__ == "__main__":
     debug = False
     arg_parser = argparse.ArgumentParser(description=""" Deleting old observations.""")
     arg_parser.add_argument('-s', '--stations', nargs='*', metavar='STATIONS_TO_ADD', type=str, help="Station to run")
-    arg_parser.add_argument('-a', '--addresses', nargs='*', metavar='ip_addresses', type=str, help="Camera ip addresses")
+    arg_parser.add_argument('-a', '--addresses', nargs='*', metavar='IP_ADDRESSES', type=str, help="Camera ip addresses")
+    arg_parser.add_argument('-l', '--launch', metavar='LAUNCH', action='store_true', help="Launch stations")
     cml_args = arg_parser.parse_args()
 
 
@@ -477,13 +478,14 @@ if __name__ == "__main__":
         path_to_config = os.path.join(os.path.expanduser("~/source/Stations"),entry.lower())
         setQuotas(path_to_config, quotas)
 
-    for entry in station_list:
-        entry = sanitise(entry)
-        print("Starting {}".format(entry))
-        path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
+    if cml_args.launch:
+        for entry in station_list:
+            entry = sanitise(entry)
+            print("Starting {}".format(entry))
+            path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
 
-        launch_command = "lxterminal --title {} --command ".format(entry)
-        launch_command += "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}; sleep 10'".format(path_to_config)
-        os.system(launch_command)
-        print(launch_command)
-        time.sleep(10)
+            launch_command = "lxterminal --title {} --command ".format(entry)
+            launch_command += "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}; sleep 10'".format(path_to_config)
+            os.system(launch_command)
+            print(launch_command)
+            time.sleep(60)
