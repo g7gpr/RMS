@@ -179,7 +179,7 @@ def getStationsToAdd(stations_list=[], ip_list=[], debug=False):
 			break
 		else:
 			stations_list.append(response)
-		response = input("Enter sensor ip for {}: ")
+		response = input("Enter sensor ip for {}: ".format(response))
 		if response == "":
 			break
 		else:
