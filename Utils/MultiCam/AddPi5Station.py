@@ -423,7 +423,7 @@ if __name__ == "__main__":
     debug = False
     arg_parser = argparse.ArgumentParser(description=""" Deleting old observations.""")
     arg_parser.add_argument('-s', '--stations', nargs='*', metavar='STATIONS_TO_ADD', type=str, help="Station to run")
-    arg_parser.add_argument('-a', '--ip_addresses', nargs='*', metavar='ip_addresses', type=str, help="Camera ip addresses")
+    arg_parser.add_argument('-a', '--addresses', nargs='*', metavar='ip_addresses', type=str, help="Camera ip addresses")
     cml_args = arg_parser.parse_args()
 
 
