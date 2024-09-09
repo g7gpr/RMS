@@ -1,10 +1,5 @@
 #!/bin/bash
 
-echo " Starting all configured stations post-update..."
-for Dir in ~/source/Stations/*
-  do
-	Station=$(basename $Dir)
-	echo "Starting camera ${Station}"
-	lxterminal --title=${Station} -e "~/source/RMS/Scripts/MultiCamLinux/StartCapture.sh ${Station}"  &
-	sleep 5
-  done
+source ~/vRMS/bin/activate
+cd ~/source/RMS
+python -m Utils.MultiCam.AddPiStation --launch
