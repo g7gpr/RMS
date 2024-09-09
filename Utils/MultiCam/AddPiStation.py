@@ -554,7 +554,7 @@ def rewireAutoStart():
         Nothing
     """
 
-    script_to_be_run = os.path.expanduser("~/source/RMS/Scripts/RMS_StartCapture_MCP.sh")
+    script_to_be_run = os.path.expanduser("~/source/RMS/Scripts/MultiCamLinux/Pi/RMS_StartCapture_MCP.sh")
     symlink_location = os.path.expanduser("~/Desktop/RMS_StartCapture.sh")
 
     old_symlink_location = "{}.old".format(symlink_location)
