@@ -2,6 +2,8 @@ import subprocess
 import os
 from shutil import move, copy
 from glob import glob
+
+from RMS.Astrometry.Conversions import latLonAlt2ECEF
 from RMS.DeleteOldObservations import availableSpace, usedSpaceNoRecursion
 from RMS.Misc import mkdirP
 
@@ -442,3 +444,23 @@ def validateStationData(station_id, lat, lon, elevation, ip_address):
 	return station_id[0:2].isalpha() and station_id[2:6].isnumeric() \
 		and -90 < lat < 90 and -180 < lon < 360 \
 		and -100 < elevation < 10000
+
+def detectMostRecentLogAccess(config, time_window = 30):
+
+	log_dir = os.path.join(config.data_dir, config.log_dir)
+	latest_time_stamp = 0
+	if os.path.exists(os.path.join(config.data_dir, config.log_dir)):
+
+		for file_name in os.listdir(log_dir):
+			time_stamp = os.path.getmtime(os.path.join(log_dir, file_name))
+			if time_stamp > latest_time_stamp:
+				latest_time_stamp = time_stamp
+
+	return latest_time_stamp
+
+
+
+
+
+
+

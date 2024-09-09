@@ -47,7 +47,7 @@ import RMS.ConfigReader as cr
 from RMS.Misc import sanitise, mkdirP
 from Utils.MultiCam.Common import createAutoStartEntry, createShowLiveStreamEntry, setTimeZone, setQuotas
 from Utils.MultiCam.Common import checkUserDesktopDirectoryEnvironment, uncomment, computeQuotas
-from Utils.MultiCam.Common import moveIfExists, copyIfExists, changeOptionValue
+from Utils.MultiCam.Common import moveIfExists, copyIfExists, changeOptionValue, detectMostRecentLogAccess
 from Utils.MultiCam.Common import getStationsToAdd, customiseConfig, makeKeys
 from shutil import move
 import argparse
@@ -654,5 +654,8 @@ if __name__ == "__main__":
             launch_command = "lxterminal --title {} --command ".format(entry)
             launch_command += "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}; sleep 10'".format(path_to_config)
             print("Launching station {}".format(sanitise(entry).lower()))
+            config = cr.parse(path_to_config)
+            latest_log_entry = detectMostRecentLogAccess(config)
             os.system(launch_command)
-            time.sleep(60)
+            while latest_log_entry == detectMostRecentLogAccess(config):
+                time.sleep(1)
