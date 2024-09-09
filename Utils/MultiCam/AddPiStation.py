@@ -437,36 +437,58 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
 
         makeKeys()
 
-def configureAutoStart(config_path):
+def configureAutoStart(config_path, mode="autostart"):
 
 
+    mode = mode.lower()
     config_path = os.path.expanduser(config_path)
-    configuration_line = "rms = ~/source/RMS/Scripts/MultiCamLinux/Pi/RMS_StartCapture_MCP.sh"
-    with open(config_path, 'r') as f:
 
-        lines_list = f.readlines()
+    ### Delete this code eventually - this not the preferred way
+    if mode=="wayfire":
 
-    auto_start_section_exists = False
-    already_configured = False
-    in_autostart_section = True
-    for line in lines_list:
-        if line == "[autostart]":
-            autostart_section_exists = True
-            in_autostart_section = True
-        if in_autostart_section:
-            if line == configuration_line:
-                already_configured = True
+        configuration_line = "rms = ~/source/RMS/Scripts/MultiCamLinux/Pi/RMS_StartCapture_MCP.sh"
+        with open(config_path, 'r') as f:
 
-    if already_configured:
-        return
-    else:
-        lines_list.append("\n[autostart]\n")
-        lines_list.append("\n{}".format(configuration_line))
+            lines_list = f.readlines()
 
-    with open(config_path, 'w') as f:
-
+        auto_start_section_exists = False
+        already_configured = False
+        in_autostart_section = True
         for line in lines_list:
-            f.write(line)
+            if line == "[autostart]":
+                autostart_section_exists = True
+                in_autostart_section = True
+            if in_autostart_section:
+                if line == configuration_line:
+                    already_configured = True
+
+        if already_configured:
+            return
+        else:
+            if not auto_start_section_exists:
+                lines_list.append("\n[autostart]\n")
+            lines_list.append("\n{}".format(configuration_line))
+
+        with open(config_path, 'w') as f:
+
+            for line in lines_list:
+                f.write(line)
+
+    if mode=="autostart":
+
+        configuration_line = ""
+        configuration_line += "[Desktop Entry]\n"
+        configuration_line += "Type=Application\n"
+        configuration_line += "Name=RMS_FirstRun\n"
+        configuration_line += "Comment=Start RMS\n"
+        configuration_line += "NoDisplay=true\n"
+        configuration_line += "Exec=/usr/bin/lxterminal -e '~/source/RMS/Scripts/MultiCamLinux/Pi/RMS_StartCapture_MCP.sh'"
+
+        with open(config_path, 'w') as f:
+            f.writelines(configuration_line)
+
+
+
 
 def removeExistingAutoStart(autostart_path):
 
@@ -475,6 +497,22 @@ def removeExistingAutoStart(autostart_path):
     dest = os.path.join(autostart_path, "hide")
     mkdirP(dest)
     moveIfExists(os.path.join(autostart_path, "RMS_FirstRun.desktop"), dest)
+
+def rewireAutoStart():
+    """
+    This function converts the autostart system on the Pi to be suitable for MultiCamera operation
+
+    The existing system uses ~/.config/autostart - and the design philosophy for MultiCamera is to change this
+    as little as possible
+
+    ~/.config/autostart/RMS_FirstRun.desktop
+
+    Returns:
+
+    """
+
+
+
 
 
 if __name__ == "__main__":
@@ -542,15 +580,14 @@ if __name__ == "__main__":
     # Compute disc use quotas
     quotas = computeQuotas()
 
-    # Configure autostart in wayfire.ini
-    configureAutoStart("~/.config/wayfire.ini")
-
     # And apply disc use quotas
     for entry in stations_list:
         path_to_config = os.path.join(os.path.expanduser("~/source/Stations"),entry.lower())
         setQuotas(path_to_config, quotas)
 
-    removeExistingAutoStart("~/.config/autostart")
+    rewireAutoStart()
+
+
     cameras = os.listdir(os.path.expanduser("~/source/Stations/"))
     cameras.sort()
     if cml_args.launch:
@@ -559,5 +596,6 @@ if __name__ == "__main__":
             path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
             launch_command = "lxterminal --title {} --command ".format(entry)
             launch_command += "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}; sleep 10'".format(path_to_config)
+            print("Launching station {}".format(sanitise(entry).lower()))
             os.system(launch_command)
             time.sleep(60)
