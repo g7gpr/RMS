@@ -19,6 +19,8 @@ def moveIfExists(src, dest, debug=False):
 
 	"""
 
+
+
 	src, dest = os.path.expanduser(src),  os.path.expanduser(dest)
 	if os.path.exists(src):
 		move(src, dest)
@@ -178,12 +180,18 @@ def getStationsToAdd(stations_list=[], ip_list=[], debug=False):
 		if response == "":
 			break
 		else:
-			stations_list.append(response)
+			if validateStationData(response,0,0,0, "192.168.1.1"):
+				stations_list.append(response)
+			else:
+				print("Station ID not in expected format of two letters followed by 4 digits")
+				continue
 		response = input("Enter sensor ip for {}: ".format(response))
 		if response == "":
 			break
 		else:
 			ip_list.append(response)
+
+
 
 	return stations_list, ip_list
 
@@ -428,3 +436,9 @@ def setQuotas(path_to_config, quotas_tuple, debug=False):
 	fh = open(os.path.join(path_to_config, ".config"), "w")
 	fh.writelines(config_lines)
 	fh.close()
+
+
+def validateStationData(station_id, lat, lon, elevation, ip_address):
+	return station_id[0:2].isalpha() and station_id[2:6].isnumeric() \
+		and -90 < lat < 90 and -180 < lon < 360 \
+		and -100 < elevation < 10000

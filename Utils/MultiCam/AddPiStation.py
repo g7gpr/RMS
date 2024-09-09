@@ -49,8 +49,9 @@ from Utils.MultiCam.Common import createAutoStartEntry, createShowLiveStreamEntr
 from Utils.MultiCam.Common import checkUserDesktopDirectoryEnvironment, uncomment, computeQuotas
 from Utils.MultiCam.Common import moveIfExists, copyIfExists, changeOptionValue
 from Utils.MultiCam.Common import getStationsToAdd, customiseConfig, makeKeys
+from shutil import move
 import argparse
-import RMS.StartCapture
+
 
 
 MAX_STATION = 4	# maximum number of stations allowed on a Pi5
@@ -121,6 +122,9 @@ def firstStationConfigured(config_path = "~/source/RMS/.config"):
     stations_path = os.path.expanduser("~/source/Stations")
     if os.path.exists(config_path):
         config = cr.parse(config_path)
+        if "XX" not in config.stationID:
+            print("Found station {} already configured".format(config.stationID))
+            return True
     else:
         print("Returning because could not find config")
         return False
@@ -132,7 +136,7 @@ def firstStationConfigured(config_path = "~/source/RMS/.config"):
         else:
             return True
     if config.stationID == "XX0001":
-        print("Returning because could not find stations_path")
+        print("Returning because station code is {}".format(config.stationID))
         return False
     else:
         return True
@@ -162,6 +166,8 @@ def computeNewStationPaths(config, new_station_id = None, stations_folder = "Sta
 
     return new_station_config_location, new_station_data_dir
 
+
+
 def configureFirstStation(path_to_config = "~/source/RMS/.config"):
     """
     Gets operator input to configure the first station.
@@ -177,11 +183,19 @@ def configureFirstStation(path_to_config = "~/source/RMS/.config"):
     print("First station not yet configured")
     print("Please provide a stationID, location of the station, and the camera IP address")
     print("These values can be edited later")
-    station_id = input("first station id:").upper()
-    latitude = input("latitude (wgs84):")
-    longitude = input("longitude (wgs84):")
-    elevation = input("Elevation in metres above mean sea level:")
-    ip_address = input("First station sensor ip address:")
+    valid_station = False
+    while valid_station:
+        station_id = input("first station id:").upper()
+        latitude = input("latitude (wgs84):")
+        longitude = input("longitude (wgs84):")
+        elevation = input("Elevation in metres above mean sea level:")
+        ip_address = input("First station sensor ip address:")
+        valid_station = validateStationData(station_id,latitude,longitude,elevation, ip_address)
+        if not valid_station:
+            print("Station ID should be similar to LL0001")
+            print("Station latitude should be between -90 and +90")
+            print("Station longitude should bve between -180 and +360")
+            print("Station elevation should be between -100 and 10000 metres")
 
     if os.path.exists(path_to_config):
         pass
@@ -297,7 +311,7 @@ def cleanDesktop():
 
 
 
-def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, new_station_id = None, ip=None, debug=False):
+def copyPiStation(config_path ="~/source/RMS/.config", first_station=False, new_station_id=None, ip=None, debug=False):
 
     """
     Copies a station from ~/source/RMS to ~/source/Stations, and if it is the first station, migrates ~/RMS_data/etc
@@ -326,16 +340,17 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
     # Check the config path exists and then use to create stations
     if os.path.exists(config_path):
         config = cr.parse(config_path)
+        data_dir = config.data_dir if config.data_dir[-1].isalnum() else config.data_dir[:-1]
 
         if "XX" in config.stationID:
             mkdirP(os.path.expanduser("~/source/Stations"))
+            print("Not migrating station {}".format(config.stationID))
             return
 
-        # If we are just migrating the first station, then use the stationID from the config file
+        # If no new_station_id has been passed in, use the stationID from the config file
         new_station_id = config.stationID if new_station_id is None else new_station_id
 
         # Work out the existing paths
-
         platepar_path = os.path.expanduser(os.path.join(os.path.dirname(config_path), config.platepar_name))
         mask_path = os.path.expanduser(os.path.join(os.path.dirname(config_path),config.mask_file))
 
@@ -355,7 +370,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
         if first_station:
             print("It appears you have already configured your first station {}".format(new_station_id))
             print("so its config files will now be relocated to {:s}".format(new_station_config_path))
-            print("Captured data from your original station is stored in {}".format(config.data_dir))
+            print("Captured data from your original station is stored in {}".format(data_dir))
             print("This data will be moved to {:s}".format(new_station_data_dir))
 
             # Get rid of old icons
@@ -366,28 +381,30 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station = False, ne
                 print("Data directory for {} has already been migrated".format(new_station_id))
             else:
                 # If it has not been migrated then work out where the existing archived and captured dir should be
-                expected_path_of_captured_dir = os.path.join(config.data_dir, config.captured_dir)
-                expected_path_of_archived_dir = os.path.join(config.data_dir, config.archived_dir)
+                expected_path_of_captured_dir = os.path.join(data_dir, config.captured_dir)
+                expected_path_of_archived_dir = os.path.join(data_dir, config.archived_dir)
 
                 # Check that everything is where it should be before we start work
                 if os.path.exists(expected_path_of_archived_dir) and os.path.exists(expected_path_of_captured_dir):
 
-                    # For the first station only, we have to rename the whole RMS_data directory
+                    # For the first station only, we have to change the RMS_data directory structure
                     # Strategy is to rename RMS_data to the name of the new station
                     # Then create a new RMS_data directory
                     # Then move the renamed directory into RMS_data
 
-                    temp_rms_data_path = os.path.join(os.path.dirname(config.data_dir), config.stationID.lower())
+                    temp_rms_data_path = os.path.join(os.path.dirname(data_dir), config.stationID.lower())
                     if debug:
                         print("Temporary data path for first station {}".format(temp_rms_data_path))
-                    moveIfExists(config.data_dir, temp_rms_data_path, debug=False)
-                    if debug:
-                        print("Final destination for first station {}".format(new_station_data_dir))
-                    moveIfExists(temp_rms_data_path, new_station_data_dir, debug=False)
+                    #check to see if the data has already been migrated
+                    if not os.path.basename(data_dir).lower() == config.stationID.lower():
+                        moveIfExists(config.data_dir, temp_rms_data_path, debug=False)
+                        if debug:
+                            print("Final destination for first station {}".format(new_station_data_dir))
+                        moveIfExists(temp_rms_data_path, new_station_data_dir, debug=False)
                 else:
                     #
                     if debug:
-                        print("Cannot find expected directories for {} in {}".format(new_station_id, config.data_dir))
+                        print("Cannot find expected directories for {} in {}".format(new_station_id, data_dir))
 
             if os.path.exists(os.path.join(new_station_config_path,".config")):
                 if debug:
@@ -540,6 +557,9 @@ def rewireAutoStart():
     script_to_be_run = os.path.expanduser("~/source/RMS/Scripts/RMS_StartCapture_MCP.sh")
     symlink_location = os.path.expanduser("~/Desktop/RMS_StartCapture.sh")
 
+    old_symlink_location = "{}.old".format(symlink_location)
+    if os.path.islink(symlink_location):
+        move(symlink_location, old_symlink_location)
     os.symlink(script_to_be_run, symlink_location)
 
     return
@@ -581,13 +601,19 @@ if __name__ == "__main__":
         print("Pi 5 or similar required for multicamera operation, quitting")
         exit(1)
 
-    # Is a station already configured
+    # Is no station is already configured interactively configure a station
     if not firstStationConfigured() and not len(stations_list):
         # Get operator input to configure first station
-
         configureFirstStation()
         # Copy the first station to new location
         copyPiStation(first_station=True)
+
+    else:
+        # Check to see that at least one station has been migrated to ~/source/Stations
+        if not len(stations_list):
+            copyPiStation(first_station=True)
+
+
 
     # If no stations were configured at first run or not trying to launch ask for more stations
 
