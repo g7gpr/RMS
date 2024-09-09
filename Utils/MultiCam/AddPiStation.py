@@ -657,5 +657,7 @@ if __name__ == "__main__":
             config = cr.parse(path_to_config)
             latest_log_entry = detectMostRecentLogAccess(config)
             os.system(launch_command)
+            print("Waiting for {} to complete launch".format(sanitise(entry).lower()))
             while latest_log_entry == detectMostRecentLogAccess(config):
                 time.sleep(1)
+            print("{} is running".format(sanitise(entry).lower()))
