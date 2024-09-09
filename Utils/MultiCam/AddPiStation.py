@@ -505,13 +505,44 @@ def rewireAutoStart():
     The existing system uses ~/.config/autostart - and the design philosophy for MultiCamera is to change this
     as little as possible
 
-    ~/.config/autostart/RMS_FirstRun.desktop
+
+    RMS_FirstRun.desktop
+
+    [Desktop Entry]
+    Type=Application
+    Name=RMS_FirstRun
+    Comment=Start RMS
+    NoDisplay=true
+    Exec=/usr/bin/lxterminal -e "/home/rms/Desktop/RMS_FirstRun.sh"
+
+    ~/.config/autostart/RMS_FirstRun.desktop calls ~/Desktop/RMS_FirstRun.sh
+
+    ~/Desktop/RMS_FirstRun.sh is a soft link to ~/source/RMS/Scripts/RMS_FirstRun.sh
+
+    When RMS_FirstRun.sh completes it calls ~/Desktop/RMS_StartCapture.sh
+
+    ~/Desktop/RMS_StartCapture.sh is a softlink to ~/source/RMS/Scripts/RMS_StartCapture.sh
+
+    The only change made to the autostart system is
+
+    This softlink gets deleted, and rewritten as a softlink to ~/source/RMS/Scripts/RMS_StartCapture_MCP.sh
+
+    ~/source/RMS/Scripts/RMS_StartCapture_MCP.sh calls python module Utils.MultiCam.AddPiStation --launch
+
+    which starts each camera
+
+
 
     Returns:
-
+        Nothing
     """
 
+    script_to_be_run = os.path.expanduser("~/source/RMS/Scripts/RMS_StartCapture_MCP.sh")
+    symlink_location = os.path.expanduser("~/Desktop/RMS_StartCapture.sh")
 
+    os.symlink(script_to_be_run, symlink_location)
+
+    return
 
 
 
