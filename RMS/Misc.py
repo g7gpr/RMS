@@ -18,9 +18,11 @@ import datetime
 if sys.version_info[0] < 3:
     import Tkinter as tkinter
     import tkFileDialog as filedialog
+    import pkgutil
 else:
     import tkinter
     from tkinter import filedialog
+    import importlib.util
 
 
 import numpy as np
@@ -45,15 +47,22 @@ def mkdirP(path):
     # Try to make a directory
     try:
         os.makedirs(path)
+        return True
 
     # If it already exist, do nothing
     except OSError as exc:
         if exc.errno == errno.EEXIST:
-            pass
+            return True
+        else:
+            log.error("Error creating directory: " + str(exc))
+            return False
 
     # Raise all other errors
-    except:
-        raise 
+    except Exception as e:
+        log.error("Error creating directory: " + str(e))
+        return False
+
+    return False
 
 
 def walkDirsToDepth(dir_path, depth=-1):
@@ -806,3 +815,28 @@ def rmsTimeExtractor(rms_time, asTuple = False, asJD = False, delimiter = None):
         return datetime2JD(dt)
     else:
         return dt
+
+def getRmsRootDir():
+    """
+        Return the path to the RMS root directory without importing the whole
+        codebase
+    """
+    if sys.version_info[0] == 3:
+        # Python 3.x: Use importlib to find the RMS module
+        rms_spec = importlib.util.find_spec('RMS')
+        if rms_spec is None or rms_spec.origin is None:
+            raise ImportError("RMS module not found.")
+
+        # Get the absolute path to the RMS root directory
+        return os.path.abspath(os.path.dirname(os.path.dirname(rms_spec.origin)))
+    else:
+        # Python 2.7: Use pkgutil (deprecated) to locate the RMS module
+        loader = pkgutil.get_loader('RMS')
+        if loader is None:
+            raise ImportError("RMS module not found.")
+
+        # Get the filename associated with the loader
+        rms_file = loader.get_filename()
+
+        # Get the absolute path to the RMS root directory
+        return os.path.abspath(os.path.dirname(os.path.dirname(rms_file)))

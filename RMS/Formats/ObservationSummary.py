@@ -27,6 +27,9 @@
 
 import sys
 import os
+import subprocess
+
+
 from RMS.Misc import niceFormat, isRaspberryPi, sanitise, getRMSStyleFileName
 import re
 import sqlite3
@@ -51,7 +54,10 @@ else:
 
 EM_RAISE = True
 
-
+import socket
+import struct
+import sys
+import time
 
 
 def getObsDBConn(config, force_delete=False):
@@ -132,16 +138,6 @@ def captureDirectories(captured_dir, stationID):
 
     return capture_directories
 
-
-def getRmsRepo():
-    rms_path = os.path.expanduser("~/source/RMS")
-    try:
-        return git.Repo(rms_path)
-    except InvalidGitRepositoryError:
-        print("Warning: No valid Git repository found at {}".format(rms_path))
-        return None
-
-
 def startObservationSummaryReport(config, duration, force_delete=False):
     """ Enters the parameters known at the start of observation into the database
 
@@ -151,7 +147,7 @@ def startObservationSummaryReport(config, duration, force_delete=False):
             force_delete: forces deletion of the observation summary database, default False
 
         returns:
-            conn: [connection] connection to database if success else None
+            conn: [connection] connection to database
 
         """
 
@@ -159,6 +155,7 @@ def startObservationSummaryReport(config, duration, force_delete=False):
     conn = getObsDBConn(config, force_delete=force_delete)
     addObsParam(conn, "start_time", datetime.datetime.utcnow() - datetime.timedelta(seconds=1))
     addObsParam(conn, "duration", duration)
+    addObsParam(conn, "stationID", sanitise(config.stationID, space_substitution=""))
 
     if isRaspberryPi():
         with open('/sys/firmware/devicetree/base/model', 'r') as m:
@@ -168,7 +165,7 @@ def startObservationSummaryReport(config, duration, force_delete=False):
 
     addObsParam(conn, "hardware_version", hardware_version)
 
-    repo = getRmsRepo()
+    repo = git.Repo(search_parent_directories=True)
     if repo:
         addObsParam(conn, "commit_date",
                     datetime.datetime.fromtimestamp(repo.head.object.committed_date).strftime('%Y%m%d_%H%M%S'))
@@ -177,9 +174,9 @@ def startObservationSummaryReport(config, duration, force_delete=False):
         print("RMS Git repository not found. Skipping Git-related information.")
 
     storage_total, storage_used, storage_free = shutil.disk_usage("/")
-    addObsParam(conn, "storage_total_gb", round(storage_total / (1024 **3 ),2))
-    addObsParam(conn, "storage_used_gb", round(storage_used / (1024 **3 ),2))
-    addObsParam(conn, "storage_free_gb", round(storage_free / (1024 **3 ),2))
+    addObsParam(conn, "storage_total_gb", round(storage_total / (1024 ** 3), 2))
+    addObsParam(conn, "storage_used_gb", round(storage_used / (1024 ** 3), 2))
+    addObsParam(conn, "storage_free_gb", round(storage_free / (1024 ** 3), 2))
 
     captured_directories = captureDirectories(os.path.join(config.data_dir, config.captured_dir), config.stationID)
     addObsParam(conn, "captured_directories", captured_directories)
@@ -193,6 +190,66 @@ def startObservationSummaryReport(config, duration, force_delete=False):
     addObsParam(conn, "fits_files_from_duration", fits_files_from_duration)
     conn.close()
     return "Opening a new observations summary for duration {} seconds".format(duration)
+
+def timestampFromNTP(addr='0.us.pool.ntp.org'):
+
+    """
+    refer https://stackoverflow.com/questions/36500197/how-to-get-time-from-an-ntp-server
+
+    Args:
+        addr: optional, address of ntp server to use
+
+    Returns:
+        [int]: time in seconds since epoch
+    """
+
+
+    REF_TIME_1970 = 2208988800  # Reference time
+    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    data = b'\x1b' + 47 * b'\0'
+    client.sendto(data, (addr, 123))
+    data, address = client.recvfrom(1024)
+    if data:
+        t = struct.unpack('!12I', data)[10]
+        t -= REF_TIME_1970
+        return t
+    else:
+        return None
+
+
+def timeSyncStatus(config):
+
+    """
+
+    Determine approximate time sync error and report on status. Any error of fewer than ten seconds
+    may be caused by imprecision in the remote time query
+
+    Args:
+        config: configuration object
+
+    Returns:
+        Approximate time error in seconds
+    """
+
+    remote_time_query = timestampFromNTP()
+    if remote_time_query is not None:
+        local_time_query = (datetime.datetime.utcnow() - datetime.datetime(1970, 1, 1)).total_seconds()
+        time_error_seconds = round(abs(local_time_query - remote_time_query),1)
+        print("Approximate time error is {}".format(time_error_seconds))
+    else:
+        time_error_seconds = "Unknown"
+
+    result_list = subprocess.run(['timedatectl','status'], capture_output = True).stdout.splitlines()
+    print(result_list)
+    for raw_result in result_list:
+        result = raw_result.decode('ascii')
+        if "synchronized" in result:
+            conn = getObsDBConn(config)
+            addObsParam(conn, "clock_synchronized", result.split(":")[1].strip())
+            addObsParam(conn, "clock_error_seconds", time_error_seconds)
+            conn.close()
+
+    return time_error_seconds
 
 def finalizeObservationSummary(config, night_data_dir, platepar=None):
 
@@ -211,6 +268,10 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
     capture_duration_from_fits, fits_count, fits_file_shortfall, fits_file_shortfall_as_time, time_first_fits_file, \
         time_last_fits_file, total_expected_fits = nightSummaryData(config, night_data_dir)
 
+    try:
+        timeSyncStatus(config)
+    except Exception as e:
+        print(repr(e))
 
     obs_db_conn = getObsDBConn(config)
     platepar_path = os.path.join(config.config_file_path, config.platepar_name)
@@ -486,9 +547,10 @@ def unserialize(self):
 
 
 if __name__ == "__main__":
+
     config = parse(os.path.expanduser("~/source/RMS/.config"))
 
-
+    timeSyncStatus(config)
     obs_db_conn = getObsDBConn(config)
     startObservationSummaryReport(config, 100, force_delete=False)
     pp = Platepar()

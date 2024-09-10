@@ -18,7 +18,6 @@ import matplotlib.gridspec as gridspec
 import pyqtgraph as pg
 import random
 
-import RMS
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP, \
     rotationWrtHorizon, rotationWrtHorizonToPosAngle, computeFOVSize, photomLine, photometryFit, \
     rotationWrtStandard, rotationWrtStandardToPosAngle, correctVignetting, \
@@ -45,12 +44,11 @@ from RMS.Routines.GreatCircle import fitGreatCircle, greatCircle, greatCirclePha
 from RMS.Routines.MaskImage import getMaskFile
 from RMS.Routines import RollingShutterCorrection
 from RMS.Routines.MaskImage import loadMask, MaskStructure, getMaskFile
-from RMS.Misc import maxDistBetweenPoints
+from RMS.Misc import maxDistBetweenPoints, getRmsRootDir
 
 import pyximport
 pyximport.install(setup_args={'include_dirs': [np.get_include()]})
 from RMS.Astrometry.CyFunctions import subsetCatalog, equatorialCoordPrecession
-
 
 
 class QFOVinputDialog(QtWidgets.QDialog):
@@ -2615,9 +2613,9 @@ class PlateTool(QtWidgets.QMainWindow):
         # Set the dir path in case it changed
         self.dir_path = dir_path
 
-        # Update the RMS root directory
-        self.config.rms_root_dir = os.path.abspath(os.path.join(os.path.dirname(RMS.__file__), os.pardir))
-
+        # Update the path to the RMS root directory
+        self.config.rms_root_dir = getRmsRootDir()
+        
         # Swap the fixed variable name
         if hasattr(self, "star_aperature_radius"):
             self.star_aperture_radius = self.star_aperature_radius
@@ -3290,7 +3288,7 @@ class PlateTool(QtWidgets.QMainWindow):
             # Change distortion type to poly3+radial5
             if (event.key() == QtCore.Qt.Key_3) and (modifiers == QtCore.Qt.ControlModifier):
 
-                self.dist_type_index = 2
+                self.dist_type_index = 6
                 self.changeDistortionType()
                 self.tab.param_manager.updatePlatepar()
                 self.updateLeftLabels()
@@ -3300,7 +3298,7 @@ class PlateTool(QtWidgets.QMainWindow):
             # Change distortion type to radial3
             elif (event.key() == QtCore.Qt.Key_4) and (modifiers == QtCore.Qt.ControlModifier):
 
-                self.dist_type_index = 3
+                self.dist_type_index = 7
                 self.changeDistortionType()
                 self.tab.param_manager.updatePlatepar()
                 self.updateLeftLabels()
@@ -3310,7 +3308,7 @@ class PlateTool(QtWidgets.QMainWindow):
             # Change distortion type to radial5
             elif (event.key() == QtCore.Qt.Key_5) and (modifiers == QtCore.Qt.ControlModifier):
 
-                self.dist_type_index = 4
+                self.dist_type_index = 8
                 self.changeDistortionType()
                 self.tab.param_manager.updatePlatepar()
                 self.updateLeftLabels()
@@ -3320,7 +3318,7 @@ class PlateTool(QtWidgets.QMainWindow):
             # Change distortion type to radial7
             elif (event.key() == QtCore.Qt.Key_6) and (modifiers == QtCore.Qt.ControlModifier):
 
-                self.dist_type_index = 5
+                self.dist_type_index = 9
                 self.changeDistortionType()
                 self.tab.param_manager.updatePlatepar()
                 self.updateLeftLabels()
@@ -3330,7 +3328,7 @@ class PlateTool(QtWidgets.QMainWindow):
             # Change distortion type to radial9
             elif (event.key() == QtCore.Qt.Key_7) and (modifiers == QtCore.Qt.ControlModifier):
 
-                self.dist_type_index = 6
+                self.dist_type_index = 10
                 self.changeDistortionType()
                 self.tab.param_manager.updatePlatepar()
                 self.updateLeftLabels()
