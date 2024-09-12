@@ -30,7 +30,7 @@ import numpy as np
 from matplotlib import scale as mscale
 from matplotlib import transforms as mtransforms
 from matplotlib.ticker import FixedLocator
-from RMS.Astrometry.Conversions import datetime2JD
+
 
 # Map FileNotFoundError to IOError in Python 2 as it does not exist
 if sys.version_info[0] < 3:
@@ -719,102 +719,7 @@ def maxDistBetweenPoints(points_x, points_y):
 
     return max_separation
 
-def rmsTimeExtractor(rms_time, asTuple = False, asJD = False, delimiter = None):
-    """
-    General purpose function to convert *20240819*010235*123 | 123456 into a datetime object or JD
-    Offsets can be given for the positions of date, time, and fractional seconds, however
-    the code will try to parse any string that is given.
 
-
-    Args:
-        rms_time (): Any string containing YYYYMMDD and HHMMSS separated by the delimited
-        asJD (): optional, default false, if true return julian date, if false return datetime object
-
-    Returns:
-        a datetime object or a julian date number
-
-    """
-
-    rms_time = os.path.basename(rms_time)
-    # remove any dots, might be filename extension
-    rms_time = rms_time.split(".")[0] if "." in rms_time else rms_time
-
-    # Initialise delim in case nothing is detected
-    delim = "_"
-    # find the delimiter, which is probably the first non alpha numeric character
-    if delimiter == None:
-        for c in rms_time:
-            if c.isnumeric() or c.isalpha():
-                continue
-            else:
-                delim = c
-                break
-    if delim not in rms_time:
-        return None
-
-    field_list = rms_time.split(delim)
-    field_count = len(field_list)
-    str_us = "0"
-
-    consecutive_time_date_fields = 0
-
-    # Parse rms filename, datestring into a date time object
-    for field, field_no in zip(field_list, range (0, field_count)):
-        field = field.split(".")[0] if "." in field else field
-        if field.isnumeric():
-            consecutive_time_date_fields += 1
-
-        # Handle year month day
-        if consecutive_time_date_fields == 1:
-            if len(field) == 8 or len(field) == 6:
-                # This looks like a date field so process the date field
-                str_date = field_list[field_no]
-                if len(str_date) == 8:
-                    year, month, day = int(str_date[:4]), int(str_date[4:6]), int(str_date[6:8])
-                    dt = datetime.datetime(year=int(year), month=int(month), day=int(day))
-                # Handle 2 digit year format
-                if len(str_date) == 6:
-                    year, month, day = 2000 + int(str_date[:2]), int(str_date[2:4]), int(str_date[4:6])
-                    dt = datetime.datetime(year=int(year), month=month, day=day)
-            else:
-                dt = 0
-
-        # Handle hour minute second
-        if consecutive_time_date_fields == 2:
-            if len(field) == 6:
-                # Found two consecutive numeric fields followed by a non numeric
-                # These are date and time
-                str_time = field_list[field_no]
-                hour, minute, second = int(str_time[:2]), int(str_time[2:4]), int(str_time[4:6])
-                dt = datetime.datetime(year, month , day, hour, minute, second)
-            elif len(field) == 4:
-                str_time = field_list[field_no]
-                hour, minute, second = int(str_time[:2]), int(str_time[2:4]), 0
-                dt = datetime.datetime(year, month, day, hour, minute, second)
-            else:
-                # if the second field is not of length 6 then reset the counter
-                consecutive_time_date_fields = 0
-
-        # Handle fractional seconds
-        if consecutive_time_date_fields == 3:
-            if field.isnumeric():
-                # Convert any arbitrary length next field to microseconds
-                us = int(field) * (10 ** (6 - len(field)))
-                dt = datetime.datetime(year, month, day, hour, minute, second, microsecond=int(us))
-                # Stop looping in all cases
-                break
-            else:
-                # Stop looping in call cases
-                break
-
-
-    if asTuple:
-        return dt, datetime2JD(dt)
-
-    if asJD:
-        return datetime2JD(dt)
-    else:
-        return dt
 
 def getRmsRootDir():
     """
