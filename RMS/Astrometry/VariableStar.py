@@ -62,6 +62,7 @@ from RMS.Astrometry.Conversions import datetime2JD
 from RMS.Routines.MaskImage import loadMask, MaskStructure
 from RMS.Formats.FFfile import read
 from RMS.Math import angularSeparationDeg
+from copy import deepcopy
 
 from matplotlib import pyplot as plt
 
@@ -1113,7 +1114,7 @@ def filterCalstarByJD(calstar, e_jd, l_jd):
 
     return filtered_fits
 
-def calstarRaDecToMagList(data_dir_path, config, r_target, d_target, e_jd, l_jd, calstar, pp_recal, search_sky_radius_degrees=1.0):
+def calstarRaDecToMagList(data_dir_path, config, r_target, d_target, e_jd, l_jd, calstar, pp_recal, search_sky_radius_degrees=0.3):
     """
       Parses a calstar data structures in archived directories path,
       converts to RaDec, corrects magnitude data and writes newer data to database
@@ -1138,6 +1139,9 @@ def calstarRaDecToMagList(data_dir_path, config, r_target, d_target, e_jd, l_jd,
     star_list_radec = []
 
     candidate_fits = filterCalstarByJD(calstar, e_jd, l_jd)
+    candidate_fits.sort()
+    pp_uncalibrated = Platepar()
+    pp_uncalibrated.read(os.path.join(data_dir_path, "platepar_cmn2010.cal"))
 
     sequence_dict = dict()
     for fits_file, star_list in candidate_fits:
@@ -1146,9 +1150,12 @@ def calstarRaDecToMagList(data_dir_path, config, r_target, d_target, e_jd, l_jd,
         date_time, jd = rmsTimeExtractor(fits_file, asTuple=True)
         if fits_file in pp_recal:
             pp.loadFromDict(pp_recal[fits_file])
-        else:
-            pp.read(os.path.join(data_dir_path,"platepar_cmn2010.cal"))
+        #else:
+        #   pp = deepcopy(pp_uncalibrated)
 
+        contains, _ ,_ = plateparContainsRaDec(r_target, d_target, pp, fits_file, data_dir_path, check_mask= False)
+        if not contains:
+            continue
         # Overwrite vignetting coefficient with platepar value
 
         jd_list, y_list, x_list, bg_list, amp_list, FWHM_list = [], [], [], [], [], []
@@ -1199,7 +1206,7 @@ def calstarRaDecToMagList(data_dir_path, config, r_target, d_target, e_jd, l_jd,
                                             "image": {"x": x, "y": y},
                                             "horizontal": {"az": az, "el": el},
                                             "equatorial": {"ra": r, "dec": d}},
-                                            "radius": radius,
+                                        "radius": radius,
                                         "photometry": {"bg": bg,
                                                        "amp": amp,
                                                        "FWHM": FWHM,
@@ -1207,7 +1214,7 @@ def calstarRaDecToMagList(data_dir_path, config, r_target, d_target, e_jd, l_jd,
                                         "actual_deviation_degrees": actual_deviation_degrees,
                                         "pixels": readCroppedFF(path_to_ff, x, y).tolist()}
                     sequence_dict[j] = observation_dict
-                    pass
+
 
 
     return sequence_dict
@@ -1256,7 +1263,6 @@ def jsonMagsRaDec(config, r, d, e_jd=0, l_jd=np.inf):
         with open(platepars_all_recalibrated_path, 'r') as fh:
             pp_recal = json.load(fh)
         observation_sequence_dict.update(calstarRaDecToMagList(full_path, config, r, d, e_jd, l_jd, calstar, pp_recal))
-
 
     return observation_sequence_dict
 
