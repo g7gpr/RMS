@@ -1048,10 +1048,6 @@ def renderMagnitudePlot(magnitude_list, elevation_list, r, d):
 
     if len(magnitude_list):
         x_vals, y_vals = [], []
-
-
-
-
         plot_filename = "{}_r_{}_d_{}_jd_{}_{}_magnitude.{}".format(config.stationID, r, d, e_jd, l_jd, plot_format)
         for jd, mag in magnitude_list:
             x_vals.append(jd2Date(float(jd), dt_obj=True))
