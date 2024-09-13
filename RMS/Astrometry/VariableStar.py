@@ -1046,8 +1046,8 @@ def renderMagnitudePlot(magnitude_list, elevation_list, r, d):
         x_vals, y_vals = [], []
 
 
-        earliest, latest = min(x_vals), max(x_vals)
-        title = "Plot of magnitudes at RA {} Dec {} from {} to {}".format(r, d, earliest, latest)
+
+        title = "Plot of magnitudes at RA {} Dec {}".format(r, d)
         plot_filename = "Magnitudes_{}_r_{}_d_{}_jd_{}_{}.{}".format(config.stationID, r, d, e_jd, l_jd, plot_format)
         for jd, mag in magnitude_list:
             x_vals.append(jd2Date(float(jd), dt_obj=True))
