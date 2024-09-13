@@ -1484,8 +1484,19 @@ if __name__ == "__main__":
 
     else:
 
+
         r, d = cml_args.ra[0], cml_args.dec[0]
         e_jd, l_jd = cml_args.jd_range[0], cml_args.jd_range[1]
+
+        print("RaDec {},{} jd {} to {}".format(r, d, e_jd, l_jd))
+        observation_sequence_dict = jsonMagsRaDec(config, r, d, e_jd=e_jd, l_jd=l_jd)
+
+        observation_sequence_json = json.dumps(observation_sequence_dict, indent=4, sort_keys=True)
+        with open("observation_sequence.json", 'w') as fh_observation_sequence_json:
+            fh_observation_sequence_json.write(observation_sequence_json)
+
+        with open("observation_sequence.json", 'r') as fh_observation_sequence_json:
+            observation_sequence_json = json.loads(fh_observation_sequence_json.read())
 
         if cml_args.thumbnails:
             saveThumbnailsRaDec(r, d, e_jd, l_jd)
@@ -1497,15 +1508,7 @@ if __name__ == "__main__":
             w = cml_args.window[0]
 
 
-    observation_sequence_dict = jsonMagsRaDec(config, r, d, e_jd=e_jd, l_jd=l_jd)
 
-
-    observation_sequence_json = json.dumps(observation_sequence_dict,  indent=4, sort_keys=True)
-    with open("observation_sequence.json", 'w') as fh_observation_sequence_json:
-        fh_observation_sequence_json.write(observation_sequence_json)
-
-    with open("observation_sequence.json", 'r') as fh_observation_sequence_json:
-        observation_sequence_json = json.loads(fh_observation_sequence_json.read())
 
     jsonToThumbnails(observation_sequence_json,os.path.expanduser("~/contactfromjson.png"))
     jsonToMagnitudePlot(observation_sequence_json, os.path.expanduser("~/magnitudefromjson.png"))
