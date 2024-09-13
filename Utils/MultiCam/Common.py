@@ -148,6 +148,8 @@ def uncomment(file_path, setting, comment_marker = "#", backup_file_ext = "backu
 	copyIfExists(file_path, backup_file)
 	setting_commented = "{}{}".format(comment_marker, setting)
 	file_path = os.path.expanduser(file_path)
+	if not os.path.exists(file_path):
+		return
 	with open(file_path, 'r') as f:
 		file_as_list = f.readlines()
 

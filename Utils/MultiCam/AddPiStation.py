@@ -579,9 +579,9 @@ if __name__ == "__main__":
 
     ignore_hardware = True
 
-    stations_list = []
+    stations_list, stations_to_add_list = [], []
     if cml_args.stations is not None:
-        stations_list = cml_args.stations
+        stations_to_add_list = cml_args.stations
     else:
         stations_path = os.path.expanduser("~/source/Stations/")
         if not os.path.exists(stations_path):
@@ -618,7 +618,7 @@ if __name__ == "__main__":
     # If no stations were configured at first run or not trying to launch ask for more stations
 
     if stations_list == [] or not cml_args.launch:
-        stations_list, ip_list = getStationsToAdd(stations_list, ip_list)
+        stations_list, ip_list = getStationsToAdd(stations_to_add_list, ip_list)
 
     # Work through the list of stations
     for entry, ip in zip(stations_list, ip_list):
@@ -652,7 +652,7 @@ if __name__ == "__main__":
             entry = sanitise(entry)
             path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
             launch_command = "lxterminal --title {} --command ".format(entry)
-            launch_command += "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}; sleep 10'".format(path_to_config)
+            launch_command += "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}; sleep 10' &".format(path_to_config)
             print("Launching station {}".format(sanitise(entry).lower()))
             config = cr.parse(path_to_config)
             latest_log_entry = detectMostRecentLogAccess(config)
