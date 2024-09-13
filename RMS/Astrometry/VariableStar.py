@@ -29,6 +29,8 @@ from __future__ import (absolute_import, division, print_function,
 
 import pickle
 
+from PIL.ImageColor import colormap
+
 from RMS.DeleteOldObservations import getNightDirs
 import argparse
 import os
@@ -62,9 +64,11 @@ from RMS.Astrometry.Conversions import datetime2JD
 from RMS.Routines.MaskImage import loadMask, MaskStructure
 from RMS.Formats.FFfile import read
 from RMS.Math import angularSeparationDeg
+from RMS.Misc import getRmsRootDir, getRMSStyleFileName
 from copy import deepcopy
 
 from matplotlib import pyplot as plt
+from matplotlib import colors
 
 
 # Handle Python 2/3 compatibility
@@ -73,7 +77,7 @@ if sys.version_info.major == 3:
 
 EM_RAISE = True
 
-def checkMaskxy(x, y, mask_path):
+def checkMaskxy(x, y, mask_path, mask=None):
 
     """
     Discover if mask obstructs points on image
@@ -87,11 +91,23 @@ def checkMaskxy(x, y, mask_path):
         True if mask does not obstruct the coordinates on the image else False
         If mask is not found, returns True
     """
-
-    if os.path.exists(mask_path):
-        m = loadMask(mask_path)
+    if mask is None:
+        if os.path.exists(mask_path):
+            if os.path.splitext(mask_path) == "bmp":
+                m = loadMask(mask_path)
+            else:
+                path_name = os.path.join(mask_path, "mask.bmp")
+                default_mask = os.path.join(getRmsRootDir(), "mask.bmp")
+                if os.path.exists(path_name):
+                    m = loadMask(os.path.join(mask_path, "mask.bmp"))
+                elif os.path.exists(default_mask):
+                    m = loadMask(os.path.join(default_mask))
+                else:
+                    return True
+        else:
+            return True
     else:
-        return True
+        m = mask
 
     if m.img[y, x] == 255:
         return True
@@ -197,8 +213,7 @@ def rmsTimeExtractor(rms_time, asTuple = False, asJD = False, delimiter = None):
     else:
         return dt
 
-
-def plateparContainsRaDec(r, d, source_pp, file_name, mask_dir, check_mask = True):
+def plateparContainsRaDec(r, d, source_pp, file_name, mask_dir, check_mask=True, mask=None):
 
 
     # Get the image time from the file_name
@@ -225,7 +240,7 @@ def plateparContainsRaDec(r, d, source_pp, file_name, mask_dir, check_mask = Tru
 
     if 0 < source_x < source_pp.X_res and 0 < source_y < source_pp.Y_res:
         if check_mask:
-            if checkMaskxy(source_x,source_y, mask_dir):
+            if checkMaskxy(source_x,source_y, mask_dir, mask=mask):
 
                 return True, source_x, source_y
             else:
@@ -470,6 +485,15 @@ def getFitsPathsAndCoords(config, earliest_jd, latest_jd, r=None, d=None):
     fits_paths = []
     print("\nGetting all directories to be searched\n")
     for directory in tqdm.tqdm(directories_to_search):
+
+        mask_path = os.path.join(directory, config.mask_file)
+        default_mask_path = os.path.join(getRmsRootDir(), config.mask_file)
+        if os.path.exists(mask_path):
+            mask = loadMask(mask_path)
+        elif os.path.exists(default_mask_path):
+            mask = loadMask(default_mask_path)
+
+
         pp_path = os.path.join(directory, "platepar_cmn2010.cal")
         if os.path.exists(pp_path):
             pp = Platepar()
@@ -486,7 +510,7 @@ def getFitsPathsAndCoords(config, earliest_jd, latest_jd, r=None, d=None):
                         contains_radec, x, y = True, 0, 0
                     else:
                         contains_radec, x, y = plateparContainsRaDec(r, d, pp, file_name,
-                                                                    config.mask_file, check_mask=True)
+                                                                    config.mask_file, check_mask=True, mask=mask)
                     if contains_radec:
                         fits_paths.append([os.path.join(directory,file_name), x, y])
 
@@ -509,7 +533,6 @@ def getFitsPaths(path_to_search, jd_start, jd_end=None):
                         fits_paths.append(os.path.join(path_to_search, directory, file_name))
 
     return fits_paths
-
 
 def readCroppedFF(path, x, y, width=20, height=20, allow_drift_in = False):
     """
@@ -577,7 +600,6 @@ def crop(ff, x_centre, y_centre, width = 50, height = 50, allow_drift_in=False):
                         ff_cropped[y_dest, x_dest] = ff.maxpixel[y_source, x_source]
 
     return ff_cropped
-
 
 def createThumbnails(config, r, d, earliest_jd=0, latest_jd=np.inf):
 
@@ -878,7 +900,6 @@ def findMostRecentEntry(config, conn):
     else:
         return 0
 
-
 def loadGaiaCatalog(dir_path, file_name, lim_mag=None):
     """ Read star data from the GAIA catalog in the .npy format.
         This function copied here to avoid reading in whole of SkyFit2
@@ -954,13 +975,16 @@ def createPlot(values, r, d, w=0):
 
     return ax
 
-def areaToGoldenRatioXY(count):
+def areaToGoldenRatioXY(count, rotate=False):
 
     gr = (1 + 5 ** 0.5) / 2
     down = np.ceil((count * gr) ** 0.5)
     across = np.ceil(count / down)
 
-    return int(across), int(down)
+    if rotate:
+        return int(down), int(across)
+    else:
+        return int(across), int(down)
 
 def assembleContactSheet(thumbnail_list, x_across=None, border = 1):
 
@@ -1016,32 +1040,50 @@ def renderContactSheet(contact_sheet_array, headings_list, position_list):
     else:
         return None, ""
 
-def renderMagnitudePlot(magnitude_list, r, d):
+def renderMagnitudePlot(magnitude_list, elevation_list, r, d):
 
     if len(magnitude_list):
         x_vals, y_vals = [], []
-        plt.figure(figsize=(16, 12))
-        axes = plt.gca()
-        title = "Plot of magnitudes at RA {} Dec {}".format(r, d)
+
+
+        earliest, latest = min(x_vals), max(x_vals)
+        title = "Plot of magnitudes at RA {} Dec {} from {} to {}".format(r, d, earliest, latest)
         plot_filename = "Magnitudes_{}_r_{}_d_{}_jd_{}_{}.{}".format(config.stationID, r, d, e_jd, l_jd, plot_format)
         for jd, mag in magnitude_list:
-            x_vals.append(jd)
+            x_vals.append(jd2Date(float(jd), dt_obj=True))
             y_vals.append(mag)
-        axes.scatter(x_vals, y_vals)
-        axes.title.set_size(20)
+
+
+        fig = plt.figure(figsize=(areaToGoldenRatioXY(16 * 12, rotate=True)))
+
+        plt.plot(marker='o', edgecolor='k', label='Elevation', s=100, c='none', zorder=3)
+        ax = plt.gca()
+        plt.scatter(x_vals, y_vals, c=elevation_list, zorder=3)
+        plt.gca().invert_yaxis()
+        plt.colorbar(label="Elevation from Horizontal (degrees)")
+        plt.gca().set_xticklabels(x_vals, color='black', rotation=90, fontweight='normal', fontsize='10',
+                           horizontalalignment='center')
+        plt.xlabel("Time (jd)")
+        plt.ylabel("Magnitude")
+
+        plt.title(title)
+        '''
+        ax.scatter(x_vals, y_vals, c=elevation_list, cmap='viridis')
+        ax.title.set_size(20)
         plt.title(title)
         plt.ylabel("Magnitude")
-        axes.set_xticks(x_vals)
-        axes.set_xticklabels(x_vals, color='black', rotation=90, fontweight='normal', fontsize='10',
-                   horizontalalignment='center')
+        ax.set_xticks(x_vals)
+        
+
+
         plt.xlabel("Julian Date")
+        plt.colorbar(ax.get_children()[2], ax=ax)
         plt.ylim((min(y_vals) * 0.8, max(y_vals) * 1.2))
-
-
+        
+        '''
 
 
         return plt, plot_filename
-
 
 def saveThumbnailsRaDec(r, d, e_jd=0, l_jd=np.inf, file_path=None):
 
@@ -1059,6 +1101,7 @@ def jsonToThumbnails(observations_json, file_path=None):
 
 
     thumbnail_list = []
+    print(len(observations_json))
     for j in observations_json:
         observations = observations_json.get(j)
         thumbnail_list.append([observations['fits'], observations['pixels']])
@@ -1076,18 +1119,23 @@ def jsonToThumbnails(observations_json, file_path=None):
 
 def jsonToMagnitudePlot(observations_json, file_path=None):
 
-    magnitude_list = []
+    magnitude_list, elevation_list = [], []
+    if not len(observations_json):
+        return None
 
     for j in observations_json:
         observations = observations_json.get(j)
         magnitude_list.append([j,observations['photometry']['mag']])
-        r = observations['coords']['equatorial']['ra']
-        d = observations['coords']['equatorial']['dec']
+        elevation_list.append(observations['coords']['horizontal']['el'])
+
+    r = observations['coords']['equatorial']['ra']
+    d = observations['coords']['equatorial']['dec']
+
     print(magnitude_list)
-    plt, fn = renderMagnitudePlot(magnitude_list, round(r,2), round(d,2))
+    plt, fn = renderMagnitudePlot(magnitude_list, elevation_list, round(r,2), round(d,2))
 
     if plt is None:
-        print("No transits found - cannot plot")
+        print("No observations found - cannot plot")
         return
     else:
         filename = fn if file_path is None else file_path
@@ -1114,7 +1162,25 @@ def filterCalstarByJD(calstar, e_jd, l_jd):
 
     return filtered_fits
 
-def calstarRaDecToMagList(data_dir_path, config, r_target, d_target, e_jd, l_jd, calstar, pp_recal, search_sky_radius_degrees=0.3):
+def filterDirByJD(directory_path, e_jd, l_jd):
+
+    filtered_fits = []
+    directory_list = os.listdir(directory_path)
+    for fits_file in directory_list:
+        # Get date_time jd of this file
+        if fits_file.startswith("FF") and fits_file.endswith(".fits"):
+            date_time, jd = rmsTimeExtractor(fits_file, asTuple=True)
+            # Skip anything which is not in the time window
+            if not (e_jd < jd < l_jd):
+                continue
+            filtered_fits.append(fits_file)
+
+    filtered_fits.sort()
+
+    return filtered_fits
+
+def calstarRaDecToDict(data_dir_path, config, pp, pp_recal_json, r_target, d_target, e_jd, l_jd, calstar,
+                       search_sky_radius_degrees=1.0, centre_on_calstar_coords=True):
     """
       Parses a calstar data structures in archived directories path,
       converts to RaDec, corrects magnitude data and writes newer data to database
@@ -1129,32 +1195,22 @@ def calstarRaDecToMagList(data_dir_path, config, r_target, d_target, e_jd, l_jd,
           calstar_radec (): list of stellar magnitude data in radec format
       """
 
-    # Intialise magnitude list
-    magnitude_list = []
-
 
     captured_directory_path = os.path.join(config.data_dir, config.captured_dir)
-    # Iterate through the calstar data structure for each image in the whole night
-    # print("Iterating through calstar list for {}".format(rmsTimeExtractor(archived_directory_path)))
-    star_list_radec = []
-
     candidate_fits = filterCalstarByJD(calstar, e_jd, l_jd)
     candidate_fits.sort()
-    pp_uncalibrated = Platepar()
-    pp_uncalibrated.read(os.path.join(data_dir_path, "platepar_cmn2010.cal"))
 
     sequence_dict = dict()
-    for fits_file, star_list in candidate_fits:
-        # If this fits_file does not have a recalibrated platepar, then skip, probably a bad observation
-        pp = Platepar()
-        date_time, jd = rmsTimeExtractor(fits_file, asTuple=True)
-        if fits_file in pp_recal:
-            pp.loadFromDict(pp_recal[fits_file])
-        #else:
-        #   pp = deepcopy(pp_uncalibrated)
+    for fits_file, star_list in tqdm.tqdm(candidate_fits):
 
-        contains, _ ,_ = plateparContainsRaDec(r_target, d_target, pp, fits_file, data_dir_path, check_mask= False)
-        if not contains:
+        date_time, jd = rmsTimeExtractor(fits_file, asTuple=True)
+        if pp_recal_json is not None:
+            if fits_file in pp_recal_json:
+                # If we have a platepar in pp_recal then use it, else just use the last platepar
+                pp.loadFromDict(pp_recal_json[fits_file])
+
+        containsRaDec, _ ,_ = plateparContainsRaDec(r_target, d_target, pp, fits_file, data_dir_path, check_mask= False)
+        if not containsRaDec:
             continue
         # Overwrite vignetting coefficient with platepar value
 
@@ -1176,7 +1232,8 @@ def calstarRaDecToMagList(data_dir_path, config, r_target, d_target, e_jd, l_jd,
         jd, ra, dec, mag = xyToRaDecPP(jd_arr, x_data, y_data, level_data, pp,
                                        jd_time=True, extinction_correction=False, measurement=True)
 
-        for j, x, y, r, d, bg, amp, FWHM, mag in zip(jd, x_list, y_list, ra, dec, bg_list, amp_list, FWHM_list, mag):
+        for j, x, y, r, d, bg, amp, FWHM, mag, x_cs, y_cs in zip(jd, x_list, y_list, ra, dec, bg_list,
+                                                                        amp_list, FWHM_list, mag, x_list, y_list):
             az, el = raDec2AltAz(r, d, j, pp.lat, pp.lon)
             radius = np.hypot(y - pp.Y_res / 2, x - pp.X_res / 2)
             actual_deviation_degrees = angularSeparationDeg(r_target, d_target, r, d)
@@ -1200,6 +1257,12 @@ def calstarRaDecToMagList(data_dir_path, config, r_target, d_target, e_jd, l_jd,
             else:
                 continue
 
+            if centre_on_calstar_coords:
+                x_centre, y_centre = round(x), round(y)
+            else:
+                x_unrounded_arr, y_unrounded_arr = raDecToXYPP(np.array([r]), np.array([d]), np.array([j]), pp)
+                x_centre, y_centre = round(x_unrounded_arr[0]), round(y_unrounded_arr[0])
+
             if os.path.exists(path_to_ff):
                     observation_dict = {"fits": fits_file,
                                         "coords": {
@@ -1210,18 +1273,67 @@ def calstarRaDecToMagList(data_dir_path, config, r_target, d_target, e_jd, l_jd,
                                         "photometry": {"bg": bg,
                                                        "amp": amp,
                                                        "FWHM": FWHM,
-                                                       "mag": mag},
+                                                       "mag": mag,
+                                                       "p_offset": offset,
+                                                       "p_vig": vignetting},
                                         "actual_deviation_degrees": actual_deviation_degrees,
-                                        "pixels": readCroppedFF(path_to_ff, x, y).tolist()}
+                                        "pixels": readCroppedFF(path_to_ff, x_centre, y_centre).tolist()}
                     sequence_dict[j] = observation_dict
 
 
 
     return sequence_dict
 
+def dirRaDecToDict(data_dir_path, pp, pp_recal, r_target, d_target, e_jd, l_jd):
+    """
+      Parses a calstar data structures in archived directories path,
+      converts to RaDec, corrects magnitude data and writes newer data to database
+
+      Args:
+          calstar (): calstar data structure for one observation session
+          conn (): connection to database
+          archived_directory_path ():
+          latest_jd (): optional, default 0, latest jd for this station in the database
+
+      Returns:
+          calstar_radec (): list of stellar magnitude data in radec format
+      """
 
 
-def jsonMagsRaDec(config, r, d, e_jd=0, l_jd=np.inf):
+    candidate_fits = filterDirByJD(data_dir_path, e_jd, l_jd)
+    mask = loadMask(os.path.join(data_dir_path, "mask.bmp"))
+    sequence_dict = dict()
+    for fits_file in candidate_fits:
+        date_time, j = rmsTimeExtractor(fits_file, asTuple=True)
+        if pp_recal is not None:
+            if fits_file in pp_recal:
+                pp.loadFromDict(pp_recal[fits_file])
+
+
+        containsRaDec, x ,y = plateparContainsRaDec(r_target, d_target, pp, fits_file, data_dir_path,
+                                                    check_mask=True, mask=mask)
+
+        if not containsRaDec:
+            continue
+
+        path_to_ff = os.path.join(data_dir_path, fits_file)
+
+        if os.path.exists(path_to_ff):
+            az, el = raDec2AltAz(r, d, j, pp.lat, pp.lon)
+            radius = np.hypot(y - pp.Y_res / 2, x - pp.X_res / 2)
+            observation_dict = {"fits": fits_file,
+                                "coords": {
+                                    "image": {"x": x, "y": y},
+                                    "horizontal": {"az": az, "el": el},
+                                    "equatorial": {"ra": r, "dec": d}
+                                    },
+                                "radius": radius,
+                                "pixels": readCroppedFF(path_to_ff, x, y).tolist()}
+            sequence_dict[j] = observation_dict
+
+    return sequence_dict
+
+def jsonMagsRaDec(config, r, d, e_jd=0, l_jd=np.inf, require_calstar=True, require_recalibrated_platepar=True):
     """
     Given a radec jd range, search for intensity information.
     Initially search in archived files using calstars, then search latest captured dir using
@@ -1230,39 +1342,71 @@ def jsonMagsRaDec(config, r, d, e_jd=0, l_jd=np.inf):
     """
 
     full_path_to_archived = os.path.expanduser(os.path.join(config.data_dir, config.archived_dir))
+    full_path_to_default_platepar = os.path.join(getRmsRootDir(), "platepar_cmn2010.cal")
+
+
     directories_to_search = filterDirectoriesByJD(full_path_to_archived, e_jd, l_jd)
-    stationID = config.stationID
-    calstars_list, json_mags = [], ""
-
     observation_sequence_dict = {}
-    for dir in tqdm.tqdm(directories_to_search):
+    for search_dir in directories_to_search:
 
-        # Get full paths to critical files
-        full_path = os.path.join(full_path_to_archived, dir)
-        full_path_calstars = glob.glob(os.path.join(full_path, "*CALSTARS*"))
-        full_path_platepar = glob.glob(os.path.join(full_path, "platepar_cmn2010.cal"))
-
-
-        # If no platepar is found or no calstars, then ignore this directory
-        if len(full_path_platepar) != 1 or len(full_path_calstars) != 1:
-            continue
-
-        full_path_platepar, full_path_calstars = full_path_platepar[0], full_path_calstars[0]
-        calstars_path = os.path.dirname(full_path_calstars)
-        calstars_name = os.path.basename(full_path_calstars)
+        full_path = os.path.join(full_path_to_archived, search_dir)
+        full_path_to_session_platepar = os.path.join(full_path, "platepar_cmn2010.cal")
         platepars_all_recalibrated_path = os.path.join(full_path, "platepars_all_recalibrated.json")
 
-        # see if platepars_all_recalibrated exists, if not then probably bad data
-        if not os.path.exists(platepars_all_recalibrated_path):
+
+        pp = Platepar()
+        if os.path.exists(platepars_all_recalibrated_path):
+            pp_mid_recal = Platepar()
+            with open(platepars_all_recalibrated_path, 'r') as fh:
+                pp_recal_json = json.load(fh)
+                if len(pp_recal_json):
+                    midpoint = int(len(pp_recal_json) / 2)
+                    for fits, i in zip(pp_recal_json, range(0,midpoint)):
+                        pass
+                    pp_mid_recal.loadFromDict(pp_recal_json[fits])
+                    recalibrated_platepar_loaded = True
+                else:
+                    recalibrated_platepar_loaded = False
+        else:
+            pp_mid_recal = None
+            recalibrated_platepar_loaded = False
+            if require_recalibrated_platepar:
+                continue
+
+        # Read in a platepar in the following preference order
+        # session platepar, defaulat platepar, the middle recalibrated platepar
+        # if no success with any of these, then continue to the next directory
+        if os.path.exists(full_path_to_session_platepar):
+            pp.read(full_path_to_session_platepar)
+        elif os.path.exists(full_path_to_default_platepar):
+            os.path.exists(full_path_to_default_platepar)
+            pp.read(full_path_to_default_platepar)
+        elif recalibrated_platepar_loaded:
+            pp = pp_mid_recal
+        else:
             continue
 
         # Read in the CALSTARS file
-        pp = Platepar()
-        pp.read(full_path_platepar)
-        calstar = readCALSTARS(calstars_path, calstars_name)
-        with open(platepars_all_recalibrated_path, 'r') as fh:
-            pp_recal = json.load(fh)
-        observation_sequence_dict.update(calstarRaDecToMagList(full_path, config, r, d, e_jd, l_jd, calstar, pp_recal))
+        if require_calstar:
+            full_path_calstar = glob.glob(os.path.join(full_path, "*CALSTARS*"))[0]
+            if len(full_path_calstar):
+                calstars_path, calstars_name = os.path.dirname(full_path_calstar), os.path.basename(full_path_calstar)
+            else:
+                continue
+
+            if os.path.exists(full_path_calstar):
+                calstar = readCALSTARS(calstars_path, calstars_name)
+            else:
+                continue
+
+            dict_from_calstar = calstarRaDecToDict(full_path, config, pp, pp_recal_json, r, d, e_jd, l_jd, calstar)
+            if dict_from_calstar is not None:
+                observation_sequence_dict.update(dict_from_calstar)
+
+        else:
+            dict_from_dir = dirRaDecToDict(full_path, pp, pp_recal_json, r, d, e_jd, l_jd)
+            if dict_from_dir is not None:
+                observation_sequence_dict.update(dict_from_dir)
 
     return observation_sequence_dict
 
@@ -1336,16 +1480,16 @@ if __name__ == "__main__":
                        rmsTimeExtractor("FF_AU0006_20240819_143636_189_0353024.fits", asJD=True),
                        rmsTimeExtractor("FF_AU0006_20240819_143636_189_0353024.fits", asJD=True)))
 
-    r, d, e_jd, l_jd = 102.4, -50.6, 2460535, 2460542
+    r, d, e_jd, l_jd = 138.3, -69.8, 2460565.8, 2460566.8
     observation_sequence_dict = jsonMagsRaDec(config, r, d, e_jd=e_jd, l_jd=l_jd)
 
 
     observation_sequence_json = json.dumps(observation_sequence_dict,  indent=4, sort_keys=True)
-    with open("observation_sequence.json", 'w') as fh_observation_sequnce_json:
-        fh_observation_sequnce_json.write(observation_sequence_json)
+    with open("observation_sequence.json", 'w') as fh_observation_sequence_json:
+        fh_observation_sequence_json.write(observation_sequence_json)
 
-    with open("observation_sequence.json", 'r') as fh_observation_sequnce_json:
-        observation_sequence_json = json.loads(fh_observation_sequnce_json.read())
+    with open("observation_sequence.json", 'r') as fh_observation_sequence_json:
+        observation_sequence_json = json.loads(fh_observation_sequence_json.read())
 
     jsonToThumbnails(observation_sequence_json,"/home/david/contactfromjson.png")
     jsonToMagnitudePlot(observation_sequence_json, "/home/david/magnitudefromjson.png")
