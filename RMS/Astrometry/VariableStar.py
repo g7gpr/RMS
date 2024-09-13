@@ -1480,7 +1480,7 @@ if __name__ == "__main__":
                        rmsTimeExtractor("FF_AU0006_20240819_143636_189_0353024.fits", asJD=True),
                        rmsTimeExtractor("FF_AU0006_20240819_143636_189_0353024.fits", asJD=True)))
 
-    r, d, e_jd, l_jd = 138.3, -69.8, 2460565.8, 2460566.8
+    r, d, e_jd, l_jd = 6.5, -77.2, 2460565.8, 2460566.8
     observation_sequence_dict = jsonMagsRaDec(config, r, d, e_jd=e_jd, l_jd=l_jd)
 
 
@@ -1491,8 +1491,8 @@ if __name__ == "__main__":
     with open("observation_sequence.json", 'r') as fh_observation_sequence_json:
         observation_sequence_json = json.loads(fh_observation_sequence_json.read())
 
-    jsonToThumbnails(observation_sequence_json,"/home/david/contactfromjson.png")
-    jsonToMagnitudePlot(observation_sequence_json, "/home/david/magnitudefromjson.png")
+    jsonToThumbnails(observation_sequence_json,os.path.expanduser("~/contactfromjson.png"))
+    jsonToMagnitudePlot(observation_sequence_json, os.path.expanduser("~/magnitudefromjson.png"))
 
     if cml_args.dbpath is None:
         dbpath = "~/RMS_data/magnitudes.db"
