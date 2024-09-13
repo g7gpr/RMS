@@ -65,10 +65,11 @@ from RMS.Routines.MaskImage import loadMask, MaskStructure
 from RMS.Formats.FFfile import read
 from RMS.Math import angularSeparationDeg
 from RMS.Misc import getRmsRootDir, getRMSStyleFileName
+
 from copy import deepcopy
 
 from matplotlib import pyplot as plt
-from matplotlib import colors
+from matplotlib.dates import DateFormatter
 
 
 # Handle Python 2/3 compatibility
@@ -986,7 +987,7 @@ def areaToGoldenRatioXY(count, rotate=False):
     else:
         return int(across), int(down)
 
-def assembleContactSheet(thumbnail_list, x_across=None, border = 1):
+def assembleContactSheet(thumbnail_list, x_across=None, border = 1, r=None, d=None):
 
     thumbnail_count = len(thumbnail_list)
     if thumbnail_count < 1:
@@ -1024,18 +1025,21 @@ def assembleContactSheet(thumbnail_list, x_across=None, border = 1):
 
     return contact_sheet_array, headings_list, position_list
 
-def renderContactSheet(contact_sheet_array, headings_list, position_list):
+def renderContactSheet(contact_sheet_array, headings_list, position_list, r=None, d=None):
 
-
+    r, d = round(r, 2), round(d, 2)
     if len(contact_sheet_array) and len(headings_list) and len(position_list):
         plt.figure(figsize=(16, 12))
         axes = plt.gca()
-        plot_filename = "{}_r_{}_d_{}_jd_{}_{}.{}".format(config.stationID, r, d, e_jd, l_jd, plot_format)
+        plot_filename = "{}_r_{}_d_{}_jd_{}_{}_contact_sheet.{}".format(config.stationID,
+                                                                        r, d, e_jd, l_jd, plot_format)
         axes.imshow(contact_sheet_array, cmap='gray')
-        axes.set_title("{} RA {}, Dec {} from jd {} to {}".format(config.stationID, r, d, e_jd, l_jd))
+        start_time = rmsTimeExtractor(headings_list[0]).strftime("%Y-%m-%d %H:%M:%S")
+        end_time = rmsTimeExtractor(headings_list[-1]).strftime("%Y-%m-%d %H:%M:%S")
+        axes.set_title("{} RA {}, Dec {} from {} to {}".format(config.stationID, r, d, start_time, end_time))
         axes.title.set_size(20)
-        plt.xticks(position_list, headings_list, color='black', rotation=90, fontweight='normal', fontsize='10',
-                   horizontalalignment='center')
+        plt.xticks(position_list, headings_list, color='black', fontweight='normal', fontsize='10',
+                   horizontalalignment='center',  rotation=90)
         return plt, plot_filename
     else:
         return None, ""
@@ -1047,23 +1051,33 @@ def renderMagnitudePlot(magnitude_list, elevation_list, r, d):
 
 
 
-        title = "Plot of magnitudes at RA {} Dec {}".format(r, d)
-        plot_filename = "Magnitudes_{}_r_{}_d_{}_jd_{}_{}.{}".format(config.stationID, r, d, e_jd, l_jd, plot_format)
+
+        plot_filename = "{}_r_{}_d_{}_jd_{}_{}_magnitude.{}".format(config.stationID, r, d, e_jd, l_jd, plot_format)
         for jd, mag in magnitude_list:
             x_vals.append(jd2Date(float(jd), dt_obj=True))
             y_vals.append(mag)
 
-
-        fig = plt.figure(figsize=(areaToGoldenRatioXY(16 * 12, rotate=True)))
+        start_time, end_time = min(x_vals).strftime("%Y-%m-%d %H:%M:%S") , max(x_vals).strftime("%Y-%m-%d %H:%M:%S")
+        title = "Plot of magnitudes at RA {} Dec {} from {} to {}".format(r, d, start_time, end_time)
+        plt.figure(figsize=(areaToGoldenRatioXY(16 * 12, rotate=True)))
 
         plt.plot(marker='o', edgecolor='k', label='Elevation', s=100, c='none', zorder=3)
         ax = plt.gca()
         plt.scatter(x_vals, y_vals, c=elevation_list, zorder=3)
         plt.gca().invert_yaxis()
         plt.colorbar(label="Elevation from Horizontal (degrees)")
-        plt.gca().set_xticklabels(x_vals, color='black', rotation=90, fontweight='normal', fontsize='10',
+        seconds_of_observation = (max(x_vals) - min(x_vals)).total_seconds()
+        interval_between_ticks = seconds_of_observation / 6
+        tick_offsets = np.arange(0,seconds_of_observation,interval_between_ticks)
+        x_tick_list = []
+        date_form = DateFormatter("%Y-%m-%d %H:%M:%S")
+        ax.xaxis.set_major_formatter(date_form)
+        for offset in tick_offsets:
+            x_tick_list.append((min(x_vals) + datetime.timedelta(seconds=offset)).strftime("%Y-%m-%d %H:%M:%S"))
+        plt.gca().set_xticks(x_tick_list)
+        plt.gca().set_xticklabels(x_tick_list, color='black', fontweight='normal', fontsize='10',
                            horizontalalignment='center')
-        plt.xlabel("Time (jd)")
+        plt.xlabel("Time (UTC)")
         plt.ylabel("Magnitude")
 
         plt.title(title)
@@ -1105,9 +1119,11 @@ def jsonToThumbnails(observations_json, file_path=None):
     for j in observations_json:
         observations = observations_json.get(j)
         thumbnail_list.append([observations['fits'], observations['pixels']])
+        r = observations['coords']['equatorial']['ra']
+        d = observations['coords']['equatorial']['dec']
 
     contact_sheet, headings_list, position_list = assembleContactSheet(thumbnail_list)
-    plt, fn = renderContactSheet(contact_sheet, headings_list, position_list)
+    plt, fn = renderContactSheet(contact_sheet, headings_list, position_list, r, d)
     if plt is None:
         print("No transits found - cannot plot")
         return
@@ -1130,7 +1146,7 @@ def jsonToMagnitudePlot(observations_json, file_path=None):
         r = observations['coords']['equatorial']['ra']
         d = observations['coords']['equatorial']['dec']
 
-    plt, fn = renderMagnitudePlot(magnitude_list, elevation_list, round(r,2), round(d,2))
+    plt, fn = renderMagnitudePlot(magnitude_list, elevation_list, round(r, 2), round(d, 2))
 
     if plt is None:
         print("No observations found - cannot plot")
@@ -1489,14 +1505,19 @@ if __name__ == "__main__":
         e_jd, l_jd = cml_args.jd_range[0], cml_args.jd_range[1]
 
         print("RaDec {},{} jd {} to {}".format(r, d, e_jd, l_jd))
-        observation_sequence_dict = jsonMagsRaDec(config, r, d, e_jd=e_jd, l_jd=l_jd)
 
-        observation_sequence_json = json.dumps(observation_sequence_dict, indent=4, sort_keys=True)
-        with open("observation_sequence.json", 'w') as fh_observation_sequence_json:
-            fh_observation_sequence_json.write(observation_sequence_json)
+        if False:
+            observation_sequence_dict = jsonMagsRaDec(config, r, d, e_jd=e_jd, l_jd=l_jd)
+
+            observation_sequence_json = json.dumps(observation_sequence_dict, indent=4, sort_keys=True)
+            with open("observation_sequence.json", 'w') as fh_observation_sequence_json:
+                fh_observation_sequence_json.write(observation_sequence_json)
 
         with open("observation_sequence.json", 'r') as fh_observation_sequence_json:
             observation_sequence_json = json.loads(fh_observation_sequence_json.read())
+
+        jsonToThumbnails(observation_sequence_json)
+        jsonToMagnitudePlot(observation_sequence_json)
 
         if cml_args.thumbnails:
             saveThumbnailsRaDec(r, d, e_jd, l_jd)
@@ -1510,8 +1531,7 @@ if __name__ == "__main__":
 
 
 
-    jsonToThumbnails(observation_sequence_json,os.path.expanduser("~/contactfromjson.png"))
-    jsonToMagnitudePlot(observation_sequence_json, os.path.expanduser("~/magnitudefromjson.png"))
+
 
     exit()
 
