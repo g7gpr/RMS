@@ -1127,9 +1127,8 @@ def jsonToMagnitudePlot(observations_json, file_path=None):
         observations = observations_json.get(j)
         magnitude_list.append([j,observations['photometry']['mag']])
         elevation_list.append(observations['coords']['horizontal']['el'])
-
-    r = observations['coords']['equatorial']['ra']
-    d = observations['coords']['equatorial']['dec']
+        r = observations['coords']['equatorial']['ra']
+        d = observations['coords']['equatorial']['dec']
 
     print(magnitude_list)
     plt, fn = renderMagnitudePlot(magnitude_list, elevation_list, round(r,2), round(d,2))
@@ -1180,7 +1179,7 @@ def filterDirByJD(directory_path, e_jd, l_jd):
     return filtered_fits
 
 def calstarRaDecToDict(data_dir_path, config, pp, pp_recal_json, r_target, d_target, e_jd, l_jd, calstar,
-                       search_sky_radius_degrees=1.0, centre_on_calstar_coords=True):
+                       search_sky_radius_degrees=0.3, centre_on_calstar_coords=True):
     """
       Parses a calstar data structures in archived directories path,
       converts to RaDec, corrects magnitude data and writes newer data to database
@@ -1480,34 +1479,6 @@ if __name__ == "__main__":
                        rmsTimeExtractor("FF_AU0006_20240819_143636_189_0353024.fits", asJD=True),
                        rmsTimeExtractor("FF_AU0006_20240819_143636_189_0353024.fits", asJD=True)))
 
-    r, d, e_jd, l_jd = 6.5, -77.2, 2460565.8, 2460566.8
-    observation_sequence_dict = jsonMagsRaDec(config, r, d, e_jd=e_jd, l_jd=l_jd)
-
-
-    observation_sequence_json = json.dumps(observation_sequence_dict,  indent=4, sort_keys=True)
-    with open("observation_sequence.json", 'w') as fh_observation_sequence_json:
-        fh_observation_sequence_json.write(observation_sequence_json)
-
-    with open("observation_sequence.json", 'r') as fh_observation_sequence_json:
-        observation_sequence_json = json.loads(fh_observation_sequence_json.read())
-
-    jsonToThumbnails(observation_sequence_json,os.path.expanduser("~/contactfromjson.png"))
-    jsonToMagnitudePlot(observation_sequence_json, os.path.expanduser("~/magnitudefromjson.png"))
-
-    if cml_args.dbpath is None:
-        dbpath = "~/RMS_data/magnitudes.db"
-    else:
-        dbpath = cml_args.dbpath
-
-
-    dbpath = os.path.expanduser(dbpath)
-    conn = getStationStarDBConn(dbpath)
-    if cml_args.no_read:
-        print("Skipping database population, no read selected")
-    else:
-        print("Started database population")
-        archived_calstars = readInArchivedCalstars(config, conn)
-
     if cml_args.ra is None and cml_args.dec is None and cml_args.window is None:
 
         pass
@@ -1525,6 +1496,38 @@ if __name__ == "__main__":
             w = 0.1
         else:
             w = cml_args.window[0]
+
+
+    observation_sequence_dict = jsonMagsRaDec(config, r, d, e_jd=e_jd, l_jd=l_jd)
+
+
+    observation_sequence_json = json.dumps(observation_sequence_dict,  indent=4, sort_keys=True)
+    with open("observation_sequence.json", 'w') as fh_observation_sequence_json:
+        fh_observation_sequence_json.write(observation_sequence_json)
+
+    with open("observation_sequence.json", 'r') as fh_observation_sequence_json:
+        observation_sequence_json = json.loads(fh_observation_sequence_json.read())
+
+    jsonToThumbnails(observation_sequence_json,os.path.expanduser("~/contactfromjson.png"))
+    jsonToMagnitudePlot(observation_sequence_json, os.path.expanduser("~/magnitudefromjson.png"))
+
+    exit()
+
+    if cml_args.dbpath is None:
+        dbpath = "~/RMS_data/magnitudes.db"
+    else:
+        dbpath = cml_args.dbpath
+
+
+    dbpath = os.path.expanduser(dbpath)
+    conn = getStationStarDBConn(dbpath)
+    if cml_args.no_read:
+        print("Skipping database population, no read selected")
+    else:
+        print("Started database population")
+        archived_calstars = readInArchivedCalstars(config, conn)
+
+
 
         print("Producing plot around RaDec {}, {} width {}".format(r, d, w))
 
