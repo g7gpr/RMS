@@ -1130,7 +1130,6 @@ def jsonToMagnitudePlot(observations_json, file_path=None):
         r = observations['coords']['equatorial']['ra']
         d = observations['coords']['equatorial']['dec']
 
-    print(magnitude_list)
     plt, fn = renderMagnitudePlot(magnitude_list, elevation_list, round(r,2), round(d,2))
 
     if plt is None:
