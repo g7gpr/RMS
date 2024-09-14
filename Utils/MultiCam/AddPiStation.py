@@ -220,7 +220,7 @@ def configureFirstStation(path_to_config = "~/source/RMS/.config"):
     fh.close()
 
 
-def getMaskFromMaster(source_url = "https://raw.githubusercontent.com/CroatianMeteorNetwork/RMS/prerelease/mask.bmp"
+def getMaskFromMaster(source_url = "http://raw.githubusercontent.com/CroatianMeteorNetwork/RMS/prerelease/mask.bmp"
                                                                                         , dest_path = "~/source/RMS"):
     """
     Download mask file from github
@@ -435,7 +435,8 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station=False, new_
             if moveIfExists(mask_path, new_station_config_path):
                 pass
             else:
-                getMaskFromMaster(dest_path=new_station_config_path)
+                pass
+                #getMaskFromMaster(dest_path=new_station_config_path)
 
         # Finish off by creating desktop shortcuts
         createDesktopShortcuts(config.stationID)
