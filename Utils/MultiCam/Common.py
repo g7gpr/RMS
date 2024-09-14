@@ -293,7 +293,7 @@ def checkForKeys(key_path = "~/.ssh/id_rsa"):
 	return os.path.exists(os.path.expanduser(key_path))
 
 
-def makeKeys(key_path = "~/.ssh", copy_pub_to = None):
+def makeKeys(key_path = "~/.ssh", copy_pub_to = None, permit_create = False):
 
 
 	"""
@@ -305,17 +305,28 @@ def makeKeys(key_path = "~/.ssh", copy_pub_to = None):
 		nothing
 	"""
 	message = ""
+
+	public_key_path = getPublicKeyPath()
+	if public_key_path is None and not permit_create:
+		return "No key directory found, will continue to create stations, but keys must be created."
+
+	if not checkForKeys() and not permit_create:
+		return "No keys found in key directory, and not permitted to create new keys. Keys must be created to allow uploads."
+
 	if not checkForKeys():
-		message += "Generating keys"
-		subprocess.run(['ssh-keygen', '-t', 'rsa', '-f', key_path, '-q', '-p'])
+		if permit_create:
+			message += "Generating keys"
+			subprocess.run(['ssh-keygen', '-t', 'rsa', '-f', key_path, '-q', '-p'])
 	else:
 		message += "Keys already created"
 	if copy_pub_to is None:
 		return ""
 
 	copy_pub_to = os.path.expanduser(copy_pub_to)
+
+
 	if os.path.exists(copy_pub_to) and not os.path.exists(
-												os.path.join(copy_pub_to, os.path.basename(getPublicKeyPath()))):
+												os.path.join(copy_pub_to, os.path.basename(public_key_path))):
 		copyIfExists(getPublicKeyPath(), copy_pub_to)
 		message += " in {}\n".format(key_path)
 		message += "Your new id_rsa.pub public key file is at {}\n".format(copy_pub_to)
@@ -338,6 +349,8 @@ def getPublicKeyPath(key_dir="~/.ssh"):
 	pub_keys = glob(os.path.join(key_dir, "*.pub"))
 	if len(pub_keys):
 		return pub_keys[0]
+	else:
+		return None
 
 def computeQuotas(stations_path="~/source/Stations", debug=False, allowance_for_one_night = 18):
 	"""
