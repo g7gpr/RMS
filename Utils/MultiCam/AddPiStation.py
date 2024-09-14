@@ -220,27 +220,25 @@ def configureFirstStation(path_to_config = "~/source/RMS/.config"):
     fh.close()
 
 
-def getMaskFromMaster(source_url = "http://raw.githubusercontent.com/CroatianMeteorNetwork/RMS/prerelease/mask.bmp"
-                                                                                        , dest_path = "~/source/RMS"):
+def getMaskFromShared(source_dir = "~/source/RMS/share/mask.bmp", dest_path = "~/source/RMS"):
     """
     Download mask file from github
     Args:
         source_url: [str] source URL for .config file
         dest_path: [path] destination for .config ilfe
 
-    Returns: [bool] True if mask download succeeded
+    Returns: [bool] True if mask copy succeeded
 
     """
 
-    print("Getting a mask from {}".format(source_url))
-    dest_path = os.path.expanduser(os.path.join(dest_path, os.path.basename(source_url)))
-    mkdirP(os.path.dirname(dest_path))
-    urllib.request.urlretrieve(source_url, dest_path)
+    print("Getting a mask from {}".format(source_dir))
+
+    copyIfExists(source_dir, dest_path)
 
     if os.path.exists(dest_path):
         return True
     else:
-        print("Mask download from github failed")
+        print("Mask copy failed")
         return False
 
 def getConfigFromMaster(source_url = "https://raw.githubusercontent.com/CroatianMeteorNetwork/RMS/prerelease`/.config"
@@ -435,8 +433,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station=False, new_
             if moveIfExists(mask_path, new_station_config_path):
                 pass
             else:
-                pass
-                #getMaskFromMaster(dest_path=new_station_config_path)
+                getMaskFromShared(dest_path=new_station_config_path)
 
         # Finish off by creating desktop shortcuts
         createDesktopShortcuts(config.stationID)
