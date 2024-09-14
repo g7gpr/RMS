@@ -232,7 +232,7 @@ def getMaskFromMaster(source_url = "https://raw.githubusercontent.com/CroatianMe
 
     """
 
-
+    print("Getting a mask from {}".format(source_url))
     dest_path = os.path.expanduser(os.path.join(dest_path, os.path.basename(source_url)))
     mkdirP(os.path.dirname(dest_path))
     urllib.request.urlretrieve(source_url, dest_path)
@@ -341,7 +341,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station=False, new_
     if os.path.exists(config_path):
         config = cr.parse(config_path)
         data_dir = config.data_dir if config.data_dir[-1].isalnum() else config.data_dir[:-1]
-
+        data_dir = os.path.expanduser(data_dir)
         if "XX" in config.stationID:
             mkdirP(os.path.expanduser("~/source/Stations"))
             print("Not migrating station {}".format(config.stationID))
@@ -578,6 +578,8 @@ if __name__ == "__main__":
 
 
     ignore_hardware = True
+    stations_path = os.path.expanduser("~/source/Stations")
+
 
     stations_list, stations_to_add_list = [], []
     if cml_args.stations is not None:
@@ -607,21 +609,23 @@ if __name__ == "__main__":
         configureFirstStation()
         # Copy the first station to new location
         copyPiStation(first_station=True)
+        stations_list = os.listdir(stations_path)
 
     else:
         # Check to see that at least one station has been migrated to ~/source/Stations
         if not len(stations_list):
             copyPiStation(first_station=True)
+            stations_list = os.listdir(stations_path)
 
 
 
-    # If no stations were configured at first run or not trying to launch ask for more stations
+    # If no stations were configured at first run and7 not trying to launch ask for more stations
 
-    if stations_list == [] or not cml_args.launch:
-        stations_list, ip_list = getStationsToAdd(stations_to_add_list, ip_list)
+    if stations_to_add_list == [] and stations_list == [] or not cml_args.launch:
+        stations_to_add_list, ip_list = getStationsToAdd(stations_to_add_list, ip_list)
 
     # Work through the list of stations
-    for entry, ip in zip(stations_list, ip_list):
+    for entry, ip in zip(stations_to_add_list, ip_list):
         s=sanitise(entry.lower())
         copyPiStation(new_station_id=s, first_station=False, ip=ip, debug=False)
 
@@ -647,17 +651,17 @@ if __name__ == "__main__":
 
     cameras = os.listdir(os.path.expanduser("~/source/Stations/"))
     cameras.sort()
-    if cml_args.launch:
-        for entry in cameras:
-            entry = sanitise(entry)
-            path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
-            launch_command = "lxterminal --title {} --command ".format(entry)
-            launch_command += "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}; sleep 10' &".format(path_to_config)
-            print("Launching station {}".format(sanitise(entry).lower()))
-            config = cr.parse(path_to_config)
-            latest_log_entry = detectMostRecentLogAccess(config)
-            os.system(launch_command)
-            print("Waiting for {} to complete launch".format(sanitise(entry).lower()))
-            while latest_log_entry == detectMostRecentLogAccess(config):
-                time.sleep(1)
-            print("{} is running".format(sanitise(entry).lower()))
+
+    for entry in cameras:
+        entry = sanitise(entry)
+        path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
+        launch_command = "lxterminal --title {} --command ".format(entry)
+        launch_command += "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}; sleep 10' &".format(path_to_config)
+        print("Launching station {}".format(sanitise(entry).lower()))
+        config = cr.parse(path_to_config)
+        latest_log_entry = detectMostRecentLogAccess(config)
+        os.system(launch_command)
+        print("Waiting for {} to complete launch".format(sanitise(entry).lower()))
+        while latest_log_entry == detectMostRecentLogAccess(config):
+            time.sleep(1)
+        print("{} is running".format(sanitise(entry).lower()))
