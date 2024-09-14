@@ -214,7 +214,7 @@ def changeOptionValue(lines_list, option, value, delimiter = ":"):
 	Returns:
 		output_list : entire file, with the lines changed referring to the option
 	"""
-
+	change_made = False
 	modified_option = False
 	if option == "ip_address":
 		option = "device"
@@ -231,11 +231,16 @@ def changeOptionValue(lines_list, option, value, delimiter = ":"):
 					output_line = "{}: {}://{}:{}\n".format(option, protocol, value, tail)
 				else:
 					output_line = "{}{} {}\n".format(option, delimiter, value)
+				change_made = True
 			else:
 				output_line = line
 		else:
 			output_line = line
 		output_list.append(output_line)
+
+	if not change_made:
+		print("Warning, option {} was not changed to {} - is your .config file up to date?".format(option, value))
+
 	return output_list
 
 
