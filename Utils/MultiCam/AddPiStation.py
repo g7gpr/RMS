@@ -42,6 +42,7 @@ import subprocess
 import os
 import urllib.request
 import time
+import datetime as datetime
 
 import RMS.ConfigReader as cr
 from RMS.Misc import sanitise, mkdirP
@@ -655,11 +656,10 @@ if __name__ == "__main__":
         path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.upper(),".config"))
         launch_command = "lxterminal --title {} --command ".format(entry)
         launch_command += "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}; sleep 10' &".format(path_to_config)
-        print("Launching station {}".format(sanitise(entry).upper()))
+        print("{} Launching station {}".format(datetime.datetime.now().strftime("%H:%M:%S"), sanitise(entry).upper()))
         config = cr.parse(path_to_config)
         latest_log_entry = detectMostRecentLogAccess(config)
         os.system(launch_command)
-        print("Waiting for {} to complete launch".format(sanitise(entry).upper()))
         while latest_log_entry == detectMostRecentLogAccess(config):
             time.sleep(1)
-        print("{} is running".format(sanitise(entry).upper()))
+        print("{} Reported running {}".format(datetime.datetime.now().strftime("%H:%M:%S"), sanitise(entry).upper()))
