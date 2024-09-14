@@ -189,7 +189,7 @@ def getStationsToAdd(stations_list=[], ip_list=[], debug=False):
 			else:
 				print("Station ID not in expected format of two letters followed by 4 digits")
 				continue
-		response = input("Enter sensor ip for {}: ".format(response))
+		response = input("Enter sensor ip for {}: ".format(response.upper()))
 		if response == "":
 			break
 		else:

@@ -157,7 +157,7 @@ def computeNewStationPaths(config, new_station_id = None, stations_folder = "Sta
     if new_station_id is None:
         new_station_id = config.stationID
 
-    new_station_id =new_station_id.lower()
+    new_station_id =new_station_id.upper()
 
     if os.path.exists(existing_station_config_path):
         stations_config_directory = os.path.dirname(os.path.expanduser("~/source/RMS"))
@@ -390,11 +390,11 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station=False, new_
                     # Then create a new RMS_data directory
                     # Then move the renamed directory into RMS_data
 
-                    temp_rms_data_path = os.path.join(os.path.dirname(data_dir), config.stationID.lower())
+                    temp_rms_data_path = os.path.join(os.path.dirname(data_dir), config.stationID.upper())
                     if debug:
                         print("Temporary data path for first station {}".format(temp_rms_data_path))
                     #check to see if the data has already been migrated
-                    if not os.path.basename(data_dir).lower() == config.stationID.lower():
+                    if not os.path.basename(data_dir).upper() == config.stationID.upper():
                         moveIfExists(config.data_dir, temp_rms_data_path, debug=False)
                         if debug:
                             print("Final destination for first station {}".format(new_station_data_dir))
@@ -624,7 +624,7 @@ if __name__ == "__main__":
 
     # Work through the list of stations
     for entry, ip in zip(stations_to_add_list, ip_list):
-        s=sanitise(entry.lower())
+        s=sanitise(entry.upper())
         copyPiStation(new_station_id=s, first_station=False, ip=ip, debug=False)
 
     # This prevents gui from placing windows directly on top of each other
@@ -641,7 +641,7 @@ if __name__ == "__main__":
 
     # And apply disc use quotas
     for entry in stations_list:
-        path_to_config = os.path.join(os.path.expanduser("~/source/Stations"),entry.lower())
+        path_to_config = os.path.join(os.path.expanduser("~/source/Stations"),entry.upper())
         setQuotas(path_to_config, quotas)
 
     rewireAutoStart()
@@ -652,14 +652,14 @@ if __name__ == "__main__":
 
     for entry in cameras:
         entry = sanitise(entry)
-        path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.lower(),".config"))
+        path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.upper(),".config"))
         launch_command = "lxterminal --title {} --command ".format(entry)
         launch_command += "'source ~/vRMS/bin/activate; python -m RMS.StartCapture -c {}; sleep 10' &".format(path_to_config)
-        print("Launching station {}".format(sanitise(entry).lower()))
+        print("Launching station {}".format(sanitise(entry).upper()))
         config = cr.parse(path_to_config)
         latest_log_entry = detectMostRecentLogAccess(config)
         os.system(launch_command)
-        print("Waiting for {} to complete launch".format(sanitise(entry).lower()))
+        print("Waiting for {} to complete launch".format(sanitise(entry).upper()))
         while latest_log_entry == detectMostRecentLogAccess(config):
             time.sleep(1)
-        print("{} is running".format(sanitise(entry).lower()))
+        print("{} is running".format(sanitise(entry).upper()))
