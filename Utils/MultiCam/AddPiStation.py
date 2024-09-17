@@ -163,7 +163,7 @@ def computeNewStationPaths(config, new_station_id = None, stations_folder = "Sta
     if os.path.exists(existing_station_config_path):
         stations_config_directory = os.path.dirname(os.path.expanduser("~/source/RMS"))
         new_station_config_location = os.path.join(stations_config_directory, stations_folder, new_station_id)
-        new_station_data_dir = os.path.join(config.data_dir, new_station_id)
+        new_station_data_dir = os.path.join(config.data_dir, new_station_id) + os.path.sep
 
     return new_station_config_location, new_station_data_dir
 
@@ -618,7 +618,7 @@ if __name__ == "__main__":
 
 
 
-    # If no stations were configured at first run and7 not trying to launch ask for more stations
+    # If no stations were configured at first run and not trying to launch ask for more stations
 
     if stations_to_add_list == [] and stations_list == [] or not cml_args.launch:
         stations_to_add_list, ip_list = getStationsToAdd(stations_to_add_list, ip_list)

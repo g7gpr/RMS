@@ -1,5 +1,7 @@
 import subprocess
 import os
+import re
+
 from shutil import move, copy
 from glob import glob
 
@@ -24,8 +26,13 @@ def moveIfExists(src, dest, debug=False):
 
 
 	src, dest = os.path.expanduser(src),  os.path.expanduser(dest)
+	print("Moving {} to {}".format(src, dest))
+	if not os.path.exists(dest):
+		mkdirP(dest)
 	if os.path.exists(src):
-		move(src, dest)
+		# On Pi5 move actually performs a copy, which is not appropriate for moving large amounts of data
+		#move(src, dest)
+		os.rename(src, dest)
 		if debug:
 			print("{} was found and moved to {}".format(src, dest))
 		return True
@@ -191,7 +198,15 @@ def getStationsToAdd(stations_list=[], ip_list=[], debug=False):
 				print("followed by 4 alphanumeric characters, excluding")
 				print("letters O and I")
 				continue
-		response = input("Enter sensor ip for {}: ".format(response.upper()))
+		valid_ip = False
+		while not valid_ip:
+			ip = input("Enter sensor ip for {}: ".format(response.upper()))
+			if validIP(ip):
+				valid_ip = True
+			else:
+				print("{} is not recognised is a valid ip address".format(ip))
+
+
 		if response == "":
 			break
 		else:
@@ -200,6 +215,17 @@ def getStationsToAdd(stations_list=[], ip_list=[], debug=False):
 
 
 	return stations_list, ip_list
+
+
+def validIP(ip):
+	# pass the regular expression
+	# and the string in search() method
+
+	regex = "^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$"
+
+	return re.search(regex, ip)
+
+
 
 def changeOptionValue(lines_list, option, value, delimiter = ":"):
 
