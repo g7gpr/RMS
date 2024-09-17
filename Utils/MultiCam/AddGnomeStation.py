@@ -265,7 +265,7 @@ def addStation(station, number_of_stations):
 	extra_space = number_of_stations * free_space_allocation_per_station
 
 	# Apply the new settings the .config file
-	customiseConfig(new_station_config_path, station.upper(), data_dir, extra_space, reboot_after_processing=False)
+	customiseConfig(new_station_config_path, station.upper(), data_dir, reboot_after_processing=False)
 
 
 def applyGsettings(screen_timeout = 600, lock_screen_enabled = False):

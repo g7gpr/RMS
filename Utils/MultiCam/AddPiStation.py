@@ -162,7 +162,7 @@ def computeNewStationPaths(config, new_station_id = None, stations_folder = "Sta
 
     if os.path.exists(existing_station_config_path):
         stations_config_directory = os.path.dirname(os.path.expanduser("~/source/RMS"))
-        new_station_config_location = os.path.join(stations_config_directory, stations_folder, new_station_id)
+        new_station_config_location = os.path.join(stations_config_directory, stations_folder, new_station_id) + os.path.sep
         new_station_data_dir = os.path.join(config.data_dir, new_station_id) + os.path.sep
 
     return new_station_config_location, new_station_data_dir
@@ -437,21 +437,23 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station=False, new_
                 getMaskFromShared(dest_path=new_station_config_path)
 
         # Finish off by creating desktop shortcuts
-        createDesktopShortcuts(config.stationID)
-        desktop_path = checkUserDesktopDirectoryEnvironment()
-        if desktop_path != "":
-            if debug:
-                print("Desktop environment variable found as {}".format(desktop_path))
-        else:
-            if debug:
-                print("No desktop environment variable found")
+        if False:
+            createDesktopShortcuts(config.stationID)
+            desktop_path = checkUserDesktopDirectoryEnvironment()
+            if desktop_path != "":
+                if debug:
+                    print("Desktop environment variable found as {}".format(desktop_path))
+            else:
+                if debug:
+                    print("No desktop environment variable found")
+
         # whilst adding stations set extra_space as 40GB
         extra_space_gb = 40
 
         customiseConfig(new_station_config_path, new_station_id.upper(), new_station_data_dir,
-                                                    extra_space_gb, ip, reboot_after_processing=False)
-
-        makeKeys()
+                                                    ip, reboot_after_processing=False)
+        #No longer required
+        #makeKeys()
 
 def configureAutoStart(config_path, mode="autostart"):
 
