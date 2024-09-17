@@ -466,7 +466,7 @@ def validateStationData(station_id, lat, lon, elevation, ip_address):
 	return station_id[0:2].isalpha() and station_id[2:6].isalnum() \
 		and -90 < lat < 90 and -180 < lon < 360 \
 		and -100 < elevation < 10000 \
-		and not ("i" in ststion_id.lower()) \
+		and not ("i" in station_id.lower()) \
 		and not ("o" in station_id.lower())
 
 
