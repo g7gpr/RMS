@@ -232,8 +232,10 @@ def changeOptionValue(lines_list, option, value, delimiter = ":"):
 					protocol = line.split(":")[1].strip()
 					tail = line.split(":")[3].strip()
 					output_line = "{}: {}://{}:{}\n".format(option, protocol, value, tail)
+
 				else:
 					output_line = "{}{} {}\n".format(option, delimiter, value)
+				print("Writing {}".format(output_line))
 				change_made = True
 			else:
 				output_line = line
