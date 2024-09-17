@@ -634,7 +634,7 @@ if __name__ == "__main__":
     uncomment("~/.config/wayfire.ini", "mode")
 
     # Create .ssh keys if they do not exist
-    print(makeKeys(copy_pub_to="~/Desktop"))
+    # print(makeKeys(copy_pub_to="~/Desktop"))
 
     # Set timezone to UTC
     # setTimeZone()
