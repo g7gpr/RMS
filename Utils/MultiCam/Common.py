@@ -187,8 +187,8 @@ def getStationsToAdd(stations_list=[], ip_list=[], debug=False):
 			if validateStationData(response.upper(),0,0,0, "192.168.1.1"):
 				stations_list.append(response.upper())
 			else:
-				print("Station ID not in expected format of two letters"
-				print("followed by 4 alphanumeric characters, excluding "
+				print("Station ID not in expected format of two letters")
+				print("followed by 4 alphanumeric characters, excluding")
 				print("letters O and I")
 				continue
 		response = input("Enter sensor ip for {}: ".format(response.upper()))
