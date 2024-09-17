@@ -637,7 +637,7 @@ if __name__ == "__main__":
     print(makeKeys(copy_pub_to="~/Desktop"))
 
     # Set timezone to UTC
-    setTimeZone()
+    # setTimeZone()
 
     # Compute disc use quotas
     quotas = computeQuotas()
