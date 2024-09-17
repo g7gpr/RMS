@@ -184,10 +184,12 @@ def getStationsToAdd(stations_list=[], ip_list=[], debug=False):
 		if response == "":
 			break
 		else:
-			if validateStationData(response,0,0,0, "192.168.1.1"):
-				stations_list.append(response)
+			if validateStationData(response.upper(),0,0,0, "192.168.1.1"):
+				stations_list.append(response.upper())
 			else:
-				print("Station ID not in expected format of two letters followed by 4 digits")
+				print("Station ID not in expected format of two letters"
+				print("followed by 4 alphanumeric characters, excluding "
+				print("letters O and I")
 				continue
 		response = input("Enter sensor ip for {}: ".format(response.upper()))
 		if response == "":
@@ -461,9 +463,12 @@ def setQuotas(path_to_config, quotas_tuple, debug=False):
 
 
 def validateStationData(station_id, lat, lon, elevation, ip_address):
-	return station_id[0:2].isalpha() and station_id[2:6].isnumeric() \
+	return station_id[0:2].isalpha() and station_id[2:6].isalnum() and \
 		and -90 < lat < 90 and -180 < lon < 360 \
-		and -100 < elevation < 10000
+		and -100 < elevation < 10000 \
+		and not ("i" in ststion_id.lower()) \
+		and not ("o" in station_id.lower())
+
 
 def detectMostRecentLogAccess(config, time_window = 30):
 
