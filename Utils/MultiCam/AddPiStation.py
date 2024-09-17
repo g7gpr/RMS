@@ -652,7 +652,7 @@ if __name__ == "__main__":
     cameras.sort()
 
     for entry in cameras:
-        if not cml_args.launch():
+        if not cml_args.launch:
             continue
         entry = sanitise(entry)
         path_to_config = os.path.expanduser(os.path.join("~/source/Stations/",entry.upper(),".config"))

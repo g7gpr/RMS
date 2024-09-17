@@ -216,6 +216,7 @@ def changeOptionValue(lines_list, option, value, delimiter = ":"):
 	Returns:
 		output_list : entire file, with the lines changed referring to the option
 	"""
+	print("Attempting to change option {} to {}".format(option,value))
 	change_made = False
 	modified_option = False
 	if option == "ip_address":
