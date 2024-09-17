@@ -49,7 +49,7 @@ from RMS.Misc import sanitise, mkdirP
 from Utils.MultiCam.Common import createAutoStartEntry, createShowLiveStreamEntry, setTimeZone, setQuotas
 from Utils.MultiCam.Common import checkUserDesktopDirectoryEnvironment, uncomment, computeQuotas
 from Utils.MultiCam.Common import moveIfExists, copyIfExists, changeOptionValue, detectMostRecentLogAccess
-from Utils.MultiCam.Common import getStationsToAdd, customiseConfig, makeKeys
+from Utils.MultiCam.Common import getStationsToAdd, customiseConfig, makeKeys, validateStationData
 from shutil import move
 import argparse
 
@@ -185,7 +185,7 @@ def configureFirstStation(path_to_config = "~/source/RMS/.config"):
     print("Please provide a stationID, location of the station, and the camera IP address")
     print("These values can be edited later")
     valid_station = False
-    while valid_station:
+    while not valid_station:
         station_id = input("first station id:").upper()
         latitude = input("latitude (wgs84):")
         longitude = input("longitude (wgs84):")

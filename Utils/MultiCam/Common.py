@@ -29,6 +29,13 @@ def moveIfExists(src, dest, debug=False):
 	print("Moving {} to {}".format(src, dest))
 	if not os.path.exists(dest):
 		mkdirP(dest)
+
+	print("{} is a file {}".format(src, os.path.isfile(src)))
+	print("{} is a directory {}".format(dest, os.path.isdir(dest)))
+	if os.path.isfile(src) and os.path.isdir(dest):
+		if os.path.isdir(dest):
+			dest = os.path.join(dest, os.path.basename(src))
+
 	if os.path.exists(src):
 		# On Pi5 move actually performs a copy, which is not appropriate for moving large amounts of data
 		#move(src, dest)
@@ -210,7 +217,7 @@ def getStationsToAdd(stations_list=[], ip_list=[], debug=False):
 		if response == "":
 			break
 		else:
-			ip_list.append(response)
+			ip_list.append(ip)
 
 
 
@@ -284,7 +291,6 @@ def customiseConfig(path_to_config, stationid, data_dir, ip=None, reboot_after_p
 		path_to_config ():path to the .config file to be customised
 		stationid (): the stationID to be used
 		data_dir (): the data_directory to be used
-		extra_space (): the extra_space to be allowed
 		reboot_after_processing (): optional, default False, generally not desirable for multiple camera systems
 
 	Returns:
