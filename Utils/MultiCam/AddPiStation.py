@@ -373,7 +373,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station=False, new_
             print("This data will be moved to {:s}".format(new_station_data_dir))
 
             # Get rid of old icons
-            cleanDesktop()
+            # cleanDesktop()
 
             # Has the data_dir already been created
             if os.path.exists(new_station_data_dir):
