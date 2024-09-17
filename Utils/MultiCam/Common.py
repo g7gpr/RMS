@@ -274,7 +274,7 @@ def customiseConfig(path_to_config, stationid, data_dir, extra_space, ip=None, r
 	config_lines = changeOptionValue(config_lines, "stationID", stationid)
 	config_lines = changeOptionValue(config_lines, "data_dir", data_dir)
 	config_lines = changeOptionValue(config_lines, "extra_space", extra_space)
-	config_lines = changeOptionValue(config_lines, "reboot_after_procesing", reboot_after_processing)
+	config_lines = changeOptionValue(config_lines, "reboot_after_processing", reboot_after_processing)
 
 	if ip is not None:
 		config_lines = changeOptionValue(config_lines, "ip_address", ip)
