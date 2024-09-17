@@ -424,7 +424,8 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station=False, new_
                 copyIfExists(config_path, new_station_config_path, debug=False)
 
         # Move the platepar
-        copyIfExists(platepar_path, os.path.join(new_station_config_path, config.platepar_name), debug=False)
+        if not first_station:
+            copyIfExists(platepar_path, os.path.join(new_station_config_path, config.platepar_name), debug=False)
 
         # Move the mask
         if os.path.exists(os.path.join(new_station_config_path,os.path.basename(mask_path))):
