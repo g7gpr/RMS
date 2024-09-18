@@ -415,7 +415,7 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station=False, new_
 
         else:
             # This is not the first station
-            # Migrate the .config file
+            # Migrate the .config files
             if os.path.exists(new_station_config_path):
                 if debug:
                     print("Config for {} has already been migrated".format(new_station_id))
@@ -424,18 +424,19 @@ def copyPiStation(config_path ="~/source/RMS/.config", first_station=False, new_
                 copyIfExists(config_path, new_station_config_path, debug=False)
 
         # Move the platepar
-        if not first_station:
+        if first_station:
             copyIfExists(platepar_path, os.path.join(new_station_config_path, config.platepar_name), debug=False)
 
-        # Move the mask
-        if os.path.exists(os.path.join(new_station_config_path,os.path.basename(mask_path))):
-            if debug:
-                print("Mask already migrated to {}".format(new_station_config_path))
-        else:
-            if moveIfExists(mask_path, new_station_config_path):
-                pass
+        if first_station:
+        # Move the mask if there is a mask, and this is also the first_stations
+            if os.path.exists(os.path.join(new_station_config_path,os.path.basename(mask_path))):
+                if debug:
+                    print("Mask already migrated to {}".format(new_station_config_path))
             else:
-                getMaskFromShared(dest_path=new_station_config_path)
+                if moveIfExists(mask_path, new_station_config_path):
+                    pass
+                else:
+                    getMaskFromShared(dest_path=new_station_config_path)
 
         # Finish off by creating desktop shortcuts
         if False:
@@ -655,6 +656,8 @@ if __name__ == "__main__":
     cameras.sort()
 
     for entry in cameras:
+        # Audit code goes in here
+
         if not cml_args.launch:
             continue
         entry = sanitise(entry)
