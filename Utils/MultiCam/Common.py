@@ -234,7 +234,7 @@ def validIP(ip):
 
 
 
-def changeOptionValue(lines_list, option, value, delimiter = ":"):
+def changeOptionValue(lines_list, option, value, delimiter = ":", verbose=False):
 
 	"""
 	Change an individual option in a .config file
@@ -267,7 +267,8 @@ def changeOptionValue(lines_list, option, value, delimiter = ":"):
 					output_line = "{}: {}://{}:{}\n".format(option, protocol, value, tail)
 				else:
 					output_line = "{}{} {}\n".format(option, delimiter, value)
-				print("Writing {}".format(output_line))
+				if verbose:
+					print("Writing {}".format(output_line))
 				change_made = True
 			else:
 				output_line = line
