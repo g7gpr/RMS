@@ -92,7 +92,7 @@ def read(directory, filename, array=False, full_filename=False):
     ff = FFStruct()
 
     # Read in the FITS
-    hdulist = fits.open(fid)
+    hdulist = fits.open(fid, memmap=False)
 
     # Read the header
     head = hdulist[0].header
@@ -124,7 +124,7 @@ def read(directory, filename, array=False, full_filename=False):
         ff.array = np.swapaxes(ff.array, 0, 1)
         ff.array = np.swapaxes(ff.array, 0, 2)
 
-    # CLose the FITS file
+    # Close the FITS file
     hdulist.close()
 
     return ff
