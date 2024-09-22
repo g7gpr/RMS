@@ -487,9 +487,9 @@ def setQuotas(path_to_config, quotas_tuple, debug=False):
 		config_lines.append(line)
 	fh.close()
 
-	config_lines = changeOptionValue(config_lines, "rms_data_quota", quotas_tuple[0])
-	config_lines = changeOptionValue(config_lines, "arch_dir_quota", quotas_tuple[1])
-	config_lines = changeOptionValue(config_lines, "bz2_files_quota", quotas_tuple[2])
+	config_lines = changeOptionValue(config_lines, "rms_data_quota", quotas_tuple[0], verbose=True)
+	config_lines = changeOptionValue(config_lines, "arch_dir_quota", quotas_tuple[1], verbose=True)
+	config_lines = changeOptionValue(config_lines, "bz2_files_quota", quotas_tuple[2], verbose=True)
 	config_lines = changeOptionValue(config_lines, "quota_management_disabled", "false")
 
 	fh = open(os.path.join(path_to_config, ".config"), "w")

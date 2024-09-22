@@ -339,6 +339,9 @@ class Config:
         # days of logfiles to keep
         self.logdays_to_keep = 30
 
+        # Toggle logging stdout messages
+        self.log_stdout = False
+
         # ArchDirs and bzs to keep
         # keep this many ArchDirs. Zero means keep them all
         self.arch_dirs_to_keep = 20
