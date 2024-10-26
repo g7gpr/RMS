@@ -1210,7 +1210,7 @@ if __name__ == "__main__":
 
     # Init the command line arguments parser
 
-    arg_parser = argparse.ArgumentParser(description="Tool for encoding GAIA DR3 information into RMS format.  \n+" 
+    arg_parser = argparse.ArgumentParser(description="Tool for encoding GAIA DR3 information into RMS format.  \n" 
                                                      "python -m Utils.ReadGAIACatalog ~/tmp/catalogueassembly/inputdata/gaia/result_gaiadr3_20240107230522822_107_78_1.psv \n" 
                                                      "will start processing")
 
