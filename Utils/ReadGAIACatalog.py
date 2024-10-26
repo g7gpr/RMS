@@ -82,7 +82,7 @@ def seconds2DHMS(s, end_time = False):
 
     if end_time:
 
-        end_time = datetime.datetime.now() + datetime.timedelta(seconds = s)
+        end_time = datetime.datetime.now() + datetime.timedelta(seconds=s)
 
         return "{}d:{}h{}m{}s {}".format(int(d),str(int(h)).zfill(2),str(int(m)).zfill(2),str(int(r)).zfill(2), end_time)
 
@@ -1073,7 +1073,7 @@ def generateDR3CatalogueWithSimbadCode(gaia_catalogue, gaia_columns, name_list, 
             if line_no % 100 == 0:
                 elapsed_time = (datetime.datetime.utcnow() - start_time).total_seconds()
                 processing_rate = elapsed_time / line_no  # in seconds per line
-                time_to_completion, per_cent_done = num_lines * processing_rate, 100 * line_no / num_lines
+                time_to_completion, per_cent_done = (num_lines * processing_rate) - elapsed_time, 100 * line_no / num_lines
                 print("{} {:.2f}% {}/{}".format(seconds2DHMS(time_to_completion, end_time=True), per_cent_done,
                                                 line_no, num_lines), end="\r")
 
@@ -1210,7 +1210,10 @@ if __name__ == "__main__":
 
     # Init the command line arguments parser
 
-    arg_parser = argparse.ArgumentParser(description="Tool for encoding GAIA DR3 information into RMS format.")
+    arg_parser = argparse.ArgumentParser(description="Tool for encoding GAIA DR3 information into RMS format.  \n+" +
+                                                     "python -m Utils.ReadGAIACatalog /home/david/tmp/catalogueassembly/inputdata/gaia/result_gaiadr3_20240107230522822_107_78_1.psv \n" +
+                                                     "will start processing")
+
 
     arg_parser.add_argument('input_path', metavar='INPUT_FILE', type=str,
                             help='Path to the input file.')
