@@ -70,6 +70,10 @@ def valueToDirectory(camera_code,map):
         if range_min <= int(camera_code) <= range_max:
             destination_directory = directory
 
+    if destination_directory is None:
+        return setidir
+        log.warn("Could not find a remote directory for camera {}".format(camera_code))
+
     return os.path.join(setidir, destination_directory)
 
 def getNightTime(directory, microseconds=False):
