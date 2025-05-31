@@ -316,5 +316,5 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 
 
 if __name__ == '__main__':
-    config = cr.loadConfigFromDirectory(".config", "/home/david/source/RMS")
+    config = cr.loadConfigFromDirectory(".config", os.path.expanduser("~/source/RMS"))
     rmsExternal("~/RMS_data/CapturedFiles", "~/RMS_data/ArchivedFiles", config)
