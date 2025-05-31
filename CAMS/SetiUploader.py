@@ -72,7 +72,7 @@ def valueToDirectory(camera_code,map):
 
     if destination_directory is None:
         return setidir
-        log.warn("Could not find a remote directory for camera {}".format(camera_code))
+
 
     return os.path.join(setidir, destination_directory)
 
