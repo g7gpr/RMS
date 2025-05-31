@@ -261,6 +261,7 @@ def sendByFTP(zip_name, log):
 
 def rmsExternal(captured_night_dir, archived_night_dir, config):
 
+
     initLogging(config, 'SETI_')
     log = logging.getLogger("logger")
     archived_night_dir = os.path.expanduser(archived_night_dir)
