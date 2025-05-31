@@ -1,3 +1,21 @@
+# CAMS SetiUploader
+# Copyright (C) 2025 David Rollinson, Kristen Felker
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+
 import os
 from ftplib import FTP
 import RMS.ConfigReader as cr
@@ -261,6 +279,24 @@ def sendByFTP(zip_name, log):
 
 def rmsExternal(captured_night_dir, archived_night_dir, config):
 
+    """
+    Function for launch from main RMS process
+
+    Takes the archived night directory, iterates through all the directories
+    to find directories which do not already have a CAMS style zip file.
+
+    A zip file is generated, and sent to seti using FTP
+
+    Args:
+        captured_night_dir: Captured Night Directory
+        archived_night_dir: Archived Night Directory
+        config: RMS config
+
+    Returns:
+        Nothing
+
+    """
+
 
     initLogging(config, 'SETI_')
     log = logging.getLogger("logger")
@@ -316,9 +352,9 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
                 if os.path.exists(cal_file_path) and os.path.exists(rtp_file_path):
                     sendByFTP(zipFiles([cal_file_path, rtp_file_path], night_directory, config, log), log)
     log.info("SetiUpload complete")
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
 
 
 if __name__ == '__main__':
+    # test launch
     config = cr.loadConfigFromDirectory(".config", os.path.expanduser("~/source/RMS"))
     rmsExternal("~/RMS_data/CapturedFiles", "~/RMS_data/ArchivedFiles", config)
