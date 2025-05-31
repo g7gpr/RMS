@@ -189,13 +189,10 @@ def createSetiZipName(directory, config):
     """
 
     directory = os.path.basename(directory)
-    log.info("Working on directory {}".format(directory))
     date_code = directory.split("_")[1]
     year, month, day = date_code[0:4], date_code[4:6], date_code[6:8]
-
     time_code = directory.split("_")[2]
     hour, minute, second = time_code[0:2], time_code[2:4], time_code[4:6]
-\
     name = ("{}_{}_{}_{:06d}_{}_{}_{}.zip".format(year, month, day, config.cams_code, hour, minute, second ))
 
     return name
