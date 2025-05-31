@@ -270,12 +270,14 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
     if config.cams_code == 0:
         log.warning("cams_code set to {}, ending".format(config.cams_code))
         return None
-    #get list of directories in archived_night_dir
+
 
     stationID, cams_code = config.stationID, config.cams_code
 
     archived_directory_full_path = os.path.join(config.data_dir, config.archived_dir)
     archived_directory_list = os.listdir(archived_directory_full_path)
+    archived_directory_list.sort()
+    print(archived_directory_list)
     for file_object in archived_directory_list:
         if os.path.isdir(os.path.join(archived_night_dir, file_object)):
             if file_object.startswith("{}_".format(stationID)):
