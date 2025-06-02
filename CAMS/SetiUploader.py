@@ -314,12 +314,13 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
     createLock(config)
     initLogging(config, 'SETI_')
     log = logging.getLogger("logger")
-    log.info("SetiUpload started")
+
 
     if config.cams_code == 0:
         log.warning("cams_code set to {}, ending".format(config.cams_code))
         return None
-
+    else:
+        log.info("SetiUploader started for cams_code {}".format(config.cams_code))
 
     stationID, cams_code = config.stationID, config.cams_code
 
