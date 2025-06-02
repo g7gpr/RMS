@@ -324,7 +324,7 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 
     stationID, cams_code = config.stationID, config.cams_code
 
-    archived_directory_full_path = os.path.join(config.data_dir, config.archived_dir)
+    archived_directory_full_path = os.path.join(os.path.expanduser(config.data_dir), config.archived_dir)
     log.info("Working in {}".format(archived_directory_full_path))
     archived_directory_list = os.listdir(archived_directory_full_path)
     archived_directory_list.sort()
