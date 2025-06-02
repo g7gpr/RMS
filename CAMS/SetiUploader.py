@@ -153,7 +153,7 @@ def createRTPFileName(cams_code, directory):
     file_name = "RTPdetectinfo_{:06d}_{:s}.txt".format(cams_code, night_time)
     return file_name
 
-def convertFTPtoRTP(night_directory, cal_file_name, config):
+def convertFTPtoRTP(night_directory, cal_file_name, config, log):
 
     """
 
@@ -189,7 +189,7 @@ def convertFTPtoRTP(night_directory, cal_file_name, config):
         met[0] = ff_name
 
     # Write the CAMS compatible FTPdetectinfo file
-
+    log.info("Writing {}".format(rtpdetectinfo_name))
     writeFTPdetectinfo(meteor_list, night_directory, \
                        rtpdetectinfo_name, night_directory, cams_code_formatted, fps, calibration=cal_file_name, \
                        celestial_coords_given=(platepar is not None))
@@ -351,6 +351,7 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 
                     platepar = pp.Platepar()
                     platepar.read(os.path.join(night_directory, config.platepar_name))
+                    log.info("Writing cal file {} to RTP".format(os.path.basename(cal_file_path)))
                     cal_file_to_send = cal.writeCAL(night_directory, config, platepar)
 
 
@@ -363,7 +364,8 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
                     log.info("RTP file {} does not exist".format(rtp_file_path))
                     if os.path.exists(cal_file_path):
                         # write the FTP file
-                        convertFTPtoRTP(night_directory, cal_file_path, config)
+
+                        convertFTPtoRTP(night_directory, cal_file_path, config, log)
                 pass
 
                 if os.path.exists(cal_file_path) and os.path.exists(rtp_file_path):
