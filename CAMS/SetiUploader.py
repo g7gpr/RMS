@@ -1,5 +1,6 @@
 # CAMS SetiUploader
 # Copyright (C) 2025 David Rollinson, Kristen Felker
+# Derived from work by N Muskovitz
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
