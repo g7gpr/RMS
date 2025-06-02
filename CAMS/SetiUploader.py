@@ -332,7 +332,7 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
         if os.path.isdir(os.path.join(archived_night_dir, file_object)):
             if file_object.startswith("{}_".format(stationID)):
                 night_directory = os.path.join(archived_directory_full_path, file_object)
-
+                log.info("Checking in {}".format(night_directory))
                 cal_file = createCALFileName(config.cams_code, night_directory)
                 cal_file_path = os.path.join(night_directory, cal_file)
 
@@ -340,8 +340,6 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
                 rtp_file_path = os.path.join(night_directory, rtp_file)
 
                 # create a CAL file if it does not exist
-
-
 
                 if os.path.exists(cal_file_path):
                     pass
