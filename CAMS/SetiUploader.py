@@ -261,7 +261,7 @@ def sendByFTP(zip_name, log):
     """
 
     if zip_name is None:
-
+        log.info("Nothing to send")
         return
     cams_code = os.path.basename(zip_name).split("_")[3]
     remote_directory = valueToDirectory(cams_code,mapping)
@@ -273,7 +273,7 @@ def sendByFTP(zip_name, log):
         log.info("Sent {} to {}".format(zip_name, remote_directory))
         return True
     except:
-        log.warning("Failed to send {}, deleted zip and will try tomorrow".format(zip_name))
+        log.warning("Failed to send {}, deleted zip and will try on next run".format(zip_name))
         os.unlink(zip_name)
         return False
 
@@ -364,6 +364,7 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 
                 if os.path.exists(cal_file_path) and os.path.exists(rtp_file_path):
                     sendByFTP(zipFiles([cal_file_path, rtp_file_path], night_directory, config, log), log)
+
     log.info("SetiUpload complete")
     removeLock(config)
 
