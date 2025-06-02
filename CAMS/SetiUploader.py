@@ -270,7 +270,7 @@ def sendByFTP(zip_name, log):
         ftp.cwd(remote_directory)
         ftp.storbinary("STOR {}".format(os.path.basename(zip_name)), open(zip_name, "rb"))
         ftp.close()
-        log.info("Sent {} to {}".format(zip_name, remote_directory))
+        log.info("Sent {} to {}".format(os.path.basename(zip_name), remote_directory))
         return True
     except:
         log.warning("Failed to send {}, deleted zip and will try on next run".format(zip_name))
