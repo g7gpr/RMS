@@ -277,6 +277,19 @@ def sendByFTP(zip_name, log):
         os.unlink(zip_name)
         return False
 
+def createLock(config)
+
+    lockfile = os.path.join(config.data_dir, config.reboot_lock_file)
+    with open(lockfile, 'w') as _:
+        pass
+
+    pass
+
+def removeLock(config)
+
+    lockfile = os.path.join(config.data_dir, config.reboot_lock_file)
+    os.remove(lockfile)
+    pass
 
 def rmsExternal(captured_night_dir, archived_night_dir, config):
 
@@ -298,7 +311,7 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 
     """
 
-
+    createLock(config)
     initLogging(config, 'SETI_')
     log = logging.getLogger("logger")
     archived_night_dir = os.path.expanduser(archived_night_dir)
@@ -353,6 +366,7 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
                 if os.path.exists(cal_file_path) and os.path.exists(rtp_file_path):
                     sendByFTP(zipFiles([cal_file_path, rtp_file_path], night_directory, config, log), log)
     log.info("SetiUpload complete")
+    removeLock(config)
 
 
 if __name__ == '__main__':
