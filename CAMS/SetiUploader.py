@@ -277,7 +277,7 @@ def sendByFTP(zip_name, log):
         os.unlink(zip_name)
         return False
 
-def createLock(config):
+def createLock(config, log):
 
     log.info("Applying reboot lock")
     lockfile = os.path.join(os.path.expanduser(config.data_dir), config.reboot_lock_file)
@@ -286,7 +286,7 @@ def createLock(config):
 
     pass
 
-def removeLock(config):
+def removeLock(config, log):
 
     log.info("Removing reboot lock")
     lockfile = os.path.join(os.path.expanduser(config.data_dir), config.reboot_lock_file)
@@ -313,13 +313,14 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 
     """
 
-    createLock(config)
+
     initLogging(config, 'SETI_')
     log = logging.getLogger("logger")
-
+    createLock(config, log)
 
     if config.cams_code == 0:
         log.warning("cams_code set to {}, ending".format(config.cams_code))
+        removeLock(config, log)
         return None
     else:
         log.info("SetiUploader started for cams_code {}".format(config.cams_code))
@@ -369,7 +370,7 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
                     sendByFTP(zipFiles([cal_file_path, rtp_file_path], night_directory, config, log), log)
 
     log.info("SetiUpload complete")
-    removeLock(config)
+    removeLock(config, log)
 
 
 if __name__ == '__main__':
