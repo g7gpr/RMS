@@ -314,7 +314,6 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
     createLock(config)
     initLogging(config, 'SETI_')
     log = logging.getLogger("logger")
-    archived_night_dir = os.path.expanduser(archived_night_dir)
     log.info("SetiUpload started")
 
     if config.cams_code == 0:
@@ -328,6 +327,7 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
     log.info("Working in {}".format(archived_directory_full_path))
     archived_directory_list = os.listdir(archived_directory_full_path)
     archived_directory_list.sort()
+    log.info("Archived directory list is {}".format(archived_directory_list))
     for file_object in archived_directory_list:
         if os.path.isdir(os.path.join(archived_night_dir, file_object)):
             if file_object.startswith("{}_".format(stationID)):
