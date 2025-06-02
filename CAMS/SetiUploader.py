@@ -279,6 +279,7 @@ def sendByFTP(zip_name, log):
 
 def createLock(config):
 
+    log.info("Applying reboot lock")
     lockfile = os.path.join(os.path.expanduser(config.data_dir), config.reboot_lock_file)
     with open(lockfile, 'w') as _:
         pass
@@ -287,6 +288,7 @@ def createLock(config):
 
 def removeLock(config):
 
+    log.info("Removing reboot lock")
     lockfile = os.path.join(os.path.expanduser(config.data_dir), config.reboot_lock_file)
     os.remove(lockfile)
     pass
