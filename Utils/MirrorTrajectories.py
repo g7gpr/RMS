@@ -591,7 +591,7 @@ def mirror(config=None, page="https://globalmeteornetwork.org/data/traj_summary_
 def downloadFile(url,local_target_file, conn=None):
 
     urllib.request.urlretrieve(url, local_target_file)
-    print(getHeaders(local_target_file))
+
     if not tableExists(conn, "Trajectories"):
         createTable(conn, getHeaders(local_target_file))
 
