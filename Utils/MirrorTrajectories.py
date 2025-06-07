@@ -25,11 +25,14 @@ import sys
 from html.parser import HTMLParser
 from dateutil import parser
 import time
-import tqdm
 import numpy as np
-from RMS.Misc import mkdirP
-import psutil
+from numpy.ma.extras import column_stack
 
+from RMS.Misc import mkdirP
+import RMS.ConfigReader as cr
+import random
+import datetime
+import sqlite3
 
 if sys.version_info[0] < 3:
 
@@ -50,26 +53,90 @@ else:
     import urllib.request
 
 traj_summary_all_filename = "traj_summary_all.txt"
-data_directory = os.path.expanduser("~/RMS_data/")
-trajectory_summary_directory = os.path.join(data_directory, "traj_summary_data")
-daily_directory = os.path.join(trajectory_summary_directory, "daily")
-monthly_directory = os.path.join(trajectory_summary_directory, "monthly")
-trajectory_summary_all_file = os.path.join(trajectory_summary_directory, traj_summary_all_filename)
+
+def columnTranslate(column):
+
+    column = column.replace("q AU", "Perihelion AU")
+    column = column.replace("Q AU", "Aphelion AU")
+
+    return column
+
+def createDataBase(config):
+
+    return sqlite3.connect(os.path.join(os.path.expanduser(config.data_dir), "trajectories.db"))
+
+def tableExists(conn, table_name):
+
+    query = "SELECT name FROM sqlite_master WHERE type='table' AND name='{}';".format(table_name)
+    if conn.cursor().execute(query).fetchone() is None:
+        return False
+
+    return True
 
 
+def createTable(conn, column_list):
+
+    create_table_statement = ""
+    create_table_statement += "CREATE TABLE 'Trajectories' (\n"
+    column_list.append("source file")
+    column_list.append("source file date")
+    column_list.append("source file bytes")
+
+    for column in column_list:
+        # for SQLLite default to text
+        column_type = "TEXT"
+
+        if "deg" in column:
+            column_type = "REAL"
+        if "sigma" in column:
+            column_type = "REAL"
+        if "km" in column:
+            column_type = "REAL"
+        if "AU" in column:
+            column_type = "REAL"
+        if "AbsMag" in column:
+            column_type = "REAL"
+        if "sec" in column:
+            column_type = "REAL"
+        if "Mass" in column:
+            column_type = "REAL"
+        if "arcsec" in column:
+            column_type = "REAL"
+        if "No" in column:
+            column_type = "INTEGER"
+        if "Num" in column:
+            column_type = "INTEGER"
+        if "bytes" in column:
+            column_type = "INTEGER"
+
+        column = columnTranslate(column)
+
+        create_table_statement += " '{}' '{}',".format(column, column_type) + "\n"
+
+    create_table_statement = create_table_statement[:-2] + "\n );"
+
+    print(create_table_statement)
+    conn.execute(create_table_statement)
+    pass
 
 
-def createTrajectoryDataDirectoryStructure():
+def createTrajectoryDataDirectoryStructure(config):
     """
     Creates a folder structure in line with the format used at https://globalmeteornetwork.org/data/traj_summary_data/
     :return: nothing
     """
 
-    mkdirP(data_directory)
+    trajectory_summary_directory = os.path.join(os.path.expanduser(config.data_dir), "traj_summary_data")
+    daily_directory = os.path.join(trajectory_summary_directory, "daily")
+    monthly_directory = os.path.join(trajectory_summary_directory, "monthly")
+    trajectory_summary_all_file = os.path.join(trajectory_summary_directory, traj_summary_all_filename)
+
+    mkdirP(os.path.expanduser(config.data_dir))
     mkdirP(trajectory_summary_directory)
     mkdirP(daily_directory)
     mkdirP(monthly_directory)
 
+    return trajectory_summary_all_file, daily_directory, monthly_directory
 
 def lastFile(dir):
 
@@ -140,7 +207,7 @@ def readTrajFileMultiCol(trajectory_file, column_list, length=0, ignore_line_mar
         print("Seeking between solar longitudes {} and {}".format(solar_lon_range[0], solar_lon_range[1]))
     with open(trajectory_file) as input_fh:
 
-        for line in tqdm.tqdm(input_fh):
+        for line in input_fh:
             if line[0] == "\n" or line[0] == ignore_line_marker:
                 continue
 
@@ -182,22 +249,22 @@ def getHeaders(trajectory_file):
     header_list = []
     traj_summary = open(trajectory_file, 'r')
 
-    headerlinecounter = 0
+    header_line_counter = 0
     for line in traj_summary:
         if line != "\n" and line[0] == '#' and ";" in line and not "---" in line:
             headers = line[1:].split(';')  # get rid of the hash at the front
-            if headerlinecounter == 0:
+            if header_line_counter == 0:
                 header_list = [""] * len(headers)
-            columncount = 0
+            column_count = 0
             for header in headers:
-                header_list[columncount] = str(header_list[columncount]).strip() + " " + str(header).strip()
-                if header_list[columncount].strip() == "+/- sigma" and columncount > 1:
-                    header_list[columncount] = header_list[columncount - 1].strip() + " " + header_list[
-                        columncount].strip()
+                header_list[column_count] = str(header_list[column_count]).strip() + " " + str(header).strip()
+                if header_list[column_count].strip() == "+/- sigma" and column_count > 1:
+                    header_list[column_count] = header_list[column_count - 1].strip() + " " + header_list[
+                        column_count].strip()
                 else:
-                    header_list[columncount] = header_list[columncount].strip()
-                columncount += 1
-            headerlinecounter += 1
+                    header_list[column_count] = header_list[column_count].strip()
+                column_count += 1
+            header_line_counter += 1
 
     return header_list
 
@@ -248,7 +315,7 @@ def getFieldsFromRow(line, field_list, table_header_list=[], delim=";"):
 
 def isDuplicate(line_1, line_2, table_header_list = None):
     """
-    Detect if two trajectories, adjacent to each other, may be dulplicate trajectories
+    Detect if two trajectories, adjacent to each other, may be duplicate trajectories
 
     Args:
         line_1:first trajectory line
@@ -437,7 +504,7 @@ def createAllFile(traj_summary_all_file, drop_duplicates):
     directory_list.sort()
 
     duplicate_count = 0
-    for traj_file in tqdm.tqdm(directory_list):
+    for traj_file in directory_list:
         if traj_file[13:20].isnumeric():
             output_fh, duplicates = fileAppend(fh, os.path.join(daily_directory, traj_file), "#", drop_duplicates)
             duplicate_count += duplicates
@@ -449,10 +516,60 @@ def createAllFile(traj_summary_all_file, drop_duplicates):
     return duplicate_count
 
 
-def mirror(page="https://globalmeteornetwork.org/data/traj_summary_data/daily/", force_reload=False, max_downloads=10):
+def insertData(local_target_file, conn=None):
+
+    if local_target_file == "traj_summary_yesterday.txt":
+        return
+
+    if local_target_file == "traj_summary_latest_daily.txt":
+        return
+
+    sql_command = "DELETE FROM Trajectories WHERE 'source files' LIKE '{}'".format(local_target_file)
+    conn.execute(sql_command)
+    conn.commit()
+
+    column_list = getHeaders(local_target_file)
+
+    data_to_insert  = readTrajFileMultiCol(local_target_file, column_list, convert_to_radians = False)
+
+
+    if os.path.exists(local_target_file):
+        local_mod_time, local_size = os.stat(local_target_file).st_mtime, round(os.stat(local_target_file).st_size)
+
+    sql_command = ""
+
+    sql_command += "INSERT INTO Trajectories \n"
+    sql_command += " ( \n"
+    for column in column_list:
+        column = columnTranslate(column)
+        sql_command += " '{}', ".format(column)
+
+    sql_command += "'source file', 'source file date', 'source file bytes' ) \n"
+
+    sql_command += "VALUES \n"
+    for row_list in data_to_insert:
+        sql_command += "("
+        row_list.append(os.path.basename(local_target_file))
+        row_list.append(local_mod_time)
+        row_list.append(local_size)
+        for data_item in row_list:
+            sql_command += "'{}', ".format(data_item)
+        sql_command = sql_command[:-2]
+        sql_command += "),\n"
+
+    sql_command = sql_command[:-2]
+    sql_command += ";"
+
+    conn.execute(sql_command)
+    conn.commit()
+
+    pass
+
+def mirror(config=None, page="https://globalmeteornetwork.org/data/traj_summary_data/daily/",
+                force_reload=False, max_downloads=10, daily_directory=None, conn=None):
     """
     Function to mirror the trajectories of the global meteor network, only downloading changed files, and from the
-    changed files constructing a file with all the trajectories
+    changed files optionally constructing a file with all the trajectories
 
     Args:
         page: web page to be mirrored
@@ -466,14 +583,25 @@ def mirror(page="https://globalmeteornetwork.org/data/traj_summary_data/daily/",
     print("Mirroring {}".format(page))
     print("Force reload is {}".format(force_reload))
 
-    createTrajectoryDataDirectoryStructure()
+    trajectory_summary_all_file, daily_directory, monthly_directory = createTrajectoryDataDirectoryStructure(config)
 
     page, file_name_list, date_list, size_list = getNamesDatesAndSizesFromURL(page)
-    downloadFiles(page, file_name_list, date_list, size_list, max_downloads=max_downloads, force_reload=force_reload)
+    downloadFiles(daily_directory ,page, file_name_list, date_list, size_list, max_downloads=max_downloads, force_reload=force_reload, conn=conn)
 
+def downloadFile(url,local_target_file, conn=None):
 
-def downloadFiles(page, file_name_list, date_list, size_list, max_downloads=10, force_reload=False):
+    urllib.request.urlretrieve(url, local_target_file)
+    print(getHeaders(local_target_file))
+    if not tableExists(conn, "Trajectories"):
+        createTable(conn, getHeaders(local_target_file))
+
+    insertData(local_target_file, conn)
+
+def downloadFiles(daily_directory, page, file_name_list, date_list, size_list, max_downloads=10, force_reload=False, conn=None):
     files_downloaded = 0
+    file_name_list.reverse()
+    date_list.reverse()
+    size_list.reverse()
     for file_name, remote_date, remote_size in zip(file_name_list, date_list, size_list):
 
         url = "{}{}".format(page, file_name)
@@ -482,7 +610,7 @@ def downloadFiles(page, file_name_list, date_list, size_list, max_downloads=10, 
 
         if force_reload:
             print("Downloading {} because force reload selected".format(url))
-            urllib.request.urlretrieve(url, local_target_file)
+            downloadFile(url, local_target_file, conn=conn)
 
         if os.path.exists(local_target_file):
             local_mod_time, local_size = os.stat(local_target_file).st_mtime, round(os.stat(local_target_file).st_size)
@@ -490,14 +618,14 @@ def downloadFiles(page, file_name_list, date_list, size_list, max_downloads=10, 
             if local_mod_time < remote_mod_time:
                 print("Re-downloading {} because remote file is newer than local file".format(url))
                 files_downloaded += 1
-                urllib.request.urlretrieve(url, local_target_file)
+                urllib.request.urlretrieve(url, local_target_file, conn=conn)
 
             if local_size < remote_size:
                 print("Re-downloading {} because remote file is larger than local file".format(url))
                 print("Local size  {}".format(local_size))
                 print("Remote size {}".format(remote_size))
                 files_downloaded += 1
-                urllib.request.urlretrieve(url, local_target_file)
+                downloadFile(url, local_target_file, conn=conn)
 
             with open(local_target_file) as input_handle:
                 for line in input_handle:
@@ -506,13 +634,13 @@ def downloadFiles(page, file_name_list, date_list, size_list, max_downloads=10, 
                     value_count = len(line.split(";"))
                     if value_count != 86:
                         print("Re-downloading {} because file is not correct format".format(url))
-                        urllib.request.urlretrieve(url, local_target_file)
+                        downloadFile(url, local_target_file, conn=conn)
                         break
 
 
         else:
             print("Downloading new file {}".format(url))
-            urllib.request.urlretrieve(url, local_target_file)
+            downloadFile(url, local_target_file, conn=conn)
             files_downloaded += 1
             if files_downloaded >= max_downloads:
                 return
@@ -522,8 +650,13 @@ if __name__ == "__main__":
 
     import argparse
 
+
+
     arg_parser = argparse.ArgumentParser(description="""Download new or changed files from a web page of links \
         """, formatter_class=argparse.RawTextHelpFormatter)
+
+    arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str,
+                            help="Path to a config file which will be used instead of the default one.")
 
     arg_parser.add_argument('-f', '--force_reload', dest='force_reload', default=False, action="store_true",
                             help="Force download of all files")
@@ -544,11 +677,35 @@ if __name__ == "__main__":
     arg_parser.add_argument('-d', '--drop_dup', dest='drop_duplicates', default=False, action="store_true",
                             help="Detect duplicates and remove from traj_all file")
 
+    arg_parser.add_argument('-r', '--repeat', dest='repeat', default=False, action="store_true",
+                            help="Run indefinitely with a delay between runs")
+
     cml_args = arg_parser.parse_args()
 
+    config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
 
+    trajectory_summary_all_file, daily_directory, monthly_directory = (
+        createTrajectoryDataDirectoryStructure(config))
+
+    conn = createDataBase(config)
+    if cml_args.repeat:
+        print("Running indefinitely...")
+    else:
+        print("Running once...")
+
+    while cml_args.repeat:
+
+        if not cml_args.no_download:
+            mirror(config = config, page = cml_args.page,
+                    force_reload = cml_args.force_reload, max_downloads = cml_args.max_downloads, daily_directory=daily_directory, conn=conn)
+        delay = random.randrange(120,360)
+        print("Next run at {}".format(datetime.datetime.now() + datetime.timedelta(seconds=delay)))
+        time.sleep(delay)
 
     if not cml_args.no_download:
-        mirror(page=cml_args.page, force_reload=cml_args.force_reload, max_downloads=cml_args.max_downloads)
+        mirror(config=config, page=cml_args.page,
+               force_reload=cml_args.force_reload, max_downloads=cml_args.max_downloads,
+               daily_directory=daily_directory)
+
     if cml_args.all:
         duplicate_count = createAllFile(trajectory_summary_all_file, cml_args.drop_duplicates)
