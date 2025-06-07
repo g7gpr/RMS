@@ -641,8 +641,9 @@ def downloadFiles(daily_directory, page, file_name_list, date_list, size_list, m
             print("Downloading new file {}".format(url))
             downloadFile(url, local_target_file, conn=conn)
             files_downloaded += 1
-            if files_downloaded >= max_downloads:
-                return
+
+        if files_downloaded >= max_downloads:
+            return
 
 
 if __name__ == "__main__":
