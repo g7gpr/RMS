@@ -618,12 +618,11 @@ def downloadFiles(daily_directory, page, file_name_list, date_list, size_list, m
             if local_mod_time < remote_mod_time:
                 print("Re-downloading {} because remote file is newer than local file".format(url))
                 files_downloaded += 1
-                urllib.request.urlretrieve(url, local_target_file, conn=conn)
+                downloadFile(url, local_target_file, conn=conn)
+
 
             if local_size < remote_size:
                 print("Re-downloading {} because remote file is larger than local file".format(url))
-                print("Local size  {}".format(local_size))
-                print("Remote size {}".format(remote_size))
                 files_downloaded += 1
                 downloadFile(url, local_target_file, conn=conn)
 
