@@ -364,8 +364,8 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
                     log.info("RTP file {} does not exist".format(rtp_file_path))
                     if os.path.exists(cal_file_path):
                         # write the FTP file
-
-                        convertFTPtoRTP(night_directory, cal_file_path, config, log)
+                        cal_file_name = os.path.basename(cal_file_path)
+                        convertFTPtoRTP(night_directory, cal_file_name, config, log)
                 pass
 
                 if os.path.exists(cal_file_path) and os.path.exists(rtp_file_path):
