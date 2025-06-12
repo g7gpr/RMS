@@ -148,7 +148,7 @@ def startGPSDCapture(config, duration, force_delete=False):
             packet = gpsd.get_current()
             lat = packet.lat
             lon = packet.lon
-            alt = packet.altitude
+            alt = packet.alt
             time_stamp_gps = packet.time
 
             print("lat {}, lon {}, alt {}, time_gps {}, time_local {}".format(lat, lon, alt, time_stamp_gps, time_stamp_local))
