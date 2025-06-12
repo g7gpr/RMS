@@ -40,6 +40,8 @@ import platform
 import git
 import shutil
 import gpsd
+from datetime import timezone
+import zoneinfo
 import glob
 import json
 
@@ -145,12 +147,14 @@ def startGPSDCapture(config, duration, force_delete=False):
     try:
         while True:
             gpsd.connect()
-            time_stamp_local = time.time()
+            time_stamp_local = datetime.datetime.now(tz=timezone.utc)
             packet = gpsd.get_current()
             lat = packet.lat
             lon = packet.lon
             alt = packet.alt
-            time_stamp_gps = datetime.utcfromtimestamp(packet.time)
+            time_stamp_gps = packet.time
+            #time_stamp_local = datetime.datetime.p(time_stamp_local , tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')
+
             print("lat {}, lon {}, alt {}, time_gps {}, time_local {}".format(lat, lon, alt, time_stamp_gps, time_stamp_local))
             time.sleep(5)
 
