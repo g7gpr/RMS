@@ -141,18 +141,18 @@ def startGPSDCapture(config, duration, force_delete=False):
 
     conn = getGPSDBConn(config, force_delete=force_delete)
 
-    gpsd.connect()
+
     try:
         while True:
+            gpsd.connect()
             time_stamp_local = time.time()
             packet = gpsd.get_current()
             lat = packet.lat
             lon = packet.lon
             alt = packet.alt
             time_stamp_gps = packet.time
-
             print("lat {}, lon {}, alt {}, time_gps {}, time_local {}".format(lat, lon, alt, time_stamp_gps, time_stamp_local))
-            time.sleep(1)
+            time.sleep(5)
 
     except StopIteration:
         print("GPSD has terminated")
