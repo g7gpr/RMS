@@ -117,7 +117,7 @@ def getGPSDBConn(config, force_delete=False):
     sql_command += "ECEF_Z_CM INTEGER NOT NULL, \n"
     sql_command += "DELTA_X_MM INTEGER NOT NULL, \n"
     sql_command += "DELTA_Y_MM INTEGER NOT NULL, \n"
-    sql_command += "DELTA_Z_MM INTEGER NOT NULL, \n"
+    sql_command += "DELTA_Z_MM INTEGER NOT NULL \n"
     sql_command += ") \n"
     conn.execute(sql_command)
 
@@ -144,13 +144,14 @@ def startGPSDCapture(config, duration, force_delete=False):
     gpsd.connect()
     try:
         while True:
+            time_stamp_local = time.time()
             packet = gpsd.get_current()
             lat = packet.lat
             lon = packet.lon
             alt = packet.altitude
-            time_stamp = packet.time
+            time_stamp_gps = packet.time
 
-            print("lat {}, lon {}, alt {}, time {}".format(lat, lon, alt, time_stamp))
+            print("lat {}, lon {}, alt {}, time_gps {}, time_local {}".format(lat, lon, alt, time_stamp_gps, time_stamp_local))
             time.sleep(1)
 
     except StopIteration:
