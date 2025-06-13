@@ -145,8 +145,10 @@ def startGPSDCapture(config, duration, force_delete=False):
 
 
     try:
+        gpsd.connect()
         while True:
-            gpsd.connect()
+
+
             time_stamp_local = datetime.datetime.now(tz=timezone.utc)
             packet = gpsd.get_current()
             lat = packet.lat
@@ -156,7 +158,7 @@ def startGPSDCapture(config, duration, force_delete=False):
             #time_stamp_local = datetime.datetime.p(time_stamp_local , tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')
 
             print("lat {}, lon {}, alt {}, time_gps {}, time_local {}".format(lat, lon, alt, time_stamp_gps, time_stamp_local))
-            time.sleep(5)
+            time.sleep(1)
 
     except StopIteration:
         print("GPSD has terminated")
