@@ -150,14 +150,19 @@ def startGPSDCapture(config, duration, force_delete=False):
 
 
             time_stamp_local = datetime.datetime.now(tz=timezone.utc)
-            packet = gpsd.get_current()
-            lat = packet.lat
-            lon = packet.lon
-            alt = packet.alt
-            time_stamp_gps = packet.time
+            try:
+                packet = gpsd.get_current()
+                lat = packet.lat
+                lon = packet.lon
+                alt = packet.alt
+                time_stamp_gps = packet.time
+                print("lat {}, lon {}, alt {}, time_gps {}, time_local {}".format(lat, lon, alt, time_stamp_gps,
+                                                                                  time_stamp_local))
+            except:
+                pass
             #time_stamp_local = datetime.datetime.p(time_stamp_local , tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')
 
-            print("lat {}, lon {}, alt {}, time_gps {}, time_local {}".format(lat, lon, alt, time_stamp_gps, time_stamp_local))
+
             time.sleep(1)
 
     except StopIteration:
