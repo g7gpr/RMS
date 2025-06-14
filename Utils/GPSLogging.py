@@ -257,12 +257,13 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
         print(sql_command)
 
         conn.execute(sql_command)
+        conn.commit()
 
                 #time_stamp_local = datetime.datetime.p(time_stamp_local , tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')
 
         iteration_end_time = datetime.datetime.now(tz=timezone.utc)
 
-        conn.close()
+    conn.close()
 
 
 
