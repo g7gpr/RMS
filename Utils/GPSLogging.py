@@ -45,6 +45,7 @@ import zoneinfo
 import glob
 import json
 import logging
+from RMS.GeoidHeightEGM96 import wgs84toMSLHeight
 
 from RMS.Formats.FFfits import filenameToDatetimeStr
 import datetime
@@ -200,9 +201,10 @@ def startGPSDCapture(config, duration, force_delete=False):
                 packet = gpsd.get_current()
                 lat = packet.lat
                 lon = packet.lon
-                alt = packet.alt
+                wgs84_alt = packet.alt
+                egm96_alt = wgs84toMSLHeight(np.radians(lat), np.radians(lon), wgs84_height, config)
                 time_stamp_gps = packet.time
-                print("lat {}, lon {}, alt {}, time_gps {}, time_local {}".format(lat, lon, alt, time_stamp_gps,
+                print("lat {}, lon {}, alt_wgs84 {}, alt_egm96 {}, time_gps {}, time_local {}".format(lat, lon, wgs84_alt, egm96_alt, time_stamp_gps,
                                                                                   time_stamp_local))
             except:
                 pass
