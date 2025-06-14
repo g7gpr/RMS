@@ -44,6 +44,7 @@ from datetime import timezone
 import zoneinfo
 import glob
 import json
+import logging
 
 from RMS.Formats.FFfits import filenameToDatetimeStr
 import datetime
@@ -131,14 +132,18 @@ def getGPSTimeDelta(config):
     gpsd.connect()
     time.sleep(1)
 
+    try:
+        current_mode = gpsd.get_current().mode
+    except:
+        return "GPS not available"
 
     #try:
     start_waiting_for_fix = datetime.datetime.now(tz=timezone.utc)
     while gpsd.get_current().mode < 2:
         time.sleep(10)
-        print("Waiting for fix")
         time_now = datetime.datetime.now(tz=timezone.utc)
         elapsed = (time_now - start_waiting_for_fix).total_seconds()
+        print("Waited for fix for {:.0f} seconds".format(elapsed))
         if elapsed > 60:
             return "Waited {} for a fix, no time delta available".format(elapsed)
 
@@ -219,6 +224,7 @@ def startGPSDCapture(config, duration, force_delete=False):
 
 if __name__ == "__main__":
 
+    logging.getLogger("gpsd").setLevel(logging.ERROR)
     config = parse(os.path.expanduser("~/source/RMS/.config"))
     print(getGPSTimeDelta(config))
     startGPSDCapture(config, 0.1)
