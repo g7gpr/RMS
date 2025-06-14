@@ -127,6 +127,7 @@ def getGPSDBConn(config, force_delete=False):
 
 def getTimeDelta(config):
 
+    print("Getting time delta")
     try:
         gpsd.connect()
 
