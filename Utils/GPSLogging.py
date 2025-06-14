@@ -125,6 +125,26 @@ def getGPSDBConn(config, force_delete=False):
 
     return conn
 
+def getTimeDelta(config):
+
+    try:
+        gpsd.connect()
+
+        time_stamp_gps = gpsd.get_current().time
+        time_stamp_gps_last = time_stamp_gps
+        while time_stamp_gps == time_stamp_gps_last:
+            time_stamp_gps_last = time_stamp_gps
+            time_stamp_gps = gpsd.get_current().time
+            time_stamp_local = datetime.datetime.now(tz=timezone.utc)
+            print("GPS: {} Machine {}".format(time_stamp_gps, time_stamp_local))
+    except:
+        pass
+
+
+
+
+
+
 
 def startGPSDCapture(config, duration, force_delete=False):
 
@@ -179,4 +199,5 @@ def startGPSDCapture(config, duration, force_delete=False):
 if __name__ == "__main__":
 
     config = parse(os.path.expanduser("~/source/RMS/.config"))
+    getTimeDelta(config)
     startGPSDCapture(config, 0.1)
