@@ -45,6 +45,7 @@ import zoneinfo
 import glob
 import json
 import logging
+import numpy as np
 from RMS.GeoidHeightEGM96 import wgs84toMSLHeight
 
 from RMS.Formats.FFfits import filenameToDatetimeStr
