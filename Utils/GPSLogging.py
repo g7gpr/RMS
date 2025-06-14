@@ -214,7 +214,7 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
                 gps_alt_egm96 = wgs84toMSLHeight(gps_lat_wgs84_rads, gps_lon_wgs84_rads, gps_alt_wgs84, config)
                 ecef_x, ecef_y, ecef_z = latLonAlt2ECEF(np.radians(gps_lat_wgs84),np.radians(gps_lon_wgs84),gps_alt_wgs84)
                 d_x, d_y, d_z = ecef_x - con_ecef_x, ecef_y - con_ecef_y, ecef_z - con_ecef_z
-                print("gps   (lat:{},lon:{},alt_egm96:{})".format(gps_lat_wgs84, gps_lon_wgs84, gps_alt_egm96))
+                print("gps   (lat:{},lon:{},alt_egm96:{}, alt_wgs84:{})".format(gps_lat_wgs84, gps_lon_wgs84, gps_alt_egm96, gps_alt_wgs84))
                 print("config(lat:{},lon:{},alt_egm96:{})".format(con_lat_wgs84, con_lon_wgs84, con_ele_egm96))
                 print("delta (x:{}, y:{}, z:{})".format(d_x, d_y, d_z))
             except:
