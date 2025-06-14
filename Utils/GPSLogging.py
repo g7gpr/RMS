@@ -210,7 +210,7 @@ def getStandardDeviation(config, col_name_list = ['DELTA_X_MM', 'DELTA_Y_MM', 'D
         sql_command = ""
         sql_command += "SELECT \n"
         sql_command += "AVG(({} - avg_val) * ({} - avg_val)) AS variance, \n".format(col_name, col_name)
-        sql_command += "SQRT(AVG(({} - avg_val) * ({} - avg_val))) AS std_dev \n".format(col_name, col_name)
+        sql_command += " SQRT(AVG(({} - avg_val) * ({} - avg_val))) AS std_dev \n".format(col_name, col_name)
         sql_command += "FROM records, (SELECT AVG({}) AS avg_val FROM records);".format(col_name)
 
         returned_query = conn.execute(sql_command)
