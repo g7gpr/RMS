@@ -128,18 +128,15 @@ def getGPSDBConn(config, force_delete=False):
 def getTimeDelta(config):
 
     print("Getting time delta")
-    try:
-        gpsd.connect()
+    gpsd.connect()
 
-        time_stamp_gps = gpsd.get_current().time
-        time_stamp_gps_last = time_stamp_gps
-        while time_stamp_gps != time_stamp_gps_last:
+    time_stamp_gps = gpsd.get_current().time
+    time_stamp_gps_last = time_stamp_gps
+    while time_stamp_gps != time_stamp_gps_last:
             time_stamp_gps_last = time_stamp_gps
             time_stamp_gps = gpsd.get_current().time
             time_stamp_local = datetime.datetime.now(tz=timezone.utc)
             print("GPS: {} Machine {}".format(time_stamp_gps, time_stamp_local))
-    except:
-        pass
 
 
 
