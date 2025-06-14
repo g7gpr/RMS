@@ -199,13 +199,13 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
     conn = getGPSDBConn(config, force_delete=force_delete)
 
 
-    start_time = time.time()
-    time_elapsed = time.time() - start_time
+    start_time = datetime.datetime.now(tz=timezone.utc)
+    time_elapsed = (datetime.datetime.now(tz=timezone.utc) - start_time).total_seconds()
     try:
         gpsd.connect()
         while time_elapsed < duration:
             print(time_elapsed)
-            time_elapsed = time.time() - start_time
+            time_elapsed = (datetime.datetime.now(tz=timezone.utc) - start_time).total_seconds()
 
             time_stamp_local = datetime.datetime.now(tz=timezone.utc)
             try:
