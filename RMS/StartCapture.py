@@ -1233,7 +1233,7 @@ if __name__ == "__main__":
             # Update start time and duration
             start_time, duration = captureDuration(config.latitude, config.longitude, config.elevation)
 
-            print("Starting GPS logging")
+            log.info("Starting GPS logging for {}".format(duration))
             gps_process = multiprocessing.Process(target='Utils.GPSLogging.startGPSDCapture',
                                                   args=(config, duration, 10))
             gps_process.start()
