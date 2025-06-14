@@ -99,7 +99,7 @@ def getGPSDBConn(config, force_delete=False):
     # Create the Observation Summary database
     gps_records_db_path = os.path.join(config.data_dir,"gps.db")
 
-    if force_delete:
+    if force_delete and os.path.exists(gps_records_db_path):
         os.unlink(gps_records_db_path)
 
     if not os.path.exists(os.path.dirname(gps_records_db_path)):
