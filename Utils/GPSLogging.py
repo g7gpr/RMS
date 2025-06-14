@@ -203,70 +203,63 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
     iteration_start_time = start_time
     iteration_end_time = iteration_start_time
     time_elapsed = 0
-    if True:
-        gpsd.connect()
-        while time_elapsed < duration:
-            time.sleep(period - (iteration_end_time - iteration_start_time).total_seconds())
-            iteration_start_time = datetime.datetime.now(tz=timezone.utc)
-            time_elapsed = (iteration_start_time - start_time).total_seconds()
 
-            time_stamp_local = datetime.datetime.now(tz=timezone.utc)
-            try:
-                packet = gpsd.get_current()
-                gps_lat_wgs84 = packet.lat
-                gps_lon_wgs84 = packet.lon
-                gps_alt_egm96 = packet.alt
-                gps_lat_wgs84_rads, gps_lon_wgs84_rads = np.radians(gps_lat_wgs84), np.radians(gps_lon_wgs84)
-                gps_alt_wgs84 = mslToWGS84Height(gps_lat_wgs84_rads, gps_lon_wgs84_rads, gps_alt_egm96, config)
-                ecef_x, ecef_y, ecef_z = latLonAlt2ECEF(np.radians(gps_lat_wgs84),np.radians(gps_lon_wgs84),gps_alt_wgs84)
-                d_x, d_y, d_z = ecef_x - con_ecef_x, ecef_y - con_ecef_y, ecef_z - con_ecef_z
-                #print("gps   (lat:{},lon:{},alt_egm96:{}, alt_wgs84:{})".format(gps_lat_wgs84, gps_lon_wgs84, gps_alt_egm96, gps_alt_wgs84))
-                #print("config(lat:{},lon:{},alt_egm96:{})".format(con_lat_wgs84, con_lon_wgs84, con_ele_egm96))
-                #print("delta (x:{}, y:{}, z:{})".format(d_x, d_y, d_z))
+    gpsd.connect()
+    while time_elapsed < duration:
+        time.sleep(period - (iteration_end_time - iteration_start_time).total_seconds())
+        iteration_start_time = datetime.datetime.now(tz=timezone.utc)
+        time_elapsed = (iteration_start_time - start_time).total_seconds()
 
-                sql_command = ""
-                sql_command += "INSERT INTO records \n"
-                sql_command += "( \n"
-                sql_command += "TimeStamp_local TEXT NOT NULL, \n"
-                sql_command += "LAT INTEGER NOT NULL, \n"
-                sql_command += "LON INTEGER NOT NULL, \n"
-                sql_command += "ALT INTEGER NOT NULL, \n"
-                sql_command += "ECEF_X_CM INTEGER NOT NULL, \n"
-                sql_command += "ECEF_Y_CM INTEGER NOT NULL, \n"
-                sql_command += "ECEF_Z_CM INTEGER NOT NULL, \n"
-                sql_command += "DELTA_X_MM INTEGER NOT NULL, \n"
-                sql_command += "DELTA_Y_MM INTEGER NOT NULL, \n"
-                sql_command += "DELTA_Z_MM INTEGER NOT NULL \n"
-                sql_command += ") \n"
-                sql_command += "( \n"
-                sql_command += "'{}',".format(datetime.datetime.now(tz=timezone.utc))
-                sql_command += "'{}',".format(gps_lat_wgs84)
-                sql_command += "'{}',".format(gps_lon_wgs84)
-                sql_command += "'{}',".format(gps_alt_egm96)
-                sql_command += "'{}',".format(ecef_x * 100)
-                sql_command += "'{}',".format(ecef_y * 100)
-                sql_command += "'{}',".format(ecef_z * 100)
-                sql_command += "'{}',".format(d_x * 1000)
-                sql_command += "'{}',".format(d_y * 1000)
-                sql_command += "'{}'".format(d_z * 1000)
-                sql_command += ") \n"
+        time_stamp_local = datetime.datetime.now(tz=timezone.utc)
 
-                print(sql_command)
+        packet = gpsd.get_current()
+        gps_lat_wgs84 = packet.lat
+        gps_lon_wgs84 = packet.lon
+        gps_alt_egm96 = packet.alt
+        gps_lat_wgs84_rads, gps_lon_wgs84_rads = np.radians(gps_lat_wgs84), np.radians(gps_lon_wgs84)
+        gps_alt_wgs84 = mslToWGS84Height(gps_lat_wgs84_rads, gps_lon_wgs84_rads, gps_alt_egm96, config)
+        ecef_x, ecef_y, ecef_z = latLonAlt2ECEF(np.radians(gps_lat_wgs84),np.radians(gps_lon_wgs84),gps_alt_wgs84)
+        d_x, d_y, d_z = ecef_x - con_ecef_x, ecef_y - con_ecef_y, ecef_z - con_ecef_z
+        #print("gps   (lat:{},lon:{},alt_egm96:{}, alt_wgs84:{})".format(gps_lat_wgs84, gps_lon_wgs84, gps_alt_egm96, gps_alt_wgs84))
+        #print("config(lat:{},lon:{},alt_egm96:{})".format(con_lat_wgs84, con_lon_wgs84, con_ele_egm96))
+        #print("delta (x:{}, y:{}, z:{})".format(d_x, d_y, d_z))
 
-                conn.execute(sql_command)
+        sql_command = ""
+        sql_command += "INSERT INTO records \n"
+        sql_command += "( \n"
+        sql_command += "TimeStamp_local TEXT NOT NULL, \n"
+        sql_command += "LAT INTEGER NOT NULL, \n"
+        sql_command += "LON INTEGER NOT NULL, \n"
+        sql_command += "ALT INTEGER NOT NULL, \n"
+        sql_command += "ECEF_X_CM INTEGER NOT NULL, \n"
+        sql_command += "ECEF_Y_CM INTEGER NOT NULL, \n"
+        sql_command += "ECEF_Z_CM INTEGER NOT NULL, \n"
+        sql_command += "DELTA_X_MM INTEGER NOT NULL, \n"
+        sql_command += "DELTA_Y_MM INTEGER NOT NULL, \n"
+        sql_command += "DELTA_Z_MM INTEGER NOT NULL \n"
+        sql_command += ") \n"
+        sql_command += "( \n"
+        sql_command += "'{}',".format(datetime.datetime.now(tz=timezone.utc))
+        sql_command += "'{}',".format(gps_lat_wgs84)
+        sql_command += "'{}',".format(gps_lon_wgs84)
+        sql_command += "'{}',".format(gps_alt_egm96)
+        sql_command += "'{}',".format(ecef_x * 100)
+        sql_command += "'{}',".format(ecef_y * 100)
+        sql_command += "'{}',".format(ecef_z * 100)
+        sql_command += "'{}',".format(d_x * 1000)
+        sql_command += "'{}',".format(d_y * 1000)
+        sql_command += "'{}'".format(d_z * 1000)
+        sql_command += ") \n"
 
-            #time_stamp_local = datetime.datetime.p(time_stamp_local , tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')
+        print(sql_command)
 
-            iteration_end_time = datetime.datetime.now(tz=timezone.utc)
+        conn.execute(sql_command)
 
-    except StopIteration:
-        print("GPSD has terminated")
-    except KeyError:
-        pass
-    except KeyboardInterrupt:
-        print("\nUser interrupted.")
+                #time_stamp_local = datetime.datetime.p(time_stamp_local , tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')
 
-    conn.close()
+        iteration_end_time = datetime.datetime.now(tz=timezone.utc)
+
+        conn.close()
 
 
 
