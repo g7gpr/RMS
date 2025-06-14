@@ -201,16 +201,24 @@ def getAverageDisplacement(config):
 
 def getStandardDeviation(config):
 
-    sql_command = "SELECT STDDEV(DELTA_X_MM), STDDEV(DELTA_Y_MM), STDDEV(DELTA_Z_MM) FROM records ;"
+    sql_command = ""
+    sql_command += "SELECT \n"
+    sql_command += "AVG((value - avg_val) * (value - avg_val)) AS variance, \n"
+    sql_command += "SQRT(AVG((value - avg_val) * (value - avg_val))) AS std_dev \n"
+    sql_command += "FROM records, (SELECT AVG(value) AS avg_val FROM records);"
 
     conn = getGPSDBConn(config)
     if conn is None:
         return None, None, None
-    returned_query = conn.execute(sql_command)
+    sd_list = []
+    for col_name in ['DELTA_X_MM', 'DELTA_Y_MM', 'DELTA_Z_MM']:
+        returned_query = conn.execute(sql_command.replace('value', col_name))
+        variance, sd = returned_query.fetchone()
+        sd_list.append(sd)
 
-    sd_x, sd_y, sd_z = returned_query.fetchone()
+    return sd_list
 
-    return sd_x, sd_y, sd_z
+
 
 
 
@@ -345,9 +353,10 @@ if __name__ == "__main__":
 
     startGPSDCapture(config, duration=duration,period=period)
     dev_x, dev_y, dev_z  = getAverageDisplacement(config)
-    sd_x, sd_y, sd_z = getStandardDeviation(config)
-    print("Deviation x,y,z {},{},{} (m)".format(dev_x / 1000, dev_y / 1000, dev_z / 1000))
-    print("SD        x,y,z {},{},{} (m)".format(sd_x / 1000, sd_y / 1000, sd_z / 1000))
+    sd_list = getStandardDeviation(config)
+    sd_x, sd_y, sd_z = sd_list[0], sd_list[1], sd_list[2]
+    print("Error     x,y,z {:+03.2f},{:+03.2f},{:+03.2f} (m)".format(dev_x / 1000, dev_y / 1000, dev_z / 1000))
+    print("SD        x,y,z {:+03.2f},{:+03.2f},{:+03.2f} (m)".format(sd_x / 1000, sd_y / 1000, sd_z / 1000))
     new_lat_degs, new_lon_degs, new_ele_egm96 = addECEFtoLatLonEle(config.latitude, config.longitude, config.elevation, dev_x / 1000, dev_y / 1000, dev_z / 1000, config)
 
     output = "\n"
