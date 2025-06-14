@@ -1236,7 +1236,7 @@ if __name__ == "__main__":
             log.info("Starting GPS logging for {} seconds".format(duration))
 
             #gps_process = multiprocessing.Process(target='Utils.GPSLogging.startGPSDCapture',
-                                                  args=(config, duration, 10))
+            #                                      args=(config, duration, 10))
             #gps_process.start()
 
 
