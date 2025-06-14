@@ -325,12 +325,12 @@ if __name__ == "__main__":
     cml_args = arg_parser.parse_args()
 
     if cml_args.duration is None:
-        cml_args.duration = 120
+        duration = 120
     else:
         duration = cml_args.duration[0] * 60
 
     if cml_args.period is None:
-        cml_args.period = 10
+        period = 10
     else:
         period = cml_args.period[0]
 
