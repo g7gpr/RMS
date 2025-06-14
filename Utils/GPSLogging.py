@@ -129,7 +129,7 @@ def getGPSTimeDelta(config):
 
     print("Getting time delta")
     gpsd.connect()
-
+    time.sleep(1)
 
 
     #try:
