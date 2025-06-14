@@ -145,19 +145,20 @@ def getGPSTimeDelta(config):
 
     print("Got fix type {}".format(gpsd.get_current().mode))
 
-    time_stamp_gps = gpsd.get_current().time
-    time_stamp_gps_last = time_stamp_gps
+    time_stamp_gps_str = gpsd.get_current().time
+    time_stamp_gps_str_last = time_stamp_gps_str
     start_waiting_for_second_change = datetime.datetime.now(tz=timezone.utc)
-    while time_stamp_gps == time_stamp_gps_last:
-            time_stamp_gps_last = time_stamp_gps
+    while time_stamp_gps_str == time_stamp_gps_str_last:
+            time_stamp_gps_str_last = time_stamp_gps_str
             p = gpsd.get_current()
-            time_stamp_gps = p.time
+            time_stamp_gps_str = datetime.strptime(time_stamp_gps_str, "%Y-%m-%d %H:%M:%S.%f")
             time_stamp_local = datetime.datetime.now(tz=timezone.utc)
             time_now = datetime.datetime.now(tz=timezone.utc)
             elapsed = (time_now - start_waiting_for_second_change).total_seconds()
             if elapsed > 1:
                 return "Waited more than 1 second, no GPS time change observed"
     print("Time stamp gps is {}".format(time_stamp_gps))
+    time_stamp_gps = timedate time_stamp_gps_str
     return (time_stamp_local - time_stamp_gps).total_seconds()
 
 
