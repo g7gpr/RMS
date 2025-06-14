@@ -200,14 +200,16 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
 
 
     start_time = datetime.datetime.now(tz=timezone.utc)
-    time_elapsed = (datetime.datetime.now(tz=timezone.utc) - start_time).total_seconds()
+    iteration_start_time = start_time
+    iteration_end_time = iteration_start_time + datetime.timedelta(seconds=duration)
+    time_elapsed = 0
     try:
         gpsd.connect()
         while time_elapsed < duration:
-            print(time_elapsed)
+            time.sleep(period - (iteration_end_time - iteration_start_time).total_seconds())
             iteration_start_time = datetime.datetime.now(tz=timezone.utc)
             time_elapsed = (iteration_start_time - start_time).total_seconds()
-
+            print(time_elapsed)
             time_stamp_local = datetime.datetime.now(tz=timezone.utc)
             try:
                 packet = gpsd.get_current()
@@ -226,7 +228,6 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
             #time_stamp_local = datetime.datetime.p(time_stamp_local , tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')
 
             iteration_end_time = datetime.datetime.now(tz=timezone.utc)
-            time.sleep(period - (iteration_end_time - iteration_start_time).total_seconds())
 
     except StopIteration:
         print("GPSD has terminated")
