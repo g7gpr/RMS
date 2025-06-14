@@ -31,6 +31,7 @@ import multiprocessing
 import traceback
 import git
 from RMS.Formats.ObservationSummary import getObsDBConn, addObsParam
+import Utils.GPSLogging
 
 import numpy as np
 
@@ -283,6 +284,13 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
     print("Yet our paths remain.")
     print()
     print("################################################################")
+
+    # Start GPS logging
+
+    gps_process = multiprocessing.Process(target='Utils.GPSLogging.startGPSDCapture', args=(config, duration, 10))
+    gps_process.start()
+    gps_process.join()
+
 
     # Make a directory for the night - if currently in night capture mode
     in_night_capture = (daytime_mode is None) or (not daytime_mode.value)

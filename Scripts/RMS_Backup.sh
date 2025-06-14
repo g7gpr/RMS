@@ -56,7 +56,7 @@ echo
 echo "Compressing files..."
 
 
-zip -q --junk-paths $BACKUP_FILE $CONFIG_FILE $RSA_PRIV_FILE $RSA_PUB_FILE $PLATEPAR_FILE $MASK_FILE
+zip -q -j $BACKUP_FILE $CONFIG_FILE $RSA_PRIV_FILE $RSA_PUB_FILE $PLATEPAR_FILE $MASK_FILE
 echo "Backup saved to: $BACKUP_FILE"
 
 exit 0
