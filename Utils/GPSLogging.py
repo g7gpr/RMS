@@ -332,6 +332,9 @@ if __name__ == "__main__":
     arg_parser.add_argument('-p', '--period', nargs=1, metavar='PERIOD', type=int,
                             help="Period between logs in seconds.")
 
+    arg_parser.add_argument('-c', '--clear_db', dest="clear_db", default=False, action='store_true',
+                            help="Clear the database.")
+
     cml_args = arg_parser.parse_args()
 
     if cml_args.duration is None:
@@ -347,11 +350,11 @@ if __name__ == "__main__":
 
 
     print("Logging for {} minutes period {} seconds".format(duration / 60, period))
-
+    print("End time is {}".format(datetime.datetime.now() + datetime.timedelta(seconds=duration)))
     logging.getLogger("gpsd").setLevel(logging.ERROR)
     config = parse(os.path.expanduser("~/source/RMS/.config"))
 
-    startGPSDCapture(config, duration=duration,period=period)
+    startGPSDCapture(config, duration=duration,period=period, force_delete=cml_args.clear_db)
     dev_x, dev_y, dev_z  = getAverageDisplacement(config)
     sd_list = getStandardDeviation(config)
     sd_x, sd_y, sd_z = sd_list[0], sd_list[1], sd_list[2]
