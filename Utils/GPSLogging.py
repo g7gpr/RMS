@@ -224,7 +224,7 @@ def startGPSDCapture(config, duration, force_delete=False):
 
 if __name__ == "__main__":
 
-    logging.getLogger("gps").setLevel(logging.ERROR)
+    logging.getLogger("gpsd").setLevel(logging.ERROR)
     config = parse(os.path.expanduser("~/source/RMS/.config"))
     print(getGPSTimeDelta(config))
     startGPSDCapture(config, 0.1)
