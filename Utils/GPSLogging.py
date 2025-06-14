@@ -362,10 +362,11 @@ if __name__ == "__main__":
     if not cml_args.no_gps:
         startGPSDCapture(config, duration=duration,period=period, force_delete=cml_args.clear_db)
     dev_x, dev_y, dev_z  = getAverageDisplacement(config)
-    sd_list = getStandardDeviation(config)
-    sd_x, sd_y, sd_z = sd_list[0], sd_list[1], sd_list[2]
+
     print("Error     x,y,z {:+03.2f},{:+03.2f},{:+03.2f} (m)".format(dev_x / 1000, dev_y / 1000, dev_z / 1000))
     try:
+        sd_list = getStandardDeviation(config)
+        sd_x, sd_y, sd_z = sd_list[0], sd_list[1], sd_list[2]
         print("SD        x,y,z {:+03.2f},{:+03.2f},{:+03.2f} (m)".format(sd_x / 1000, sd_y / 1000, sd_z / 1000))
     except:
         print("Some Python SQLite does not have SQRT function")
