@@ -151,7 +151,7 @@ def getGPSTimeDelta(config):
     while time_stamp_gps_str == time_stamp_gps_str_last:
             time_stamp_gps_str_last = time_stamp_gps_str
             p = gpsd.get_current()
-            time_stamp_gps_str = p.time()
+            time_stamp_gps_str = p.time
             time_stamp_local = datetime.datetime.now(tz=timezone.utc)
             time_now = datetime.datetime.now(tz=timezone.utc)
             elapsed = (time_now - start_waiting_for_second_change).total_seconds()
