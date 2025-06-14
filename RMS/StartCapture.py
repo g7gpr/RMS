@@ -287,9 +287,6 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
     # Start GPS logging
 
-    gps_process = multiprocessing.Process(target='Utils.GPSLogging.startGPSDCapture', args=(config, duration, 10))
-    gps_process.start()
-    gps_process.join()
 
 
     # Make a directory for the night - if currently in night capture mode
@@ -1235,6 +1232,11 @@ if __name__ == "__main__":
 
             # Update start time and duration
             start_time, duration = captureDuration(config.latitude, config.longitude, config.elevation)
+
+            gps_process = multiprocessing.Process(target='Utils.GPSLogging.startGPSDCapture',
+                                                  args=(config, duration, 10))
+            gps_process.start()
+            gps_process.join()
 
             # Check if waiting is needed to start capture
             if not isinstance(start_time, bool):
