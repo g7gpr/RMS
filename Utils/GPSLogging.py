@@ -210,9 +210,10 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
         iteration_start_time = datetime.datetime.now(tz=timezone.utc)
         time_elapsed = (iteration_start_time - start_time).total_seconds()
 
-        time_stamp_local = datetime.datetime.now(tz=timezone.utc)
+
 
         packet = gpsd.get_current()
+        time_stamp_gps = datetime.datetime.strptime(packet.time, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
         gps_lat_wgs84 = packet.lat
         gps_lon_wgs84 = packet.lon
         gps_alt_egm96 = packet.alt
@@ -228,6 +229,7 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
         sql_command += "INSERT INTO records ( \n"
 
         sql_command += "TimeStamp_locaL, \n"
+        sql_command += "TimeStamp_gps, \n"
         sql_command += "LAT, \n"
         sql_command += "LON, \n"
         sql_command += "ALT, \n"
@@ -238,8 +240,10 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
         sql_command += "DELTA_Y_MM, \n"
         sql_command += "DELTA_Z_MM  \n"
         sql_command += ") \n"
+        sql_command += "VALUES \n"
         sql_command += "( \n"
         sql_command += "'{}',".format(datetime.datetime.now(tz=timezone.utc))
+        sql_command += "'{}',".format(time_stamp_gps)
         sql_command += "'{}',".format(gps_lat_wgs84)
         sql_command += "'{}',".format(gps_lon_wgs84)
         sql_command += "'{}',".format(gps_alt_egm96)
