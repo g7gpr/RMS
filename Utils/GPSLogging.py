@@ -186,7 +186,7 @@ def getGPSTimeDelta(config):
     return (time_stamp_local - time_stamp_gps).total_seconds()
 
 
-def getAverageDeviation(config):
+def getAverageDisplacement(config):
 
     sql_command = "SELECT AVG(DELTA_X_MM), AVG(DELTA_Y_MM), AVG(DELTA_Z_MM) FROM records ;"
 
@@ -195,9 +195,20 @@ def getAverageDeviation(config):
         return None, None, None
     returned_query = conn.execute(sql_command)
 
-    dev_x, dev_y, dev_z = returned_query.fetchone()
-
     return dev_x, dev_y, dev_z
+
+def getStandardDeviation(config):
+
+    sql_command = "SELECT STDDEV(DELTA_X_MM), STDDEV(DELTA_Y_MM), STDDEV(DELTA_Z_MM) FROM records ;"
+
+    conn = getGPSDBConn(config)
+    if conn is None:
+        return None, None, None
+    returned_query = conn.execute(sql_command)
+
+    sd_x, sd_y, sd_z = returned_query.fetchone()
+
+    return sd_x, sd_y, sd_z
 
 
 
@@ -240,7 +251,12 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
 
 
         packet = gpsd.get_current()
-        time_stamp_gps = datetime.datetime.strptime(packet.time, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+        try:
+            time_stamp_gps = datetime.datetime.strptime(packet.time, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+        except:
+            print("GPS not providing valid data")
+            time.sleep(period)
+            continue
         gps_lat_wgs84 = packet.lat
         gps_lon_wgs84 = packet.lon
         gps_alt_egm96 = packet.alt
@@ -295,12 +311,41 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
 
 if __name__ == "__main__":
 
+    import argparse
+
+    arg_parser = argparse.ArgumentParser(description="""Read the config, measure the location for an extended time, average, and propose new location. \
+        """, formatter_class=argparse.RawTextHelpFormatter)
+
+    arg_parser.add_argument('-d', '--duration', nargs=1, metavar='DURATION', type=int,
+                            help="Period of time to log for in minutes.")
+
+    arg_parser.add_argument('-p', '--period', nargs=1, metavar='PERIOD', type=int,
+                            help="Period between logs in seconds.")
+
+    cml_args = arg_parser.parse_args()
+
+    if cml_args.duration is None:
+        cml_args.duration = 120
+    else:
+        duration = cml_args.duration[0] * 60
+
+    if cml_args.period is None:
+        cml_args.period = 10
+    else:
+        period = cml_args.period[0]
+
+
+
+    print("Logging for {} minutes period {} seconds".format(duration / 60, period))
+
     logging.getLogger("gpsd").setLevel(logging.ERROR)
     config = parse(os.path.expanduser("~/source/RMS/.config"))
 
-    startGPSDCapture(config, duration=120 ,period=3)
-    dev_x, dev_y, dev_z = getAverageDeviation(config)
+    startGPSDCapture(config, duration=duration,period=period)
+    dev_x, dev_y, dev_z  = getAverageDisplacement(config)
+    sd_x, sd_y, sd_z = getStandardDeviation(config)
     print("Deviation x,y,z {},{},{}".format(dev_x / 1000, dev_y / 1000, dev_z / 1000))
+    print("SD        x,y,z {},{},{}".format(sd_x / 1000, sd_y / 1000, sd_z / 1000))
     new_lat_degs, new_lon_degs, new_ele_egm96 = addECEFtoLatLonEle(config.latitude, config.longitude, config.elevation, dev_x / 1000, dev_y / 1000, dev_z / 1000, config)
 
     output = ""
