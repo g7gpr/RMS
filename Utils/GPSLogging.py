@@ -204,9 +204,9 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
     try:
         gpsd.connect()
         while time_elapsed < duration:
+            iteration_start_time = datetime.datetime.now(tz=timezone.utc)
+            time_elapsed = (iteration_start_time - start_time).total_seconds()
 
-            time_elapsed = (datetime.datetime.now(tz=timezone.utc) - start_time).total_seconds()
-            print(time_elapsed)
             time_stamp_local = datetime.datetime.now(tz=timezone.utc)
             try:
                 packet = gpsd.get_current()
@@ -224,8 +224,8 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
                 pass
             #time_stamp_local = datetime.datetime.p(time_stamp_local , tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')
 
-
-            time.sleep(period)
+            iteration_end_time = datetime.datetime.now(tz=timezone.utc)
+            time.sleep(period - (iteration_end_time - iteration_start_time).total_seconds())
 
     except StopIteration:
         print("GPSD has terminated")
@@ -243,4 +243,4 @@ if __name__ == "__main__":
     logging.getLogger("gpsd").setLevel(logging.ERROR)
     config = parse(os.path.expanduser("~/source/RMS/.config"))
  #   print(getGPSTimeDelta(config))
-    startGPSDCapture(config, 0.1)
+    startGPSDCapture(config)
