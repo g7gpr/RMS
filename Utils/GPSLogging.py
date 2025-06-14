@@ -193,7 +193,9 @@ def getAverageDisplacement(config):
     conn = getGPSDBConn(config)
     if conn is None:
         return None, None, None
+
     returned_query = conn.execute(sql_command)
+    dev_x, dev_y, dev_z = returned_query.fetchone()
 
     return dev_x, dev_y, dev_z
 
@@ -344,11 +346,11 @@ if __name__ == "__main__":
     startGPSDCapture(config, duration=duration,period=period)
     dev_x, dev_y, dev_z  = getAverageDisplacement(config)
     sd_x, sd_y, sd_z = getStandardDeviation(config)
-    print("Deviation x,y,z {},{},{}".format(dev_x / 1000, dev_y / 1000, dev_z / 1000))
-    print("SD        x,y,z {},{},{}".format(sd_x / 1000, sd_y / 1000, sd_z / 1000))
+    print("Deviation x,y,z {},{},{} (m)".format(dev_x / 1000, dev_y / 1000, dev_z / 1000))
+    print("SD        x,y,z {},{},{} (m)".format(sd_x / 1000, sd_y / 1000, sd_z / 1000))
     new_lat_degs, new_lon_degs, new_ele_egm96 = addECEFtoLatLonEle(config.latitude, config.longitude, config.elevation, dev_x / 1000, dev_y / 1000, dev_z / 1000, config)
 
-    output = ""
+    output = "\n"
     output += "; WGS84 +N (degrees) \n"
     output += "latitude: {} \n \n".format(new_lat_degs)
     output += "; WGS84 +E (degrees) \n"
@@ -358,5 +360,6 @@ if __name__ == "__main__":
     output += "; Can be obtained from Google Earth or other apps. Raw GPS altitude should not \n"
     output += "; be used as the software converts from EGM96 to WGS84 internally. \n"
     output += "elevation: {}".format(new_ele_egm96)
+    output = "\n"
 
     print(output)
