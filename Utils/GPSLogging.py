@@ -224,36 +224,36 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
                 #print("config(lat:{},lon:{},alt_egm96:{})".format(con_lat_wgs84, con_lon_wgs84, con_ele_egm96))
                 #print("delta (x:{}, y:{}, z:{})".format(d_x, d_y, d_z))
 
-            sql_command = ""
-            sql_command += "INSERT INTO records \n"
-            sql_command += "( \n"
-            sql_command += "TimeStamp_local TEXT NOT NULL, \n"
-            sql_command += "LAT INTEGER NOT NULL, \n"
-            sql_command += "LON INTEGER NOT NULL, \n"
-            sql_command += "ALT INTEGER NOT NULL, \n"
-            sql_command += "ECEF_X_CM INTEGER NOT NULL, \n"
-            sql_command += "ECEF_Y_CM INTEGER NOT NULL, \n"
-            sql_command += "ECEF_Z_CM INTEGER NOT NULL, \n"
-            sql_command += "DELTA_X_MM INTEGER NOT NULL, \n"
-            sql_command += "DELTA_Y_MM INTEGER NOT NULL, \n"
-            sql_command += "DELTA_Z_MM INTEGER NOT NULL \n"
-            sql_command += ") \n"
-            sql_command += "( \n"
-            sql_command += "'{}',".format(datetime.datetime.now(tz=timezone.utc))
-            sql_command += "'{}',".format(gps_lat_wgs84)
-            sql_command += "'{}',".format(gps_lon_wgs84)
-            sql_command += "'{}',".format(gps_alt_egm96)
-            sql_command += "'{}',".format(ecef_x * 100)
-            sql_command += "'{}',".format(ecef_y * 100)
-            sql_command += "'{}',".format(ecef_z * 100)
-            sql_command += "'{}',".format(d_x * 1000)
-            sql_command += "'{}',".format(d_y * 1000)
-            sql_command += "'{}'".format(d_z * 1000)
-            sql_command += ") \n"
+                sql_command = ""
+                sql_command += "INSERT INTO records \n"
+                sql_command += "( \n"
+                sql_command += "TimeStamp_local TEXT NOT NULL, \n"
+                sql_command += "LAT INTEGER NOT NULL, \n"
+                sql_command += "LON INTEGER NOT NULL, \n"
+                sql_command += "ALT INTEGER NOT NULL, \n"
+                sql_command += "ECEF_X_CM INTEGER NOT NULL, \n"
+                sql_command += "ECEF_Y_CM INTEGER NOT NULL, \n"
+                sql_command += "ECEF_Z_CM INTEGER NOT NULL, \n"
+                sql_command += "DELTA_X_MM INTEGER NOT NULL, \n"
+                sql_command += "DELTA_Y_MM INTEGER NOT NULL, \n"
+                sql_command += "DELTA_Z_MM INTEGER NOT NULL \n"
+                sql_command += ") \n"
+                sql_command += "( \n"
+                sql_command += "'{}',".format(datetime.datetime.now(tz=timezone.utc))
+                sql_command += "'{}',".format(gps_lat_wgs84)
+                sql_command += "'{}',".format(gps_lon_wgs84)
+                sql_command += "'{}',".format(gps_alt_egm96)
+                sql_command += "'{}',".format(ecef_x * 100)
+                sql_command += "'{}',".format(ecef_y * 100)
+                sql_command += "'{}',".format(ecef_z * 100)
+                sql_command += "'{}',".format(d_x * 1000)
+                sql_command += "'{}',".format(d_y * 1000)
+                sql_command += "'{}'".format(d_z * 1000)
+                sql_command += ") \n"
 
-            print(sql_command)
+                print(sql_command)
 
-            conn.execute(sql_command)
+                conn.execute(sql_command)
 
             except:
                 pass
