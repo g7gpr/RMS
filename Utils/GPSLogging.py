@@ -157,7 +157,7 @@ def getGPSTimeDelta(config):
             elapsed = (time_now - start_waiting_for_second_change).total_seconds()
             if elapsed > 1:
                 return "Waited {} seconds for second change".format(elapsed)
-    time_stamp_gps = datetime.strptime(time_stamp_gps_str, "%Y-%m-%d %H:%M:%S.%f")
+    time_stamp_gps = datetime.datetime.strptime(time_stamp_gps_str, "%Y-%m-%d %H:%M:%S.%f")
     return (time_stamp_local - time_stamp_gps).total_seconds()
 
 
