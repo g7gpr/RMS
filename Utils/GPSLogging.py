@@ -237,6 +237,9 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
             conn: [connection] connection to database
 
         """
+
+    if duration is None:
+        duration = 3600 * 4
     print("Starting gps logging for {} minutes".format(period / 60))
     con_lat_wgs84= config.latitude
     con_lon_wgs84 = config.longitude
