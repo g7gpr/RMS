@@ -135,15 +135,15 @@ def getGPSTimeDelta(config):
     #try:
     start_waiting_for_fix = datetime.datetime.now(tz=timezone.utc)
     while gpsd.get_current().mode < 2:
-            time.sleep(10)
-            print("Waiting for fix")
-            time_now = datetime.datetime.now(tz=timezone.utc)
-            elapsed = (time_now - start_waiting_for_fix).total_seconds()
-            if elapsed > 60:
-                return "Waited {} for a fix, no time delta available".format(elapsed)
-    #except:
-    return "No gps available"
+        time.sleep(10)
+        print("Waiting for fix")
+        time_now = datetime.datetime.now(tz=timezone.utc)
+        elapsed = (time_now - start_waiting_for_fix).total_seconds()
+        if elapsed > 60:
+            return "Waited {} for a fix, no time delta available".format(elapsed)
 
+
+    print("Got fix type {}".format(gpsd.get_current().mode))
 
     time_stamp_gps = gpsd.get_current().time
     time_stamp_gps_last = time_stamp_gps
