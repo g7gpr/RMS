@@ -365,7 +365,11 @@ if __name__ == "__main__":
     sd_list = getStandardDeviation(config)
     sd_x, sd_y, sd_z = sd_list[0], sd_list[1], sd_list[2]
     print("Error     x,y,z {:+03.2f},{:+03.2f},{:+03.2f} (m)".format(dev_x / 1000, dev_y / 1000, dev_z / 1000))
-    print("SD        x,y,z {:+03.2f},{:+03.2f},{:+03.2f} (m)".format(sd_x / 1000, sd_y / 1000, sd_z / 1000))
+    try:
+        print("SD        x,y,z {:+03.2f},{:+03.2f},{:+03.2f} (m)".format(sd_x / 1000, sd_y / 1000, sd_z / 1000))
+    except:
+        print("Some Python SQLite does not have SQRT function")
+
     new_lat_degs, new_lon_degs, new_ele_egm96 = addECEFtoLatLonEle(config.latitude, config.longitude, config.elevation, dev_x / 1000, dev_y / 1000, dev_z / 1000, config)
 
     output = "\n"
