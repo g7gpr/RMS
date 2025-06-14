@@ -1237,7 +1237,7 @@ if __name__ == "__main__":
             gps_process = multiprocessing.Process(target='Utils.GPSLogging.startGPSDCapture',
                                                   args=(config, duration, 10))
             gps_process.start()
-            gps_process.join()
+
 
             # Check if waiting is needed to start capture
             if not isinstance(start_time, bool):
