@@ -237,6 +237,7 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
             conn: [connection] connection to database
 
         """
+    print("Starting gps logging for {} minutes".format(period / 60))
     con_lat_wgs84= config.latitude
     con_lon_wgs84 = config.longitude
     con_lat_wgs84_rads, con_lon_wgs84_rads = np.radians(con_lat_wgs84), np.radians(con_lon_wgs84)
@@ -356,7 +357,6 @@ if __name__ == "__main__":
     print("Logging for {} minutes period {} seconds".format(duration / 60, period))
     end_time = (datetime.datetime.now() + datetime.timedelta(seconds=duration)).strftime("%H:%M:%S")
     print("End time is {}".format(end_time))
-    logging.getLogger("gpsd").setLevel(logging.ERROR)
     config = parse(os.path.expanduser("~/source/RMS/.config"))
 
     if not cml_args.no_gps:
