@@ -350,7 +350,8 @@ if __name__ == "__main__":
 
 
     print("Logging for {} minutes period {} seconds".format(duration / 60, period))
-    print("End time is {}".format(datetime.datetime.now() + datetime.timedelta(seconds=duration)))
+    end_time = (datetime.datetime.now() + datetime.timedelta(seconds=duration)).strftime("%H:%M:%S")
+    print("End time is {}".format(end_time))
     logging.getLogger("gpsd").setLevel(logging.ERROR)
     config = parse(os.path.expanduser("~/source/RMS/.config"))
 
