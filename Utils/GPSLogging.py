@@ -203,7 +203,7 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
     iteration_start_time = start_time
     iteration_end_time = iteration_start_time
     time_elapsed = 0
-    try:
+    if True:
         gpsd.connect()
         while time_elapsed < duration:
             time.sleep(period - (iteration_end_time - iteration_start_time).total_seconds())
@@ -255,8 +255,6 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
 
                 conn.execute(sql_command)
 
-            except:
-                pass
             #time_stamp_local = datetime.datetime.p(time_stamp_local , tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')
 
             iteration_end_time = datetime.datetime.now(tz=timezone.utc)
