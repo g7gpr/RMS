@@ -157,6 +157,7 @@ def getGPSTimeDelta(config):
             elapsed = (time_now - start_waiting_for_second_change).total_seconds()
             if elapsed > 1:
                 return "Waited more than 1 second, no GPS time change observed"
+    print("Time stamp gps is {}".format(time_stamp_gps))
     return (time_stamp_local - time_stamp_gps).total_seconds()
 
 
