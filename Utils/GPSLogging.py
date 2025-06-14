@@ -114,7 +114,6 @@ def getGPSDBConn(config, force_delete=False):
     sql_command += "id INTEGER PRIMARY KEY AUTOINCREMENT, \n"
     sql_command += "TimeStamp_local TEXT NOT NULL, \n"
     sql_command += "TimeStamp_gps TEXT NOT NULL, \n"
-    sql_command += "TimeStamp_error TEXT NOT NULL, \n"
     sql_command += "LAT INTEGER NOT NULL, \n"
     sql_command += "LON INTEGER NOT NULL, \n"
     sql_command += "ALT INTEGER NOT NULL, \n"
