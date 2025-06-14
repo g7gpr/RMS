@@ -130,13 +130,33 @@ def getTimeDelta(config):
     print("Getting time delta")
     gpsd.connect()
 
+
+    try:
+        start_waiting_for_fix = datetime.datetime.now(tz=timezone.utc)
+        while gpsd.get_current().mode < 2:
+            time.sleep(10)
+            print("Waiting for fix")
+            time_now = datetime.datetime.now(tz=timezone.utc)
+            elapsed = (time_now - start_waiting_for_fix).total_seconds()
+            if elapsed > 60:
+                return "Waited {} for a fix, no time delta available".format(elapsed)
+    except:
+        return "No gps available"
+
+
     time_stamp_gps = gpsd.get_current().time
     time_stamp_gps_last = time_stamp_gps
+    start_waiting_for_second_change = datetime.datetime.now(tz=timezone.utc)
     while time_stamp_gps == time_stamp_gps_last:
             time_stamp_gps_last = time_stamp_gps
-            time_stamp_gps = gpsd.get_current().time
+            p = gpsd.get_current()
+            time_stamp_gps = p.time
             time_stamp_local = datetime.datetime.now(tz=timezone.utc)
-            print("GPS: {} Machine {}".format(time_stamp_gps, time_stamp_local))
+            time_now = datetime.datetime.now(tz=timezone.utc)
+            elapsed = (time_now - start_waiting_for_second_change).total_seconds()
+            if elapsed > 1:
+                return "Waited more than 1 second, no GPS time change observed"
+    return (time_stamp_local - time_stamp_gps).total_seconds()
 
 
 
@@ -197,5 +217,5 @@ def startGPSDCapture(config, duration, force_delete=False):
 if __name__ == "__main__":
 
     config = parse(os.path.expanduser("~/source/RMS/.config"))
-    getTimeDelta(config)
+    print(getTimeDelta(config))
     startGPSDCapture(config, 0.1)
