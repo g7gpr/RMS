@@ -225,8 +225,8 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
         #print("delta (x:{}, y:{}, z:{})".format(d_x, d_y, d_z))
 
         sql_command = ""
-        sql_command += "INSERT INTO records \n"
-        sql_command += "( \n"
+        sql_command += "INSERT INTO records ( \n"
+
         sql_command += "TimeStamp_locaL, \n"
         sql_command += "LAT, \n"
         sql_command += "LON, \n"
