@@ -198,16 +198,16 @@ def startGPSDCapture(config, duration, force_delete=False):
 
 
             time_stamp_local = datetime.datetime.now(tz=timezone.utc)
-            if True:
+            try:
                 packet = gpsd.get_current()
                 lat = packet.lat
                 lon = packet.lon
                 wgs84_alt = packet.alt
-                egm96_alt = wgs84toMSLHeight(np.radians(lat), np.radians(lon), wgs84_height, config)
+                egm96_alt = wgs84toMSLHeight(np.radians(lat), np.radians(lon), wgs84_alt, config)
                 time_stamp_gps = packet.time
                 print("lat {}, lon {}, alt_wgs84 {}, alt_egm96 {}, time_gps {}, time_local {}".format(lat, lon, wgs84_alt, egm96_alt, time_stamp_gps,
                                                                                   time_stamp_local))
-            #except:
+            except:
                 pass
             #time_stamp_local = datetime.datetime.p(time_stamp_local , tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')
 
