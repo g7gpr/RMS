@@ -132,7 +132,7 @@ def getTimeDelta(config):
 
     time_stamp_gps = gpsd.get_current().time
     time_stamp_gps_last = time_stamp_gps
-    while time_stamp_gps != time_stamp_gps_last:
+    while time_stamp_gps == time_stamp_gps_last:
             time_stamp_gps_last = time_stamp_gps
             time_stamp_gps = gpsd.get_current().time
             time_stamp_local = datetime.datetime.now(tz=timezone.utc)
