@@ -254,8 +254,6 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
         sql_command += "'{}'".format(d_z * 1000)
         sql_command += ") \n"
 
-        print(sql_command)
-
         conn.execute(sql_command)
         conn.commit()
 
