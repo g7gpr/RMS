@@ -66,6 +66,23 @@ import struct
 import sys
 import time
 
+def addECEFtoLatLonEle(lat_deg, lon_deg, ele_egm96, x ,y, z, config):
+
+
+    lat_rads, lon_rads = np.radians(lat_deg), np.radians(lon_deg)
+    ele_wgs84 = mslToWGS84Height(lat_rads, lon_rads, ele_egm96, config)
+    ecef_x, ecef_y, ecef_z = latLonAlt2ECEF(lat_rads, lon_rads, ele_wgs84)
+    ecef_x_moved, ecef_y_moved, ecef_z_moved = x + ecef_x, y + ecef_y, z + ecef_z
+
+
+    lat_rads, lon_rads, alt_wgs84 = ecef2LatLonAlt(ecef_x_moved, ecef_y_moved, ecef_z_moved)
+    alt_egm96 = wgs84toMSLHeight(lat_rads, lon_rads, alt_wgs84, config)
+
+    return np.degrees(lat_rads), np.degrees(lon_rads), alt_egm96
+
+
+
+
 
 def getGPSDBConn(config, force_delete=False):
     """ Creates the GPS Data database. Tries only once.
@@ -169,7 +186,18 @@ def getGPSTimeDelta(config):
     return (time_stamp_local - time_stamp_gps).total_seconds()
 
 
+def getAverageDeviation(config):
 
+    sql_command = "SELECT AVG(DELTA_X_MM), AVG(DELTA_Y_MM), AVG(DELTA_Z_MM) FROM records ;"
+
+    conn = getGPSDBConn(config)
+    if conn is None:
+        return None, None, None
+    returned_query = conn.execute(sql_command)
+
+    dev_x, dev_y, dev_z = returned_query.fetchone()
+
+    return dev_x, dev_y, dev_z
 
 
 
@@ -269,5 +297,21 @@ if __name__ == "__main__":
 
     logging.getLogger("gpsd").setLevel(logging.ERROR)
     config = parse(os.path.expanduser("~/source/RMS/.config"))
- #   print(getGPSTimeDelta(config))
-    startGPSDCapture(config)
+
+    startGPSDCapture(config, duration=120 ,period=3)
+    dev_x, dev_y, dev_z = getAverageDeviation(config)
+    print("Deviation x,y,z {},{},{}".format(dev_x / 1000, dev_y / 1000, dev_z / 1000))
+    new_lat_degs, new_lon_degs, new_ele_egm96 = addECEFtoLatLonEle(config.latitude, config.longitude, config.elevation, dev_x / 1000, dev_y / 1000, dev_z / 1000, config)
+
+    output = ""
+    output += "; WGS84 +N (degrees) \n"
+    output += "latitude: {} \n \n".format(new_lat_degs)
+    output += "; WGS84 +E (degrees) \n"
+    output += "longitude: {} \n \n".format(new_lon_degs)
+
+    output += "; Mean sea level EGM96 geoidal datum, not WGS84 ellipsoidal (meters) \n"
+    output += "; Can be obtained from Google Earth or other apps. Raw GPS altitude should not \n"
+    output += "; be used as the software converts from EGM96 to WGS84 internally. \n"
+    output += "elevation: {}".format(new_ele_egm96)
+
+    print(output)
