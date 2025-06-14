@@ -201,7 +201,7 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
 
     start_time = datetime.datetime.now(tz=timezone.utc)
     iteration_start_time = start_time
-    iteration_end_time = iteration_start_time + datetime.timedelta(seconds=duration)
+    iteration_end_time = iteration_start_time
     time_elapsed = 0
     try:
         gpsd.connect()
