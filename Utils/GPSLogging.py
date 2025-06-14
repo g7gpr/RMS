@@ -46,8 +46,8 @@ import glob
 import json
 import logging
 import numpy as np
-from RMS.Astrometry.Conversions import latLonAlt2ECEF
-from RMS.GeoidHeightEGM96 import wgs84toMSLHeight
+from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt
+from RMS.GeoidHeightEGM96 import wgs84toMSLHeight, mslToWGS84Height
 
 from RMS.Formats.FFfits import filenameToDatetimeStr
 import datetime
@@ -189,6 +189,10 @@ def startGPSDCapture(config, duration, force_delete=False):
 
         """
 
+    con_lat_rads, con_lon_rads = np.radians(config.latitude), np.radians(config.longitude)
+    con_alt_wgs84 = mslToWGS84Height(con_lat_rads,con_lon_rads, config.elevation, config)
+    con_ecef_x, con_ecef_y, con_ecef_z = latLonAlt2ECEF(con_lat_rads, con_lon_rads, con_alt_wgs84)
+
 
     conn = getGPSDBConn(config, force_delete=force_delete)
 
@@ -207,7 +211,8 @@ def startGPSDCapture(config, duration, force_delete=False):
                 egm96_alt = wgs84toMSLHeight(np.radians(lat), np.radians(lon), wgs84_alt, config)
                 time_stamp_gps = packet.time
                 ecef_x, ecef_y, ecef_z = latLonAlt2ECEF(np.radians(lat),np.radians(lon),wgs84_alt)
-                print("lat {}, lon {}, alt_wgs84 {}, alt_egm96 {}, , ecef x:{}, y:{}, z:{}, time_gps {}, time_local {}".format(lat, lon, wgs84_alt, egm96_alt, ecef_x, ecef_y, ecef_z, time_stamp_gps,
+                d_x, d_y, d_z = con_ecef_x - ecef_x, con_ecef_y - ecef_y, con_ecef_z - ecef_z
+                print("lat {}, lon {}, alt_wgs84 {}, alt_egm96 {}, delta x:{}, y:{}, z:{}, time_gps {}, time_local {}".format(lat, lon, wgs84_alt, egm96_alt, dx, dy, dz, time_stamp_gps,
                                                                                   time_stamp_local))
             except:
                 pass
@@ -231,5 +236,5 @@ if __name__ == "__main__":
 
     logging.getLogger("gpsd").setLevel(logging.ERROR)
     config = parse(os.path.expanduser("~/source/RMS/.config"))
-    print(getGPSTimeDelta(config))
+ #   print(getGPSTimeDelta(config))
     startGPSDCapture(config, 0.1)
