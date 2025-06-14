@@ -199,20 +199,21 @@ def getAverageDisplacement(config):
 
     return dev_x, dev_y, dev_z
 
-def getStandardDeviation(config):
+def getStandardDeviation(config, col_name_list = ['DELTA_X_MM', 'DELTA_Y_MM', 'DELTA_Z_MM']):
 
-    sql_command = ""
-    sql_command += "SELECT \n"
-    sql_command += "AVG((value - avg_val) * (value - avg_val)) AS variance, \n"
-    sql_command += "SQRT(AVG((value - avg_val) * (value - avg_val))) AS std_dev \n"
-    sql_command += "FROM records, (SELECT AVG(value) AS avg_val FROM records);"
 
     conn = getGPSDBConn(config)
     if conn is None:
         return None, None, None
     sd_list = []
-    for col_name in ['DELTA_X_MM', 'DELTA_Y_MM', 'DELTA_Z_MM']:
-        returned_query = conn.execute(sql_command.replace('value', col_name))
+    for col_name in col_name_list:
+        sql_command = ""
+        sql_command += "SELECT \n"
+        sql_command += "AVG(({} - avg_val) * ({} - avg_val)) AS variance, \n".format(col_name, col_name)
+        sql_command += "SQRT(AVG(({} - avg_val) * ({} - avg_val))) AS std_dev \n".format(col_name, col_name)
+        sql_command += "FROM records, (SELECT AVG({}) AS avg_val FROM records);".format(col_name)
+
+        returned_query = conn.execute(sql_command)
         variance, sd = returned_query.fetchone()
         sd_list.append(sd)
 
@@ -335,6 +336,9 @@ if __name__ == "__main__":
     arg_parser.add_argument('-c', '--clear_db', dest="clear_db", default=False, action='store_true',
                             help="Clear the database.")
 
+    arg_parser.add_argument('-n', '--no_gps', dest="no_gps", default=False, action='store_true',
+                            help="Don't use GPS.")
+
     cml_args = arg_parser.parse_args()
 
     if cml_args.duration is None:
@@ -355,7 +359,8 @@ if __name__ == "__main__":
     logging.getLogger("gpsd").setLevel(logging.ERROR)
     config = parse(os.path.expanduser("~/source/RMS/.config"))
 
-    startGPSDCapture(config, duration=duration,period=period, force_delete=cml_args.clear_db)
+    if not cml_args.no_gps:
+        startGPSDCapture(config, duration=duration,period=period, force_delete=cml_args.clear_db)
     dev_x, dev_y, dev_z  = getAverageDisplacement(config)
     sd_list = getStandardDeviation(config)
     sd_x, sd_y, sd_z = sd_list[0], sd_list[1], sd_list[2]
@@ -365,14 +370,14 @@ if __name__ == "__main__":
 
     output = "\n"
     output += "; WGS84 +N (degrees) \n"
-    output += "latitude: {} \n \n".format(new_lat_degs)
+    output += "latitude:  {:+013.8f} \n \n".format(new_lat_degs)
     output += "; WGS84 +E (degrees) \n"
-    output += "longitude: {} \n \n".format(new_lon_degs)
+    output += "longitude: {:+013.8f} \n \n".format(new_lon_degs)
 
     output += "; Mean sea level EGM96 geoidal datum, not WGS84 ellipsoidal (meters) \n"
     output += "; Can be obtained from Google Earth or other apps. Raw GPS altitude should not \n"
     output += "; be used as the software converts from EGM96 to WGS84 internally. \n"
-    output += "elevation: {}".format(new_ele_egm96)
-    output = "\n"
+    output += "elevation: {:+010.3f}".format(new_ele_egm96)
+    output += "\n"
 
     print(output)
