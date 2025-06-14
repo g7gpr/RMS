@@ -212,7 +212,7 @@ def startGPSDCapture(config, duration, force_delete=False):
                 time_stamp_gps = packet.time
                 ecef_x, ecef_y, ecef_z = latLonAlt2ECEF(np.radians(lat),np.radians(lon),wgs84_alt)
                 d_x, d_y, d_z = con_ecef_x - ecef_x, con_ecef_y - ecef_y, con_ecef_z - ecef_z
-                print("lat {}, lon {}, alt_wgs84 {}, alt_egm96 {}, delta x:{}, y:{}, z:{}, time_gps {}, time_local {}".format(lat, lon, wgs84_alt, egm96_alt, dx, dy, dz, time_stamp_gps,
+                print("lat {}, lon {}, alt_wgs84 {}, alt_egm96 {}, delta x:{}, y:{}, z:{}, time_gps {}, time_local {}".format(lat, lon, wgs84_alt, egm96_alt, d_x, d_y, d_z, time_stamp_gps,
                                                                                   time_stamp_local))
             except:
                 pass
