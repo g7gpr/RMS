@@ -175,7 +175,7 @@ def getGPSTimeDelta(config):
 
 
 
-def startGPSDCapture(config, duration, force_delete=False):
+def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
 
     """ Enters the parameters known at the start of observation into the database
 
@@ -188,10 +188,12 @@ def startGPSDCapture(config, duration, force_delete=False):
             conn: [connection] connection to database
 
         """
-
-    con_lat_rads, con_lon_rads = np.radians(config.latitude), np.radians(config.longitude)
-    con_alt_wgs84 = mslToWGS84Height(con_lat_rads,con_lon_rads, config.elevation, config)
-    con_ecef_x, con_ecef_y, con_ecef_z = latLonAlt2ECEF(con_lat_rads, con_lon_rads, con_alt_wgs84)
+    con_lat_wgs84= config.latitude
+    con_lon_wgs84 = config.longitude
+    con_lat_wgs84_rads, con_lon_wgs84_rads = np.radians(con_lat_wgs84), np.radians(con_lon_wgs84)
+    con_ele_egm96 = config.elevation
+    con_alt_wgs84 = mslToWGS84Height(con_lat_wgs84_rads,con_lon_wgs84_rads, con_ele_egm96, config)
+    con_ecef_x, con_ecef_y, con_ecef_z = latLonAlt2ECEF(con_lat_wgs84_rads, con_lon_wgs84_rads, con_alt_wgs84)
 
 
     conn = getGPSDBConn(config, force_delete=force_delete)
@@ -205,15 +207,16 @@ def startGPSDCapture(config, duration, force_delete=False):
             time_stamp_local = datetime.datetime.now(tz=timezone.utc)
             try:
                 packet = gpsd.get_current()
-                lat = packet.lat
-                lon = packet.lon
-                wgs84_alt = packet.alt
-                egm96_alt = wgs84toMSLHeight(np.radians(lat), np.radians(lon), wgs84_alt, config)
-                time_stamp_gps = packet.time
-                ecef_x, ecef_y, ecef_z = latLonAlt2ECEF(np.radians(lat),np.radians(lon),wgs84_alt)
-                d_x, d_y, d_z = con_ecef_x - ecef_x, con_ecef_y - ecef_y, con_ecef_z - ecef_z
-                print("lat {}, lon {}, alt_wgs84 {}, alt_egm96 {}, delta x:{}, y:{}, z:{}, time_gps {}, time_local {}".format(lat, lon, wgs84_alt, egm96_alt, d_x, d_y, d_z, time_stamp_gps,
-                                                                                  time_stamp_local))
+                gps_lat_wgs84 = packet.lat
+                gps_lon_wgs84 = packet.lon
+                gps_alt_wgs84 = packet.alt
+                gps_lat_wgs84_rads, gps_lon_wgs84_rads = np.radians(gps_lat_wgs84), np.radians(gps_lon_wgs84)
+                gps_alt_egm96 = wgs84toMSLHeight(gps_lat_wgs84_rads, gps_lon_wgs84_rads, gps_alt_wgs84, config)
+                ecef_x, ecef_y, ecef_z = latLonAlt2ECEF(np.radians(gps_lat_wgs84),np.radians(gps_lon_wgs84),gps_alt_wgs84)
+                d_x, d_y, d_z = ecef_x - con_ecef_y, ecef_y - con_ecef_y, ecef_z - con_ecef_z
+                print("gps   (lat:{},lon:{},alt_egm96:{})".format(gps_lat_wgs84, gps_lon_wgs84, gps_alt_egm96))
+                print("config(lat:{},lon:{},alt_egm96:{})".format(con_lat_wgs84, con_lon_wgs84, con_ele_egm96))
+                print("delta (x:{}, y:{}, z:{})".format(d_x, d_y, d_z))
             except:
                 pass
             #time_stamp_local = datetime.datetime.p(time_stamp_local , tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')
