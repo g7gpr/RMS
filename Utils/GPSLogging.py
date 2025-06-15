@@ -240,7 +240,7 @@ def startGPSDCapture(config, duration=3600*4, period=10, force_delete=False):
 
     if duration is None:
         duration = 3600 * 4
-    print("Starting gps logging for {} minutes".format(period / 60))
+    print("Starting gps logging for {} minutes with period {} seconds".format(duration / 60, period))
     con_lat_wgs84= config.latitude
     con_lon_wgs84 = config.longitude
     con_lat_wgs84_rads, con_lon_wgs84_rads = np.radians(con_lat_wgs84), np.radians(con_lon_wgs84)
