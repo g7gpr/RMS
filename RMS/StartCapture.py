@@ -287,11 +287,11 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
     # Start GPS logging
 
-    log.info("Starting GPS logging for {} seconds".format(duration))
+    #log.info("Starting GPS logging for {} seconds".format(duration))
 
-    gps_process = multiprocessing.Process(target='Utils.GPSLogging.startGPSDCapture',
-                                          args=(config, duration, 10))
-    gps_process.start()
+    #gps_process = multiprocessing.Process(target='Utils.GPSLogging.startGPSDCapture',
+    #                                     args=(config, duration, 10))
+    #gps_process.start()
 
     # Make a directory for the night - if currently in night capture mode
     in_night_capture = (daytime_mode is None) or (not daytime_mode.value)
