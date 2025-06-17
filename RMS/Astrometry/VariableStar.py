@@ -1520,7 +1520,7 @@ def dirRaDecToDict(log, data_dir_path, pp, pp_recal, r_target, d_target, e_jd, l
 
     return sequence_dict
 
-def jsonMagsRaDec(config, log, r, d, e_jd=0, l_jd=np.inf, require_calstar=True, require_recalibrated_platepar=True):
+def jsonMagsRaDec(config, r, d, e_jd=0, l_jd=np.inf, require_calstar=True, require_recalibrated_platepar=True):
     """
     Given a radec jd range, search for intensity information.
     Initially search in archived files using calstars, then search latest captured dir using
@@ -1602,7 +1602,7 @@ def jsonMagsRaDec(config, log, r, d, e_jd=0, l_jd=np.inf, require_calstar=True, 
     return observation_sequence_dict
 
 
-def processStarTrackEvent(log, config, ev):
+def processStarTrackEvent(config, jd_start, jd_end, star_ra, star_dec, require_calstar = False, suffix = "radec"):
     """
     Interface intended to be used by EventMonitor
 
@@ -1615,43 +1615,40 @@ def processStarTrackEvent(log, config, ev):
         list of files to be uploaded
     """
 
-    require_calstar = True if ev.use_calstar == 1 else False
 
-    log.info("================================")
-    log.info("     Processing star track event")
-    log.info("================================")
-    log.info("JD start       : {}".format(ev.jd_start))
-    log.info("JD end         : {}".format(ev.jd_end))
-    log.info("RMS Style time : {}".format(ev.dt))
-    log.info("RA             : {}".format(ev.star_ra))
-    log.info("Dec            : {}".format(ev.star_dec))
-    log.info("Use Calstar    : {}".format(require_calstar))
-    log.info("Suffix         : {}".format(ev.suffix))
-    log.info("================================")
+
+    print("================================")
+    print("     Processing star track event")
+    print("================================")
+    print("JD start       : {}".format(jd_start))
+    print("JD end         : {}".format(jd_end))
+    print("RA             : {}".format(star_ra))
+    print("Dec            : {}".format(star_dec))
+    print("Use Calstar    : {}".format(require_calstar))
+    print("Suffix         : {}".format(suffix))
+    print("================================")
     file_list = []
 
 
 
-    json_name = "r_{}_d_{}_jd_{}_{}_{}.json".format(ev.star_ra, ev.star_dec,
-                                                            ev.jd_start, ev.jd_end,
-                                                                config.stationID)
+    json_name = "r_{}_d_{}_jd_{}_{}_{}.json".format(star_ra, star_dec, jd_start, jd_end, config.stationID)
 
-    ev.suffix = "radec" if ev.suffix == "event" else ev.suffix
+    suffix = "radec" if suffix == "event" else suffix
 
     star_track_working_directory = os.path.join(config.data_dir, "TrackingFiles")
     mkdirP(star_track_working_directory)
     json_path = os.path.join(star_track_working_directory, json_name)
 
 
-    observation_sequence_dict = jsonMagsRaDec(config, log, ev.star_ra, ev.star_dec,
-                                              e_jd=ev.jd_start, l_jd=ev.jd_end,
+    observation_sequence_dict = jsonMagsRaDec(config, star_ra, star_dec,
+                                              e_jd=jd_start, l_jd=jd_end,
                                               require_calstar=require_calstar)
 
     if not len(observation_sequence_dict):
-        log.info("No observations of this sky region")
+        print("No observations of this sky region")
         return []
     else:
-        log.info("Found {} observations of this sky region".format(len(observation_sequence_dict)))
+        print("Found {} observations of this sky region".format(len(observation_sequence_dict)))
 
     with open(json_path, 'w') as json_fh:
         json_fh.write(json.dumps(observation_sequence_dict, indent=4, sort_keys=True))
@@ -1663,18 +1660,18 @@ def processStarTrackEvent(log, config, ev):
 
     file_list.append(json_path)
     file_list.append(jsonToThumbnails(config, observation_sequence_dict,
-                                      ev.star_ra, ev.star_dec,
-                                      ev.jd_start, ev.jd_end,
+                                      star_ra, star_dec,
+                                      jd_start, jd_end,
                                       file_path=star_track_working_directory))
 
     if require_calstar:
         file_list.append(jsonToMagnitudePlot(config, observation_sequence_dict,
-                                         ev.star_ra, ev.star_dec,
-                                         ev.jd_start, ev.jd_end,
+                                         star_ra, star_dec,
+                                         jd_start, jd_end,
                                          file_path=star_track_working_directory))
 
-    csv_name = "r_{}_d_{}_jd_{}_{}_{}.csv".format(ev.star_ra, ev.star_dec,
-                                                    ev.jd_start, ev.jd_end,
+    csv_name = "r_{}_d_{}_jd_{}_{}_{}.csv".format(star_ra, star_dec,
+                                                    jd_start, jd_end,
                                                     config.stationID)
     csv_path = os.path.join(star_track_working_directory, csv_name)
 
@@ -1836,6 +1833,7 @@ if __name__ == "__main__":
     else:
         dbpath = cml_args.dbpath
 
+    processStarTrackEvent(config, cml_args.jd_range[0], cml_args.jd_range[1], cml_args.ra, cml_args.dec, require_calstar=False)
 
     dbpath = os.path.expanduser(dbpath)
     conn = getStationStarDBConn(dbpath)
