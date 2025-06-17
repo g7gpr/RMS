@@ -438,7 +438,7 @@ def computePhotometry(config, pp_all, calstar, match_radius=2.0, min_star_factor
     ff_most_stars = None
     for entry in calstar:
         ff_name, star_data = entry
-        #print("Working on {}".format(ff_name))
+        print("Working on {}".format(ff_name))
         #print("Fields is {}".format(len(ff_name.split("_"))))
         if len(ff_name.split("_")) != 6:
             continue
@@ -757,6 +757,7 @@ def calstarToDb(calstar, conn, archived_directory_path, latest_jd=0):
                                                 jd_time=True, extinction_correction=False, measurement=True)
 
         star_list_radec = []
+        print("Working through {} a list of length {}".format(fits_file, len(jd)))
         for j, x, y, r, d, bg, amp, FWHM, mag in zip(jd, x_list, y_list, ra, dec, bg_list, amp_list, FWHM_list, mag):
             cat_id, cat_mag, cat_r, cat_d = getCatalogueID(r, d, conn)
             az, el = raDec2AltAz(r, d, j, pp.lat, pp.lon)
