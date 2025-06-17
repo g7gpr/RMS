@@ -405,18 +405,21 @@ def getCatalogueID(r, d, conn, margin=0.3):
     else:
         return 0, 0, 0, 0
 
-def computePhotometry(config, pp_all, calstar, match_radius=2.0, star_margin = 1.2):
+def computePhotometry(config, pp_all, calstar, match_radius=2.0, min_star_factor = 1.2):
 
     """
     Compute photometric offset and vignetting coefficient from CALSTARS
     Best practice is to use the vignetting coefficient from the platepar
     not a computed number
 
-    Args:
-        config (): configuration instance
-        pp_all (): a dictionary of all recomputed platepars
-        calstar (): calstar data structure
-        match_radius (): the pixel radius used by the recalibration routine
+    Arguments:
+        config: [config]configuration instance
+        pp_all: a dictionary of all recomputed platepars
+        calstar: calstar data structure
+
+    Keyword Arguments:
+        match_radius: [float] the pixel radius used by the recalibration routine
+        min_star_factor: [float] the factor by which the minimum number of stars is increase
 
     Returns:
         tuple(photometric offset, vignetting coefficient)
@@ -436,6 +439,12 @@ def computePhotometry(config, pp_all, calstar, match_radius=2.0, star_margin = 1
     for entry in calstar:
         ff_name, star_data = entry
         print("Working on {}".format(ff_name))
+        print("Fields is {}".format(len(ff_name.split("_"))))
+        if len(ff_name.split("_")) != 6:
+            continue
+        if ff_name.split("_")[1] != config.stationID:
+            continue
+        print("Working on {}".format(ff_name))
         d = getMiddleTimeFF(ff_name, config.fps, ret_milliseconds=True)
         jd = date2JD(*d)
         star_dict[jd], ff_dict[jd] = star_data, ff_name
@@ -447,7 +456,7 @@ def computePhotometry(config, pp_all, calstar, match_radius=2.0, star_margin = 1
     # As the purpose of this code is to get the best magnitude information, discard observation sessions where
     # too few stars were observed, returning none from here will discard the whole observation session
     pp = Platepar()
-    if ff_most_stars is None or max_stars < config.min_matched_stars * star_margin:
+    if ff_most_stars is None or max_stars < config.min_matched_stars * min_star_factor:
         print("Too few stars, moving on")
         return None, None
 
