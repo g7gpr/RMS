@@ -435,7 +435,7 @@ def computePhotometry(config, pp_all, calstar, match_radius=2.0, star_margin = 1
     ff_most_stars = None
     for entry in calstar:
         ff_name, star_data = entry
-        log.info("Working on {}".format(ff_name))
+        print("Working on {}".format(ff_name))
         d = getMiddleTimeFF(ff_name, config.fps, ret_milliseconds=True)
         jd = date2JD(*d)
         star_dict[jd], ff_dict[jd] = star_data, ff_name
