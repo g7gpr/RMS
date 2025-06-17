@@ -1472,7 +1472,7 @@ def calstarRaDecToDict(data_dir_path, config, pp, pp_recal_json, r_target, d_tar
 
     return sequence_dict
 
-def dirRaDecToDict(log, data_dir_path, pp, pp_recal, r_target, d_target, e_jd, l_jd):
+def dirRaDecToDict(data_dir_path, pp, pp_recal, r_target, d_target, e_jd, l_jd):
     """
       Parses a calstar data structures in archived directories path,
       converts to RaDec, corrects magnitude data and writes newer data to database
@@ -1595,7 +1595,7 @@ def jsonMagsRaDec(config, r, d, e_jd=0, l_jd=np.inf, require_calstar=True, requi
 
         else:
             # Handle the no calstar required case
-            dict_from_dir = dirRaDecToDict(log, full_path, pp, None, r, d, e_jd, l_jd)
+            dict_from_dir = dirRaDecToDict(full_path, pp, None, r, d, e_jd, l_jd)
             if dict_from_dir is not None:
                 observation_sequence_dict.update(dict_from_dir)
 
