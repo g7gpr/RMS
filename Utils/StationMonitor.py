@@ -409,12 +409,10 @@ def listConfiguration(conn, nice_format=True):
 
     configuration_as_string = HEADER + "Operator email:StationID\n"
     for entry in configuration:
-        # Strip newlines
-        configuration_as_string += OKCYAN + "{}:{}\n".format(entry[0].replace("\n",""), entry[1].replace("\n",""))
+            configuration_as_string += OKCYAN + "{}:{}\n".format(entry[0].replace("\n",""), entry[1].replace("\n",""))
 
+    return niceFormat(configuration_as_string) if nice_format else configuration_as_string + ENDC
 
-    output =  niceFormat(configuration_as_string) if nice_format else configuration_as_string + ENDC
-    return output
 
 def listDurations(conn, count=5):
     """ List the weblog run time durations.
@@ -1268,6 +1266,7 @@ def stationMonitor(syscon, repeat=False, delay_minutes=60, verbosity=1, warning_
                 print("===========================================================\n\n" +ENDC)
             break
         print(ENDC)
+    conn.close()
 
 if __name__ == "__main__":
 
@@ -1367,8 +1366,8 @@ if __name__ == "__main__":
     if not os.path.exists(os.path.expanduser(mail_configuration_file)) and verbosity > 0:
         print(WARNING + "No configuration file found at {}".format(mail_configuration_file))
         print("Mail cannot be sent")
-        print("Mail configuration file first line is the email address")
-        print("Second line is the API key")
+        print("In the mail configuration file, the first line is the email address")
+        print("The second line is the API key \n")
         print("For example \n")
         print("station.operator@gmail.com \nabcd efgh ijkl mnop \n" + ENDC)
 
@@ -1383,6 +1382,6 @@ if __name__ == "__main__":
         print(OKGREEN + "python -m Utils.StationMonitor -r 120 \n")
 
         print(ENDC)
-
+    conn.close()
     # Run the main function
     stationMonitor(syscon, repeat=repeat, delay_minutes=delay, verbosity=verbosity, warning_hours=warning_hours)
