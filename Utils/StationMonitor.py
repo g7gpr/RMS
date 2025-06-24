@@ -407,13 +407,14 @@ def listConfiguration(conn, nice_format=True):
     sql_command += "SELECT OperatorEmail , StationID FROM stations"
     configuration = conn.execute(sql_command).fetchall()
 
-    configuration_as_string = "Operator email:StationID\n"
+    configuration_as_string = HEADER + "Operator email:StationID\n"
     for entry in configuration:
-        configuration_as_string += "{}:{}\n".format(entry[0], entry[1])
+        # Strip newlines
+        configuration_as_string += OKCYAN + "{}:{}\n".format(entry[0].replace("\n",""), entry[1].replace("\n",""))
 
 
-    output =  niceFormat(configuration_as_string) if nice_format else configuration_as_string
-    return OKCYAN + output + ENDC
+    output =  niceFormat(configuration_as_string) if nice_format else configuration_as_string + ENDC
+    return output
 
 def listDurations(conn, count=5):
     """ List the weblog run time durations.
