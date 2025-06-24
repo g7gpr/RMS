@@ -249,7 +249,7 @@ def listToUniqueCommaSeparatedList(items, drop=None):
     comma_separated_list = listToCommaSeparatedList(unique_list)
     return comma_separated_list
 
-def validStationName(candidate_station_name):
+def validStationName(candidate_station_name, country_codes):
     """ Check a station name is valid
 
     Criteria
@@ -279,13 +279,17 @@ def validStationName(candidate_station_name):
         if not c.isalpha():
             return False
 
+    if not candidate_station_name[:2].lower() in country_codes:
+        return False
+
     return True
 
 def addStations(conn, parameter):
-    """ Create a comma separated list from a list of items each item unique.
+    """ Add an operator and arbitrary number of stations to the database
 
     Arguments:
-        items: [list] List of items.
+        conn: [object] Database connection instance.
+        paramter: [str] operotor email xx0001 xx0002 xx0003
 
     Keyword Arguments:
         drop: [str] An item to drop.
@@ -294,12 +298,13 @@ def addStations(conn, parameter):
         comma_separated_list: [str] Comma separated list.
     """
 
+    cc = getCountryCodes(os.path.join(global_meteor_network, last_upload_webpage))
     parameter_list = parameter.split()
     operator_email = parameter_list.pop(0)
 
     station_list = []
     for s in parameter_list:
-        if validStationName(s):
+        if validStationName(s,cc):
             station_list.append(s)
         else:
             if verbosity > 0:
@@ -412,7 +417,6 @@ def listConfiguration(conn, nice_format=True):
             configuration_as_string += OKCYAN + "{}:{}\n".format(entry[0].replace("\n",""), entry[1].replace("\n",""))
 
     return niceFormat(configuration_as_string) if nice_format else configuration_as_string + ENDC
-
 
 def listDurations(conn, count=5):
     """ List the weblog run time durations.
@@ -730,6 +734,32 @@ def getWeblogLastUpdatedFromWeb(url=None):
             last_updated_date_str = line.strip().replace("Last updated:", "").replace("UTC","").strip()
             return datetime.datetime.strptime(last_updated_date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=datetime.timezone.utc)
     return None
+
+def getCountryCodes(url):
+    country_codes = []
+
+    if url is None:
+        url = os.path.join(global_meteor_network, last_upload_webpage)
+
+    try:
+        web_page = urlLines(url)
+    except:
+        return None
+
+    if web_page is None:
+        # This is probably Ctrl-C event
+        return None
+    for line in web_page:
+        line = line.strip()
+        if line.startswith("<a href=") and line.endswith("</a>") :
+            country_codes.append(line.split("/index.html")[0][-2:].lower())
+
+
+    return country_codes
+
+
+
+    return country_codes
 
 def getFileTimeStampFromDB(conn, station_code, fallback_to_weblog=False):
     """Get the time stamp of the observation summary file from the database.
@@ -1229,10 +1259,14 @@ def stationMonitor(syscon, repeat=False, delay_minutes=60, verbosity=1, warning_
 
         else:
             last_server_updated_time = getLastWeblogUpdatedTimeFromDB(conn)
-            weblog_update_duration = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0) \
-                                                                    - last_server_updated_time.replace(microsecond=0)
+            weblog_update_duration = (datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)
+                                            - last_server_updated_time.replace(microsecond=0)).total_seconds()
             if verbosity > 0:
-                print(" No weblog update for           : {}".format(weblog_update_duration))
+                h, r = divmod(weblog_update_duration, 3600)
+                m, s = divmod(r, 60)
+                print(" No weblog update for           : {:02d}:{:02d}:{:02d} (HH:MM:SS"
+                                            .format(int(h), int(m), int(s)))
+
 
         iteration_end_time = datetime.datetime.now(tz=datetime.timezone.utc)
         iteration_duration = (iteration_end_time - iteration_start_time).total_seconds()
@@ -1323,6 +1357,7 @@ if __name__ == "__main__":
     conn = createStationMonitorDB(os.path.join(syscon.data_dir, station_monitor_filename))
 
 
+
     if cml_args.add_operators:
         quit_after_config_changes = True
         addOperators(conn, cml_args.add_operators)
@@ -1341,6 +1376,7 @@ if __name__ == "__main__":
 
     if cml_args.list_configuration:
         quit_after_config_changes = True
+        print()
         print(listConfiguration(conn))
 
     if cml_args.list_status:
@@ -1363,6 +1399,7 @@ if __name__ == "__main__":
         if verbosity > 0:
             print("\nStation monitor running once.\n")
 
+
     if not os.path.exists(os.path.expanduser(mail_configuration_file)) and verbosity > 0:
         print(WARNING + "No configuration file found at {}".format(mail_configuration_file))
         print("therefore mail cannot be sent.\n")
@@ -1384,4 +1421,5 @@ if __name__ == "__main__":
         print(ENDC)
     conn.close()
     # Run the main function
+
     stationMonitor(syscon, repeat=repeat, delay_minutes=delay, verbosity=verbosity, warning_hours=warning_hours)
