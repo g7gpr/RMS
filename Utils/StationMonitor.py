@@ -1264,7 +1264,7 @@ def stationMonitor(syscon, repeat=False, delay_minutes=60, verbosity=1, warning_
             if verbosity > 0:
                 h, r = divmod(weblog_update_duration, 3600)
                 m, s = divmod(r, 60)
-                print(" No weblog update for           : {:02d}:{:02d}:{:02d} (HH:MM:SS"
+                print(" No weblog update for           : {:02d}:{:02d}:{:02d} (HH:MM:SS)"
                                             .format(int(h), int(m), int(s)))
 
 
