@@ -1365,7 +1365,7 @@ if __name__ == "__main__":
 
     if not os.path.exists(os.path.expanduser(mail_configuration_file)) and verbosity > 0:
         print(WARNING + "No configuration file found at {}".format(mail_configuration_file))
-        print("Mail cannot be sent")
+        print("therefore mail cannot be sent.\n")
         print("In the mail configuration file, the first line is the email address")
         print("The second line is the API key \n")
         print("For example \n")
