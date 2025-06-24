@@ -407,7 +407,7 @@ def listConfiguration(conn, nice_format=True):
     sql_command += "SELECT OperatorEmail , StationID FROM stations"
     configuration = conn.execute(sql_command).fetchall()
 
-    configuration_as_string = HEADER + "\nOperator email:StationID\n"
+    configuration_as_string = HEADER + "Operator email:StationID\n"
     for entry in configuration:
         configuration_as_string += OKCYAN + "{}:{}\n".format(entry[0], entry[1])
 
