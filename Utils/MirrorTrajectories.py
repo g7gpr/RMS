@@ -114,8 +114,6 @@ def createTable(conn, column_list):
         create_table_statement += " '{}' '{}',".format(column, column_type) + "\n"
 
     create_table_statement = create_table_statement[:-2] + "\n );"
-
-    print(create_table_statement)
     conn.execute(create_table_statement)
     pass
 
