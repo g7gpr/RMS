@@ -705,7 +705,7 @@ if __name__ == "__main__":
     if not cml_args.no_download:
         mirror(config=config, page=cml_args.page,
                force_reload=cml_args.force_reload, max_downloads=cml_args.max_downloads,
-               daily_directory=daily_directory)
+               daily_directory=daily_directory, conn=conn)
 
     if cml_args.all:
         duplicate_count = createAllFile(trajectory_summary_all_file, cml_args.drop_duplicates)
