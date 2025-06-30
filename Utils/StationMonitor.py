@@ -1040,6 +1040,8 @@ def checkUpdateStation(conn, station_id, server_run_time, warning_hours=36):
     if time_of_last_change_from_db is None:
         time_of_last_change_from_db = file_time_stamp_from_weblog
 
+
+
     # Has the file time stamp on the weblog changed
     if file_time_stamp_from_weblog > old_file_time_stamp:
         # If we know that it has changed set
@@ -1049,15 +1051,14 @@ def checkUpdateStation(conn, station_id, server_run_time, warning_hours=36):
         #
         # We can't compute hours_since_last change more accurately, because
         # the FileTimeStamp could be running late because of an upload backlog
-        changed_time, status, time_of_last_change = last_server_run_time, 1, last_server_run_time
+        changed_time, status, time_of_last_change = server_run_time, 1, last_server_run_time
         hours_since_last_change = (server_run_time - time_of_last_change).total_seconds() / 3600
     else:
         # If it has not changed then we know that the hours_since_last_change is at least
         # the time between the last server run time and the WeblogTimeOfLastChange
         if not time_of_last_change_from_db is None:
-            # If this is a normal run
-
-            time_of_last_change = time_of_last_change_from_db
+            # If this is a normal run pick the latest of the last change from db or the file time stamp
+            time_of_last_change = max(time_of_last_change_from_db, file_time_stamp_from_weblog)
         else:
             # If it is a first run for this station
             time_of_last_change = last_server_run_time
