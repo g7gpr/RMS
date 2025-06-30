@@ -1057,8 +1057,9 @@ def checkUpdateStation(conn, station_id, server_run_time, warning_hours=36):
         # If it has not changed then we know that the hours_since_last_change is at least
         # the time between the last server run time and the WeblogTimeOfLastChange
         if not time_of_last_change_from_db is None:
-            # If this is a normal run pick the latest of the last change from db or the file time stamp
-            time_of_last_change = max(time_of_last_change_from_db, file_time_stamp_from_weblog)
+            # If this is a normal run
+
+            time_of_last_change = time_of_last_change_from_db
         else:
             # If it is a first run for this station
             time_of_last_change = last_server_run_time
