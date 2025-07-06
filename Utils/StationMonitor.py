@@ -1387,8 +1387,9 @@ if __name__ == "__main__":
             while cml_args.list_status:
                 print("\033c", end="")
                 print(listStatus(conn))
-                print()
-                print("{} Last update at {}".format(" " * 60, datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)))
+                print(OKBLUE)
+                print("{} Last update at {}".format(" " * 62, datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)))
+                print(ENDC)
                 time.sleep(delay * 60)
         else:
             print(listStatus(conn))
