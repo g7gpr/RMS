@@ -1383,7 +1383,13 @@ if __name__ == "__main__":
 
     if cml_args.list_status:
         quit_after_config_changes = True
-        print(listStatus(conn))
+        if repeat:
+            while cml_args.list_status:
+                print(listStatus(conn))
+                time.sleep(delay * 60)
+        else:
+            print(listStatus(conn))
+
 
     if cml_args.list_durations is None:
         pass
