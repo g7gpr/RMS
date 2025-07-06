@@ -125,6 +125,7 @@ def listStatus(conn):
 
     output = HEADER
     output += " Station ID  | File Time Stamp           | Weblog Last Change        | Hours Since Last Change  | Status\n"
+    output += " -------------------------------------------------------------------------------------------------------\n"
     for result in results:
         if result is not None:
             status = "good" if result[4] == 1 else "bad"
