@@ -1388,7 +1388,7 @@ if __name__ == "__main__":
                 print("\033c", end="")
                 print(listStatus(conn))
                 print()
-                print("{} Last update at {}".format(" " * 70, datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)))
+                print("{} Last update at {}".format(" " * 60, datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)))
                 time.sleep(delay * 60)
         else:
             print(listStatus(conn))
