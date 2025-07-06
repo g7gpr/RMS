@@ -1385,6 +1385,7 @@ if __name__ == "__main__":
         quit_after_config_changes = True
         if repeat:
             while cml_args.list_status:
+                print("\033c", end="")
                 print(listStatus(conn))
                 time.sleep(delay * 60)
         else:
