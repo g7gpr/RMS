@@ -136,7 +136,8 @@ def listStatus(conn):
             if status == "bad":
                 output += FAIL
             output += " {:<11} | {:<10} | {:<10} | {:<24} | {:<10}\n".format(result[0], result[1], result[2], result[3], status)
-
+    output += HEADER
+    output += " -------------------------------------------------------------------------------------------------------\n"
     output += ENDC
     return output
 
