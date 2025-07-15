@@ -414,7 +414,7 @@ def addTimingInformation(image_data, image_array, rotated_coordinates, run_in, r
     return image_data, image_array, time_column_list
 
 
-def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_image_extent=2000, event_run_in=0.1, event_run_out=0.1):
+def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_image_extent=2000, event_run_in=0.2, event_run_out=0.2):
 
 
     if True:
@@ -581,15 +581,15 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_
             c += 1
             if t > observation_start_time:
                 break
-        plot_annotations_dict[(c, int(y_origin + y_dim * 0.25 ))] = annotation
+        plot_annotations_dict[(c-20, int(y_origin + y_dim * 0.4 ))] = annotation
 
-        annotation = "{}".format(observation_end_time.strftime("%S.%f"))
+        annotation = "{}s".format(observation_end_time.strftime("%S.%f"))
         c= 0
         for t in output_column_time_list:
             c += 1
             if t > observation_end_time:
                 break
-        plot_annotations_dict[(c, int(y_origin + y_dim * 0.75 ))] = annotation
+        plot_annotations_dict[(c-20, int(y_origin + y_dim * 0.7 ))] = annotation
 
 
         y_origin += y_dim
