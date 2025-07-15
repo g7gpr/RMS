@@ -20,6 +20,8 @@ from __future__ import print_function, division, absolute_import
 import os
 import sys
 import shutil
+from types import ClassMethodDescriptorType
+
 import cv2
 from matplotlib.testing.decorators import image_comparison
 
@@ -354,34 +356,67 @@ def addTimingInformation(image_data, image_array, rotated_coordinates, run_in, r
     fps = image_data[0][2][4]
     c = 0
     time_column_list = []
-    for column in image_array[0]:
-        if run_in < c < len(image_array[0]) - run_out :
-            frame = np.interp(c-run_in, y_coordinate_list, frame_count_list)
-            frame_time_stamp = first_frame + datetime.timedelta(seconds=(frame - first_frame_number) / fps)
-            time_column_list.append([c, frame_time_stamp])
+
+    plt.imshow(image_array, cmap='gray')
+    plt.show()
+
+    for column in range(run_in, len(image_array.T) - run_out):
+
+        frame = np.interp(c, y_coordinate_list, frame_count_list)
+
+        frame_time_stamp = first_frame + datetime.timedelta(seconds=(frame - first_frame_number) / fps)
+
+        time_column_list.append([c + run_in, frame_time_stamp])
+        last_observation_frame_time_stamp = frame_time_stamp
+        last_observation_column = column
         c+= 1
-
-
 
     # Infer timing information for run_in and run_out
     first_time_stamp, final_time_stamp = time_column_list[0][1], time_column_list[-1][1]
 
-    seconds_per_column = (final_time_stamp - first_time_stamp).total_seconds() / (c - (run_in + run_out))
-
+    observation_duration = (final_time_stamp - first_time_stamp).total_seconds()
+    seconds_per_column = observation_duration / c
+    print("Observation duration:", observation_duration)
+    print("Columns {}".format(c))
+    print("Seconds per column:", seconds_per_column)
     image_start = first_time_stamp - datetime.timedelta(seconds = seconds_per_column * run_in)
 
-
+    print("Length from trace {}".format(len(time_column_list)))
+    c = 0
     for column in range(0, run_in + 1):
-        frame_time_stamp = first_frame + datetime.timedelta(seconds = (column - run_in) * seconds_per_column )
+        frame_time_stamp = image_start + datetime.timedelta(seconds = c * seconds_per_column )
         time_column_list.append([column,frame_time_stamp])
+        c += 1
         pass
 
-    for column in range(run_in + len(image_array[0]), run_in + len(image_array[0]) + run_out):
-        frame_time_stamp = first_frame + datetime.timedelta(seconds=(column - run_in) * seconds_per_column)
+    print("Length with run_in {}".format(len(time_column_list)))
+    c=0
+    for column in range(len(image_array[0]) - run_out, len(image_array[0])):
+        frame_time_stamp = final_time_stamp + datetime.timedelta(seconds=(c * seconds_per_column))
         time_column_list.append([column, frame_time_stamp])
+        c += 1
         pass
 
+
+    print("Seconds per column {}".format(seconds_per_column))
+    print("Length with run in and run out {}".format(len(time_column_list)))
     time_column_list.sort()
+    first_col = True
+    for col, col_time in time_column_list:
+        if first_col:
+            _col_time = col_time
+            first_col = False
+        else:
+            col_duration = (col_time - _col_time).total_seconds()
+            #print(col, col_time, col_duration)
+            _col_time = col_time
+    print(len(time_column_list))
+    print(run_in, len(image_array[0]), run_out)
+    print("Image start {}".format(time_column_list[0]))
+    print("Event start {}".format(time_column_list[run_in]))
+    print("Event end {}".format(time_column_list[len(image_array[0])]))
+    print("Image end {}".format(time_column_list[-1]))
+
 
     pass
 
@@ -389,13 +424,16 @@ def addTimingInformation(image_data, image_array, rotated_coordinates, run_in, r
     return image_data, image_array, time_column_list
 
 
-def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_image_extent=1000, event_run_in=0.1, event_run_out=0.05):
+def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_image_extent=500, event_run_in=0.01, event_run_out=0.01):
 
 
-    if False:
+    if True:
         working_area = createTemporaryWorkArea()
 
+    if False:
         working_area = extractBz2(input_directory, working_area)
+
+    if True:
         ftp_dict = readInFTPDetectInfoFiles(working_area)
         events = clusterByTime(ftp_dict)
         event_images_dict = createImagesDict(events, working_area)
@@ -403,14 +441,14 @@ def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_
         with open('event_images_dict.pkl', 'wb') as f:
             pickle.dump(event_images_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-    if False:
+    if True:
 
         with open('event_images_dict.pkl', 'rb') as f:
             event_images_dict = pickle.load(f)
 
 
         with open('event_images.pkl', 'wb') as f:
-            pickle.dump(event_images_dict[datetime.datetime(2025,6,4,17,9,37, 416028)], f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(event_images_dict[datetime.datetime(2025,5,16,17,45,44, 680275)], f, protocol=pickle.HIGHEST_PROTOCOL)
 
     if True:
         with open('event_images.pkl', 'rb') as f:
@@ -418,17 +456,15 @@ def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_
 
         event_images_with_timing_dict = {}
         first_image = True
+
         for image in event_images:
             original_point_list = []
+            station = image[0][2][1]
+            ff_file = image[0][2][0]
             ftp_entry = image[0][2][11]
             coordinates_list = []
             observation_end, observation_start = getObservationTimeExtent(coordinates_list, ftp_entry, image)
 
-            if first_image:
-                first_image = False
-                event_start, event_end = observation_start, observation_end
-            else:
-                event_start, event_end = min(observation_start, event_start), max(observation_end, event_end)
 
             angle_deg, img, length, start_x, start_y = getImageInformation(image)
             rotated_coordinates = rotateCoordinateList(coordinates_list, angle_deg)
@@ -437,21 +473,29 @@ def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_
 
             img = rotateCapture(img, angle_deg, (start_x, start_y), length, run_in=run_in, run_out=run_out, y_dim=y_dim)
             img = straightenFlight(img, rotated_coordinates, run_in, run_out)
+
+
+
             image_data, image_array, img_timing = addTimingInformation(image, img, rotated_coordinates, run_in, run_out)
+
+            if False:
+                plt.imshow(image_array, cmap='gray')
+                plt.show()
+
+            if first_image:
+                first_image = False
+                event_start, event_end = observation_start, observation_end
+            else:
+                event_start, event_end = min(observation_start, event_start), max(observation_end, event_end)
+
+            print(station, event_start, event_end)
+
             station = image[0][2][1]
-            event_images_with_timing_dict[station] = [img_timing, image_data, image_array]
+            event_images_with_timing_dict[ff_file] = [img_timing, image_data, image_array]
 
             h, w = img.shape[:2]
             centre_y = int(h/2)
             event_start_time, event_end_time = observation_start.strftime("%H:%M:%S.%f"), observation_end.strftime("%H:%M:%S.%f")
-            cv2.putText(img, "{}".format(event_start_time), (run_in, centre_y - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                        (200, 200, 200), 1)
-            cv2.putText(img, "{}".format(event_end_time), (w - run_out, centre_y + 25)  , cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200),
-                        1)
-            cv2.putText(img, "{}".format(image[0][2][0]), (10, h-20), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                        (200, 200, 200),
-                        1)
-
 
 
             #plt.imshow(img, cmap='gray')
@@ -481,16 +525,99 @@ def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_
     output_array = np.zeros((chart_x_resolution, chart_y_resolution))
     output_column_time_list = createOutputChartColumnTimings(chart_x_min_time, columns_per_second, output_array)
 
+    y_origin=0
 
-    for time_point in output_column_time_list:
-        for image_key in event_images_with_timing_dict:
-            print(image_key)
-            image_timing = event_images_with_timing_dict[image_key][0]
-            image_data   = event_images_with_timing_dict[image_key][1]
-            image_array = event_images_with_timing_dict[image_key][2]
+    for image_key in sorted(event_images_with_timing_dict):
+
+        row_timing = event_images_with_timing_dict[image_key][0]
+        row_timing = [item[1] for item in row_timing]
+        print("For image {} minimum {} maximum {}".format(image_key, min(row_timing), max(row_timing)))
+        image_data   = event_images_with_timing_dict[image_key][1]
+        image_array = event_images_with_timing_dict[image_key][2]
+        plt.imshow(image_array, cmap='gray')
+        plt.show()
+
+        output_array_transposed = output_array.T
+        for y in range(0, y_dim):
+            row_intensity = image_array[y]
+            for x in range(0, chart_x_resolution):
+                output_image_time = output_column_time_list[x]
+                #print(min(output_column_time_list), min(row_timing), output_image_time, max(row_timing), max(output_column_time_list))
+
+                brightness = interpolateByTime(output_image_time, row_timing, row_intensity)
+                output_array[x, y_origin + y] = brightness
+
+                pass
+
+
+        pass
+
+        display_array = output_array.T
+
+        h, w = img.shape[:2]
+        centre_y = int(h / 2)
+
+        for event in event_images:
             pass
 
+
+            ff_name = event[0][2][0]
+            camera_name = event[0][2][1]
+            if camera_name == image_key:
+
+                observation_start_time, observation_end_time = event[0][0], event[0][1]
+                print("ff_name                  :{}".format(ff_name))
+                print("camera_name              :{}".format(camera_name))
+                print("observation_start_time   :{}".format(observation_start_time))
+                print("observation_end_time     :{}".format(observation_end_time))
+                break
+
+
+        observation_start_time = 0
+
+
+        plt.imshow(display_array, cmap='gray')
+        plt.show()
+        y_origin += y_dim
+
+
     return event_images_with_timing_dict, event_start, event_end
+
+
+def interpolateByTime(target_time, reference_times_list, reference_value_list):
+
+    first_iteration = True
+
+    if target_time < reference_times_list[0]:
+        return 0
+    if target_time > reference_times_list[-1]:
+        return 0
+
+    for reference_time, reference_value in zip(reference_times_list, reference_value_list):
+        if first_iteration:
+            _reference_time = reference_time
+            _reference_value = reference_value
+            first_iteration = False
+        else:
+            if reference_time >= target_time:
+                break
+            else:
+                _reference_time = reference_time
+                _reference_value = reference_value
+
+    reference_time_steps = (reference_time - _reference_time).total_seconds()
+    reference_value_difference = float(reference_value) - float(_reference_value)
+    time_discrepancy = (target_time - _reference_time).total_seconds()
+
+    if reference_time_steps == 0:
+        interpolated_value = reference_value
+    else:
+        interpolated_value = _reference_value + time_discrepancy * (reference_value_difference / reference_time_steps)
+    if interpolated_value > 0:
+        #print("_reference value, interpolated value, reference value {},{},{}".format(_reference_value, interpolated_value, reference_value))
+        pass
+    return interpolated_value
+
 
 
 def createOutputChartColumnTimings(chart_x_min_time, columns_per_second, output_array):
