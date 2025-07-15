@@ -16,6 +16,10 @@
 
 from __future__ import print_function, division, absolute_import
 
+import matplotlib.pyplot as plt
+import numpy as np
+import matplotlib.dates as mdates
+
 
 import os
 import sys
@@ -526,23 +530,20 @@ def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_
     output_column_time_list = createOutputChartColumnTimings(chart_x_min_time, columns_per_second, output_array)
 
     y_origin=0
-
+    y_labels, y_label_coords = [], []
     for image_key in sorted(event_images_with_timing_dict):
-
+        y_labels.append(image_key.split('_')[1])
         row_timing = event_images_with_timing_dict[image_key][0]
         row_timing = [item[1] for item in row_timing]
         print("For image {} minimum {} maximum {}".format(image_key, min(row_timing), max(row_timing)))
         image_data   = event_images_with_timing_dict[image_key][1]
         image_array = event_images_with_timing_dict[image_key][2]
-        plt.imshow(image_array, cmap='gray')
-        plt.show()
 
         output_array_transposed = output_array.T
         for y in range(0, y_dim):
             row_intensity = image_array[y]
             for x in range(0, chart_x_resolution):
                 output_image_time = output_column_time_list[x]
-                #print(min(output_column_time_list), min(row_timing), output_image_time, max(row_timing), max(output_column_time_list))
 
                 brightness = interpolateByTime(output_image_time, row_timing, row_intensity)
                 output_array[x, y_origin + y] = brightness
@@ -574,10 +575,79 @@ def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_
 
 
         observation_start_time = 0
+        # Plot
+
+        fig, ax = plt.subplots()
+        im = ax.imshow(display_array, aspect='auto', cmap='gray')
+
+        # Set x-axis to custom time scale
+        earliest_time = output_column_time_list[0]
+        latest_time = output_column_time_list[-1]
+        duration_seconds = (latest_time - earliest_time).total_seconds()
+        if duration_seconds < 2:
+            pass
+            ticks_per_second = 4
+        else:
+            pass
+            ticks_per_second = 2
 
 
+        
+        mark_tick = False
+        first_iteration = True
+        tick_times = []
+        for t in output_column_time_list:
+            # Convert to total microseconds
+            total_microseconds = (t.second + t.microsecond / 1e6) * ticks_per_second
+            rounded_units = np.ceil(total_microseconds)
+
+            # Construct the new time
+            rounded_seconds = rounded_units / ticks_per_second
+            t_rounded = t.replace(microsecond=0, second=0) + datetime.timedelta(seconds=rounded_seconds)
+
+
+            if first_iteration:
+                _t_rounded = t_rounded
+                first_iteration = False
+            else:
+
+                if t > _t_rounded:
+                    tick_times.append(t_rounded)
+                    _t_rounded = t_rounded
+                    print("Tick at {}".format(t_rounded))
+            pass
+        pass
+        tick_positions = []
+        for tick in tick_times:
+            c = 0
+            for col_time in output_column_time_list:
+                c += 1
+                if col_time > tick:
+                    tick_positions.append(c)
+                    break
+        print(tick_positions)
+
+        ax.set_xticklabels([tick.strftime('%S.%f') for tick in tick_times], rotation=90)
+        ax.set_xticks(tick_positions)
+        ax.set_xlabel('Time (s)')
+
+        y_label_coords.append(y_origin + 0.5 * y_dim)
+        ax.set_yticks(y_label_coords)
+        ax.set_yticklabels(y_labels, fontsize='small')
+        ax.set_ylabel('Station')
+
+        # Optional: format with DateFormatter if using mdates
+        # ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+
+        plt.colorbar(im, ax=ax, label='Intensity')
+        plt.title('Event at {}'.format(tick_times[0].strftime('%Y%m%d_%H%M%S')))
+        plt.tight_layout()
+        plt.show()
+
+        '''
         plt.imshow(display_array, cmap='gray')
         plt.show()
+        '''
         y_origin += y_dim
 
 
