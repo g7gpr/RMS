@@ -93,23 +93,6 @@ from RMS.Astrometry.CyFunctions import cyTrueRaDec2ApparentAltAz
 log = getLogger("logger")
 EM_RAISE = False
 
-def fitsToJd(ff_name):
-    """
-    Convert a fits file name to a julian date.
-
-    Arguments:
-        ff_name:[str] name of the fits file.
-
-    Return:
-        jd [float] JD time of the file
-
-    """
-    fits_date = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(ff_name), "%Y-%m-%d %H:%M:%S.%f")
-    return date2JD(fits_date.year, fits_date.month, fits_date.day, fits_date.hour, fits_date.minute,
-                      fits_date.second, fits_date.microsecond / 1000)
-
-
-
 def createTemporaryWorkArea():
 
      #temp_dir = tempfile.TemporaryDirectory()
@@ -155,19 +138,15 @@ def readInFTPDetectInfoFiles(working_directory):
         ar_date = archived_directory.split("_")[1]
         ar_time  = archived_directory.split("_")[2]
         ar_milliseconds = archived_directory.split("_")[3]
-        ftp_file_name = "FTPdetectinfo_{}_{}_{}_{}.txt".format(station.upper(), ar_date, ar_time, ar_milliseconds)
+        #ftp_file_name = "FTPdetectinfo_{}_{}_{}_{}.txt".format(station.upper(), ar_date, ar_time, ar_milliseconds)
+        directory_containing_ftp = os.path.join(working_directory, station, archived_directory)
+        for file_name in os.listdir(directory_containing_ftp):
+            if file_name.startswith("FTPdetectinfo") and file_name.endswith("manual.txt"):
+                ftp_file_name = file_name
+                break
         ftp_dict[station] = readFTPdetectinfo(os.path.join(working_directory, station, archived_directory), ftp_file_name)
 
     return ftp_dict
-
-def findTimeRelatedEvents(detectInfoDict):
-
-
-
-    return time_list
-
-
-
 
 
 def clusterByTime(ftp_dict):
@@ -209,6 +188,9 @@ def clusterByTime(ftp_dict):
         else:
             first_observation = False
             observation_list.append(observation)
+            print("camera", observation[2][1])
+            print("observation_start_time", observation_start_time)
+            print("observation_end_time  ", observation_end_time)
             pass
         _observation_end_time = observation_end_time
     events.append(sorted(observation_list))
@@ -228,6 +210,11 @@ def createImagesDict(events, working_area):
             station_directory = os.path.join(working_area, observation[2][1].lower())
             bz2_directory = os.path.join(station_directory, os.listdir(station_directory)[0])
             if os.path.exists(os.path.join(bz2_directory, fits_file)):
+                print("Reading {}".format(fits_file))
+                if fits_file.endswith(".bin"):
+                    fits_file = fits_file.replace('.bin', '.fits')
+                if fits_file.startswith("FR_"):
+                    fits_file = fits_file.replace('FR_', 'FF_')
                 ff = FFfits.read(bz2_directory, fits_file)
                 observation_and_fits = [observation, ff]
                 event_with_fits.append(observation_and_fits)
@@ -361,8 +348,7 @@ def addTimingInformation(image_data, image_array, rotated_coordinates, run_in, r
     c = 0
     time_column_list = []
 
-    plt.imshow(image_array, cmap='gray')
-    plt.show()
+
 
     for column in range(run_in, len(image_array.T) - run_out):
 
@@ -428,7 +414,7 @@ def addTimingInformation(image_data, image_array, rotated_coordinates, run_in, r
     return image_data, image_array, time_column_list
 
 
-def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_image_extent=500, event_run_in=0.01, event_run_out=0.01):
+def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_image_extent=2000, event_run_in=0.1, event_run_out=0.1):
 
 
     if True:
@@ -452,7 +438,8 @@ def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_
 
 
         with open('event_images.pkl', 'wb') as f:
-            pickle.dump(event_images_dict[datetime.datetime(2025,5,16,17,45,44, 680275)], f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(event_images_dict[datetime.datetime(2020,1,9,23,26,39, 186060)], f, protocol=pickle.HIGHEST_PROTOCOL)
+            #pickle.dump(event_images_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     if True:
         with open('event_images.pkl', 'rb') as f:
@@ -492,7 +479,7 @@ def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_
             else:
                 event_start, event_end = min(observation_start, event_start), max(observation_end, event_end)
 
-            print(station, event_start, event_end)
+
 
             station = image[0][2][1]
             event_images_with_timing_dict[ff_file] = [img_timing, image_data, image_array]
@@ -530,9 +517,13 @@ def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_
     output_column_time_list = createOutputChartColumnTimings(chart_x_min_time, columns_per_second, output_array)
 
     y_origin=0
-    y_labels, y_label_coords = [], []
+    y_labels, y_label_coords, plot_annotations_dict = [], [], {}
     for image_key in sorted(event_images_with_timing_dict):
-        y_labels.append(image_key.split('_')[1])
+
+        y_labels.append("{}".format(image_key.split('_')[1]))
+        y_label_coords.append(y_origin + 0.5 * y_dim)
+        observation_start_time = event_images_with_timing_dict[image_key][1][0][0]
+        observation_end_time = event_images_with_timing_dict[image_key][1][0][1]
         row_timing = event_images_with_timing_dict[image_key][0]
         row_timing = [item[1] for item in row_timing]
         print("For image {} minimum {} maximum {}".format(image_key, min(row_timing), max(row_timing)))
@@ -574,82 +565,115 @@ def produceCollatedChart(input_directory, run_in=200, run_out=200, y_dim=150, x_
                 break
 
 
-        observation_start_time = 0
-        # Plot
 
-        fig, ax = plt.subplots()
-        im = ax.imshow(display_array, aspect='auto', cmap='gray')
-
-        # Set x-axis to custom time scale
-        earliest_time = output_column_time_list[0]
-        latest_time = output_column_time_list[-1]
-        duration_seconds = (latest_time - earliest_time).total_seconds()
-        if duration_seconds < 2:
-            pass
-            ticks_per_second = 4
-        else:
-            pass
-            ticks_per_second = 2
-
-
-        
-        mark_tick = False
-        first_iteration = True
-        tick_times = []
-        for t in output_column_time_list:
-            # Convert to total microseconds
-            total_microseconds = (t.second + t.microsecond / 1e6) * ticks_per_second
-            rounded_units = np.ceil(total_microseconds)
-
-            # Construct the new time
-            rounded_seconds = rounded_units / ticks_per_second
-            t_rounded = t.replace(microsecond=0, second=0) + datetime.timedelta(seconds=rounded_seconds)
-
-
-            if first_iteration:
-                _t_rounded = t_rounded
-                first_iteration = False
-            else:
-
-                if t > _t_rounded:
-                    tick_times.append(t_rounded)
-                    _t_rounded = t_rounded
-                    print("Tick at {}".format(t_rounded))
-            pass
-        pass
-        tick_positions = []
-        for tick in tick_times:
-            c = 0
-            for col_time in output_column_time_list:
-                c += 1
-                if col_time > tick:
-                    tick_positions.append(c)
-                    break
-        print(tick_positions)
-
-        ax.set_xticklabels([tick.strftime('%S.%f') for tick in tick_times], rotation=90)
-        ax.set_xticks(tick_positions)
-        ax.set_xlabel('Time (s)')
-
-        y_label_coords.append(y_origin + 0.5 * y_dim)
-        ax.set_yticks(y_label_coords)
-        ax.set_yticklabels(y_labels, fontsize='small')
-        ax.set_ylabel('Station')
-
-        # Optional: format with DateFormatter if using mdates
-        # ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-
-        plt.colorbar(im, ax=ax, label='Intensity')
-        plt.title('Event at {}'.format(tick_times[0].strftime('%Y%m%d_%H%M%S')))
-        plt.tight_layout()
-        plt.show()
 
         '''
         plt.imshow(display_array, cmap='gray')
         plt.show()
         '''
+
+        annotation = '{}'.format(image_key)
+        print(annotation)
+        plot_annotations_dict[(10, y_origin + y_dim - 10)]  = annotation
+        annotation = "{}".format(observation_start_time.strftime("%S.%f"))
+        c= 0
+        for t in output_column_time_list:
+            c += 1
+            if t > observation_start_time:
+                break
+        plot_annotations_dict[(c, int(y_origin + y_dim * 0.25 ))] = annotation
+
+        annotation = "{}".format(observation_end_time.strftime("%S.%f"))
+        c= 0
+        for t in output_column_time_list:
+            c += 1
+            if t > observation_end_time:
+                break
+        plot_annotations_dict[(c, int(y_origin + y_dim * 0.75 ))] = annotation
+
+
         y_origin += y_dim
 
+
+    # Plot
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(display_array, aspect='auto', cmap='gray')
+
+    # Set x-axis to custom time scale
+    earliest_time = output_column_time_list[0]
+    latest_time = output_column_time_list[-1]
+    duration_seconds = (latest_time - earliest_time).total_seconds()
+    if duration_seconds < 2:
+        pass
+        ticks_per_second = 4
+    else:
+        pass
+        ticks_per_second = 2
+
+    mark_tick = False
+    first_iteration = True
+    tick_times = []
+    for t in output_column_time_list:
+        # Convert to total microseconds
+        total_microseconds = (t.second + t.microsecond / 1e6) * ticks_per_second
+        rounded_units = np.ceil(total_microseconds)
+
+        # Construct the new time
+        rounded_seconds = rounded_units / ticks_per_second
+        t_rounded = t.replace(microsecond=0, second=0) + datetime.timedelta(seconds=rounded_seconds)
+
+        if first_iteration:
+            _t_rounded = t_rounded
+            first_iteration = False
+        else:
+
+            if t > _t_rounded:
+                tick_times.append(_t_rounded)
+                _t_rounded = t_rounded
+                print("Tick at {}".format(t_rounded))
+        pass
+    pass
+    tick_positions = []
+    for tick in tick_times:
+        c = 0
+        for col_time in output_column_time_list:
+
+            c += 1
+            if col_time >= tick:
+                tick_positions.append(c)
+                break
+    print(tick_positions)
+    tick_positions.sort()
+    tick_times.sort()
+    tick_times = tick_times[0:len(tick_positions)]
+
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels(["{:.2f}".format(float(tick.strftime('%S.%f'))) for tick in tick_times], rotation=90)
+    ax.set_xlabel('Time (s)', fontsize=8)
+
+    ax.set_yticks(y_label_coords)
+    ax.set_yticklabels(y_labels, fontsize=8)
+    ax.set_ylabel('Station')
+
+    # Optional: format with DateFormatter if using mdates
+    # ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+
+    #plt.colorbar(im, ax=ax, label='Intensity')
+    plt.title('{}'.format(tick_times[int(len(tick_times)/2)].isoformat()))
+
+    for (x_coord, y_coord), label in plot_annotations_dict.items():
+        plt.annotate(
+            label,
+            xy=(x_coord, y_coord),
+            xytext=(x_coord, y_coord),  # offset text slightly
+            fontsize=6,
+            color=(0.9,0.9,0.9)
+        )
+
+
+    plt.tight_layout()
+    plt.show()
 
     return event_images_with_timing_dict, event_start, event_end
 
