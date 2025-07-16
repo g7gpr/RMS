@@ -16,36 +16,18 @@
 
 from __future__ import print_function, division, absolute_import
 
-import matplotlib.pyplot as plt
-import numpy as np
-import matplotlib.dates as mdates
-
 
 import os
 import sys
-import shutil
-from types import ClassMethodDescriptorType
 
 import cv2
-from matplotlib.testing.decorators import image_comparison
 
 import RMS.Formats.FFfits as FFfits
-import datetime
 import pickle
 import datetime
-import time
-import dateutil
-import glob
-import sqlite3
-import multiprocessing
-import copy
-import uuid
-import random
-import string
 
 from matplotlib import pyplot as plt
 
-from astropy.io.fits.fitstime import fits_to_time
 
 if sys.version_info[0] < 3:
 
@@ -71,35 +53,25 @@ import numpy as np
 import tempfile
 import tarfile
 
-from RMS.Astrometry.Conversions import datetime2JD, geo2Cartesian, altAz2RADec, vectNorm, raDec2Vector
-from RMS.Astrometry.Conversions import latLonAlt2ECEF, AER2LatLonAlt, AEH2Range, ECEF2AltAz, ecef2LatLonAlt
 from RMS.Logger import getLogger
-from RMS.Math import angularSeparationVect
-from RMS.Formats.FFfile import convertFRNameToFF
-from RMS.Formats.Platepar import Platepar
-from RMS.UploadManager import uploadSFTP
-from Utils.StackFFs import stackFFs
-from Utils.FRbinViewer import view
-from Utils.BatchFFtoImage import batchFFtoImage
-from RMS.CaptureDuration import captureDuration
 from RMS.Misc import sanitise, RmsDateTime, mkdirP
 from RMS.Formats.FTPdetectinfo import readFTPdetectinfo
 
 # Import Cython functions
 import pyximport
 pyximport.install(setup_args={'include_dirs':[np.get_include()]})
-from RMS.Astrometry.CyFunctions import cyTrueRaDec2ApparentAltAz
 
 log = getLogger("logger")
 EM_RAISE = False
 
-def createTemporaryWorkArea():
+def createTemporaryWorkArea(temp_dir=None):
 
-     #temp_dir = tempfile.TemporaryDirectory()
-    temp_dir = os.path.expanduser('~/tmp/collate_working_area')
+    if temp_dir is None:
+        temp_dir = tempfile.TemporaryDirectory().name
+    else:
+        temp_dir = os.path.expanduser(temp_dir)
 
     return temp_dir
-
 
 def extractBz2(input_directory, working_directory):
 
@@ -110,6 +82,11 @@ def extractBz2(input_directory, working_directory):
 
     bz2_list.sort()
     mkdirP(working_directory)
+    extractBz2Files(bz2_list, input_directory, working_directory)
+
+    return working_directory
+
+def extractBz2Files(bz2_list, input_directory, working_directory):
     for bz2 in bz2_list:
         station_directory = os.path.join(working_directory, bz2.split("_")[0]).lower()
         mkdirP(station_directory)
@@ -120,9 +97,37 @@ def extractBz2(input_directory, working_directory):
         with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
             tar.extractall(path=bz2_directory)
 
-    return working_directory
-
 def readInFTPDetectInfoFiles(working_directory):
+
+
+    archived_directory_list, station_directories = getArchivedDirectories(working_directory)
+    ftp_dict = getFTPFileDictionary(archived_directory_list, station_directories, working_directory)
+    return ftp_dict
+
+def getFTPFileDictionary(archived_directory_list, station_directories, working_directory):
+
+    ftp_dict = {}
+    for station, archived_directory in zip(station_directories, archived_directory_list):
+
+        ftp_file_name = getFTPFileName(archived_directory, station, working_directory)
+        ftp_path = os.path.join(working_directory, station, archived_directory)
+        ftp_dict[station] = readFTPdetectinfo(ftp_path, ftp_file_name)
+
+    return ftp_dict
+
+def getFTPFileName(archived_directory, station, working_directory):
+    ar_date, ar_time = archived_directory.split("_")[1], archived_directory.split("_")[2]
+    ar_milliseconds = archived_directory.split("_")[3]
+    ftp_file_name = "FTPdetectinfo_{}_{}_{}_{}.txt".format(station.upper(), ar_date, ar_time, ar_milliseconds)
+    if not os.path.exists(os.path.join(working_directory, station, archived_directory, ftp_file_name)):
+        directory_containing_ftp = os.path.join(working_directory, station, archived_directory)
+        for file_name in os.listdir(directory_containing_ftp):
+            if file_name.startswith("FTPdetectinfo") and file_name.endswith(".txt"):
+                ftp_file_name = file_name
+                break
+    return ftp_file_name
+
+def getArchivedDirectories(working_directory):
 
     station_directories = sorted(os.listdir((working_directory)))
     archived_directory_list = []
@@ -130,31 +135,40 @@ def readInFTPDetectInfoFiles(working_directory):
         extracted_directories_directory_list = os.listdir(os.path.join(working_directory, station_directory))
         if extracted_directories_directory_list is not None:
             archived_directory_list.append(extracted_directories_directory_list[0])
-
-
-
-    ftp_dict = {}
-    for station, archived_directory in zip(station_directories, archived_directory_list):
-        ar_date = archived_directory.split("_")[1]
-        ar_time  = archived_directory.split("_")[2]
-        ar_milliseconds = archived_directory.split("_")[3]
-        ftp_file_name = "FTPdetectinfo_{}_{}_{}_{}.txt".format(station.upper(), ar_date, ar_time, ar_milliseconds)
-
-
-        if not os.path.exists(os.path.join(working_directory, station, archived_directory, ftp_file_name)):
-            directory_containing_ftp = os.path.join(working_directory, station, archived_directory)
-            for file_name in os.listdir(directory_containing_ftp):
-                if file_name.startswith("FTPdetectinfo") and file_name.endswith(".txt"):
-                    ftp_file_name = file_name
-                    break
-
-        ftp_dict[station] = readFTPdetectinfo(os.path.join(working_directory, station, archived_directory), ftp_file_name)
-
-    return ftp_dict
-
+    return archived_directory_list, station_directories
 
 def clusterByTime(ftp_dict):
     # Rearrange into time
+
+    observations = getObservations(ftp_dict)
+
+    events = groupObservationsIntoEvents(observations)
+
+    return events
+
+def groupObservationsIntoEvents(observations):
+    events = []
+    first_observation = True
+    observation_list = []
+    for observation in observations:
+        observation_start_time = observation[0]
+        observation_end_time = observation[1]
+        if not first_observation:
+            time_gap_seconds = (observation_start_time - _observation_end_time).total_seconds()
+            if time_gap_seconds > 0.2:
+                events.append(sorted(observation_list, key=lambda x: x[0]))
+                observation_list = []
+                observation_list.append(observation)
+            else:
+                observation_list.append(observation)
+        else:
+            first_observation = False
+            observation_list.append(observation)
+        _observation_end_time = observation_end_time
+    events.append(sorted(observation_list))
+    return events
+
+def getObservations(ftp_dict):
     observations = []
     for station in sorted(ftp_dict):
         for observation in ftp_dict[station]:
@@ -166,122 +180,67 @@ def clusterByTime(ftp_dict):
             observation_end_time = fits_date + datetime.timedelta(seconds=observation_end_frame / observation[4])
             observations.append([observation_start_time, observation_end_time, observation])
     observations = sorted(observations, key=lambda x: x[0])
-    events = []
-    first_observation = True
-    observation_list = []
-    for observation in observations:
-        observation_start_time = observation[0]
-        observation_end_time = observation[1]
-        if not first_observation:
-            time_gap_seconds = (observation_start_time - _observation_end_time).total_seconds()
-            if time_gap_seconds > 0.2:
-                pass
-
-                events.append(sorted(observation_list, key=lambda x:x[0]))
-                print("---------------")
-                print("camera", observation[2][1])
-                print("observation_start_time", observation_start_time)
-                print("observation_end_time  ", observation_end_time)
-                observation_list = []
-                observation_list.append(observation)
-            else:
-                observation_list.append(observation)
-                print("camera", observation[2][1])
-                print("observation_start_time", observation_start_time)
-                print("observation_end_time  ", observation_end_time)
-        else:
-            first_observation = False
-            observation_list.append(observation)
-            print("camera", observation[2][1])
-            print("observation_start_time", observation_start_time)
-            print("observation_end_time  ", observation_end_time)
-            pass
-        _observation_end_time = observation_end_time
-    events.append(sorted(observation_list))
-    pass
-
-    pass
-    return events
+    return observations
 
 def createImagesDict(events, working_area):
 
     events_with_fits_dict = {}
     for event in events:
-        event_with_fits = []
-
-        for observation in event:
-            fits_file = observation[2][0]
-            station_directory = os.path.join(working_area, observation[2][1].lower())
-            bz2_directory = os.path.join(station_directory, os.listdir(station_directory)[0])
-            if os.path.exists(os.path.join(bz2_directory, fits_file)):
-
-                if fits_file.endswith(".bin"):
-                    fits_file = fits_file.replace('.bin', '.fits')
-                if fits_file.startswith("FR_"):
-                    fits_file = fits_file.replace('FR_', 'FF_')
-                ff = FFfits.read(bz2_directory, fits_file)
-                observation_and_fits = [observation, ff]
-                event_with_fits.append(observation_and_fits)
-
-
-        pass
+        event_with_fits = addFITSToEvent(event, working_area)
 
         if len(event_with_fits) > 2:
             events_with_fits_dict[event[0][0]] = event_with_fits
+
     return events_with_fits_dict
 
+def addFITSToEvent(event, working_area):
+    event_with_fits = []
+    for observation in event:
+        fits_file = observation[2][0]
+        station_directory = os.path.join(working_area, observation[2][1].lower())
+        bz2_directory = os.path.join(station_directory, os.listdir(station_directory)[0])
+        if os.path.exists(os.path.join(bz2_directory, fits_file)):
 
-def rotateCapture(input_image, angle, rotation_centre, length,run_in=100, run_out=100, y_dim = 100):
+            if fits_file.endswith(".bin"):
+                fits_file = fits_file.replace('.bin', '.fits')
+            if fits_file.startswith("FR_"):
+                fits_file = fits_file.replace('FR_', 'FF_')
+            ff = FFfits.read(bz2_directory, fits_file)
+            observation_and_fits = [observation, ff]
+            event_with_fits.append(observation_and_fits)
+    return event_with_fits
+
+def rotateCapture(input_image, angle, rotation_centre, length,run_in=100, run_out=100, y_dim = 100, show_intermediate=False):
 
     # working area
     size = 4000
     axis_centre = size / 2
     image_centre = (axis_centre, axis_centre)
     working_image_dim = (size, size)
-
-    # New image dimensions
-    x_range, y_range = length + run_in + run_out, y_dim
-    target_start_x, target_start_y  = run_in, y_range / 2
-
-    translate_x = 0 - int(rotation_centre[0] - axis_centre)
-    translate_y = 0 - int(rotation_centre[1] - axis_centre)
-
-    translation_matrix = np.float32([[1,0, translate_x], [0,1, translate_y]])
-
-    translated_image = cv2.warpAffine(input_image, translation_matrix, working_image_dim)
-
-    rotation_matrix = cv2.getRotationMatrix2D(image_centre, angle, 1.0)
-
-    rotated_image = cv2.warpAffine(translated_image, rotation_matrix, working_image_dim)
-
-    translate_x = int(run_in - axis_centre)
-    translate_y = int(y_dim / 2 - axis_centre)
-
-    translation_matrix = np.float32([[1, 0, translate_x], [0, 1, translate_y]])
-
-    final_img_dim_x = int(length + run_in + run_out)
-    final_img_dim_y = int(y_dim)
-
-    final_img_dim = (final_img_dim_x, final_img_dim_y)
-    final_image = cv2.warpAffine(rotated_image, translation_matrix, final_img_dim)
-
-    if False:
-        plt.imshow(input_image, cmap='gray')
-        plt.show()
-
-        plt.imshow(translated_image, cmap='gray')
-        plt.show()
-
-        plt.imshow(rotated_image, cmap='gray')
-        plt.show()
-
-
-        plt.imshow(final_image, cmap='gray')
-        plt.show()
-
-    # Get rotation matrix
+    translated_image = translateToOrigin(axis_centre, input_image, rotation_centre, working_image_dim)
+    rotated_image = rotateToHorizontal(angle, image_centre, translated_image, working_image_dim)
+    final_image = translateResize(axis_centre, length, rotated_image, run_in, run_out, y_dim)
 
     return final_image
+
+def translateResize(axis_centre, length, rotated_image, run_in, run_out, y_dim):
+    translate_x, translate_y = int(run_in - axis_centre), int(y_dim / 2 - axis_centre)
+    translation_matrix = np.float32([[1, 0, translate_x], [0, 1, translate_y]])
+    final_img_dim_x, final_img_dim_y = int(length + run_in + run_out), int(y_dim)
+    final_img_dim = (final_img_dim_x, final_img_dim_y)
+    final_image = cv2.warpAffine(rotated_image, translation_matrix, final_img_dim)
+    return final_image
+
+def rotateToHorizontal(angle, image_centre, translated_image, working_image_dim):
+    rotation_matrix = cv2.getRotationMatrix2D(image_centre, angle, 1.0)
+    rotated_image = cv2.warpAffine(translated_image, rotation_matrix, working_image_dim)
+    return rotated_image
+
+def translateToOrigin(axis_centre, input_image, rotation_centre, working_image_dim):
+    translate_x, translate_y = 0 - int(rotation_centre[0] - axis_centre), 0 - int(rotation_centre[1] - axis_centre)
+    translation_matrix = np.float32([[1, 0, translate_x], [0, 1, translate_y]])
+    translated_image = cv2.warpAffine(input_image, translation_matrix, working_image_dim)
+    return translated_image
 
 def rotateCoordinateList(points, angle_degrees):
     if not points:
@@ -337,88 +296,66 @@ def straightenFlight(img, coordinates, run_in, run_out):
 
 def addTimingInformation(image_data, image_array, rotated_coordinates, run_in, run_out):
 
-
-    first_frame_number = image_data[0][2][11][0][1]
-    first_frame = image_data[0][0]
-
-    frame_count_list, y_coordinate_list = [], []
-    for frame_count, _, y  in rotated_coordinates:
-        frame_count_list.append(frame_count)
-        y_coordinate_list.append(y)
-
-
-
-    fps = image_data[0][2][4]
-    c = 0
+    frame_count_list, y_coordinate_list = getFrameCoordinateMapping(rotated_coordinates)
     time_column_list = []
+    time_column_list = getObservationTimingData(frame_count_list, image_array, image_data, run_in, run_out, y_coordinate_list, time_column_list)
+    final_time_stamp, image_start, seconds_per_column = computeTimingsForObservation(run_in, time_column_list)
+    time_column_list = procesRunIn(image_start, run_in, seconds_per_column, time_column_list)
+    time_column_list = processRunOut(final_time_stamp, image_array, run_out, seconds_per_column, time_column_list)
+    time_column_list.sort()
 
+    return image_data, image_array, time_column_list
 
-
-    for column in range(run_in, len(image_array.T) - run_out):
-
-        frame = np.interp(c, y_coordinate_list, frame_count_list)
-
-        frame_time_stamp = first_frame + datetime.timedelta(seconds=(frame - first_frame_number) / fps)
-
-        time_column_list.append([c + run_in, frame_time_stamp])
-        last_observation_frame_time_stamp = frame_time_stamp
-        last_observation_column = column
-        c+= 1
-
-    # Infer timing information for run_in and run_out
+def computeTimingsForObservation(run_in, time_column_list):
     first_time_stamp, final_time_stamp = time_column_list[0][1], time_column_list[-1][1]
-
     observation_duration = (final_time_stamp - first_time_stamp).total_seconds()
-    seconds_per_column = observation_duration / c
-    print("Observation duration:", observation_duration)
-    print("Columns {}".format(c))
-    print("Seconds per column:", seconds_per_column)
-    image_start = first_time_stamp - datetime.timedelta(seconds = seconds_per_column * run_in)
+    seconds_per_column = observation_duration / len(time_column_list)
+    image_start = first_time_stamp - datetime.timedelta(seconds=seconds_per_column * run_in)
+    return final_time_stamp, image_start, seconds_per_column
 
-    print("Length from trace {}".format(len(time_column_list)))
+def processRunOut(final_time_stamp, image_array, run_out, seconds_per_column, time_column_list):
     c = 0
-    for column in range(0, run_in + 1):
-        frame_time_stamp = image_start + datetime.timedelta(seconds = c * seconds_per_column )
-        time_column_list.append([column,frame_time_stamp])
-        c += 1
-        pass
-
-    print("Length with run_in {}".format(len(time_column_list)))
-    c=0
     for column in range(len(image_array[0]) - run_out, len(image_array[0])):
         frame_time_stamp = final_time_stamp + datetime.timedelta(seconds=(c * seconds_per_column))
         time_column_list.append([column, frame_time_stamp])
         c += 1
         pass
+    return time_column_list
+
+def procesRunIn(image_start, run_in, seconds_per_column, time_column_list):
+    c = 0
+    for column in range(0, run_in + 1):
+        frame_time_stamp = image_start + datetime.timedelta(seconds=c * seconds_per_column)
+        time_column_list.append([column, frame_time_stamp])
+        c += 1
+        pass
+    return time_column_list
+
+def getObservationTimingData(frame_count_list, image_array, image_data, run_in, run_out, y_coordinate_list, time_column_list):
+
+    fps = image_data[0][2][4]
+    c = 0
+    time_column_list = []
+    first_frame_number = image_data[0][2][11][0][1]
+    first_frame = image_data[0][0]
+
+    for column in range(run_in, len(image_array.T) - run_out):
+        frame = np.interp(c, y_coordinate_list, frame_count_list)
+        frame_time_stamp = first_frame + datetime.timedelta(seconds=(frame - first_frame_number) / fps)
+        time_column_list.append([c + run_in, frame_time_stamp])
+        c += 1
 
 
-    print("Seconds per column {}".format(seconds_per_column))
-    print("Length with run in and run out {}".format(len(time_column_list)))
-    time_column_list.sort()
-    first_col = True
-    for col, col_time in time_column_list:
-        if first_col:
-            _col_time = col_time
-            first_col = False
-        else:
-            col_duration = (col_time - _col_time).total_seconds()
-            #print(col, col_time, col_duration)
-            _col_time = col_time
-    print(len(time_column_list))
-    print(run_in, len(image_array[0]), run_out)
-    print("Image start {}".format(time_column_list[0]))
-    print("Event start {}".format(time_column_list[run_in]))
-    print("Event end {}".format(time_column_list[len(image_array[0])]))
-    print("Image end {}".format(time_column_list[-1]))
+    return time_column_list
 
+def getFrameCoordinateMapping(rotated_coordinates):
+    frame_count_list, y_coordinate_list = [], []
+    for frame_count, _, y in rotated_coordinates:
+        frame_count_list.append(frame_count)
+        y_coordinate_list.append(y)
+    return frame_count_list, y_coordinate_list
 
-    pass
-
-
-    return image_data, image_array, time_column_list
-
-
-def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_image_extent=2000, event_run_in=0.2, event_run_out=0.2):
+def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_image_extent=2000, event_run_in=0.2, event_run_out=0.2, show_debug_info=False):
 
 
     if True:
@@ -449,59 +386,11 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_
         with open('event_images.pkl', 'rb') as f:
             event_images_dict = pickle.load(f)
 
-
-
-
         for key in event_images_dict:
             event_images = event_images_dict[key]
             event_images_with_timing_dict = {}
-            first_image = True
-            for image in event_images:
-                original_point_list = []
-                station = image[0][2][1]
-                ff_file = image[0][2][0]
-                ftp_entry = image[0][2][11]
-                coordinates_list = []
-                observation_end, observation_start = getObservationTimeExtent(coordinates_list, ftp_entry, image)
-
-
-                angle_deg, img, length, start_x, start_y = getImageInformation(image)
-                rotated_coordinates = rotateCoordinateList(coordinates_list, angle_deg)
-
-
-
-                img = rotateCapture(img, angle_deg, (start_x, start_y), length, run_in=run_in, run_out=run_out, y_dim=y_dim)
-                img = straightenFlight(img, rotated_coordinates, run_in, run_out)
-
-
-
-                image_data, image_array, img_timing = addTimingInformation(image, img, rotated_coordinates, run_in, run_out)
-
-                if False:
-                    plt.imshow(image_array, cmap='gray')
-                    plt.show()
-
-                if first_image:
-                    first_image = False
-                    event_start, event_end = observation_start, observation_end
-                else:
-                    event_start, event_end = min(observation_start, event_start), max(observation_end, event_end)
-
-
-
-                station = image[0][2][1]
-                event_images_with_timing_dict[ff_file] = [img_timing, image_data, image_array]
-
-                h, w = img.shape[:2]
-                centre_y = int(h/2)
-                event_start_time, event_end_time = observation_start.strftime("%H:%M:%S.%f"), observation_end.strftime("%H:%M:%S.%f")
-
-
-                #plt.imshow(img, cmap='gray')
-                #plt.show()
-
-
-                pass
+            event_start, event_end, img = processEventImages(event_images, event_images_with_timing_dict, run_in,
+                                                             run_out, y_dim)
 
             event_duration_seconds = (event_end - event_start).total_seconds()
             columns_per_second = x_image_extent / event_duration_seconds
@@ -511,15 +400,17 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_
             chart_x_resolution = round(chart_duration_seconds * columns_per_second)
             number_of_observations = round(len(event_images_with_timing_dict))
             chart_y_resolution = y_dim * number_of_observations
-            print("Chart x min time       :{}".format(chart_x_min_time))
-            print("Event start            :{}".format(event_start))
-            print("Event end              :{}".format(event_end))
-            print("Chart x max time       :{}".format(chart_x_max_time))
-            print("Event duration (s)     :{}".format(event_duration_seconds))
-            print("Chart duration (s)     :{}".format(chart_duration_seconds))
-            print("Columns per second     :{}".format(columns_per_second))
-            print("Number of observations: {}".format(number_of_observations))
-            print("Output resolution (x,y):({},{})".format(chart_x_resolution, chart_y_resolution))
+
+            if show_debug_info:
+                print("Chart x min time       :{}".format(chart_x_min_time))
+                print("Event start            :{}".format(event_start))
+                print("Event end              :{}".format(event_end))
+                print("Chart x max time       :{}".format(chart_x_max_time))
+                print("Event duration (s)     :{}".format(event_duration_seconds))
+                print("Chart duration (s)     :{}".format(chart_duration_seconds))
+                print("Columns per second     :{}".format(columns_per_second))
+                print("Number of observations: {}".format(number_of_observations))
+                print("Output resolution (x,y):({},{})".format(chart_x_resolution, chart_y_resolution))
 
             output_array = np.zeros((chart_x_resolution, chart_y_resolution))
             output_column_time_list = createOutputChartColumnTimings(chart_x_min_time, columns_per_second, output_array)
@@ -685,6 +576,27 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_
 
         return event_images_with_timing_dict, event_start, event_end
 
+def processEventImages(event_images, event_images_with_timing_dict, run_in, run_out, y_dim):
+    first_image = True
+    for image in event_images:
+        ff_file = image[0][2][0]
+        ftp_entry = image[0][2][11]
+        coordinates_list = []
+        observation_end, observation_start = getObservationTimeExtent(coordinates_list, ftp_entry, image)
+        angle_deg, img, length, start_x, start_y = getImageInformation(image)
+        rotated_coordinates = rotateCoordinateList(coordinates_list, angle_deg)
+        img = rotateCapture(img, angle_deg, (start_x, start_y), length, run_in=run_in, run_out=run_out, y_dim=y_dim)
+        img = straightenFlight(img, rotated_coordinates, run_in, run_out)
+        image_data, image_array, img_timing = addTimingInformation(image, img, rotated_coordinates, run_in, run_out)
+
+        if first_image:
+            first_image = False
+            event_start, event_end = observation_start, observation_end
+        else:
+            event_start, event_end = min(observation_start, event_start), max(observation_end, event_end)
+
+        event_images_with_timing_dict[ff_file] = [img_timing, image_data, image_array]
+    return event_start, event_end, img
 
 def interpolateByTime(target_time, reference_times_list, reference_value_list):
 
@@ -720,8 +632,6 @@ def interpolateByTime(target_time, reference_times_list, reference_value_list):
         pass
     return interpolated_value
 
-
-
 def createOutputChartColumnTimings(chart_x_min_time, columns_per_second, output_array):
     column_count, output_column_time_list = 0, []
     for column in output_array:
@@ -729,7 +639,6 @@ def createOutputChartColumnTimings(chart_x_min_time, columns_per_second, output_
         output_column_time_list.append(column_time)
         column_count += 1
     return output_column_time_list
-
 
 def getImageInformation(image):
     ff = image[1]
@@ -742,14 +651,12 @@ def getImageInformation(image):
     angle_deg = np.degrees(angle_rads)
     return angle_deg, img, length, start_x, start_y
 
-
 def getObservationTimeExtent(coordinates_list, ftp_entry, image):
     for coordinate_line in ftp_entry:
         ftp_frame_no, y_coordinate, x_coordinate = coordinate_line[1], coordinate_line[2], coordinate_line[3]
         coordinates_list.append([ftp_frame_no, x_coordinate, y_coordinate])
     observation_start, observation_end = image[0][0], image[0][1]
     return observation_end, observation_start
-
 
 if __name__ == "__main__":
 
