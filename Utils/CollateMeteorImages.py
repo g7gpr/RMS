@@ -16,45 +16,18 @@
 
 from __future__ import print_function, division, absolute_import
 
-
 import os
-import sys
-
 import cv2
-
 import RMS.Formats.FFfits as FFfits
 import pickle
 import datetime
-
-from matplotlib import pyplot as plt
-
-if sys.version_info[0] < 3:
-
-    import urllib2
-
-    # Fix Python 2 SSL certs
-    try:
-        import os, ssl
-        if (not os.environ.get('PYTHONHTTPSVERIFY', '') and
-            getattr(ssl, '_create_unverified_context', None)): 
-            ssl._create_default_https_context = ssl._create_unverified_context
-    except:
-        # Print the error
-        print("Error: {}".format(sys.exc_info()[0]))
-
-else:
-    import urllib.request
-
 import numpy as np
 import tempfile
 import tarfile
+
 from RMS.Misc import mkdirP
 from RMS.Formats.FTPdetectinfo import readFTPdetectinfo
-
-# Import Cython functions
-# import pyximport
-# pyximport.install(setup_args={'include_dirs':[np.get_include()]})
-
+from matplotlib import pyplot as plt
 
 
 def createTemporaryWorkArea(temp_dir=None):
@@ -134,7 +107,6 @@ def clusterByTime(ftp_dict):
     # Rearrange into time
 
     observations = getObservations(ftp_dict)
-
     events = groupObservationsIntoEvents(observations)
 
     return events
@@ -149,7 +121,8 @@ def groupObservationsIntoEvents(observations):
         if not first_observation:
             time_gap_seconds = (observation_start_time - _observation_end_time).total_seconds()
             if time_gap_seconds > 0.2:
-                events.append(sorted(observation_list, key=lambda x: x[0]))
+                if len(observation_list) > 1:
+                    events.append(sorted(observation_list, key=lambda x: x[0]))
                 observation_list = []
                 observation_list.append(observation)
             else:
@@ -158,7 +131,8 @@ def groupObservationsIntoEvents(observations):
             first_observation = False
             observation_list.append(observation)
         _observation_end_time = observation_end_time
-    events.append(sorted(observation_list))
+    if len(observation_list) > 1:
+        events.append(sorted(observation_list))
     return events
 
 def getObservations(ftp_dict):
@@ -368,7 +342,7 @@ def processEventImages(event_images, event_images_with_timing_dict, run_in, run_
             event_start, event_end = min(observation_start, event_start), max(observation_end, event_end)
 
         event_images_with_timing_dict[ff_file] = [img_timing, image_data, image_array]
-    return event_start, event_end, img
+    return event_start, event_end, img, event_images_with_timing_dict
 
 def interpolateByTime(target_time, reference_times_list, reference_value_list):
 
@@ -442,7 +416,6 @@ def annotateChart(chart_x_resolution, event_images, event_images_with_timing_dic
         observation_end_time = event_images_with_timing_dict[image_key][1][0][1]
         row_timing = event_images_with_timing_dict[image_key][0]
         row_timing = [item[1] for item in row_timing]
-        print("For image {} minimum {} maximum {}".format(image_key, min(row_timing), max(row_timing)))
         image_array = event_images_with_timing_dict[image_key][2]
 
         for y in range(0, y_dim):
@@ -454,7 +427,6 @@ def annotateChart(chart_x_resolution, event_images, event_images_with_timing_dic
                 output_array[x, y_origin + y] = brightness
 
         display_array = output_array.T
-        h, w = img.shape[:2]
         for event in event_images:
             pass
             ff_name = event[0][2][0]
@@ -482,6 +454,7 @@ def annotateChart(chart_x_resolution, event_images, event_images_with_timing_dic
         plot_annotations_dict[(c - 20, int(y_origin + y_dim * 0.7))] = annotation
 
         y_origin += y_dim
+
     return display_array, plot_annotations_dict, y_label_coords, y_labels
 
 def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels):
@@ -494,10 +467,15 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
     duration_seconds = (latest_time - earliest_time).total_seconds()
     if duration_seconds < 2:
         pass
+        ticks_per_second = 10
+    elif duration_seconds < 5:
         ticks_per_second = 4
-    else:
-        pass
+    elif duration_seconds < 10:
         ticks_per_second = 2
+    elif duration_seconds < 30:
+        ticks_per_second = 1
+    else:
+        ticks_per_second = 0.5
     mark_tick = False
     first_iteration = True
     tick_times = []
@@ -518,9 +496,6 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
             if t > _t_rounded:
                 tick_times.append(_t_rounded)
                 _t_rounded = t_rounded
-                print("Tick at {}".format(t_rounded))
-        pass
-    pass
     tick_positions = []
     for tick in tick_times:
         c = 0
@@ -530,7 +505,6 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
             if col_time >= tick:
                 tick_positions.append(c)
                 break
-    print(tick_positions)
     tick_positions.sort()
     tick_times.sort()
     tick_times = tick_times[0:len(tick_positions)]
@@ -558,7 +532,7 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
 def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_image_extent=2000, event_run_in=0.2, event_run_out=0.2, show_debug_info=False):
 
     if True:
-        working_area = createTemporaryWorkArea()
+        working_area = createTemporaryWorkArea("/home/david/tmp/collate_working_area")
 
     if True:
         working_area = extractBz2(input_directory, working_area)
@@ -588,9 +562,10 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_
         for key in event_images_dict:
             event_images = event_images_dict[key]
             event_images_with_timing_dict = {}
-            event_start, event_end, img = processEventImages(event_images, event_images_with_timing_dict, run_in,
+            event_start, event_end, img, event_images_with_timing_dict = processEventImages(event_images, event_images_with_timing_dict, run_in,
                                                              run_out, y_dim)
-
+            if len(event_images_with_timing_dict) < 2:
+                continue
             event_duration_seconds = (event_end - event_start).total_seconds()
             columns_per_second = x_image_extent / event_duration_seconds
             chart_x_min_time = event_start - datetime.timedelta(seconds=event_duration_seconds * event_run_in)
@@ -615,7 +590,7 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_
             output_column_time_list = createOutputChartColumnTimings(chart_x_min_time, columns_per_second, output_array)
 
             display_array, plot_annotations_dict, y_label_coords, y_labels = annotateChart(chart_x_resolution,
-                                                                                           event_images,
+                                                                                         event_images,
                                                                                            event_images_with_timing_dict,
                                                                                            img, output_array,
                                                                                            output_column_time_list,
@@ -623,7 +598,7 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_
 
             plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels)
 
-        return event_images_with_timing_dict, event_start, event_end
+    return event_images_with_timing_dict, event_start, event_end
 
 
 
