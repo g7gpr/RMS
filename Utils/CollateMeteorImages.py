@@ -119,18 +119,27 @@ def groupObservationsIntoEvents(observations):
         observation_start_time = observation[0]
         observation_end_time = observation[1]
         if not first_observation:
-            time_gap_seconds = (observation_start_time - _observation_end_time).total_seconds()
-            if time_gap_seconds > 0.2:
+            time_gap_seconds = (observation_start_time - latest_observation_end_time).total_seconds()
+            if time_gap_seconds > 8:
                 if len(observation_list) > 1:
-                    events.append(sorted(observation_list, key=lambda x: x[0]))
+                    station_name_list = []
+                    for station_name in observation_list:
+                        station_name = station_name[2][1]
+                        if not station_name in station_name_list:
+                            station_name_list.append(station_name)
+                            if len(station_name_list) > 1:
+                                events.append(sorted(observation_list, key=lambda x: x[0]))
                 observation_list = []
                 observation_list.append(observation)
+                latest_observation_end_time = max(observation_end_time, latest_observation_end_time)
             else:
                 observation_list.append(observation)
+                latest_observation_end_time = observation_end_time
         else:
             first_observation = False
             observation_list.append(observation)
         _observation_end_time = observation_end_time
+        latest_observation_end_time = observation_end_time
     if len(observation_list) > 1:
         events.append(sorted(observation_list))
     return events
@@ -437,7 +446,7 @@ def annotateChart(chart_x_resolution, event_images, event_images_with_timing_dic
 
         annotation = '{}'.format(image_key)
         plot_annotations_dict[(10, y_origin + y_dim - 10)] = annotation
-        annotation = "{}s".format(observation_start_time.strftime("%S.%f"))
+        annotation = "{:.3f}s".format(float(observation_start_time.strftime("%S.%f")))
         c = 0
         for t in output_column_time_list:
             c += 1
@@ -445,7 +454,7 @@ def annotateChart(chart_x_resolution, event_images, event_images_with_timing_dic
                 break
         plot_annotations_dict[(c - 20, int(y_origin + y_dim * 0.4))] = annotation
 
-        annotation = "{}s".format(observation_end_time.strftime("%S.%f"))
+        annotation = "{:.3f}s".format(float(observation_end_time.strftime("%S.%f")))
         c = 0
         for t in output_column_time_list:
             c += 1
@@ -459,7 +468,9 @@ def annotateChart(chart_x_resolution, event_images, event_images_with_timing_dic
 
 def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels):
     # Plot
-    fig, ax = plt.subplots()
+    plot_x_range, plot_y_range = display_array.shape[0] / 100, display_array.shape[1] / 100
+    fig, ax = plt.subplots(figsize=(plot_y_range, plot_x_range))
+
     im = ax.imshow(display_array, aspect='auto', cmap='gray')
     # Set x-axis to custom time scale
     earliest_time = output_column_time_list[0]
@@ -508,6 +519,7 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
     tick_positions.sort()
     tick_times.sort()
     tick_times = tick_times[0:len(tick_positions)]
+
     ax.set_xticks(tick_positions)
     ax.set_xticklabels(["{:.2f}".format(float(tick.strftime('%S.%f'))) for tick in tick_times], rotation=90)
     ax.set_xlabel('Time (s)', fontsize=8)
@@ -518,6 +530,7 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
     # ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     # plt.colorbar(im, ax=ax, label='Intensity')
     plt.title('{}'.format(tick_times[int(len(tick_times) / 2)].isoformat()))
+
     for (x_coord, y_coord), label in plot_annotations_dict.items():
         plt.annotate(
             label,
@@ -529,7 +542,7 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
     plt.tight_layout()
     plt.show()
 
-def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=150, x_image_extent=2000, event_run_in=0.2, event_run_out=0.2, show_debug_info=False):
+def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.2, event_run_out=0.2, show_debug_info=False):
 
     if True:
         working_area = createTemporaryWorkArea("/home/david/tmp/collate_working_area")
