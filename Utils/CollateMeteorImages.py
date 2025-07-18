@@ -17,6 +17,8 @@
 from __future__ import print_function, division, absolute_import
 
 import os
+from curses.ascii import isalnum
+
 import cv2
 import RMS.Formats.FFfits as FFfits
 import pickle
@@ -28,6 +30,33 @@ import tarfile
 from RMS.Misc import mkdirP
 from RMS.Formats.FTPdetectinfo import readFTPdetectinfo
 from matplotlib import pyplot as plt
+
+def parseTrajectoryReport(trajectory_report_path):
+
+    with open(os.path.expanduser(trajectory_report_path), 'rb') as f:
+        report = f.read().decode('utf-8').splitlines()
+
+        trajectory_report_dict = {}
+        timing_offsets_dict = {}
+        section = None
+        for line in report:
+            if len(line):
+                if line.startswith('Timing offsets (from input data):'):
+                    section = "TimingOffsets"
+                elif line.startswith('Reference point on the trajectory:'):
+                    section = "ReferencePointOnTheTrajectory"
+
+            if section == "TimingOffsets":
+                if ": " in line:
+                    key_value = line.split(":")
+                    key = key_value[0].strip()
+                    value = float(key_value[1].strip().split()[0])
+                    timing_offsets_dict[key] = value
+
+
+    trajectory_report_dict['TimingOffsets'] = timing_offsets_dict
+    return trajectory_report_dict
+
 
 
 def createTemporaryWorkArea(temp_dir=None):
@@ -87,10 +116,18 @@ def getFTPFileName(archived_directory, station, working_directory):
     ftp_file_name = "FTPdetectinfo_{}_{}_{}_{}.txt".format(station.upper(), ar_date, ar_time, ar_milliseconds)
     if not os.path.exists(os.path.join(working_directory, station, archived_directory, ftp_file_name)):
         directory_containing_ftp = os.path.join(working_directory, station, archived_directory)
+        ftp_file_name = None
+
+        for file_name in os.listdir(directory_containing_ftp):
+            if file_name.startswith("FTPdetectinfo") and file_name.endswith(".txt") and "manual" in file_name:
+                ftp_file_name = file_name
+                return ftp_file_name
+
         for file_name in os.listdir(directory_containing_ftp):
             if file_name.startswith("FTPdetectinfo") and file_name.endswith(".txt"):
                 ftp_file_name = file_name
-                break
+                return ftp_file_name
+
     return ftp_file_name
 
 def getArchivedDirectories(working_directory):
@@ -120,7 +157,7 @@ def groupObservationsIntoEvents(observations):
         observation_end_time = observation[1]
         if not first_observation:
             time_gap_seconds = (observation_start_time - latest_observation_end_time).total_seconds()
-            if time_gap_seconds > 2:
+            if time_gap_seconds > 5:
                 if len(observation_list) > 1:
                     station_name_list = []
                     for station_name in observation_list:
@@ -270,20 +307,37 @@ def straightenFlight(img, coordinates, run_in, run_out):
 
     return working_img
 
-def addTimingInformation(image_data, image_array, rotated_coordinates, run_in, run_out):
+def addTimingInformation(image_data, image_array, rotated_coordinates, run_in, run_out, trajectory_summary_report):
 
     frame_count_list, y_coordinate_list = getFrameCoordinateMapping(rotated_coordinates)
-    time_column_list = []
-    time_column_list = getObservationTimingData(frame_count_list, image_array, image_data, run_in, run_out, y_coordinate_list, time_column_list)
-    final_time_stamp, image_start, seconds_per_column = computeTimingsForObservation(run_in, time_column_list)
+
+    station = image_data[0][2][1]
+    time_correction = getTimeCorrection(station, trajectory_summary_report)
+
+    time_column_list = getObservationTimingData(frame_count_list, image_array, image_data, run_in, run_out, y_coordinate_list, time_correction)
+    final_time_stamp, image_start, seconds_per_column = computeTimingsForObservation(run_in, time_column_list, time_correction)
     time_column_list = procesRunIn(image_start, run_in, seconds_per_column, time_column_list)
     time_column_list = processRunOut(final_time_stamp, image_array, run_out, seconds_per_column, time_column_list)
     time_column_list.sort()
 
     return image_data, image_array, time_column_list
 
-def computeTimingsForObservation(run_in, time_column_list):
-    first_time_stamp, final_time_stamp = time_column_list[0][1], time_column_list[-1][1]
+
+def getTimeCorrection(station, trajectory_summary_report):
+    time_correction = 0
+    if "TimingOffsets" in trajectory_summary_report:
+        value_list = []
+        for key in trajectory_summary_report["TimingOffsets"]:
+            if key.startswith(station):
+                value_list.append(trajectory_summary_report['TimingOffsets'][key])
+        time_correction = sum(value_list) / len(value_list) if len(value_list) > 0 else 0
+    time_correction = 0
+    return datetime.timedelta(seconds=time_correction)
+
+
+def computeTimingsForObservation(run_in, time_column_list, time_correction):
+    first_time_stamp = time_column_list[0][1] + time_correction
+    final_time_stamp = time_column_list[-1][1] + time_correction
     observation_duration = (final_time_stamp - first_time_stamp).total_seconds()
     seconds_per_column = observation_duration / len(time_column_list)
     image_start = first_time_stamp - datetime.timedelta(seconds=seconds_per_column * run_in)
@@ -307,7 +361,7 @@ def procesRunIn(image_start, run_in, seconds_per_column, time_column_list):
         pass
     return time_column_list
 
-def getObservationTimingData(frame_count_list, image_array, image_data, run_in, run_out, y_coordinate_list, time_column_list):
+def getObservationTimingData(frame_count_list, image_array, image_data, run_in, run_out, y_coordinate_list, time_correction):
 
     fps = image_data[0][2][4]
     c = 0
@@ -318,7 +372,7 @@ def getObservationTimingData(frame_count_list, image_array, image_data, run_in, 
     for column in range(run_in, len(image_array.T) - run_out):
         frame = np.interp(c, y_coordinate_list, frame_count_list)
         frame_time_stamp = first_frame + datetime.timedelta(seconds=(frame - first_frame_number) / fps)
-        time_column_list.append([c + run_in, frame_time_stamp])
+        time_column_list.append([c + run_in, frame_time_stamp + time_correction])
         c += 1
 
 
@@ -331,18 +385,22 @@ def getFrameCoordinateMapping(rotated_coordinates):
         y_coordinate_list.append(y)
     return frame_count_list, y_coordinate_list
 
-def processEventImages(event_images, event_images_with_timing_dict, run_in, run_out, y_dim):
+def processEventImages(event_images, event_images_with_timing_dict, run_in, run_out, y_dim, trajectory_summary_report):
     first_image = True
     for image in event_images:
         ff_file = image[0][2][0]
         ftp_entry = image[0][2][11]
+        station = image[0][2][1]
         coordinates_list = []
+        time_correction = getTimeCorrection(station, trajectory_summary_report)
         observation_end, observation_start = getObservationTimeExtent(coordinates_list, ftp_entry, image)
+        observation_end += time_correction
+        observation_start += time_correction
         angle_deg, img, length, start_x, start_y = getImageInformation(image)
         rotated_coordinates = rotateCoordinateList(coordinates_list, angle_deg)
         img = rotateCapture(img, angle_deg, (start_x, start_y), length, run_in=run_in, run_out=run_out, y_dim=y_dim)
         img = straightenFlight(img, rotated_coordinates, run_in, run_out)
-        image_data, image_array, img_timing = addTimingInformation(image, img, rotated_coordinates, run_in, run_out)
+        image_data, image_array, img_timing = addTimingInformation(image, img, rotated_coordinates, run_in, run_out, trajectory_summary_report)
 
         if first_image:
             first_image = False
@@ -414,15 +472,17 @@ def getObservationTimeExtent(coordinates_list, ftp_entry, image):
     return observation_end, observation_start
 
 def annotateChart(chart_x_resolution, event_images, event_images_with_timing_dict, img, output_array,
-                  output_column_time_list, y_dim):
+                  output_column_time_list, y_dim, trajectory_summary_report):
     y_origin = 0
     y_labels, y_label_coords, plot_annotations_dict = [], [], {}
     for image_key in sorted(event_images_with_timing_dict):
 
         y_labels.append("{}".format(image_key.split('_')[1]))
         y_label_coords.append(y_origin + 0.5 * y_dim)
-        observation_start_time = event_images_with_timing_dict[image_key][1][0][0]
-        observation_end_time = event_images_with_timing_dict[image_key][1][0][1]
+        station = image_key.split('_')[1]
+        time_correction = getTimeCorrection(station, trajectory_summary_report)
+        observation_start_time = event_images_with_timing_dict[image_key][1][0][0] + time_correction
+        observation_end_time = event_images_with_timing_dict[image_key][1][0][1] + time_correction
         row_timing = event_images_with_timing_dict[image_key][0]
         row_timing = [item[1] for item in row_timing]
         image_array = event_images_with_timing_dict[image_key][2]
@@ -442,6 +502,7 @@ def annotateChart(chart_x_resolution, event_images, event_images_with_timing_dic
             camera_name = event[0][2][1]
             if camera_name == image_key:
                 observation_start_time, observation_end_time = event[0][0], event[0][1]
+                time_correction = getTimeCorrection(camera_name, trajectory_summary_report)
                 break
 
         annotation = '{}'.format(image_key)
@@ -521,10 +582,10 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
     tick_times = tick_times[0:len(tick_positions)]
 
     ax.set_xticks(tick_positions)
-    ax.set_xticklabels(["{:.2f}".format(float(tick.strftime('%S.%f'))) for tick in tick_times], rotation=90)
-    ax.set_xlabel('Time (s)', fontsize=12)
+    ax.set_xticklabels(["{:.2f}".format(float(tick.strftime('%S.%f'))) for tick in tick_times], rotation=90, fontsize=16)
+    ax.set_xlabel('Time (s)', fontsize=16)
     ax.set_yticks(y_label_coords)
-    ax.set_yticklabels(y_labels, fontsize=12)
+    ax.set_yticklabels(y_labels, fontsize=16)
     ax.set_ylabel('Station')
     # Optional: format with DateFormatter if using mdates
     # ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
@@ -542,74 +603,80 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
     plt.tight_layout()
     plt.show()
 
-def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, show_debug_info=False):
-
-    if True:
-        working_area = createTemporaryWorkArea("/home/david/tmp/collate_working_area")
-
-    if True:
-        working_area = extractBz2(input_directory, working_area)
-
-    if True:
-        ftp_dict = readInFTPDetectInfoFiles(working_area)
-        events = clusterByTime(ftp_dict)
-        event_images_dict = createImagesDict(events, working_area)
-
-        with open('event_images_dict.pkl', 'wb') as f:
-            pickle.dump(event_images_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-    if True:
-
-        with open('event_images_dict.pkl', 'rb') as f:
-            event_images_dict = pickle.load(f)
+def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, show_debug_info=False, station_list = None, event_time = None, duration = None):
 
 
-        with open('event_images.pkl', 'wb') as f:
-            #pickle.dump(event_images_dict[datetime.datetime(2020,1,9,23,26,39, 186060)], f, protocol=pickle.HIGHEST_PROTOCOL)
-            pickle.dump(event_images_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-    if True:
-        with open('event_images.pkl', 'rb') as f:
-            event_images_dict = pickle.load(f)
 
-        for key in event_images_dict:
-            event_images = event_images_dict[key]
-            event_images_with_timing_dict = {}
-            event_start, event_end, img, event_images_with_timing_dict = processEventImages(event_images, event_images_with_timing_dict, run_in,
-                                                             run_out, y_dim)
-            if len(event_images_with_timing_dict) < 2:
-                continue
-            event_duration_seconds = (event_end - event_start).total_seconds()
-            columns_per_second = x_image_extent / event_duration_seconds
-            chart_x_min_time = event_start - datetime.timedelta(seconds=event_duration_seconds * event_run_in)
-            chart_x_max_time = event_end + datetime.timedelta(seconds=event_duration_seconds * event_run_out)
-            chart_duration_seconds = (chart_x_max_time - chart_x_min_time).total_seconds()
-            chart_x_resolution = round(chart_duration_seconds * columns_per_second)
-            number_of_observations = round(len(event_images_with_timing_dict))
-            chart_y_resolution = y_dim * number_of_observations
+    working_area = createTemporaryWorkArea("/home/david/tmp/collate_working_area")
 
-            if show_debug_info:
-                print("Chart x min time       :{}".format(chart_x_min_time))
-                print("Event start            :{}".format(event_start))
-                print("Event end              :{}".format(event_end))
-                print("Chart x max time       :{}".format(chart_x_max_time))
-                print("Event duration (s)     :{}".format(event_duration_seconds))
-                print("Chart duration (s)     :{}".format(chart_duration_seconds))
-                print("Columns per second     :{}".format(columns_per_second))
-                print("Number of observations: {}".format(number_of_observations))
-                print("Output resolution (x,y):({},{})".format(chart_x_resolution, chart_y_resolution))
 
-            output_array = np.zeros((chart_x_resolution, chart_y_resolution))
-            output_column_time_list = createOutputChartColumnTimings(chart_x_min_time, columns_per_second, output_array)
+    working_area = extractBz2(input_directory, working_area)
 
-            display_array, plot_annotations_dict, y_label_coords, y_labels = annotateChart(chart_x_resolution,
-                                                                                         event_images,
-                                                                                           event_images_with_timing_dict,
-                                                                                           img, output_array,
-                                                                                           output_column_time_list,
-                                                                                           y_dim)
 
-            plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels)
+    ftp_dict = readInFTPDetectInfoFiles(working_area)
+    events = clusterByTime(ftp_dict)
+    trajectory_summary_report = parseTrajectoryReport(
+        "~/RMS_data/bz2files/initial_part/20200109_232639_report.txt")
+    event_images_dict = createImagesDict(events, working_area)
+
+    with open('event_images_dict.pkl', 'wb') as f:
+        pickle.dump(event_images_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+
+    with open('event_images_dict.pkl', 'rb') as f:
+        event_images_dict = pickle.load(f)
+
+
+    with open('event_images.pkl', 'wb') as f:
+        #pickle.dump(event_images_dict[datetime.datetime(2020,1,9,23,26,39, 186060)], f, protocol=pickle.HIGHEST_PROTOCOL)
+        pickle.dump(event_images_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+    with open('event_images.pkl', 'rb') as f:
+        event_images_dict = pickle.load(f)
+
+
+
+    for key in event_images_dict:
+        event_images = event_images_dict[key]
+        event_images_with_timing_dict = {}
+        event_start, event_end, img, event_images_with_timing_dict = processEventImages(event_images, event_images_with_timing_dict, run_in,
+                                                         run_out, y_dim, trajectory_summary_report)
+        if len(event_images_with_timing_dict) < 2:
+            continue
+        event_duration_seconds = (event_end - event_start).total_seconds()
+        columns_per_second = x_image_extent / event_duration_seconds
+        chart_x_min_time = event_start - datetime.timedelta(seconds=event_duration_seconds * event_run_in)
+        chart_x_max_time = event_end + datetime.timedelta(seconds=event_duration_seconds * event_run_out)
+        chart_duration_seconds = (chart_x_max_time - chart_x_min_time).total_seconds()
+        chart_x_resolution = round(chart_duration_seconds * columns_per_second)
+        number_of_observations = round(len(event_images_with_timing_dict))
+        chart_y_resolution = y_dim * number_of_observations
+
+        if show_debug_info:
+            print("Chart x min time       :{}".format(chart_x_min_time))
+            print("Event start            :{}".format(event_start))
+            print("Event end              :{}".format(event_end))
+            print("Chart x max time       :{}".format(chart_x_max_time))
+            print("Event duration (s)     :{}".format(event_duration_seconds))
+            print("Chart duration (s)     :{}".format(chart_duration_seconds))
+            print("Columns per second     :{}".format(columns_per_second))
+            print("Number of observations: {}".format(number_of_observations))
+            print("Output resolution (x,y):({},{})".format(chart_x_resolution, chart_y_resolution))
+
+        output_array = np.zeros((chart_x_resolution, chart_y_resolution))
+        output_column_time_list = createOutputChartColumnTimings(chart_x_min_time, columns_per_second, output_array)
+
+        display_array, plot_annotations_dict, y_label_coords, y_labels = annotateChart(chart_x_resolution,
+                                                                                     event_images,
+                                                                                       event_images_with_timing_dict,
+                                                                                       img, output_array,
+                                                                                       output_column_time_list,
+                                                                                       y_dim, trajectory_summary_report)
+
+        plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels)
 
     return event_images_with_timing_dict, event_start, event_end
 
