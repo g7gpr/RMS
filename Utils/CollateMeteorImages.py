@@ -198,6 +198,7 @@ def getArchivedDirectories(working_directory, event_time=None, station_list=None
     for station_directory in station_directories:
         target_path = os.path.exists(os.path.join(working_directory, station_directory))
         if not os.path.exists(target_path):
+            print("No files found for {}".format(target_path))
             continue
         extracted_directories_directory_list = os.listdir(os.path.join(working_directory, station_directory))
         if extracted_directories_directory_list is not None:
