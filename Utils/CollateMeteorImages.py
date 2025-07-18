@@ -798,7 +798,7 @@ def filesNotAvailableLocally(station_list, event_time):
                 for test_file in detected_dir_list:
                     if test_file.startswith("FF_{}".format(station.upper())) and test_file.endswith(".fits"):
                         fits_files_list.append(test_file)
-                        break
+                        found_in = detected_dir
 
             fits_files_list.sort(reverse=True)
             file_present_locally = False
@@ -809,7 +809,7 @@ def filesNotAvailableLocally(station_list, event_time):
                 if time_difference_seconds < 11:
                     file_present_locally = True
                     local_dirs_to_use.append(detected_dir_full_path)
-                    print("Not downloading for station {} as {} already downloaded".format(station.lower(), detected_dir))
+                    print("Not downloading for station {} as {} already downloaded".format(station.lower(), found_in))
                     break
 
             if not file_present_locally:
