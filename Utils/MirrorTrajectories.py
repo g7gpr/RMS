@@ -109,12 +109,14 @@ def createTable(conn, column_list):
         if "bytes" in column:
             column_type = "INTEGER"
 
-        column = columnTranslate(column)
 
-        create_table_statement += " '{}' '{}',".format(column, column_type) + "\n"
+        column = columnTranslate(column)
+        # Do not put data type in quotes
+        create_table_statement += " '{}' {},".format(column, column_type) + "\n"
 
     create_table_statement = create_table_statement[:-2] + "\n );"
     conn.execute(create_table_statement)
+    print(create_table_statement)
     pass
 
 
