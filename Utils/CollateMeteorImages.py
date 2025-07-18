@@ -120,7 +120,7 @@ def groupObservationsIntoEvents(observations):
         observation_end_time = observation[1]
         if not first_observation:
             time_gap_seconds = (observation_start_time - latest_observation_end_time).total_seconds()
-            if time_gap_seconds > 8:
+            if time_gap_seconds > 2:
                 if len(observation_list) > 1:
                     station_name_list = []
                     for station_name in observation_list:
@@ -522,27 +522,27 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
 
     ax.set_xticks(tick_positions)
     ax.set_xticklabels(["{:.2f}".format(float(tick.strftime('%S.%f'))) for tick in tick_times], rotation=90)
-    ax.set_xlabel('Time (s)', fontsize=8)
+    ax.set_xlabel('Time (s)', fontsize=12)
     ax.set_yticks(y_label_coords)
-    ax.set_yticklabels(y_labels, fontsize=8)
+    ax.set_yticklabels(y_labels, fontsize=12)
     ax.set_ylabel('Station')
     # Optional: format with DateFormatter if using mdates
     # ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     # plt.colorbar(im, ax=ax, label='Intensity')
-    plt.title('{}'.format(tick_times[int(len(tick_times) / 2)].isoformat()))
+    plt.title('{}'.format(tick_times[int(len(tick_times) / 2)].isoformat()), fontsize=20)
 
     for (x_coord, y_coord), label in plot_annotations_dict.items():
         plt.annotate(
             label,
             xy=(x_coord, y_coord),
             xytext=(x_coord, y_coord),  # offset text slightly
-            fontsize=6,
+            fontsize=12,
             color=(0.9, 0.9, 0.9)
         )
     plt.tight_layout()
     plt.show()
 
-def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.2, event_run_out=0.2, show_debug_info=False):
+def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, show_debug_info=False):
 
     if True:
         working_area = createTemporaryWorkArea("/home/david/tmp/collate_working_area")
