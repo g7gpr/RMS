@@ -98,6 +98,7 @@ def createTemporaryWorkArea(temp_dir=None):
     if temp_dir is None:
         temp_dir = tempfile.TemporaryDirectory().name
     else:
+        temp_dir = os.path.expanduser(temp_dir)
         mkdirP(temp_dir)
         temp_dir = os.path.expanduser(temp_dir)
 
