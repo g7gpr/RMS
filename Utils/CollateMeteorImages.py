@@ -886,6 +886,9 @@ if __name__ == "__main__":
 
     cml_args = arg_parser.parse_args()
     input_directory = os.path.expanduser(cml_args.input_dir)
+    mkdirP("~/RMS_data")
+    mkdirP("~/RMS_data/bz2files")
+    mkdirP("~/RMS_data/trajectory_images")
 
     processDatabase(os.path.expanduser(input_directory))
 
