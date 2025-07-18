@@ -833,8 +833,7 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
 
         plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels, target_file_name=target_file_name, magnitude=magnitude)
 
-    return event_images_with_timing_dict, event_start, event_end
-
+    return
 
 def processDatabase(database_path):
     conn = sqlite3.connect(database_path)
