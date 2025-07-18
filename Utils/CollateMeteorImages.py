@@ -153,16 +153,16 @@ def getFTPFileDictionary(archived_directory_list, station_directories, working_d
                 year, month, day = directory_date[0:4], directory_date[4:6], directory_date[6:8]
                 hour, minute, second = directory_time[0:2], directory_time[2:4], directory_time[4:6]
                 directory_time_object = datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(second))
-                if directory_time_object > event_time:
-                    continue
+                if directory_time_object < event_time:
+                    break
 
 
-            ftp_file_name = getFTPFileName(archived_directory, station, working_directory)
-            print("Loading {} from {}".format(ftp_file_name, archived_directory))
+    ftp_file_name = getFTPFileName(archived_directory, station, working_directory)
+    print("Loading {} from {}".format(ftp_file_name, archived_directory))
 
-            ftp_path = os.path.join(working_directory, station, archived_directory)
-            print("For station {} reading {}".format(station, ftp_file_name))
-            ftp_dict[station] = readFTPdetectinfo(ftp_path, ftp_file_name)
+    ftp_path = os.path.join(working_directory, station, archived_directory)
+    print("For station {} reading {}".format(station, ftp_file_name))
+    ftp_dict[station] = readFTPdetectinfo(ftp_path, ftp_file_name)
 
     return ftp_dict
 
@@ -972,5 +972,6 @@ if __name__ == "__main__":
     else:
         country_code = cml_args.country_code[0]
 
+    os.path.expanduser(input_directory)
     processDatabase(os.path.expanduser(input_directory), country_code)
 
