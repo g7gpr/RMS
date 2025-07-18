@@ -132,7 +132,7 @@ def extractBz2Files(bz2_list, input_directory, working_directory):
 def readInFTPDetectInfoFiles(working_directory, station_list=None, local_available_directories=None, event_time=None):
 
 
-    archived_directory_list, station_directories = getArchivedDirectories(working_directory, event_time=event_time)
+    archived_directory_list, station_directories = getArchivedDirectories(working_directory, event_time=event_time, station_list=station_list)
     if local_available_directories is not None:
         archived_directory_list = local_available_directories
     ftp_dict = getFTPFileDictionary(archived_directory_list, station_directories, working_directory, station_list=station_list, event_time=event_time)
@@ -146,12 +146,12 @@ def getFTPFileDictionary(archived_directory_list, station_directories, working_d
             if not station in station_list:
                 continue
             if not event_time is None:
-                directory_date = archived_directory.split("_")[1]
-                directory_time = archived_directory.split("_")[1]
+                directory_date = os.path.basename(archived_directory).split("_")[1]
+                directory_time = os.path.basename(archived_directory).split("_")[1]
                 year, month, day = directory_date[0:4], directory_date[4:6], directory_date[6:8]
                 hour, minute, second = directory_time[0:2], directory_time[2:4], directory_time[4:6]
                 directory_time_object = datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(second))
-                if abs(directory_time_object - event_time).total_seconds() > 24 * 60 * 60:
+                if abs(event_time - directory_time_object).total_seconds() > 16 * 60 * 60:
                     continue
 
             ftp_file_name = getFTPFileName(archived_directory, station, working_directory)
@@ -181,16 +181,35 @@ def getFTPFileName(archived_directory, station, working_directory):
 
     return ftp_file_name
 
-def getArchivedDirectories(working_directory, event_time=None):
+def getArchivedDirectories(working_directory, event_time=None, station_list=None):
 
-    station_directories = sorted(os.listdir((working_directory)))
+    if station_list is None:
+        station_directories = sorted(os.listdir((working_directory)))
+    else:
+        station_directories = station_list
     archived_directory_list = []
     for station_directory in station_directories:
         extracted_directories_directory_list = os.listdir(os.path.join(working_directory, station_directory))
         if extracted_directories_directory_list is not None:
+            extracted_directories_directory_list.sort(reverse=True)
+            for extracted_directory in extracted_directories_directory_list:
+                fits_list = []
+                extracted_directory_date = extracted_directory.split("_")[1]
+                extracted_directory_time = extracted_directory.split("_")[2]
+                year, month, day = extracted_directory_date[0:4], extracted_directory_date[4:6], extracted_directory_date[6:8]
+                hour, minute, second = extracted_directory_time[0:2], extracted_directory_time[2:4], extracted_directory_time[4:6]
+                extracted_directory_time_object = datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(second))
+                if extracted_directory_time_object < event_time:
+                    extracted_directory_files = os.listdir(os.path.join(working_directory, station_directory, extracted_directory))
+                    for file_name in extracted_directory_files:
+                        if file_name.startswith("FF_{}".format(station_directory.upper())) and file_name.endswith(".fits"):
+                            fits_list.append(file_name)
+                    for fits_file in fits_list:
+                        file_time = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(fits_file), "%Y-%m-%d %H:%M:%S.%f")
+                        if abs(event_time - file_time).total_seconds() < 20:
+                            archived_directory_list.append(os.path.join(working_directory, station_directory, extracted_directory))
 
 
-            archived_directory_list += extracted_directories_directory_list
     return archived_directory_list, station_directories
 
 def clusterByTime(ftp_dict, station_list, event_time, duration):
