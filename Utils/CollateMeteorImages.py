@@ -181,7 +181,7 @@ def getFTPFileName(archived_directory, station, working_directory):
                 return ftp_file_name
 
         for file_name in os.listdir(directory_containing_ftp):
-            print("Testing {}".format(file_name))
+
             if file_name.startswith("FTPdetectinfo") and file_name.endswith(".txt") and file_name.split("_")[1] == station.upper():
 
                 ftp_file_name = file_name
