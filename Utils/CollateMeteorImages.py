@@ -636,7 +636,7 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
     ax.set_xlabel('Time (s)', fontsize=16)
     ax.set_yticks(y_label_coords)
     ax.set_yticklabels(y_labels, fontsize=16)
-    ax.set_ylabel('Station')
+    ax.set_ylabel('Station', fontsize=16)
     # Optional: format with DateFormatter if using mdates
     # ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     # plt.colorbar(im, ax=ax, label='Intensity')
