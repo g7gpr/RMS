@@ -26,10 +26,43 @@ import datetime
 import numpy as np
 import tempfile
 import tarfile
+import paramiko
+import subprocess
 
 from RMS.Misc import mkdirP
 from RMS.Formats.FTPdetectinfo import readFTPdetectinfo
 from matplotlib import pyplot as plt
+
+def retrieveBz2File(file_name, server):
+
+
+    return
+
+
+def lsRemote(host, username, port, remote_path):
+    """Return the files in a remote directory.
+
+    Arguments:
+        host: [str] remote host.
+        username: [str] user account to use.
+        port: [int] remote port number.
+        remote_pat: [str] path of remote directory to list.
+
+    Return:
+        files: [list of strings] Names of remote files.
+    """
+
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # Accept unknown host keys
+    ssh.connect(hostname=host, port=port, username=username)
+
+    try:
+        sftp = ssh.open_sftp()
+        files = sftp.listdir(remote_path)
+        return files
+    finally:
+        sftp.close()
+        ssh.close()
 
 def parseTrajectoryReport(trajectory_report_path):
 
@@ -140,10 +173,10 @@ def getArchivedDirectories(working_directory):
             archived_directory_list.append(extracted_directories_directory_list[0])
     return archived_directory_list, station_directories
 
-def clusterByTime(ftp_dict):
+def clusterByTime(ftp_dict, event_time, duration):
     # Rearrange into time
 
-    observations = getObservations(ftp_dict)
+    observations = getObservations(ftp_dict, event_time=event_time,duration=duration)
     events = groupObservationsIntoEvents(observations)
 
     return events
@@ -181,7 +214,7 @@ def groupObservationsIntoEvents(observations):
         events.append(sorted(observation_list))
     return events
 
-def getObservations(ftp_dict):
+def getObservations(ftp_dict, event_time=None, duration=None):
     observations = []
     for station in sorted(ftp_dict):
         for observation in ftp_dict[station]:
@@ -191,7 +224,12 @@ def getObservations(ftp_dict):
             observation_end_frame = observation[11][-1][1]
             observation_start_time = fits_date + datetime.timedelta(seconds=observation_start_frame / observation[4])
             observation_end_time = fits_date + datetime.timedelta(seconds=observation_end_frame / observation[4])
-            observations.append([observation_start_time, observation_end_time, observation])
+            if event_time is None or duration is None:
+                observations.append([observation_start_time, observation_end_time, observation])
+            else:
+                if abs((observation_start_time - event_time).total_seconds()) < 2 and \
+                   abs((observation_end_time - (event_time + datetime.timedelta(seconds=duration))).total_seconds()) < 2:
+                    observations.append([observation_start_time, observation_end_time, observation])
     observations = sorted(observations, key=lambda x: x[0])
     return observations
 
@@ -603,10 +641,84 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
     plt.tight_layout()
     plt.show()
 
-def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, show_debug_info=False, station_list = None, event_time = None, duration = None):
+def getPathsOfFilesToRetrieve(station_list, event_time):
 
+    files_to_retrieve = []
+    for station in station_list:
+        remote_path = os.path.join("/home", station.lower(), "files", "processed")
 
+        print(remote_path)
+        bz2_files = lsRemote("gmn.uwo.ca", "analysis", 22, remote_path)
+        bz2_files.sort(reverse=True)
+        for file_name in bz2_files:
+            file_name_time = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(file_name), "%Y-%m-%d %H:%M:%S.%f")
+            if file_name_time < event_time:
+                files_to_retrieve.append(os.path.join(remote_path, file_name))
+                break
 
+    return files_to_retrieve
+
+def downloadFile(host, username, port, remote_path, local_path):
+    """Download a single file try compressed rsync first, then fall back to Paramiko
+
+    Arguments:
+        host: [str] hostname of remote machine.
+        username: [str] username for remote machine.
+        port: [str] port.
+        remote_path: [path] full path to destination.
+        local_path: [path] full path of local target.
+
+    Return:
+        Nothing.
+    """
+
+    try:
+
+        remote = "{}@{}:{}".format(username, host, remote_path)
+        result = subprocess.run(['rsync', '-z', remote], capture_output=True, text=True)
+        if "No such file or directory" in result.stderr :
+            print("Remote file {} was not found.".format(os.path.basename(remote)))
+            return
+        else:
+            result = subprocess.run(['rsync', '-z', remote, local_path], capture_output=True, text=True)
+        if not os.path.exists(os.path.expanduser(local_path)):
+            print("Download of {} from {}@{} failed. You need to add your keys to remote using ssh-copy-id.".format(remote_path, username,host))
+            quit()
+        return
+    except:
+        pass
+
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # Accept unknown host keys
+    try:
+        ssh.connect(hostname=host, port=port, username=username)
+    except:
+        print("Login to {}@{} failed. You need to add your keys to remote using ssh-copy-id.".format(username,host))
+        quit()
+    try:
+        sftp = ssh.open_sftp()
+        remote_file_list = sftp.listdir(os.path.dirname(remote_path))
+        if remote_file_list:
+            sftp.get(remote_path, local_path)
+
+    finally:
+        sftp.close()
+        ssh.close()
+
+    return
+
+def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, show_debug_info=False, station_list=None, event_time=None, duration=None):
+
+    '''
+    if station_list is not None and duration is not None and event_time is not None:
+        path_list = getPathsOfFilesToRetrieve(station_list, event_time)
+
+        for path in path_list:
+            basename = os.path.basename(path)
+            local_target = os.path.join(os.path.expanduser("~/RMS_data/bz2files/"), basename)
+            if not os.path.exists(local_target):
+                downloadFile("gmn.uwo.ca", "analysis", 22, path, local_target )
+    '''
 
     working_area = createTemporaryWorkArea("/home/david/tmp/collate_working_area")
 
@@ -615,27 +727,11 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
 
 
     ftp_dict = readInFTPDetectInfoFiles(working_area)
-    events = clusterByTime(ftp_dict)
-    trajectory_summary_report = parseTrajectoryReport(
-        "~/RMS_data/bz2files/initial_part/20200109_232639_report.txt")
+    events = clusterByTime(ftp_dict, event_time, duration)
+    # trajectory_summary_report = parseTrajectoryReport("~/RMS_data/bz2files/initial_part/20200109_232639_report.txt")
+    trajectory_summary_report = {}
     event_images_dict = createImagesDict(events, working_area)
 
-    with open('event_images_dict.pkl', 'wb') as f:
-        pickle.dump(event_images_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-
-
-    with open('event_images_dict.pkl', 'rb') as f:
-        event_images_dict = pickle.load(f)
-
-
-    with open('event_images.pkl', 'wb') as f:
-        #pickle.dump(event_images_dict[datetime.datetime(2020,1,9,23,26,39, 186060)], f, protocol=pickle.HIGHEST_PROTOCOL)
-        pickle.dump(event_images_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-
-    with open('event_images.pkl', 'rb') as f:
-        event_images_dict = pickle.load(f)
 
 
 
@@ -710,4 +806,7 @@ if __name__ == "__main__":
 
     cml_args = arg_parser.parse_args()
     input_directory = os.path.expanduser(cml_args.input_dir)
-    produceCollatedChart(input_directory)
+    produceCollatedChart(input_directory,
+                         station_list=['fr000z','uk0031','uk003x','uk004d','uk007r','uk0099','uk009l','uk00cc'],
+                         event_time=datetime.datetime(year=2025, month=7, day=9, hour=0, minute=28, second=37),
+                         duration=3)
