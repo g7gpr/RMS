@@ -105,6 +105,7 @@ def createTemporaryWorkArea(temp_dir=None):
 def extractBz2(input_directory, working_directory):
 
     bz2_list = []
+    input_directory = os.path.expanduser(input_directory)
     for filename in os.listdir(input_directory):
         if filename.endswith(".bz2"):
             bz2_list.append(filename)
