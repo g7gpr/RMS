@@ -640,10 +640,11 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
     # Optional: format with DateFormatter if using mdates
     # ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     # plt.colorbar(im, ax=ax, label='Intensity')
+    time_without_microseconds = tick_times[int(len(tick_times) / 2)].replace(microseconds=0).isoformat()
     if magnitude is None:
-        plt.title('{}'.format(tick_times[int(len(tick_times) / 2)].isoformat()), fontsize=20)
+        plt.title('{}'.format(time_without_microseconds), fontsize=20)
     else:
-        plt.title('{} Magnitude :{}'.format(tick_times[int(len(tick_times) / 2)].isoformat(), magnitude), fontsize=18)
+        plt.title('{} Magnitude :{}'.format(time_without_microseconds, magnitude), fontsize=18)
 
     for (x_coord, y_coord), label in plot_annotations_dict.items():
         plt.annotate(
