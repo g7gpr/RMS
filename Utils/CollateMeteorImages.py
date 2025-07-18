@@ -921,7 +921,7 @@ def processDatabase(database_path, country_code):
     conn.close()
     for row in row_list:
         uti, utc_time, duration_sec, stations, magnitude = row[0], row[1].strip(), row[2], row[3].lower(), row[4]
-        if datetime.datetime.strptime(utc_time, "%Y-%m-%d %H:%M:%S.%f") < datetime.datetime(year=2024):
+        if datetime.datetime.strptime(utc_time, "%Y-%m-%d %H:%M:%S.%f") < datetime.datetime(year=2024, month=1, day=1, hour=0, minute=0, second=0, microsecond=0):
             continue
 
         stations = stations.replace('\n','').replace(" ","")
