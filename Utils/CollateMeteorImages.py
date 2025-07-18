@@ -852,8 +852,10 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
     trajectory_summary_report = {}
     event_images_dict = createImagesDict(events, working_area, ftp_dict)
 
+    print("Producing chart")
     event_images_with_timing_dict = {}
     for key in event_images_dict:
+        print("Working on image {}".format(key))
         event_images = event_images_dict[key]
         event_images_with_timing_dict = {}
         event_start, event_end, img, event_images_with_timing_dict = processEventImages(event_images, event_images_with_timing_dict, run_in,
@@ -899,8 +901,13 @@ def processDatabase(database_path):
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute('SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories Order by "Beginning UTC Time" DESC')
+    cursor.execute('SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories Order by "Beginning UTC Time" ASC')
+    row_list = []
     for row in cursor:
+        row_list.append(row)
+    cursor.close()
+    conn.close()
+    for row in row_list:
         uti, utc_time, duration_sec, stations, magnitude = row[0], row[1], row[2], row[3].lower(), row[4]
 
 
