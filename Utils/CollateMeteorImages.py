@@ -98,6 +98,7 @@ def createTemporaryWorkArea(temp_dir=None):
     if temp_dir is None:
         temp_dir = tempfile.TemporaryDirectory().name
     else:
+        mkdirP(temp_dir)
         temp_dir = os.path.expanduser(temp_dir)
 
     return temp_dir
@@ -776,7 +777,7 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
                 downloadFile("gmn.uwo.ca", "analysis", 22, path, local_target )
 
 
-    working_area = createTemporaryWorkArea("/home/david/tmp/collate_working_area")
+    working_area = createTemporaryWorkArea("~/tmp/collate_working_area")
 
 
     working_area = extractBz2("~/RMS_data/bz2files", working_area)
