@@ -821,13 +821,13 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
 
 
     if station_list is not None and duration is not None and event_time is not None:
-        station_list_to_get, local_available_directories =  filesNotAvailableLocally(station_list, event_time)
+        station_list_to_get, local_available_directories = filesNotAvailableLocally(station_list, event_time)
         remote_path_list = getPathsOfFilesToRetrieve(station_list_to_get, event_time)
-        if len(remote_path_list):
+        if len(remote_path_list) or True:
             print("Retrieving from remote:")
             for d in remote_path_list:
                 print(d)
-        if len(local_available_directories):
+        if len(local_available_directories) or True:
             print("These directories already available:")
             for d in local_available_directories:
                 print(d)
