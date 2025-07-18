@@ -819,7 +819,7 @@ def filesNotAvailableLocally(station_list, event_time):
 
 def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, target_file_name=None, show_debug_info=False, station_list=None, event_time=None, duration=None, magnitude=None):
 
-
+    print(station_list, duration, event_time)
     if station_list is not None and duration is not None and event_time is not None:
         station_list_to_get, local_available_directories = filesNotAvailableLocally(station_list, event_time)
         remote_path_list = getPathsOfFilesToRetrieve(station_list_to_get, event_time)
