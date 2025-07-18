@@ -141,7 +141,8 @@ def readInFTPDetectInfoFiles(working_directory, station_list=None, local_availab
 def getFTPFileDictionary(archived_directory_list, station_directories, working_directory, station_list=None, event_time=None):
 
     ftp_dict = {}
-    for station, archived_directory in zip(station_directories, archived_directory_list):
+    for archived_directory in sorted(archived_directory_list, reverse=True):
+        station = archived_directory.split("_")[0]
         print("Working on station {}".format(station))
         if station_list is not None:
             if not station in station_list:
@@ -152,9 +153,10 @@ def getFTPFileDictionary(archived_directory_list, station_directories, working_d
                 year, month, day = directory_date[0:4], directory_date[4:6], directory_date[6:8]
                 hour, minute, second = directory_time[0:2], directory_time[2:4], directory_time[4:6]
                 directory_time_object = datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(second))
-                if abs(event_time - directory_time_object).total_seconds() > 16 * 60 * 60:
+                if directory_time_object > event_time:
                     continue
 
+            print("Loading {} from {}".format(ftp_file_name, archived_directory))
             ftp_file_name = getFTPFileName(archived_directory, station, working_directory)
 
             ftp_path = os.path.join(working_directory, station, archived_directory)
@@ -169,7 +171,7 @@ def getFTPFileName(archived_directory, station, working_directory):
     ftp_file_name = "FTPdetectinfo_{}_{}_{}_{}.txt".format(station.upper(), ar_date, ar_time, ar_milliseconds)
     print("Preparing to use {}".format(ftp_file_name))
     if not os.path.exists(os.path.join(working_directory, station, archived_directory, ftp_file_name)):
-        directory_containing_ftp = os.path.join(working_directory, station, archived_directory)
+        directory_containing_ftp = os.path.join(working_directory, station.lower(), archived_directory)
         ftp_file_name = None
 
         for file_name in os.listdir(directory_containing_ftp):
