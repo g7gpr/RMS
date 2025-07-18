@@ -577,7 +577,7 @@ def annotateChart(chart_x_resolution, event_images, event_images_with_timing_dic
 
     return display_array, plot_annotations_dict, y_label_coords, y_labels
 
-def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels, target_file_name=None):
+def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels, target_file_name=None, magnitude=None):
     # Plot
     plot_x_range, plot_y_range = display_array.shape[0] / 100, display_array.shape[1] / 100
     fig, ax = plt.subplots(figsize=(plot_y_range, plot_x_range))
@@ -640,7 +640,10 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
     # Optional: format with DateFormatter if using mdates
     # ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     # plt.colorbar(im, ax=ax, label='Intensity')
-    plt.title('{}'.format(tick_times[int(len(tick_times) / 2)].isoformat()), fontsize=20)
+    if magnitude is None:
+        plt.title('{}'.format(tick_times[int(len(tick_times) / 2)].isoformat()), fontsize=20)
+    else:
+        plt.title('{} Magnitude :{}'.format(tick_times[int(len(tick_times) / 2)].isoformat(), magnitude), fontsize=18)
 
     for (x_coord, y_coord), label in plot_annotations_dict.items():
         plt.annotate(
@@ -764,7 +767,7 @@ def filesNotAvailableLocally(station_list, event_time):
 
     return station_files_to_retrieve, local_dirs_to_use
 
-def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, target_file_name=None, show_debug_info=False, station_list=None, event_time=None, duration=None):
+def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, target_file_name=None, show_debug_info=False, station_list=None, event_time=None, duration=None, magnitude=None):
 
 
     if station_list is not None and duration is not None and event_time is not None:
@@ -828,7 +831,7 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
                                                                                        output_column_time_list,
                                                                                        y_dim, trajectory_summary_report)
 
-        plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels, target_file_name=target_file_name)
+        plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels, target_file_name=target_file_name, magnitude=magnitude)
 
     return event_images_with_timing_dict, event_start, event_end
 
@@ -857,7 +860,7 @@ def processDatabase(database_path):
             produceCollatedChart(input_directory,
                              station_list=station_list,
                              event_time=event_time,
-                             duration=duration_sec, target_file_name=output_file)
+                             duration=duration_sec, target_file_name=output_file, magnitude=magnitude)
         else:
             print("Chart for uti {} already exists".format(uti))
     pass
