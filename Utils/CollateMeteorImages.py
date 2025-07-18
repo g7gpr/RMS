@@ -179,7 +179,7 @@ def getArchivedDirectories(working_directory):
     for station_directory in station_directories:
         extracted_directories_directory_list = os.listdir(os.path.join(working_directory, station_directory))
         if extracted_directories_directory_list is not None:
-            archived_directory_list.append(extracted_directories_directory_list[0])
+            archived_directory_list += extracted_directories_directory_list
     return archived_directory_list, station_directories
 
 def clusterByTime(ftp_dict, station_list, event_time, duration):
