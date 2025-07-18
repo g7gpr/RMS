@@ -798,6 +798,7 @@ def filesNotAvailableLocally(station_list, event_time):
                 for test_file in detected_dir_list:
                     if test_file.startswith("FF_{}".format(station.upper())) and test_file.endswith(".fits"):
                         fits_files_list.append(test_file)
+                        break
 
             fits_files_list.sort(reverse=True)
             file_present_locally = False
