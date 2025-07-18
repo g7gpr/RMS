@@ -173,10 +173,10 @@ def getArchivedDirectories(working_directory):
             archived_directory_list.append(extracted_directories_directory_list[0])
     return archived_directory_list, station_directories
 
-def clusterByTime(ftp_dict, event_time, duration):
+def clusterByTime(ftp_dict, station_list, event_time, duration):
     # Rearrange into time
 
-    observations = getObservations(ftp_dict, event_time=event_time,duration=duration)
+    observations = getObservations(ftp_dict, station_list=station_list, event_time=event_time,duration=duration)
     events = groupObservationsIntoEvents(observations)
 
     return events
@@ -214,9 +214,12 @@ def groupObservationsIntoEvents(observations):
         events.append(sorted(observation_list))
     return events
 
-def getObservations(ftp_dict, event_time=None, duration=None):
+def getObservations(ftp_dict, station_list=None, event_time=None, duration=None):
     observations = []
     for station in sorted(ftp_dict):
+        if station_list is not None:
+            if station not in station_list:
+                continue
         for observation in ftp_dict[station]:
             ff_name = observation[0]
             fits_date = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(ff_name), "%Y-%m-%d %H:%M:%S.%f")
@@ -707,18 +710,59 @@ def downloadFile(host, username, port, remote_path, local_path):
 
     return
 
-def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, show_debug_info=False, station_list=None, event_time=None, duration=None):
+def filesNotAvailableLocally(station_list, event_time):
 
-    '''
+    station_files_to_retrieve = []
+    for station in station_list:
+        fits_files_list = []
+        local_station_path = os.path.expanduser(os.path.join("~/tmp/collate_working_area/", station.lower()))
+        if not os.path.exists(local_station_path):
+            station_files_to_retrieve.append(station)
+            continue
+        station_detected_dir_list = os.listdir(local_station_path)
+        station_detected_dir_list.sort(reverse=True)
+        for detected_dir in station_detected_dir_list:
+            detected_dir_date = detected_dir.split("_")[1]
+            detected_dir_time = detected_dir.split("_")[2]
+            year, month, day = detected_dir_date[0:4], detected_dir_date[4:6], detected_dir_date[6:8]
+            hour, minute, second = detected_dir_time[0:2], detected_dir_time[2:4], detected_dir_time[4:6]
+            detected_dir_time = datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(second))
+            if detected_dir_time < event_time:
+                detected_dir_full_path = os.path.join("~/tmp/collate_working_area", station.lower(), detected_dir)
+                detected_dir_full_path = os.path.expanduser(detected_dir_full_path)
+                detected_dir_list = os.listdir(detected_dir_full_path)
+
+                for test_file in detected_dir_list:
+                    if test_file.startswith("FF_{}".format(station.upper())) and test_file.endswith(".fits"):
+                        fits_files_list.append(test_file)
+
+            fits_files_list.sort(reverse=True)
+            file_present_locally = False
+            for ff_name in fits_files_list:
+                fits_date = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(ff_name), "%Y-%m-%d %H:%M:%S.%f")
+                time_difference_seconds = (fits_date - event_time).total_seconds()
+                print(time_difference_seconds)
+                if time_difference_seconds < 11:
+                    file_present_locally = True
+                    break
+
+            if not file_present_locally:
+                station_files_to_retrieve.append(station)
+
+    return station_files_to_retrieve
+
+def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, target_file_name=None, show_debug_info=False, station_list=None, event_time=None, duration=None):
+
+
     if station_list is not None and duration is not None and event_time is not None:
-        path_list = getPathsOfFilesToRetrieve(station_list, event_time)
-
-        for path in path_list:
+        station_list_to_get =  filesNotAvailableLocally(station_list, event_time)
+        remote_path_list = getPathsOfFilesToRetrieve(station_list_to_get, event_time)
+        for path in remote_path_list:
             basename = os.path.basename(path)
             local_target = os.path.join(os.path.expanduser("~/RMS_data/bz2files/"), basename)
             if not os.path.exists(local_target):
                 downloadFile("gmn.uwo.ca", "analysis", 22, path, local_target )
-    '''
+
 
     working_area = createTemporaryWorkArea("/home/david/tmp/collate_working_area")
 
@@ -727,7 +771,7 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
 
 
     ftp_dict = readInFTPDetectInfoFiles(working_area)
-    events = clusterByTime(ftp_dict, event_time, duration)
+    events = clusterByTime(ftp_dict, station_list, event_time, duration)
     # trajectory_summary_report = parseTrajectoryReport("~/RMS_data/bz2files/initial_part/20200109_232639_report.txt")
     trajectory_summary_report = {}
     event_images_dict = createImagesDict(events, working_area)
@@ -807,6 +851,6 @@ if __name__ == "__main__":
     cml_args = arg_parser.parse_args()
     input_directory = os.path.expanduser(cml_args.input_dir)
     produceCollatedChart(input_directory,
-                         station_list=['fr000z','uk0031','uk003x','uk004d','uk007r','uk0099','uk009l','uk00cc'],
-                         event_time=datetime.datetime(year=2025, month=7, day=9, hour=0, minute=28, second=37),
+                         station_list=['nz001g','nz001l','nz001w','nz002h','nz0033','nz003n','nz005a','nz005e'],
+                         event_time=datetime.datetime(year=2025, month=7, day=7, hour=14, minute=57, second=44),
                          duration=3)
