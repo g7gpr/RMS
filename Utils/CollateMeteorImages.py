@@ -781,6 +781,7 @@ def filesNotAvailableLocally(station_list, event_time):
         local_station_path = os.path.expanduser(os.path.join("~/tmp/collate_working_area/", station.lower()))
         if not os.path.exists(local_station_path):
             station_files_to_retrieve.append(station)
+            print("Must retrieve files for {}".format(station))
             continue
         station_detected_dir_list = os.listdir(local_station_path)
         station_detected_dir_list.sort(reverse=True)
