@@ -126,6 +126,7 @@ def extractBz2Files(bz2_list, input_directory, working_directory):
         if os.path.exists(bz2_directory):
             continue
         mkdirP(bz2_directory)
+        print("Extracting {}".format(bz2))
         with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
             tar.extractall(path=bz2_directory)
 
