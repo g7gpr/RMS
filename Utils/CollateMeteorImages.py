@@ -721,6 +721,7 @@ def getPathsOfFilesToRetrieve(station_list, event_time):
                 files_to_retrieve.append(os.path.join(remote_path, file_name))
                 break
 
+    print("Retrieving".format(files_to_retrieve))
     return files_to_retrieve
 
 def downloadFile(host, username, port, remote_path, local_path):
