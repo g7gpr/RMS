@@ -913,7 +913,7 @@ def processDatabase(database_path, country_code):
         'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories Order by "Beginning UTC Time" ASC')
     else:
         cursor.execute(
-        'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories WHERE "Participating Stations" LIKE "% {}%" Order by "Beginning UTC Time" DESC'.format(country_code))
+        'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories WHERE "Participating Stations" LIKE "% {}%" Order by "Beginning UTC Time" ASC'.format(country_code))
     row_list = []
     for row in cursor:
         row_list.append(row)
@@ -921,7 +921,8 @@ def processDatabase(database_path, country_code):
     conn.close()
     for row in row_list:
         uti, utc_time, duration_sec, stations, magnitude = row[0], row[1], row[2], row[3].lower(), row[4]
-
+        if datetime.datetime.strptime(utc_time, "%Y-%m-%d %H:%M:%S.%f") < datetime.datetime(year=2024):
+            continue
 
         stations = stations.replace('\n','').replace(" ","")
         station_list = stations.split(",")
