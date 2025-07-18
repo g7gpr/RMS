@@ -129,22 +129,31 @@ def extractBz2Files(bz2_list, input_directory, working_directory):
         with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
             tar.extractall(path=bz2_directory)
 
-def readInFTPDetectInfoFiles(working_directory, station_list=None, local_available_directories=None):
+def readInFTPDetectInfoFiles(working_directory, station_list=None, local_available_directories=None, event_time=None):
 
 
-    archived_directory_list, station_directories = getArchivedDirectories(working_directory)
+    archived_directory_list, station_directories = getArchivedDirectories(working_directory, event_time=event_time)
     if local_available_directories is not None:
         archived_directory_list = local_available_directories
-    ftp_dict = getFTPFileDictionary(archived_directory_list, station_directories, working_directory, station_list=station_list)
+    ftp_dict = getFTPFileDictionary(archived_directory_list, station_directories, working_directory, station_list=station_list, event_time=event_time)
     return ftp_dict
 
-def getFTPFileDictionary(archived_directory_list, station_directories, working_directory, station_list=None):
+def getFTPFileDictionary(archived_directory_list, station_directories, working_directory, station_list=None, event_time=None):
 
     ftp_dict = {}
     for station, archived_directory in zip(station_directories, archived_directory_list):
         if station_list is not None:
             if not station in station_list:
                 continue
+            if not event_time is None:
+                directory_date = archived_directory.split("_")[1]
+                directory_time = archived_directory.split("_")[1]
+                year, month, day = directory_date[0:4], directory_date[4:6], directory_date[6:8]
+                hour, minute, second = directory_time[0:2], directory_time[2:4], directory_time[4:6]
+                directory_time_object = datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(second))
+                if abs(directory_time_object - event_time).total_seconds() > 24 * 60 * 60:
+                    continue
+
             ftp_file_name = getFTPFileName(archived_directory, station, working_directory)
 
             ftp_path = os.path.join(working_directory, station, archived_directory)
@@ -172,13 +181,15 @@ def getFTPFileName(archived_directory, station, working_directory):
 
     return ftp_file_name
 
-def getArchivedDirectories(working_directory):
+def getArchivedDirectories(working_directory, event_time=None):
 
     station_directories = sorted(os.listdir((working_directory)))
     archived_directory_list = []
     for station_directory in station_directories:
         extracted_directories_directory_list = os.listdir(os.path.join(working_directory, station_directory))
         if extracted_directories_directory_list is not None:
+
+
             archived_directory_list += extracted_directories_directory_list
     return archived_directory_list, station_directories
 
@@ -658,6 +669,7 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
     if target_file_name is None:
         plt.show()
     else:
+        print("Saving {}".format(target_file_name))
         plt.savefig(target_file_name)
 
 def getPathsOfFilesToRetrieve(station_list, event_time):
@@ -794,7 +806,7 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
     working_area = extractBz2("~/RMS_data/bz2files", working_area)
 
 
-    ftp_dict = readInFTPDetectInfoFiles(working_area, station_list)
+    ftp_dict = readInFTPDetectInfoFiles(working_area, station_list, event_time=event_time)
     events = clusterByTime(ftp_dict, station_list, event_time, duration)
     # trajectory_summary_report = parseTrajectoryReport("~/RMS_data/bz2files/initial_part/20200109_232639_report.txt")
     trajectory_summary_report = {}
