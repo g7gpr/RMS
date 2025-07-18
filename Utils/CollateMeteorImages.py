@@ -22,7 +22,7 @@ from curses.ascii import isalnum
 import cv2
 import RMS.Formats.FFfits as FFfits
 import sqlite3
-import pickle
+import time
 import datetime
 import numpy as np
 import tempfile
@@ -662,9 +662,15 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
 def getPathsOfFilesToRetrieve(station_list, event_time):
 
     files_to_retrieve = []
+    bz2_files = []
     for station in station_list:
         remote_path = os.path.join("/home", station.lower(), "files", "processed")
-        bz2_files = lsRemote("gmn.uwo.ca", "analysis", 22, remote_path)
+        while bz2_files == []
+            try:
+                bz2_files = lsRemote("gmn.uwo.ca", "analysis", 22, remote_path)
+            except:
+                time.sleep(120)
+
         bz2_files.sort(reverse=True)
         for file_name in bz2_files:
             file_name_time = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(file_name), "%Y-%m-%d %H:%M:%S.%f")
