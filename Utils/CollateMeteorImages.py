@@ -142,7 +142,7 @@ def getFTPFileDictionary(archived_directory_list, station_directories, working_d
 
     ftp_dict = {}
     for archived_directory in sorted(archived_directory_list, reverse=True):
-        station = archived_directory.split("_")[0]
+        station = os.path.basename(archived_directory).split("_")[0].lower()
         print("Working on station {}".format(station))
         if station_list is not None:
             if not station in station_list:
@@ -156,8 +156,9 @@ def getFTPFileDictionary(archived_directory_list, station_directories, working_d
                 if directory_time_object > event_time:
                     continue
 
-            print("Loading {} from {}".format(ftp_file_name, archived_directory))
+
             ftp_file_name = getFTPFileName(archived_directory, station, working_directory)
+            print("Loading {} from {}".format(ftp_file_name, archived_directory))
 
             ftp_path = os.path.join(working_directory, station, archived_directory)
             print("For station {} reading {}".format(station, ftp_file_name))
