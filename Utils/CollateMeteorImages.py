@@ -704,7 +704,7 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
 def getPathsOfFilesToRetrieve(station_list, event_time):
 
     files_to_retrieve = []
-    print("Retrieving files for stations {} at time {}".format(station_list), event_time)
+    print("Retrieving files for stations {} at time {}".format(station_list, event_time))
 
     for station in station_list:
         remote_path = os.path.join("/home", station.lower(), "files", "processed")
