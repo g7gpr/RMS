@@ -896,12 +896,12 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
 
     return
 
-def processDatabase(database_path):
+def processDatabase(database_path, country_code):
     conn = sqlite3.connect(database_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute('SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories WHERE "Participating Stations" LIKE "%AU0%" Order by "Beginning UTC Time" ASC')
+    cursor.execute('SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories WHERE "Participating Stations" LIKE "% {}%" Order by "Beginning UTC Time" ASC').format(country_code)
     row_list = []
     for row in cursor:
         row_list.append(row)
@@ -942,6 +942,9 @@ if __name__ == "__main__":
     arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str,
                             help="Path to a config file which will be used instead of the default one.")
 
+    arg_parser.add_argument('-u', '--country_code', nargs=1, metavar='COUNTRY_CODE', type=str,
+                            help="Country code to process.")
+
     arg_parser.add_argument('-o', '--oneshot', dest='one_shot', default=False, action="store_true",
                             help="Run once, and terminate.")
 
@@ -960,5 +963,10 @@ if __name__ == "__main__":
     mkdirP(os.path.expanduser("~/RMS_data/bz2files"))
     mkdirP(os.path.expanduser("~/RMS_data/trajectory_images"))
 
-    processDatabase(os.path.expanduser(input_directory))
+    if cml_args.country_code is None:
+        country_code = None
+    else:
+        country_code = cml_args.country_code[0]
+
+    processDatabase(os.path.expanduser(input_directory), country_code)
 
