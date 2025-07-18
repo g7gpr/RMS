@@ -913,7 +913,7 @@ def processDatabase(database_path, country_code):
         'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories Order by "Beginning UTC Time" ASC')
     else:
         cursor.execute(
-        'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories WHERE "Participating Stations" LIKE "% {}%" Order by "Beginning UTC Time" ASC'.format(country_code))
+        'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories WHERE "Participating Stations" LIKE "% {}%" Order by "Beginning UTC Time" DESC'.format(country_code))
     row_list = []
     for row in cursor:
         row_list.append(row)
