@@ -21,6 +21,7 @@ from curses.ascii import isalnum
 
 import cv2
 import RMS.Formats.FFfits as FFfits
+import sqlite3
 import pickle
 import datetime
 import numpy as np
@@ -125,21 +126,26 @@ def extractBz2Files(bz2_list, input_directory, working_directory):
         with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
             tar.extractall(path=bz2_directory)
 
-def readInFTPDetectInfoFiles(working_directory):
+def readInFTPDetectInfoFiles(working_directory, station_list=None, local_available_directories=None):
 
 
     archived_directory_list, station_directories = getArchivedDirectories(working_directory)
-    ftp_dict = getFTPFileDictionary(archived_directory_list, station_directories, working_directory)
+    if local_available_directories is not None:
+        archived_directory_list = local_available_directories
+    ftp_dict = getFTPFileDictionary(archived_directory_list, station_directories, working_directory, station_list=station_list)
     return ftp_dict
 
-def getFTPFileDictionary(archived_directory_list, station_directories, working_directory):
+def getFTPFileDictionary(archived_directory_list, station_directories, working_directory, station_list=None):
 
     ftp_dict = {}
     for station, archived_directory in zip(station_directories, archived_directory_list):
+        if station_list is not None:
+            if not station in station_list:
+                continue
+            ftp_file_name = getFTPFileName(archived_directory, station, working_directory)
 
-        ftp_file_name = getFTPFileName(archived_directory, station, working_directory)
-        ftp_path = os.path.join(working_directory, station, archived_directory)
-        ftp_dict[station] = readFTPdetectinfo(ftp_path, ftp_file_name)
+            ftp_path = os.path.join(working_directory, station, archived_directory)
+            ftp_dict[station] = readFTPdetectinfo(ftp_path, ftp_file_name)
 
     return ftp_dict
 
@@ -242,7 +248,7 @@ def createImagesDict(events, working_area):
     for event in events:
         event_with_fits = addFITSToEvent(event, working_area)
 
-        if len(event_with_fits) > 2:
+        if len(event_with_fits) > 1:
             events_with_fits_dict[event[0][0]] = event_with_fits
 
     return events_with_fits_dict
@@ -568,7 +574,7 @@ def annotateChart(chart_x_resolution, event_images, event_images_with_timing_dic
 
     return display_array, plot_annotations_dict, y_label_coords, y_labels
 
-def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels):
+def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels, target_file_name=None):
     # Plot
     plot_x_range, plot_y_range = display_array.shape[0] / 100, display_array.shape[1] / 100
     fig, ax = plt.subplots(figsize=(plot_y_range, plot_x_range))
@@ -642,15 +648,16 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
             color=(0.9, 0.9, 0.9)
         )
     plt.tight_layout()
-    plt.show()
+    if target_file_name is None:
+        plt.show()
+    else:
+        plt.savefig(target_file_name)
 
 def getPathsOfFilesToRetrieve(station_list, event_time):
 
     files_to_retrieve = []
     for station in station_list:
         remote_path = os.path.join("/home", station.lower(), "files", "processed")
-
-        print(remote_path)
         bz2_files = lsRemote("gmn.uwo.ca", "analysis", 22, remote_path)
         bz2_files.sort(reverse=True)
         for file_name in bz2_files:
@@ -713,6 +720,7 @@ def downloadFile(host, username, port, remote_path, local_path):
 def filesNotAvailableLocally(station_list, event_time):
 
     station_files_to_retrieve = []
+    local_dirs_to_use = []
     for station in station_list:
         fits_files_list = []
         local_station_path = os.path.expanduser(os.path.join("~/tmp/collate_working_area/", station.lower()))
@@ -741,26 +749,29 @@ def filesNotAvailableLocally(station_list, event_time):
             for ff_name in fits_files_list:
                 fits_date = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(ff_name), "%Y-%m-%d %H:%M:%S.%f")
                 time_difference_seconds = (fits_date - event_time).total_seconds()
-                print(time_difference_seconds)
+
                 if time_difference_seconds < 11:
                     file_present_locally = True
+                    local_dirs_to_use.append(detected_dir_full_path)
+                    print("Not downloading for station {} as {} already downloaded".format(station.lower(), detected_dir))
                     break
 
             if not file_present_locally:
                 station_files_to_retrieve.append(station)
 
-    return station_files_to_retrieve
+    return station_files_to_retrieve, local_dirs_to_use
 
 def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, target_file_name=None, show_debug_info=False, station_list=None, event_time=None, duration=None):
 
 
     if station_list is not None and duration is not None and event_time is not None:
-        station_list_to_get =  filesNotAvailableLocally(station_list, event_time)
+        station_list_to_get, local_available_directories =  filesNotAvailableLocally(station_list, event_time)
         remote_path_list = getPathsOfFilesToRetrieve(station_list_to_get, event_time)
         for path in remote_path_list:
             basename = os.path.basename(path)
             local_target = os.path.join(os.path.expanduser("~/RMS_data/bz2files/"), basename)
             if not os.path.exists(local_target):
+                print("Downloading {} to {}".format(basename, local_target))
                 downloadFile("gmn.uwo.ca", "analysis", 22, path, local_target )
 
 
@@ -770,15 +781,13 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
     working_area = extractBz2(input_directory, working_area)
 
 
-    ftp_dict = readInFTPDetectInfoFiles(working_area)
+    ftp_dict = readInFTPDetectInfoFiles(working_area, station_list)
     events = clusterByTime(ftp_dict, station_list, event_time, duration)
     # trajectory_summary_report = parseTrajectoryReport("~/RMS_data/bz2files/initial_part/20200109_232639_report.txt")
     trajectory_summary_report = {}
     event_images_dict = createImagesDict(events, working_area)
 
-
-
-
+    event_images_with_timing_dict = {}
     for key in event_images_dict:
         event_images = event_images_dict[key]
         event_images_with_timing_dict = {}
@@ -816,13 +825,39 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
                                                                                        output_column_time_list,
                                                                                        y_dim, trajectory_summary_report)
 
-        plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels)
+        plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels, target_file_name=target_file_name)
 
     return event_images_with_timing_dict, event_start, event_end
 
 
+def processDatabase(database_path):
+    conn = sqlite3.connect(database_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories Order by "Peak AbsMag"')
+    for row in cursor:
+        uti, utc_time, duration_sec, stations, magnitude = row[0], row[1], row[2], row[3].lower(), row[4]
 
 
+        stations = stations.replace('\n','').replace(" ","")
+        station_list = stations.split(",")
+        event_time = datetime.datetime.strptime(utc_time.strip(), "%Y-%m-%d %H:%M:%S.%f")
+        output_file = os.path.join(os.path.expanduser("~/RMS_data/trajectory_images"), uti)
+        output_file = "{}.png".format(output_file)
+        if not os.path.exists(output_file):
+            print("Producing chart for uti  {}".format(uti))
+            print("Involving stations       {}".format(station_list))
+            print("At time                  {}".format(utc_time))
+            print("Magnitude                {}".format(magnitude))
+
+            produceCollatedChart(input_directory,
+                             station_list=station_list,
+                             event_time=event_time,
+                             duration=duration_sec, target_file_name=output_file)
+        else:
+            print("Chart for uti {} already exists".format(uti))
+    pass
 
 if __name__ == "__main__":
 
@@ -831,7 +866,7 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="""Check a web page for trajectories, and upload relevant data. \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
-    arg_parser.add_argument('input_dir', help='Directory containing image frames organized in hour subdirectories')
+    arg_parser.add_argument('input_dir', help='Path to trajectory database')
 
     arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str,
                             help="Path to a config file which will be used instead of the default one.")
@@ -850,7 +885,6 @@ if __name__ == "__main__":
 
     cml_args = arg_parser.parse_args()
     input_directory = os.path.expanduser(cml_args.input_dir)
-    produceCollatedChart(input_directory,
-                         station_list=['nz001g','nz001l','nz001w','nz002h','nz0033','nz003n','nz005a','nz005e'],
-                         event_time=datetime.datetime(year=2025, month=7, day=7, hour=14, minute=57, second=44),
-                         duration=3)
+
+    processDatabase(os.path.expanduser(input_directory))
+
