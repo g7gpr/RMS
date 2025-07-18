@@ -142,6 +142,7 @@ def getFTPFileDictionary(archived_directory_list, station_directories, working_d
 
     ftp_dict = {}
     for station, archived_directory in zip(station_directories, archived_directory_list):
+        print("Working on station {}".format(station))
         if station_list is not None:
             if not station in station_list:
                 continue
