@@ -920,7 +920,7 @@ def processDatabase(database_path, country_code):
     cursor.close()
     conn.close()
     for row in row_list:
-        uti, utc_time, duration_sec, stations, magnitude = row[0], row[1], row[2], row[3].lower(), row[4]
+        uti, utc_time, duration_sec, stations, magnitude = row[0], row[1].strip(), row[2], row[3].lower(), row[4]
         if datetime.datetime.strptime(utc_time, "%Y-%m-%d %H:%M:%S.%f") < datetime.datetime(year=2024):
             continue
 
