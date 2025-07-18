@@ -778,7 +778,7 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
     working_area = createTemporaryWorkArea("/home/david/tmp/collate_working_area")
 
 
-    working_area = extractBz2(input_directory, working_area)
+    working_area = extractBz2("~/RMS_data/bz2files", working_area)
 
 
     ftp_dict = readInFTPDetectInfoFiles(working_area, station_list)
