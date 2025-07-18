@@ -275,32 +275,35 @@ def getObservations(ftp_dict, station_list=None, event_time=None, duration=None)
     observations = sorted(observations, key=lambda x: x[0])
     return observations
 
-def createImagesDict(events, working_area):
+def createImagesDict(events, working_area, ftp_dict):
 
     events_with_fits_dict = {}
     for event in events:
-        event_with_fits = addFITSToEvent(event, working_area)
+        event_with_fits = addFITSToEvent(event, working_area, ftp_dict)
 
         if len(event_with_fits) > 1:
             events_with_fits_dict[event[0][0]] = event_with_fits
 
     return events_with_fits_dict
 
-def addFITSToEvent(event, working_area):
+def addFITSToEvent(event, working_area, ftp_dict):
     event_with_fits = []
     for observation in event:
         fits_file = observation[2][0]
         station_directory = os.path.join(working_area, observation[2][1].lower())
-        bz2_directory = os.path.join(station_directory, os.listdir(station_directory)[0])
-        if os.path.exists(os.path.join(bz2_directory, fits_file)):
+        bz2_directory_list = os.listdir(station_directory)
+        for bz2_directory in bz2_directory_list:
+            fits_path = os.path.join(station_directory, bz2_directory, fits_file)
+            if os.path.exists(fits_path):
 
-            if fits_file.endswith(".bin"):
-                fits_file = fits_file.replace('.bin', '.fits')
-            if fits_file.startswith("FR_"):
-                fits_file = fits_file.replace('FR_', 'FF_')
-            ff = FFfits.read(bz2_directory, fits_file)
-            observation_and_fits = [observation, ff]
-            event_with_fits.append(observation_and_fits)
+                if fits_file.endswith(".bin"):
+                    fits_file = fits_file.replace('.bin', '.fits')
+                if fits_file.startswith("FR_"):
+                    fits_file = fits_file.replace('FR_', 'FF_')
+                ff = FFfits.read(os.path.join(station_directory, bz2_directory), fits_file)
+                print("Loading {}".format(fits_file))
+                observation_and_fits = [observation, ff]
+                event_with_fits.append(observation_and_fits)
     return event_with_fits
 
 def rotateCapture(input_image, angle, rotation_centre, length,run_in=100, run_out=100, y_dim = 100, show_intermediate=False):
@@ -812,12 +815,14 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
     if station_list is not None and duration is not None and event_time is not None:
         station_list_to_get, local_available_directories =  filesNotAvailableLocally(station_list, event_time)
         remote_path_list = getPathsOfFilesToRetrieve(station_list_to_get, event_time)
-        print("Retrieving from remote:")
-        for d in remote_path_list:
-            print(d)
-        print("These directories already available:")
-        for d in local_available_directories:
-            print(d)
+        if len(remote_path_list):
+            print("Retrieving from remote:")
+            for d in remote_path_list:
+                print(d)
+        if len(local_available_directories):
+            print("These directories already available:")
+            for d in local_available_directories:
+                print(d)
         for path in remote_path_list:
             basename = os.path.basename(path)
             local_target = os.path.join(os.path.expanduser("~/RMS_data/bz2files/"), basename)
@@ -836,7 +841,7 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
     events = clusterByTime(ftp_dict, station_list, event_time, duration)
     # trajectory_summary_report = parseTrajectoryReport("~/RMS_data/bz2files/initial_part/20200109_232639_report.txt")
     trajectory_summary_report = {}
-    event_images_dict = createImagesDict(events, working_area)
+    event_images_dict = createImagesDict(events, working_area, ftp_dict)
 
     event_images_with_timing_dict = {}
     for key in event_images_dict:
