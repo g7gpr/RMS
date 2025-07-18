@@ -157,6 +157,7 @@ def getFTPFileDictionary(archived_directory_list, station_directories, working_d
             ftp_file_name = getFTPFileName(archived_directory, station, working_directory)
 
             ftp_path = os.path.join(working_directory, station, archived_directory)
+            print("For station {} reading {}".format(station, ftp_file_name))
             ftp_dict[station] = readFTPdetectinfo(ftp_path, ftp_file_name)
 
     return ftp_dict
