@@ -910,10 +910,10 @@ def processDatabase(database_path, country_code):
     cursor = conn.cursor()
     if country_code is None:
         cursor.execute(
-        'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories Order by "Beginning UTC Time" ASC')
+        'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories Order by "Peak AbsMag" ASC')
     else:
         cursor.execute(
-        'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories WHERE "Participating Stations" LIKE "% {}%" Order by "Beginning UTC Time" ASC'.format(country_code))
+        'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories WHERE "Participating Stations" LIKE "% {}%" Order by "Peak AbsMag" ASC'.format(country_code))
     row_list = []
     for row in cursor:
         row_list.append(row)
