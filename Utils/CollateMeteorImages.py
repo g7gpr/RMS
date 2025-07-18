@@ -901,7 +901,7 @@ def processDatabase(database_path):
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute('SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories Order by "Beginning UTC Time" ASC')
+    cursor.execute('SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories WHERE "Participating Stations" LIKE "AU0" Order by "Beginning UTC Time" ASC')
     row_list = []
     for row in cursor:
         row_list.append(row)
