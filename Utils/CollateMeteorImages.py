@@ -776,6 +776,7 @@ def filesNotAvailableLocally(station_list, event_time):
 
     station_files_to_retrieve = []
     local_dirs_to_use = []
+    print("Station list {}".format(station_list))
     for station in station_list:
         fits_files_list = []
         local_station_path = os.path.expanduser(os.path.join("~/tmp/collate_working_area/", station.lower()))
