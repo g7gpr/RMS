@@ -665,7 +665,7 @@ def getPathsOfFilesToRetrieve(station_list, event_time):
     bz2_files = []
     for station in station_list:
         remote_path = os.path.join("/home", station.lower(), "files", "processed")
-        while bz2_files == []
+        while bz2_files == []:
             try:
                 bz2_files = lsRemote("gmn.uwo.ca", "analysis", 22, remote_path)
             except:
