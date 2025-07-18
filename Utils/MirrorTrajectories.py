@@ -599,9 +599,9 @@ def downloadFile(url,local_target_file, conn=None):
 
 def downloadFiles(daily_directory, page, file_name_list, date_list, size_list, max_downloads=10, force_reload=False, conn=None):
     files_downloaded = 0
-    #file_name_list.reverse()
-    #date_list.reverse()
-    #size_list.reverse()
+    file_name_list.reverse()
+    date_list.reverse()
+    size_list.reverse()
     for file_name, remote_date, remote_size in zip(file_name_list, date_list, size_list):
 
         url = "{}{}".format(page, file_name)
