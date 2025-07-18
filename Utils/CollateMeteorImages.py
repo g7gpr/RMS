@@ -196,6 +196,9 @@ def getArchivedDirectories(working_directory, event_time=None, station_list=None
         station_directories = station_list
     archived_directory_list = []
     for station_directory in station_directories:
+        target_path = os.path.exists(os.path.join(working_directory, station_directory))
+        if not os.path.exists(target_path):
+            continue
         extracted_directories_directory_list = os.listdir(os.path.join(working_directory, station_directory))
         if extracted_directories_directory_list is not None:
             extracted_directories_directory_list.sort(reverse=True)
