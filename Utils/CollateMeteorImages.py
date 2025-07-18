@@ -166,6 +166,7 @@ def getFTPFileName(archived_directory, station, working_directory):
     ar_date, ar_time = archived_directory.split("_")[1], archived_directory.split("_")[2]
     ar_milliseconds = archived_directory.split("_")[3]
     ftp_file_name = "FTPdetectinfo_{}_{}_{}_{}.txt".format(station.upper(), ar_date, ar_time, ar_milliseconds)
+    print("Preparing to use {}".format(ftp_file_name))
     if not os.path.exists(os.path.join(working_directory, station, archived_directory, ftp_file_name)):
         directory_containing_ftp = os.path.join(working_directory, station, archived_directory)
         ftp_file_name = None
@@ -176,7 +177,8 @@ def getFTPFileName(archived_directory, station, working_directory):
                 return ftp_file_name
 
         for file_name in os.listdir(directory_containing_ftp):
-            if file_name.startswith("FTPdetectinfo") and file_name.endswith(".txt"):
+            if file_name.startswith("FTPdetectinfo") and file_name.endswith(".txt") and file_name.split("_")[1] == station.upper():
+                print("Testing {}".format(file_name))
                 ftp_file_name = file_name
                 return ftp_file_name
 
