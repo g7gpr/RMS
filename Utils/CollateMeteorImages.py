@@ -794,9 +794,9 @@ def filesNotAvailableLocally(station_list, event_time):
             continue
         station_detected_dir_list = os.listdir(local_station_path)
         station_detected_dir_list.sort(reverse=True)
-        found_in = None
-        for detected_dir in station_detected_dir_list:
 
+        for detected_dir in station_detected_dir_list:
+            file_present_locally = False
             detected_dir_date = detected_dir.split("_")[1]
             detected_dir_time = detected_dir.split("_")[2]
             year, month, day = detected_dir_date[0:4], detected_dir_date[4:6], detected_dir_date[6:8]
@@ -814,7 +814,7 @@ def filesNotAvailableLocally(station_list, event_time):
 
 
                 fits_files_list.sort(reverse=True)
-                file_present_locally = False
+
                 for ff_name in fits_files_list:
                     fits_date = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(ff_name), "%Y-%m-%d %H:%M:%S.%f")
                     time_difference_seconds = ((event_time - fits_date).total_seconds())
