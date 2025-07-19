@@ -786,7 +786,7 @@ def filesNotAvailableLocally(station_list, event_time):
     local_dirs_to_use = []
     print("Station list {}".format(station_list))
     for station in station_list:
-        fits_files_list = []
+
         local_station_path = os.path.expanduser(os.path.join("~/tmp/collate_working_area/", station.lower()))
         if not os.path.exists(local_station_path):
             station_files_to_retrieve.append(station)
@@ -794,6 +794,7 @@ def filesNotAvailableLocally(station_list, event_time):
             continue
         station_detected_dir_list = os.listdir(local_station_path)
         station_detected_dir_list.sort(reverse=True)
+        found_in = None
         for detected_dir in station_detected_dir_list:
             detected_dir_date = detected_dir.split("_")[1]
             detected_dir_time = detected_dir.split("_")[2]
@@ -804,23 +805,24 @@ def filesNotAvailableLocally(station_list, event_time):
                 detected_dir_full_path = os.path.join("~/tmp/collate_working_area", station.lower(), detected_dir)
                 detected_dir_full_path = os.path.expanduser(detected_dir_full_path)
                 detected_dir_list = os.listdir(detected_dir_full_path)
-
+                fits_files_list = []
                 for test_file in detected_dir_list:
                     if test_file.startswith("FF_{}".format(station.upper())) and test_file.endswith(".fits"):
                         fits_files_list.append(test_file)
                         found_in = detected_dir
 
-            fits_files_list.sort(reverse=True)
-            file_present_locally = False
-            for ff_name in fits_files_list:
-                fits_date = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(ff_name), "%Y-%m-%d %H:%M:%S.%f")
-                time_difference_seconds = abs((fits_date - event_time).total_seconds())
 
-                if time_difference_seconds < 11:
-                    file_present_locally = True
-                    local_dirs_to_use.append(detected_dir_full_path)
-                    print("Not downloading for station {} as {} already downloaded".format(station.lower(), found_in))
-                    break
+                fits_files_list.sort(reverse=True)
+                file_present_locally = False
+                for ff_name in fits_files_list:
+                    fits_date = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(ff_name), "%Y-%m-%d %H:%M:%S.%f")
+                    time_difference_seconds = abs((fits_date - event_time).total_seconds())
+
+                    if time_difference_seconds < 11:
+                        file_present_locally = True
+                        local_dirs_to_use.append(detected_dir_full_path)
+                        print("Not downloading for station {} as {} already downloaded".format(station.lower(), found_in))
+                        break
 
             if not file_present_locally:
                 station_files_to_retrieve.append(station)
