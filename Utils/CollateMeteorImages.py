@@ -817,7 +817,7 @@ def filesNotAvailableLocally(station_list, event_time):
 
                 for ff_name in fits_files_list:
                     fits_date = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(ff_name), "%Y-%m-%d %H:%M:%S.%f")
-                    time_difference_seconds = ((event_time - fits_date).total_seconds())
+                    time_difference_seconds = (fits_date - event_time).total_seconds()
 
                     if time_difference_seconds < 11:
                         print("Using fits file {}".format(ff_name))
@@ -825,6 +825,9 @@ def filesNotAvailableLocally(station_list, event_time):
                         local_dirs_to_use.append(detected_dir_full_path)
                         print("Not downloading for station {} as {} already downloaded".format(station.lower(), found_in))
                         break
+
+                if file_present_locally:
+                    break
 
         if not file_present_locally:
             print("No file present locally for station {}, adding to retrieve list".format(station.lower()))
@@ -911,6 +914,7 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
     return
 
 def processDatabase(database_path, country_code):
+    print("Connecting to {}".format(database_path))
     conn = sqlite3.connect(database_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
