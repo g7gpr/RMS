@@ -820,6 +820,7 @@ def filesNotAvailableLocally(station_list, event_time):
                     time_difference_seconds = abs((fits_date - event_time).total_seconds())
 
                     if time_difference_seconds < 11:
+                        print("Using fits file {}".format(ff_name))
                         file_present_locally = True
                         local_dirs_to_use.append(detected_dir_full_path)
                         print("Not downloading for station {} as {} already downloaded".format(station.lower(), found_in))
