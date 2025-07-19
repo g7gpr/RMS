@@ -709,8 +709,6 @@ def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_l
 def getPathsOfFilesToRetrieve(station_list, event_time):
 
     files_to_retrieve = []
-    print("Retrieving files for stations {} at time {}".format(station_list, event_time))
-    time.sleep(60)
     for station in station_list:
         remote_path = os.path.join("/home", station.lower(), "files", "processed")
         bz2_files = []
@@ -823,7 +821,7 @@ def filesNotAvailableLocally(station_list, event_time):
                         print("Using fits file {}".format(ff_name))
                         file_present_locally = True
                         local_dirs_to_use.append(detected_dir_full_path)
-                        print("Not downloading for station {} as {} already downloaded".format(station.lower(), found_in))
+                        print("Not downloading for station {} as {} already downloaded".format(station.lower(), ff_name))
                         break
 
                 if file_present_locally:
@@ -837,7 +835,7 @@ def filesNotAvailableLocally(station_list, event_time):
 
 def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, target_file_name=None, show_debug_info=False, station_list=None, event_time=None, duration=None, magnitude=None):
 
-    print("Station list {} , duration {}, event_time {}".format(station_list, duration, event_time))
+
     if station_list is not None and duration is not None and event_time is not None:
         station_list_to_get, local_available_directories = filesNotAvailableLocally(station_list, event_time)
         remote_path_list = getPathsOfFilesToRetrieve(station_list_to_get, event_time)
