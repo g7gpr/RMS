@@ -786,7 +786,7 @@ def filesNotAvailableLocally(station_list, event_time):
     local_dirs_to_use = []
     print("Station list {}".format(station_list))
     for station in station_list:
-
+        file_present_locally = False
         local_station_path = os.path.expanduser(os.path.join("~/tmp/collate_working_area/", station.lower()))
         if not os.path.exists(local_station_path):
             station_files_to_retrieve.append(station)
@@ -796,6 +796,7 @@ def filesNotAvailableLocally(station_list, event_time):
         station_detected_dir_list.sort(reverse=True)
         found_in = None
         for detected_dir in station_detected_dir_list:
+
             detected_dir_date = detected_dir.split("_")[1]
             detected_dir_time = detected_dir.split("_")[2]
             year, month, day = detected_dir_date[0:4], detected_dir_date[4:6], detected_dir_date[6:8]
@@ -824,8 +825,8 @@ def filesNotAvailableLocally(station_list, event_time):
                         print("Not downloading for station {} as {} already downloaded".format(station.lower(), found_in))
                         break
 
-            if not file_present_locally:
-                station_files_to_retrieve.append(station)
+        if not file_present_locally:
+            station_files_to_retrieve.append(station)
 
     return station_files_to_retrieve, local_dirs_to_use
 
