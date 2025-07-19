@@ -817,7 +817,7 @@ def filesNotAvailableLocally(station_list, event_time):
                 file_present_locally = False
                 for ff_name in fits_files_list:
                     fits_date = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(ff_name), "%Y-%m-%d %H:%M:%S.%f")
-                    time_difference_seconds = abs((fits_date - event_time).total_seconds())
+                    time_difference_seconds = ((event_time - fits_date).total_seconds())
 
                     if time_difference_seconds < 11:
                         print("Using fits file {}".format(ff_name))
