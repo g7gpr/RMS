@@ -827,6 +827,7 @@ def filesNotAvailableLocally(station_list, event_time):
                         break
 
         if not file_present_locally:
+            print("No file present locally for station {}, adding to retrieve list".format(station.lower()))
             station_files_to_retrieve.append(station)
 
     return station_files_to_retrieve, local_dirs_to_use
