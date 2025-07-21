@@ -29,7 +29,7 @@ import cartopy.feature as cfeature
 from pyvista import active_scalars_algorithm
 
 from RMS.Routines.MaskImage import loadMask
-from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, vectNorm, altAz2RADec, raDec2AltAz, J2000_JD, ECEF2AltAz, raDec2Vector, datetime2JD, geo2Cartesian, JULIAN_EPOCH, cartesian2Geo
+from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, vectNorm, altAz2RADec, raDec2AltAz, J2000_JD, ECEF2AltAz, raDec2Vector, datetime2JD, geo2Cartesian, JULIAN_EPOCH, cartesian2Geo, AER2ECEF
 from RMS.Astrometry.ApplyAstrometry import raDecToXYPP
 from RMS.EventMonitor import angularSeparationVectDeg, platepar2AltAz
 
@@ -631,19 +631,19 @@ def computePointCoverage(origin, config_mask_platepar_dict, point_e,point_n,poin
         if not camera_found:
             continue
 
-        # compute vector from station to point in enu
-        v_e = point_e - station_e
-        v_n = point_n - station_n
-        v_u = point_u - station_u
-        station_to_point_enu_norm = vectNorm((v_e, v_n, v_u))
-        fov_vec_enu = vectNorm(altAz2enuVectorDegrees(pp.alt_centre, pp.az_centre))
+        # compute vector from station to point in ecef to take account of curvature of earth
+        p_x, p_y, p_z = enu2Ecef(point_e, point_n, point_u, lat_origin_deg, lon_origin_deg, ele_origin_m)
+        s_x, s_y, s_z = enu2Ecef(station_e, station_n, station_u, lat_origin_deg, lon_origin_deg, ele_origin_m)
 
-        ang_sep = angularSeparationVectDeg(station_to_point_enu_norm, fov_vec_enu)
+        v_x, v_y, v_z = p_x - s_x, p_y - s_y, p_z - s_z
+        station_to_point_ecef_norm = vectNorm((v_x, v_y, v_z))
+        fov_vec_ecef_norm = vectNorm(AER2ECEF(pp.az_centre, pp.alt_centre, 1, pp.lat, pp.lon, pp.elev))
+        ang_sep = angularSeparationVectDeg(station_to_point_ecef_norm, fov_vec_ecef_norm)
 
 
         if ang_sep < diagonal_fov / 2:
             # there is a good chance this will be in the fov
-            alt_point, az_point = enu2AltAz(station_to_point_enu_norm)
+            az_point, alt_point = ECEF2AltAz((s_x, s_y, s_z), (p_x, p_y, p_z))
             ra, dec = altAz2RADec(az_point, alt_point, 2460878 , pp.lat, pp.lon)
             x, y = raDecToXYPP(np.array([ra]), np.array([dec]), 2460878, pp)
             x, y = round(x[0]), round(y[0])
@@ -740,7 +740,7 @@ def plot(coordinates_list, pointing_list, single_station_coverage, zero_station_
         n_list.append(n)
         u_list.append(u)
 
-    #ax.scatter(e_list, n_list, u_list, c='black', s=100, alpha=0.05, edgecolor='none')
+    ax.scatter(e_list, n_list, u_list, c='black', s=100, alpha=0.05, edgecolor='none')
 
     e_list, n_list, u_list = [], [], []
     for point in good_coverage:
@@ -749,12 +749,12 @@ def plot(coordinates_list, pointing_list, single_station_coverage, zero_station_
         n_list.append(n)
         u_list.append(u)
 
-    #ax.scatter(e_list, n_list, u_list, c='blue', s=100, alpha=0.05, edgecolor='none')
+    ax.scatter(e_list, n_list, u_list, c='blue', s=100, alpha=0.05, edgecolor='none')
 
     ax.set_xlabel('E')
     ax.set_ylabel('N')
     ax.set_zlabel('U')
-    plt.title('Single station coverage, plotted in ENU metres', fontsize=30)
+    plt.title('2 or more station coverage, plotted in ENU metres', fontsize=30)
     plt.show()
 
 
@@ -798,12 +798,12 @@ def getStationCoordinatesList(dict):
 
     return x_list, y_list, z_list, name_list
 
-def computeAverageLocation(dict):
+def computeOrigin(dict):
 
     x_list, y_list, z_list, name_list = getStationCoordinatesList(dict)
-    x = np.mean(x_list)
-    y = np.mean(y_list)
-    z = np.mean(z_list)
+    x = np.mean((np.min(x_list), np.max(x_list)))
+    y = np.mean((np.min(y_list), np.max(y_list)))
+    z = np.min(z_list)
 
     lat_rads, lon_rads, ele_m = ecef2LatLonAlt(x, y, z)
     lat_deg, lon_deg = np.degrees(lat_rads), np.degrees(lon_rads)
@@ -883,8 +883,13 @@ if __name__ == "__main__":
     print(lat, lon, alt)
     lat, lon, alt = enu2LatLonAlt(e, n, u, perth_observatory_lat-1, perth_observatory_lon, perth_observatory_ele_m)
     print(lat, lon, alt)
-
-
+    _x, _y, _z = ecef_x, ecef_y, ecef_z
+    x, y, z = 23, 45, 67
+    lat, lon, ele = ecef2LatLonAltDeg(_x, _y, _z)
+    az, alt = ECEF2AltAz((_x,_y,_z),(_x + x, _y +y,_z + z))
+    __x, __y, __z = AER2ECEF(az, alt, (x**2 + y **2 + z ** 2) ** 0.5, lat, lon, ele)
+    print(__x - _x, __y - _y, __z - _z)
+    pass
 
     station_list_raw = cml_args.station_list
 
@@ -907,12 +912,12 @@ if __name__ == "__main__":
     bz2_directory_list = downloadFiles(station_list, epoch)
     config_mask_platepar_dict = getConfigMaskPlateparDict(bz2_directory_list)
 
-    origin = computeAverageLocation(config_mask_platepar_dict)
+    origin = computeOrigin(config_mask_platepar_dict)
 
     enu_coordinates = computeENUCoordinates(origin, config_mask_platepar_dict)
     enu_pointing_unit_vectors = computeENUPointingUnitVectors(origin, config_mask_platepar_dict)
 
-    coverage_quality = computeCoverageQuality(origin, config_mask_platepar_dict, [-200000, +200000], [-200000, +200000], [0, 400000], step_size=20000)
+    coverage_quality = computeCoverageQuality(origin, config_mask_platepar_dict, [-200000, +200000], [-200000, +200000], [20000, 100000], step_size=20000)
 
     good_coverage=[]
     single_station_coverage = []
