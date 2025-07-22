@@ -614,7 +614,7 @@ def computePointCoverage(origin, config_mask_platepar_dict, point_e,point_n,poin
     point_ecef_x, point_ecef_y, point_ecef_z = latLonAlt2ECEFDeg(point_lat_rads, point_lon_rads, point_alt_m)
     enu_coordinates = computeENUCoordinates(origin, config_mask_platepar_dict)
     cameras_covering_point = 0
-    cameras_list = []
+    cameras_list, qs_list = [], [1]
     for camera in enu_coordinates:
 
         camera_found = False
@@ -657,15 +657,40 @@ def computePointCoverage(origin, config_mask_platepar_dict, point_e,point_n,poin
                     continue
 
                 cameras_covering_point += 1
-                cameras_list.append(camera)
+                cameras_list.append([camera, [az_point, alt_point]])
             else:
                 #print("Out of sensor range camera:{} x:{} y:{}".format(s, x,y))
                 pass
-    return cameras_covering_point, cameras_list
+
+    qs_list, ang_sep_list = [1], []
+    _cameras_list = cameras_list
+    if len(cameras_list) > 1:
+        for camera in cameras_list:
+            for _camera in _cameras_list:
+                if camera == _camera:
+                    continue
+                camera_enu_vec, _camera_enu_vec = np.array(camera[0][1]), np.array((_camera[0][1]))
+                point_vec = np.array((point_e, point_n, point_u))
+                cam_2_point_vec_norm = vectNorm(point_vec - camera_enu_vec)
+                _cam_2_point_vec_norm = vectNorm(point_vec - _camera_enu_vec)
+
+                ang_sep = angularSeparationVectDeg(cam_2_point_vec_norm, _cam_2_point_vec_norm)
+                qs = 1 - abs(np.sin(np.radians(ang_sep)))
+                #print("For {} and {} angular separation is {} yielding a qs {} ".format(camera[0], _camera[0], ang_sep, qs))
+                qs_list.append(qs)
+                ang_sep_list.append(ang_sep)
+
+    if len(qs_list) > 1 and max(ang_sep_list) > 30 and False:
+        print(min(qs_list))
+        pass
 
 
 
-def computeCoverageQuality(origin, config_mask_platepar_dict, e_range, n_range, u_range, step_size=10000):
+    return cameras_covering_point, cameras_list, min(qs_list)
+
+
+
+def computeCoverageQuality(origin, config_mask_platepar_dict, e_range, n_range, u_range, step_size=1000):
 
     e_range_list = range(e_range[0], e_range[1], step_size)
     n_range_list = range(n_range[0], n_range[1], step_size)
@@ -678,7 +703,7 @@ def computeCoverageQuality(origin, config_mask_platepar_dict, e_range, n_range, 
 
     return coverage_list
 
-def plot(coordinates_list, pointing_list, single_station_coverage, zero_station_coverage, good_coverage):
+def plot(coordinates_list, pointing_list, single_station_coverage, zero_station_coverage, good_coverage, coverage_quality):
 
 
     # Unpack coordinates
@@ -730,7 +755,7 @@ def plot(coordinates_list, pointing_list, single_station_coverage, zero_station_
         n_list.append(n)
         u_list.append(u)
 
-    ax.scatter(e_list, n_list, u_list, c='green', s=100, alpha=0.2, edgecolor='none')
+    #ax.scatter(e_list, n_list, u_list, c='green', s=100, alpha=0.2, edgecolor='none')
 
     e_list, n_list, u_list = [], [], []
     for point in zero_station_coverage:
@@ -740,7 +765,7 @@ def plot(coordinates_list, pointing_list, single_station_coverage, zero_station_
         n_list.append(n)
         u_list.append(u)
 
-    ax.scatter(e_list, n_list, u_list, c='black', s=100, alpha=0.05, edgecolor='none')
+    #ax.scatter(e_list, n_list, u_list, c='black', s=100, alpha=0.05, edgecolor='none')
 
     e_list, n_list, u_list = [], [], []
     for point in good_coverage:
@@ -749,12 +774,27 @@ def plot(coordinates_list, pointing_list, single_station_coverage, zero_station_
         n_list.append(n)
         u_list.append(u)
 
-    ax.scatter(e_list, n_list, u_list, c='blue', s=100, alpha=0.05, edgecolor='none')
+    #ax.scatter(e_list, n_list, u_list, c='blue', s=100, alpha=0.05, edgecolor='none')
+
+    e_list, n_list, u_list, qs_list, alpha_list = [], [], [], [], []
+    for point in coverage_quality:
+        e, n, u = point[0], point[1], point[2]
+        e_list.append(e)
+        n_list.append(n)
+        u_list.append(u)
+        qs_list.append(point[3][2])
+        alpha_list.append(0.01 * point[3][2])
+
+    colours = np.zeros((len(alpha_list), 4))
+    colours[:, 2] = 1.0
+    colours[:, 3] = alpha_list
+
+    ax.scatter(e_list, n_list, u_list, c=colours, s=50, edgecolor='none')
 
     ax.set_xlabel('E')
     ax.set_ylabel('N')
     ax.set_zlabel('U')
-    plt.title('2 or more station coverage, plotted in ENU metres', fontsize=30)
+    plt.title('Coverage quality', fontsize=30)
     plt.show()
 
 
@@ -917,7 +957,7 @@ if __name__ == "__main__":
     enu_coordinates = computeENUCoordinates(origin, config_mask_platepar_dict)
     enu_pointing_unit_vectors = computeENUPointingUnitVectors(origin, config_mask_platepar_dict)
 
-    coverage_quality = computeCoverageQuality(origin, config_mask_platepar_dict, [-200000, +200000], [-200000, +200000], [20000, 100000], step_size=20000)
+    coverage_quality = computeCoverageQuality(origin, config_mask_platepar_dict, [-200000, +200000], [-200000, +200000], [20000, 300000], step_size=5000)
 
     good_coverage=[]
     single_station_coverage = []
@@ -952,4 +992,4 @@ if __name__ == "__main__":
 
 
 
-    plot(enu_coordinates, enu_pointing_unit_vectors, single_station_coverage, zero_station_coverage, good_coverage)
+    plot(enu_coordinates, enu_pointing_unit_vectors, single_station_coverage, zero_station_coverage, good_coverage, coverage_quality)
