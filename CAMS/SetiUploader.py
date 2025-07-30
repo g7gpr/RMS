@@ -215,7 +215,7 @@ def createSetiZipName(directory, config):
 
     return name
 
-def zipFiles(file_list, night_directory, config, log):
+def zipFiles(file_list, night_directory, config):
 
     """
 
@@ -235,16 +235,16 @@ def zipFiles(file_list, night_directory, config, log):
 
         return None
 
-    log.info("Zipping to {}".format(zip_name))
+    print("Zipping to {}".format(zip_name))
 
     with ZipFile(zip_name, 'w') as zip:
         for file_name in file_list:
-            log.info("  Adding {}".format(file_name))
+            print("  Adding {}".format(file_name))
             zip.write(file_name, arcname=os.path.basename(file_name))
 
     return zip_name
 
-def sendByFTP(zip_name, log):
+def sendByFTP(zip_name):
 
 
 
@@ -260,7 +260,7 @@ def sendByFTP(zip_name, log):
     """
 
     if zip_name is None:
-        log.info("Nothing to send")
+        print("Nothing to send")
         return
     cams_code = os.path.basename(zip_name).split("_")[3]
     remote_directory = valueToDirectory(cams_code,mapping)
@@ -269,10 +269,10 @@ def sendByFTP(zip_name, log):
         ftp.cwd(remote_directory)
         ftp.storbinary("STOR {}".format(os.path.basename(zip_name)), open(zip_name, "rb"))
         ftp.close()
-        log.info("Sent {} to {}".format(os.path.basename(zip_name), remote_directory))
+        print("Sent {} to {}".format(os.path.basename(zip_name), remote_directory))
         return True
     except:
-        log.warning("Failed to send {}, deleted zip and will try on next run".format(zip_name))
+        print("Failed to send {}, deleted zip and will try on next run".format(zip_name))
         os.unlink(zip_name)
         return False
 
