@@ -49,8 +49,8 @@ from RMS.Formats.Platepar import Platepar
 from RMS.Misc import mkdirP
 from RMS.Formats.FTPdetectinfo import readFTPdetectinfo
 
-HOST = "192.168.1.241"
-USERNAME = "gmn"
+HOST = "gmn.uwo.ca"
+USERNAME = "analysis"
 PORT = "22"
 
 def computeENUCoordinates(origin, config_platepar_dict):
@@ -74,22 +74,7 @@ def computeENUCoordinates(origin, config_platepar_dict):
     return station_list_enu
 
 
-def latLonAlt2ENUDeg(lat_deg, lon_deg, ele_m, lat_origin_deg, lon_origin_deg, ele_origin_m):
 
-    lat_origin_rads, lon_origin_rads = np.radians(lat_origin_deg), np.radians(lon_origin_deg)
-    lat_rad, lon_rad = np.radians(lat_deg), np.radians(lon_deg)
-    ecef_origin_m = latLonAlt2ECEF(lat_origin_rads, lon_origin_rads, ele_origin_m)
-    ecef_point_m = np.array(latLonAlt2ECEF(lat_rad, lon_rad, ele_m))
-    translation = ecef_point_m - ecef_origin_m
-    r = np.array([
-        [-np.sin(lon_origin_rads), np.cos(lon_origin_rads), 0],
-        [-np.sin(lat_origin_rads) * np.cos(lon_origin_rads), -np.sin(lat_origin_rads) * np.sin(lon_origin_rads),
-         np.cos(lat_origin_rads)],
-        [np.cos(lat_origin_rads) * np.cos(lon_origin_rads), np.cos(lat_origin_rads) * np.sin(lon_origin_rads),
-         np.sin(lat_origin_rads)]
-    ])
-    e, n, u = r @ translation
-    return e, n, u
 
 def computeENUPointingUnitVectors(origin, config_platepar_dict):
 
@@ -333,11 +318,11 @@ def getPathsOfFilesToRetrieve(station_list, epoch_utc=None):
     print("Getting paths to retrieve for stations {} at time {}".format(station_list, epoch_utc))
 
     for station in station_list:
-        remote_path = os.path.join("/home", station.lower(), "files", "incoming")
+        remote_path = os.path.join("/home", station.lower(), "files", "processed")
         bz2_files = []
         while bz2_files == []:
             try:
-                bz2_files = lsRemote("192.168.1.241", "gmn", 22, remote_path)
+                bz2_files = lsRemote("gmn.uwo.ca", "analysis", 22, remote_path)
             except:
                 time.sleep(120)
 
@@ -476,10 +461,10 @@ def downloadFiles(station_list, epoch_utc=None):
             local_target = os.path.join(os.path.expanduser("~/RMS_data/bz2files/"), basename)
             if not os.path.exists(local_target):
                 print("Downloading {} to {}".format(basename, local_target))
-                downloadFile("192.168.1.241", "gmn", 22, path, local_target )
+                downloadFile("gmn.uwo.ca", "analysis", 22, path, local_target )
             elif not bz2Valid(local_target):
                 print("Downloading {} to {}".format(basename, local_target))
-                downloadFile("192.168.1.241", "gmn", 22, path, local_target)
+                downloadFile("gmn.uwo.ca", "analysis", 22, path, local_target)
 
     working_area = createTemporaryWorkArea("~/tmp/pointing_tools_working_area")
     bz2_directory_list = extractBz2("~/RMS_data/bz2files", working_area, station_list, epoch)
@@ -533,22 +518,6 @@ a = 6378137.0          # semi-major axis (meters)
 f = 1 / 298.257223563  # flattening
 e2 = f * (2 - f)       # eccentricity squared
 
-def geo2ECEF(lat, lon, h):
-    lat, lon = np.radians(lat), np.radians(lon)
-    N = a / np.sqrt(1 - e2 * np.sin(lat)**2)
-    x = (N + h) * np.cos(lat) * np.cos(lon)
-    y = (N + h) * np.cos(lat) * np.sin(lon)
-    z = (N * (1 - e2) + h) * np.sin(lat)
-    return np.array([x, y, z])
-
-def enu2ECEFMatrix(lat_deg, lon_deg):
-    lat = np.radians(lat_deg)
-    lon = np.radians(lon_deg)
-    return np.array([
-        [-np.sin(lon),            np.cos(lon),           0],
-        [-np.sin(lat)*np.cos(lon), -np.sin(lat)*np.sin(lon), np.cos(lat)],
-        [np.cos(lat)*np.cos(lon),  np.cos(lat)*np.sin(lon), np.sin(lat)]
-    ])
 
 def altAz2enuVectorDegrees(alt_deg, az_deg):
 
@@ -561,56 +530,17 @@ def altAz2enuVectorDegrees(alt_deg, az_deg):
     return np.array([e, n, u])
 
 
-def enu2Ecef(e, n, u, lat_ref, lon_ref, alt_ref):
-    # Constants
-    a = 6378137.0  # WGS-84 semi-major axis
-    f = 1 / 298.257223563
-    e2 = f * (2 - f)
-
-    lat = np.radians(lat_ref)
-    lon = np.radians(lon_ref)
-
-    N = a / np.sqrt(1 - e2 * np.sin(lat)**2)
-    x0 = (N + alt_ref) * np.cos(lat) * np.cos(lon)
-    y0 = (N + alt_ref) * np.cos(lat) * np.sin(lon)
-    z0 = ((1 - e2) * N + alt_ref) * np.sin(lat)
-
-    # ENU to ECEF rotation
-    R = np.array([
-        [-np.sin(lon), -np.sin(lat)*np.cos(lon),  np.cos(lat)*np.cos(lon)],
-        [ np.cos(lon), -np.sin(lat)*np.sin(lon),  np.cos(lat)*np.sin(lon)],
-        [          0,            np.cos(lat),            np.sin(lat)]
-    ])
-    enu_vec = np.array([e, n, u])
-    ecef_offset = R @ enu_vec
-    return np.array([x0, y0, z0]) + ecef_offset
 
 
 
-def enu2AltAz(vec):
-    # Convert to unit vector
-    #vec = np.array([e, n, u])
-    norm = np.linalg.norm(vec)
-    if norm == 0:
-        raise ValueError("Zero-length vector has undefined alt/az.")
 
-    unit = vec / norm
 
-    # Altitude: angle above horizon (Up component)
-    alt_rad = np.arcsin(unit[2])
-    alt_deg = np.degrees(alt_rad)
-
-    # Azimuth: angle clockwise from North
-    az_rad = np.arctan2(unit[0], unit[1])  # East over North
-    az_deg = (np.degrees(az_rad)) % 360    # Normalize to [0, 360)
-
-    return alt_deg, az_deg
 
 def computePointCoverage(origin, config_mask_platepar_dict, point_e,point_n,point_u):
 
     lat_origin_deg, lon_origin_deg, ele_origin_m, ecef_origin_x, ecef_origin_y, ecef_origin_z = origin
 
-    point_lat_rads, point_lon_rads, point_alt_m = enu2LatLonAlt(point_e, point_n, point_u, lat_origin_deg, lon_origin_deg, ele_origin_m)
+    point_lat_rads, point_lon_rads, point_alt_m = enu2LatLonAltDeg(point_e, point_n, point_u, lat_origin_deg, lon_origin_deg, ele_origin_m)
     point_ecef_x, point_ecef_y, point_ecef_z = latLonAlt2ECEFDeg(point_lat_rads, point_lon_rads, point_alt_m)
     enu_coordinates = computeENUCoordinates(origin, config_mask_platepar_dict)
     cameras_covering_point = 0
@@ -740,7 +670,7 @@ def plot(coordinates_list, pointing_list, single_station_coverage, zero_station_
         z, _z = pointing_enu[1][2], pointing_enu[2][2]
         vx, vy, vz = (_x - x), (_y - y), (_z - z)
         ax.text(-2500 + x + 90000 * vx, y + 90000 * vy, z + 90000 * vz, name, fontsize=6)
-        ax.quiver(x, y, z, vx, vy, vz, length=80000)
+        ax.quiver(x, y, z, vx, vy, vz, length=70000)
 
 
     # Plot the stations
@@ -796,8 +726,6 @@ def plot(coordinates_list, pointing_list, single_station_coverage, zero_station_
     ax.set_zlabel('U')
     plt.title('Coverage quality', fontsize=30)
     plt.show()
-
-
 
 def getConfigMaskPlateparDict(bz2_directory_list):
 
@@ -864,12 +792,55 @@ def ecef2LatLonAltDeg(ecef_x, ecef_y, ecef_z):
 
     return lat_deg, lon_deg, elevation_m
 
-def enu2LatLonAlt(e, n, u, lat_origin_deg, lon_origin_deg, ele_origin_deg):
+def enu2Ecef(e, n, u, lat_ref, lon_ref, alt_ref):
+    # Constants
+    a = 6378137.0  # WGS-84 semi-major axis
+    f = 1 / 298.257223563
+    e2 = f * (2 - f)
+
+    lat = np.radians(lat_ref)
+    lon = np.radians(lon_ref)
+
+    N = a / np.sqrt(1 - e2 * np.sin(lat)**2)
+    x0 = (N + alt_ref) * np.cos(lat) * np.cos(lon)
+    y0 = (N + alt_ref) * np.cos(lat) * np.sin(lon)
+    z0 = ((1 - e2) * N + alt_ref) * np.sin(lat)
+
+    # ENU to ECEF rotation
+    R = np.array([
+        [-np.sin(lon), -np.sin(lat)*np.cos(lon),  np.cos(lat)*np.cos(lon)],
+        [ np.cos(lon), -np.sin(lat)*np.sin(lon),  np.cos(lat)*np.sin(lon)],
+        [          0,            np.cos(lat),            np.sin(lat)]
+    ])
+    enu_vec = np.array([e, n, u])
+    ecef_offset = R @ enu_vec
+    return np.array([x0, y0, z0]) + ecef_offset
+
+def enu2LatLonAltDeg(e, n, u, lat_origin_deg, lon_origin_deg, ele_origin_deg):
 
     x, y, z = enu2Ecef(e, n, u, lat_origin_deg, lon_origin_deg, ele_origin_deg)
     lat_deg, lon_deg, ele_m = ecef2LatLonAltDeg(x, y, z)
 
     return lat_deg, lon_deg, ele_m
+
+def latLonAlt2ENUDeg(lat_deg, lon_deg, ele_m, lat_origin_deg, lon_origin_deg, ele_origin_m):
+
+    lat_origin_rads, lon_origin_rads = np.radians(lat_origin_deg), np.radians(lon_origin_deg)
+    lat_rad, lon_rad = np.radians(lat_deg), np.radians(lon_deg)
+    ecef_origin_m = latLonAlt2ECEF(lat_origin_rads, lon_origin_rads, ele_origin_m)
+    ecef_point_m = np.array(latLonAlt2ECEF(lat_rad, lon_rad, ele_m))
+    translation = ecef_point_m - ecef_origin_m
+    r = np.array([
+        [-np.sin(lon_origin_rads), np.cos(lon_origin_rads), 0],
+        [-np.sin(lat_origin_rads) * np.cos(lon_origin_rads), -np.sin(lat_origin_rads) * np.sin(lon_origin_rads),
+         np.cos(lat_origin_rads)],
+        [np.cos(lat_origin_rads) * np.cos(lon_origin_rads), np.cos(lat_origin_rads) * np.sin(lon_origin_rads),
+         np.sin(lat_origin_rads)]
+    ])
+    e, n, u = r @ translation
+
+    return e, n, u
+
 
 if __name__ == "__main__":
 
@@ -916,12 +887,12 @@ if __name__ == "__main__":
 
     e, n, u = latLonAlt2ENUDeg(perth_observatory_lat, perth_observatory_lon, perth_observatory_ele_m, perth_observatory_lat-1, perth_observatory_lon, perth_observatory_ele_m)
     print(e, n, u)
-    print(enu2LatLonAlt(e, n, u, perth_observatory_lat-1, perth_observatory_lon, perth_observatory_ele_m))
+    print(enu2LatLonAltDeg(e, n, u, perth_observatory_lat - 1, perth_observatory_lon, perth_observatory_ele_m))
     x, y, z = enu2Ecef(e, n, u, perth_observatory_lat - 1, perth_observatory_lon, perth_observatory_ele_m)
     print(x, y, z)
     lat, lon, alt = ecef2LatLonAltDeg(x, y, z)
     print(lat, lon, alt)
-    lat, lon, alt = enu2LatLonAlt(e, n, u, perth_observatory_lat-1, perth_observatory_lon, perth_observatory_ele_m)
+    lat, lon, alt = enu2LatLonAltDeg(e, n, u, perth_observatory_lat - 1, perth_observatory_lon, perth_observatory_ele_m)
     print(lat, lon, alt)
     _x, _y, _z = ecef_x, ecef_y, ecef_z
     x, y, z = 23, 45, 67
@@ -957,7 +928,7 @@ if __name__ == "__main__":
     enu_coordinates = computeENUCoordinates(origin, config_mask_platepar_dict)
     enu_pointing_unit_vectors = computeENUPointingUnitVectors(origin, config_mask_platepar_dict)
 
-    coverage_quality = computeCoverageQuality(origin, config_mask_platepar_dict, [-200000, +200000], [-200000, +200000], [20000, 300000], step_size=5000)
+    coverage_quality = computeCoverageQuality(origin, config_mask_platepar_dict, [-350000, +350000], [-350000, +350000], [20000, 300000], step_size=5000)
 
     good_coverage=[]
     single_station_coverage = []
