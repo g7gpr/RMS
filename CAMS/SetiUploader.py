@@ -23,9 +23,6 @@ import RMS.ConfigReader as cr
 import RMS.Formats.CAL as cal
 import RMS.Formats.Platepar as pp
 
-from RMS.Logger import LoggingManager, getLogger
-
-
 from RMS.Formats.Platepar import Platepar
 from zipfile import ZipFile
 from RMS.Formats.FTPdetectinfo import readFTPdetectinfo, writeFTPdetectinfo
@@ -155,7 +152,7 @@ def createRTPFileName(cams_code, directory):
     file_name = "RTPdetectinfo_{:06d}_{:s}.txt".format(cams_code, night_time)
     return file_name
 
-def convertFTPtoRTP(night_directory, cal_file_name, config, log):
+def convertFTPtoRTP(night_directory, cal_file_name, config):
 
     """
 
@@ -191,7 +188,7 @@ def convertFTPtoRTP(night_directory, cal_file_name, config, log):
         met[0] = ff_name
 
     # Write the CAMS compatible FTPdetectinfo file
-    log.info("Writing {}".format(rtpdetectinfo_name))
+    print("Writing {}".format(rtpdetectinfo_name))
     writeFTPdetectinfo(meteor_list, night_directory, \
                        rtpdetectinfo_name, night_directory, cams_code_formatted, fps, calibration=cal_file_name, \
                        celestial_coords_given=(platepar is not None))
@@ -279,18 +276,18 @@ def sendByFTP(zip_name, log):
         os.unlink(zip_name)
         return False
 
-def createLock(config, log):
+def createLock(config):
 
-    log.info("Applying reboot lock")
+    print("Applying reboot lock")
     lockfile = os.path.join(os.path.expanduser(config.data_dir), config.reboot_lock_file)
     with open(lockfile, 'w') as _:
         pass
 
     pass
 
-def removeLock(config, log):
+def removeLock(config):
 
-    log.info("Removing reboot lock")
+    print("Removing reboot lock")
     lockfile = os.path.join(os.path.expanduser(config.data_dir), config.reboot_lock_file)
     os.remove(lockfile)
     pass
@@ -316,16 +313,15 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
     """
 
 
-    log_manager = LoggingManager()
-    log_manager.initLogging(config, 'SETI_')
 
 
 
-    createLock(config, log)
+
+    createLock(config)
 
     if config.cams_code == 0:
         print("cams_code set to {}, ending".format(config.cams_code))
-        removeLock(config, log)
+        removeLock(config)
         return None
     else:
         print("SetiUploader started for cams_code {}".format(config.cams_code))
@@ -333,7 +329,7 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
     stationID, cams_code = config.stationID, config.cams_code
 
     archived_directory_full_path = os.path.join(os.path.expanduser(config.data_dir), config.archived_dir)
-    log.info("Working in {}".format(archived_directory_full_path))
+    print("Working in {}".format(archived_directory_full_path))
     archived_directory_list = os.listdir(archived_directory_full_path)
     archived_directory_list.sort()
 
@@ -341,7 +337,7 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
         if os.path.isdir(os.path.join(archived_directory_full_path, file_object)):
             if file_object.startswith("{}_".format(stationID)):
                 night_directory = os.path.join(archived_directory_full_path, file_object)
-                log.info("Checking in {}".format(night_directory))
+                print("Checking in {}".format(night_directory))
                 cal_file = createCALFileName(config.cams_code, night_directory)
                 cal_file_path = os.path.join(night_directory, cal_file)
 
@@ -356,7 +352,7 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 
                     platepar = pp.Platepar()
                     platepar.read(os.path.join(night_directory, config.platepar_name))
-                    log.info("Writing cal file {} to RTP".format(os.path.basename(cal_file_path)))
+                    print("Writing cal file {} to RTP".format(os.path.basename(cal_file_path)))
                     cal_file_to_send = cal.writeCAL(night_directory, config, platepar)
 
 
@@ -366,18 +362,18 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
                 if os.path.exists(rtp_file_path):
                     pass
                 else:
-                    log.info("RTP file {} does not exist".format(rtp_file_path))
+                    print("RTP file {} does not exist".format(rtp_file_path))
                     if os.path.exists(cal_file_path):
                         # write the FTP file
                         cal_file_name = os.path.basename(cal_file_path)
-                        convertFTPtoRTP(night_directory, cal_file_name, config, log)
+                        convertFTPtoRTP(night_directory, cal_file_name, config)
                 pass
 
                 if os.path.exists(cal_file_path) and os.path.exists(rtp_file_path):
-                    sendByFTP(zipFiles([cal_file_path, rtp_file_path], night_directory, config, log), log)
+                    sendByFTP(zipFiles([cal_file_path, rtp_file_path], night_directory, config))
 
-    log.info("SetiUpload complete")
-    removeLock(config, log)
+    print("SetiUpload complete")
+    removeLock(config)
 
 
 if __name__ == '__main__':
