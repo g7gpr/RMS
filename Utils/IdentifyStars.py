@@ -520,7 +520,8 @@ def updateCalstarRadecName(fits_file, fits_star_data, pp, calstar_radec_name,
                 continue
         for check_star in stars_to_annotate:
             x_, y_ = check_star[1], check_star[2]
-            if np.hypot((x - x_),(y - y_)) < pixel_separation:
+            calculated_separation = np.hypot((x - x_),(y - y_))
+            if calculated_separation < pixel_separation:
                 separated = False
                 break
 
