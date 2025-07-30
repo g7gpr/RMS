@@ -23,7 +23,17 @@ import RMS.ConfigReader as cr
 import RMS.Formats.CAL as cal
 import RMS.Formats.Platepar as pp
 import logging
-from RMS.Logger import initLogging
+try:
+    from RMS.Logger import initLogging
+except:
+    pass
+
+try:
+    from RMS.Logger import LoggingManager, getLogger
+except:
+    pass
+
+
 from RMS.Formats.Platepar import Platepar
 from zipfile import ZipFile
 from RMS.Formats.FTPdetectinfo import readFTPdetectinfo, writeFTPdetectinfo
@@ -313,9 +323,15 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 
     """
 
+    try:
+        initLogging(config, 'SETI_')
+        log = logging.getLogger("logger")
+    except:
+        log_manager = LoggingManager()
+        log_manager.initLogging(config, 'SETI_')
 
-    initLogging(config, 'SETI_')
-    log = logging.getLogger("logger")
+
+
     createLock(config, log)
 
     if config.cams_code == 0:
