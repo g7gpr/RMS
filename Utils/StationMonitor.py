@@ -1242,7 +1242,7 @@ def stationMonitor(syscon, repeat=False, delay_minutes=60, verbosity=1, warning_
         weblog_last_updated_from_web = getWeblogLastUpdatedFromWeb()
         if weblog_last_updated_from_web is None:
             print("Trouble with weblog, aborting this run.")
-            break
+            continue
         if verbosity > 0:
             print(OKCYAN)
             print("===========================================================")
