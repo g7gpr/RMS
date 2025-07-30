@@ -942,13 +942,13 @@ def main():
     # Set default output path if not specified
     if not args.output:
         input_dir_name = os.path.basename(os.path.normpath(args.input_dir))
-        suffix = "_timelapse.mp4"
+        suffix = "timelapse.mp4"
         if args.annotate == "none":
-            suffix = "_timelapse.mp4"
+            suffix = "timelapse.mp4"
         elif args.annotate == "with_calstar":
-            suffix = "_timelapse_with_calstar.mp4"
+            suffix = "timelapse_with_calstar.mp4"
         elif args.annotate == "without_calstar":
-            suffix = "_timelapse_without_calstar.mp4"
+            suffix = "timelapse_without_calstar.mp4"
         args.output = os.path.join(os.path.dirname(args.input_dir), "{}_{}".format(input_dir_name, suffix))
     # Print configuration
     print("Timelapse Generator Configuration:")
