@@ -1833,7 +1833,7 @@ if __name__ == "__main__":
     else:
         dbpath = cml_args.dbpath
 
-    processStarTrackEvent(config, cml_args.jd_range[0], cml_args.jd_range[1], cml_args.ra, cml_args.dec, require_calstar=False)
+    processStarTrackEvent(config, cml_args.jd_range[0], cml_args.jd_range[1], cml_args.ra[0], cml_args.dec[0], require_calstar=False)
 
     dbpath = os.path.expanduser(dbpath)
     conn = getStationStarDBConn(dbpath)
