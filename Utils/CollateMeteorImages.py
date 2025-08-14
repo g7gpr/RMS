@@ -104,11 +104,13 @@ def createTemporaryWorkArea(temp_dir=None):
 
     return temp_dir
 
-def extractBz2(input_directory, working_directory):
+def extractBz2(input_directory, working_directory, local_target_list=None):
 
     bz2_list = []
     input_directory = os.path.expanduser(input_directory)
-    for filename in os.listdir(input_directory):
+    if local_target_list is None:
+        local_target_list = os.listdir(input_directory)
+    for filename in local_target_list:
         if filename.endswith(".bz2"):
             bz2_list.append(filename)
 
@@ -120,15 +122,24 @@ def extractBz2(input_directory, working_directory):
 
 def extractBz2Files(bz2_list, input_directory, working_directory):
     for bz2 in bz2_list:
-        station_directory = os.path.join(working_directory, bz2.split("_")[0]).lower()
+        basename_bz2 = os.path.basename(bz2)
+        station_directory = os.path.join(working_directory, basename_bz2.split("_")[0]).lower()
         mkdirP(station_directory)
-        bz2_directory = os.path.join(station_directory, bz2.split(".")[0])
+        bz2_directory = os.path.join(station_directory, basename_bz2.split(".")[0])
         if os.path.exists(bz2_directory):
             continue
         mkdirP(bz2_directory)
         print("Extracting {}".format(bz2))
-        with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
-            tar.extractall(path=bz2_directory)
+
+        try:
+            with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
+                tar.extractall(path=bz2_directory)
+        except:
+            print("Redownloading {}".format(basename_bz2))
+            path = os.path.join("/home", basename_bz2.split("_")[0].lower(), "files", "processed")
+            downloadFile("gmn.uwo.ca", "analysis", 22, path, bz2_directory )
+            with tarfile.open(os.path.join(input_directory, basename_bz2), 'r:bz2') as tar:
+                tar.extractall(path=bz2_directory)
 
 def readInFTPDetectInfoFiles(working_directory, station_list=None, local_available_directories=None, event_time=None):
 
@@ -158,27 +169,29 @@ def getFTPFileDictionary(archived_directory_list, station_directories, working_d
                 if directory_time_object < event_time:
 
                     ftp_file_name = getFTPFileName(archived_directory, station, working_directory)
-                    print("Loading {} from {}".format(ftp_file_name, archived_directory))
-
+                    if ftp_file_name is None:
+                        print("     Could not find a suitable FTP file for {}".format(station))
+                        continue
                     ftp_path = os.path.join(working_directory, station, archived_directory)
-                    print("For station {} reading {}".format(station, ftp_file_name))
                     ftp_dict[station] = readFTPdetectinfo(ftp_path, ftp_file_name)
 
     return ftp_dict
 
 def getFTPFileName(archived_directory, station, working_directory):
-    ar_date, ar_time = archived_directory.split("_")[1], archived_directory.split("_")[2]
-    ar_milliseconds = archived_directory.split("_")[3]
+    basename_archived_directory = os.path.basename(archived_directory)
+    ar_date, ar_time = basename_archived_directory.split("_")[1], basename_archived_directory.split("_")[2]
+    ar_milliseconds = basename_archived_directory.split("_")[3]
     ftp_file_name = "FTPdetectinfo_{}_{}_{}_{}.txt".format(station.upper(), ar_date, ar_time, ar_milliseconds)
-    print("Preparing to use {}".format(ftp_file_name))
     if not os.path.exists(os.path.join(working_directory, station, archived_directory, ftp_file_name)):
         directory_containing_ftp = os.path.join(working_directory, station.lower(), archived_directory)
         ftp_file_name = None
 
         for file_name in os.listdir(directory_containing_ftp):
+
             if file_name.startswith("FTPdetectinfo") and file_name.endswith(".txt") and "manual" in file_name:
                 ftp_file_name = file_name
                 return ftp_file_name
+
 
         for file_name in os.listdir(directory_containing_ftp):
 
@@ -187,6 +200,11 @@ def getFTPFileName(archived_directory, station, working_directory):
                 ftp_file_name = file_name
                 return ftp_file_name
 
+    else:
+
+        print("     Expected FTP file {} was found".format(ftp_file_name))
+
+    print("Returning {}".format(ftp_file_name))
     return ftp_file_name
 
 def getArchivedDirectories(working_directory, event_time=None, station_list=None):
@@ -300,6 +318,7 @@ def createImagesDict(events, working_area, ftp_dict):
 
 def addFITSToEvent(event, working_area, ftp_dict):
     event_with_fits = []
+    print("Start loading fits files")
     for observation in event:
         fits_file = observation[2][0]
         station_directory = os.path.join(working_area, observation[2][1].lower())
@@ -313,7 +332,7 @@ def addFITSToEvent(event, working_area, ftp_dict):
                 if fits_file.startswith("FR_"):
                     fits_file = fits_file.replace('FR_', 'FF_')
                 ff = FFfits.read(os.path.join(station_directory, bz2_directory), fits_file)
-                print("Loading {}".format(fits_file))
+                print("     Loading {}".format(fits_file))
                 observation_and_fits = [observation, ff]
                 event_with_fits.append(observation_and_fits)
     return event_with_fits
@@ -725,8 +744,6 @@ def getPathsOfFilesToRetrieve(station_list, event_time):
                 files_to_retrieve.append(os.path.join(remote_path, file_name))
                 break
 
-
-    print("Retrieving {}".format(files_to_retrieve))
     return files_to_retrieve
 
 def downloadFile(host, username, port, remote_path, local_path):
@@ -782,13 +799,12 @@ def filesNotAvailableLocally(station_list, event_time):
 
     station_files_to_retrieve = []
     local_dirs_to_use = []
-    print("Station list {}".format(station_list))
     for station in station_list:
         file_present_locally = False
         local_station_path = os.path.expanduser(os.path.join("~/tmp/collate_working_area/", station.lower()))
         if not os.path.exists(local_station_path):
             station_files_to_retrieve.append(station)
-            print("Must retrieve files for {}".format(station))
+            print("     Must retrieve files for {}".format(station))
             continue
         station_detected_dir_list = os.listdir(local_station_path)
         station_detected_dir_list.sort(reverse=True)
@@ -821,7 +837,6 @@ def filesNotAvailableLocally(station_list, event_time):
                         print("Using fits file {}".format(ff_name))
                         file_present_locally = True
                         local_dirs_to_use.append(detected_dir_full_path)
-                        print("Not downloading for station {} as {} already downloaded".format(station.lower(), ff_name))
                         break
 
                 if file_present_locally:
@@ -842,23 +857,26 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
         if len(remote_path_list):
             print("Retrieving from remote:")
             for d in remote_path_list:
-                print(d)
+                print("     {}".format(d))
         if len(local_available_directories):
             print("These directories already available:")
             for d in local_available_directories:
-                print(d)
+                print("     {}".format(d))
+        local_target_list = []
         for path in remote_path_list:
             basename = os.path.basename(path)
             local_target = os.path.join(os.path.expanduser("~/RMS_data/bz2files/"), basename)
+            local_target_list.append(local_target)
             if not os.path.exists(local_target):
                 print("Downloading {} to {}".format(basename, local_target))
                 downloadFile("gmn.uwo.ca", "analysis", 22, path, local_target )
 
 
+
     working_area = createTemporaryWorkArea("~/tmp/collate_working_area")
 
 
-    working_area = extractBz2("~/RMS_data/bz2files", working_area)
+    working_area = extractBz2("~/RMS_data/bz2files", working_area, local_target_list)
 
 
     ftp_dict = readInFTPDetectInfoFiles(working_area, station_list, event_time=event_time)
@@ -870,7 +888,6 @@ def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_
     print("Producing chart")
     event_images_with_timing_dict = {}
     for key in event_images_dict:
-        print("Working on image {}".format(key))
         event_images = event_images_dict[key]
         event_images_with_timing_dict = {}
         event_start, event_end, img, event_images_with_timing_dict = processEventImages(event_images, event_images_with_timing_dict, run_in,
@@ -916,12 +933,11 @@ def processDatabase(database_path, country_code):
     conn = sqlite3.connect(database_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    if country_code is None:
-        cursor.execute(
-        'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories Order by "Peak AbsMag" ASC')
-    else:
-        cursor.execute(
-        'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" FROM Trajectories WHERE "Participating Stations" LIKE "% {}%" Order by "Peak AbsMag" ASC'.format(country_code))
+    cursor.execute(
+        'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" '
+        'FROM Trajectories '
+        'WHERE "Peak AbsMag" < -4 '
+        'ORDER BY "Peak AbsMag" ASC'.format(country_code))
     row_list = []
     for row in cursor:
         row_list.append(row)
