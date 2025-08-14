@@ -1008,7 +1008,11 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
             local_mask_path = os.path.join(local_target_full_path, config.mask_file)
             if os.path.exists(local_config_path) and os.path.exists(local_platepar_path) and os.path.exists(local_mask_path):
                 continue
-            latest_remote_file = sorted(lsRemote(host, username, port, remote_dir), reverse=True)[0]
+            remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
+            if len(remote_files):
+                latest_remote_file = remote_files[0]
+            else:
+                continue
             extracted_files_path = os.path.join(extraction_dir, station.lower(), latest_remote_file.split(".")[0])
             extracted_config_path = os.path.join(extracted_files_path, ".config")
             extracted_platepar_path = os.path.join(extracted_files_path, config.platepar_name)
