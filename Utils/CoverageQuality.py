@@ -1066,7 +1066,7 @@ if __name__ == "__main__":
     cwd = os.getcwd()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
 
-    #station_list = getStationList()
-    #makeConfigPlateParMaskLib(config, station_list)
+    station_list = getStationList()
+    makeConfigPlateParMaskLib(config, station_list)
     station_info_dict = makeStationsInfoDict(config)
     pass
