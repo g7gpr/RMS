@@ -999,20 +999,30 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
         mkdirP(local_target)
         with tempfile.TemporaryDirectory() as t:
             remote_dir = remote_station_processed_dir.replace("$STATION", station.lower())
-            latest_remote_file = sorted(lsRemote(host, username, port, remote_dir),reverse=True)[0]
-            full_remote_path_to_bz2 = os.path.join(remote_dir, latest_remote_file)
-            downloadFile(host, username, port, full_remote_path_to_bz2, t)
+
             extraction_dir = os.path.join(t, "extracted")
-            mkdirP(extraction_dir)
-            extractBz2(t, extraction_dir)
+
+            local_target_full_path = os.path.join(local_target)
+            local_config_path = os.path.join(local_target_full_path, os.path.basename(config.config_file_name))
+            local_platepar_path = os.path.join(local_target_full_path, config.platepar_name)
+            local_mask_path = os.path.join(local_target_full_path, config.mask_file)
+            if os.path.exists(local_config_path) and os.path.exists(local_platepar_path) and os.path.exists(local_mask_path):
+                continue
+            latest_remote_file = sorted(lsRemote(host, username, port, remote_dir), reverse=True)[0]
             extracted_files_path = os.path.join(extraction_dir, station.lower(), latest_remote_file.split(".")[0])
             extracted_config_path = os.path.join(extracted_files_path, ".config")
             extracted_platepar_path = os.path.join(extracted_files_path, config.platepar_name)
             extracted_mask_path = os.path.join(extracted_files_path, config.mask_file)
-            local_target_full_path = os.path.join(local_target)
-            shutil.move(extracted_config_path, os.path.join(local_target_full_path, os.path.basename(config.config_file_name)))
-            shutil.move(extracted_platepar_path, os.path.join(local_target_full_path, config.platepar_name))
-            shutil.move(extracted_mask_path, os.path.join(local_target_full_path, config.mask_file))
+            full_remote_path_to_bz2 = os.path.join(remote_dir, latest_remote_file)
+            downloadFile(host, username, port, full_remote_path_to_bz2, t)
+
+            mkdirP(extraction_dir)
+            extractBz2(t, extraction_dir)
+
+
+            shutil.move(extracted_config_path, local_config_path)
+            shutil.move(extracted_platepar_path, local_platepar_path)
+            shutil.move(extracted_mask_path, local_mask_path)
             pass
 
 
