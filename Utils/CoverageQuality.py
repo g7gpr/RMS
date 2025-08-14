@@ -33,7 +33,9 @@ import subprocess
 import json
 import requests
 import tqdm
-
+from RMS.Astrometry.Conversions import latLonAlt2ECEF
+from RMS.Routines.MaskImage import getMaskFile
+from RMS.Formats.Platepar import Platepar
 import RMS.ConfigReader as cr
 
 from RMS.Misc import mkdirP
@@ -996,12 +998,11 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
     stations_data_full_path = os.path.join(config.data_dir, stations_data_dir)
     for station in tqdm.tqdm(station_list):
         local_target = os.path.join(stations_data_full_path, station.lower())
-        mkdirP(local_target)
+
         with tempfile.TemporaryDirectory() as t:
             remote_dir = remote_station_processed_dir.replace("$STATION", station.lower())
 
             extraction_dir = os.path.join(t, "extracted")
-
             local_target_full_path = os.path.join(local_target)
             local_config_path = os.path.join(local_target_full_path, os.path.basename(config.config_file_name))
             local_platepar_path = os.path.join(local_target_full_path, config.platepar_name)
@@ -1023,12 +1024,37 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
             mkdirP(extraction_dir)
             extractBz2(t, extraction_dir)
 
+            if os.path.exists(extracted_config_path) and os.path.exists(extracted_config_path) and os.path.exists(extracted_mask_path):
+                mkdirP(local_platepar_path)
+                shutil.move(extracted_config_path, local_config_path)
+                shutil.move(extracted_platepar_path, local_platepar_path)
+                shutil.move(extracted_mask_path, local_mask_path)
 
-            shutil.move(extracted_config_path, local_config_path)
-            shutil.move(extracted_platepar_path, local_platepar_path)
-            shutil.move(extracted_mask_path, local_mask_path)
-            pass
 
+def makeStationsInfoDict(config, stations_data_dir=STATIONS_DATA_DIR):
+
+    stations_info_dict = {}
+    stations_data_full_path = os.path.join(config.data_dir, stations_data_dir)
+    stations_list = sorted(os.listdir(stations_data_full_path))
+    for station in tqdm.tqdm(stations_list):
+        print("Loading {}".format(station))
+        station_info_path = os.path.join(stations_data_full_path, station)
+        config_path = os.path.join(station_info_path,".config")
+        if os.path.exists(config_path):
+            config = cr.parse(os.path.join(station_info_path,".config"))
+        else:
+            print("No config file found for {}".format(station))
+            continue
+        lat_rads, lon_rads, ele_m = np.radians(config.latitude), np.radians(config.longitude), config.elevation
+        x, y, z = latLonAlt2ECEF(lat_rads, lon_rads, ele_m)
+        mask_struct = getMaskFile(station_info_path, config)
+        pp = Platepar()
+        pp.read(os.path.join(station_info_path, config.platepar_name))
+        stations_info_dict[station.lower()] =    {'ecef' : (x, y, z),
+                                                  'geo': {'lat_rads': lat_rads, 'lon_rads': lon_rads, 'ele_m': ele_m},
+                                                  'pp': pp,
+                                                  'mask': mask_struct}
+    return stations_info_dict
 
 if __name__ == "__main__":
 
@@ -1040,5 +1066,7 @@ if __name__ == "__main__":
     cwd = os.getcwd()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
 
-    station_list = getStationList()
-    makeConfigPlateParMaskLib(config, station_list)
+    #station_list = getStationList()
+    #makeConfigPlateParMaskLib(config, station_list)
+    station_info_dict = makeStationsInfoDict(config)
+    pass
