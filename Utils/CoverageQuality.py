@@ -21,6 +21,8 @@ import shutil
 import gc
 import socket
 from curses.ascii import isalnum
+
+from scipy.constants import electron_mass
 from scipy.spatial import cKDTree
 import pickle
 
@@ -1140,9 +1142,9 @@ def makeECEFPointListAroundStations(station_info_dict, max_distance_to_station_m
     return combined_points_array
 
 
-def makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m = 100000, max_distance_to_station_m=500000):
+def makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m = 200000, max_distance_to_station_m=500000):
 
-    print("Making array of coordinates at resolution {}km around {} stations".format(resolution_m, len(station_info_dict)))
+    print("Making array of coordinates, radius {:.0f}km at resolution {:.1f}km around {} stations".format(max_distance_to_station_m / 1000, resolution_m / 1000, len(station_info_dict)))
     ecef_point_array_around_stations = makeECEFPointListAroundStations(station_info_dict, max_distance_to_station_m, resolution_m, min_ele_m=min_ele_m, max_ele_m=max_ele_m)
 
     return ecef_point_array_around_stations
@@ -1161,11 +1163,48 @@ def addStationsToECEFArray(ecef_point_array, station_info_dict, radius=50000):
     tree = cKDTree(station_position_ecef_array)
     cameras_in_range = tree.query_ball_point(ecef_point_array, r=radius)
 
-    mapping = []
+    mapping_list = []
     for i, indices in enumerate(cameras_in_range):
-        mapping.append((ecef_point_array[i], station_position_ecef_array[indices], station_name_array[indices]))
+        mapping_list.append((ecef_point_array[i], station_position_ecef_array[indices], station_name_array[indices]))
 
-    return mapping
+    return mapping_list
+
+def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
+
+    for vec_norm, station in zip(vecs_normalised_array, station_name_list):
+        station_info = station_info_dict[station]
+        pp = station_info['pp']
+        mask_struct = station_info['mask']
+        lat_rads = station_info['geo']['lat_rads']
+        lon_rads = station_info['geo']['lon_rads']
+        ele_m = station_info['geo']['ele_m']
+        pass
+
+
+    return
+
+def computeAngles(station_info_dict, mapping_list):
+
+    mapping_list_with_angles=[]
+
+
+    for observed_point_array, station_ecef_array, station_name_list in mapping_list:
+        # Vectors from stations to reference_point
+        vectors_array = observed_point_array - station_ecef_array  # shape (N, 3)
+        normalisation_array = np.linalg.norm(vectors_array, axis=1, keepdims=True)
+        vecs_normalized_array = vectors_array / normalisation_array  # shape (N, 3)
+        checkVisible(station_info_dict, vecs_normalized_array, station_name_list)
+
+
+        # Dot product matrix
+        dot_matrix = np.dot(vecs_normalized_array, vecs_normalized_array.T)  # shape (N, N)
+        dot_matrix = np.clip(dot_matrix, -1.0, 1.0)  # numerical safety
+
+        # Angle matrix in degrees
+        angle_matrix = np.sin(np.arccos(dot_matrix))  # shape (N, N)
+        pass
+
+    return mapping_list_with_angles
 
 if __name__ == "__main__":
 
@@ -1184,27 +1223,34 @@ if __name__ == "__main__":
     ecef_array_path = os.path.join(WORKING_DIRECTORY, "ecef_point_array_around_stations.npy")
     ecef_point_to_camera_mapping_path = os.path.join(WORKING_DIRECTORY, "ecef_point_to_camera_mapping.pkl")
 
-    if True:
+    if False:
         station_list = getStationList()
         makeConfigPlateParMaskLib(config, station_list)
 
-    if True:
+    if False:
         station_info_dict = makeStationsInfoDict(config)
         with open(station_info_dict_path, 'wb') as f:
             pickle.dump(station_info_dict, f)
 
     station_info_dict = pickle.load(open(station_info_dict_path, 'rb'))
 
-    if True:
-        ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=2500)
+    if False:
+        ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=20000)
         np.save(ecef_array_path, ecef_point_array)
 
-    ecef_point_array = np.load(ecef_array_path)
-    ecef_point_to_camera_mapping = addStationsToECEFArray(ecef_point_array, station_info_dict, radius=500000)
+    if False:
+        ecef_point_array = np.load(ecef_array_path)
+        ecef_point_to_camera_mapping = addStationsToECEFArray(ecef_point_array, station_info_dict, radius=500000)
 
 
-    with open(ecef_point_to_camera_mapping_path, 'wb') as f:
-        pickle.dump(ecef_point_to_camera_mapping, f)
+        with open(ecef_point_to_camera_mapping_path, 'wb') as f:
+            pickle.dump(ecef_point_to_camera_mapping, f)
+
+    ecef_point_to_camera_mapping = pickle.load(open(ecef_point_to_camera_mapping_path, 'rb'))
+
+    if True:
+        computeAngles(station_info_dict, ecef_point_to_camera_mapping)
+
 
 
     pass
