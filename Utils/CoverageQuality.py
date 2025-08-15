@@ -134,7 +134,7 @@ def extractBz2(input_directory, working_directory, local_target_list=None):
 
     return working_directory
 
-def extractBz2Files(bz2_list, input_directory, working_directory):
+def extractBz2Files(bz2_list, input_directory, working_directory, silent=True):
     for bz2 in bz2_list:
         basename_bz2 = os.path.basename(bz2)
         station_directory = os.path.join(working_directory, basename_bz2.split("_")[0]).lower()
@@ -143,7 +143,8 @@ def extractBz2Files(bz2_list, input_directory, working_directory):
         if os.path.exists(bz2_directory):
             continue
         mkdirP(bz2_directory)
-        print("Extracting {}".format(bz2))
+        if not silent:
+            print("Extracting {}".format(bz2))
 
         try:
             with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
