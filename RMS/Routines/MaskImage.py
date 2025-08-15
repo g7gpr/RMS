@@ -80,7 +80,7 @@ class MaskStructure(object):
 
 
 
-def getMaskFile(dir_path, config, file_list=None, default_as_backup=False):
+def getMaskFile(dir_path, config, file_list=None, default_as_backup=False, silent=False):
     """ Get the mask file from the given directory. If the mask file is not found, return None.
         It will also check if the mask is a zip file and load it if it is.
 
@@ -117,14 +117,15 @@ def getMaskFile(dir_path, config, file_list=None, default_as_backup=False):
             config.mask_file if mask_status == 2 else os.path.splitext(
                 os.path.basename(config.mask_file))[0] + '.zip'
         )
-        
-        print("Loading mask:", mask_path)
-        mask = loadMask(mask_path)
+        if not silent:
+            print("Loading mask:", mask_path)
+        mask = loadMask(mask_path, silent=silent)
 
-        if mask is None:
-            print("  Mask file could not be loaded!")
-        else:
-            print("  Mask file loaded!")
+        if not silent:
+            if mask is None:
+                print("  Mask file could not be loaded!")
+            else:
+                print("  Mask file loaded!")
             
 
     # If the mask file is not found, use the default mask file as a backup
@@ -139,23 +140,25 @@ def getMaskFile(dir_path, config, file_list=None, default_as_backup=False):
             # Path to the mask in RMS source directory
             default_mask_path = os.path.join(config.rms_root_dir, config.mask_file)
 
-        print("Mask file not found! Using default mask file as a backup:", default_mask_path)
+        if not silent:
+            print("Mask file not found! Using default mask file as a backup:", default_mask_path)
 
-        mask = loadMask(default_mask_path)
+        mask = loadMask(default_mask_path, silent=silent)
 
-        if mask is None:
-            print("  Default mask file could not be loaded!")
-        else:
-            print("  Default mask file loaded!")
+        if not silent:
+            if mask is None:
+                print("  Default mask file could not be loaded!")
+            else:
+                print("  Default mask file loaded!")
 
 
-    if mask is None:
+    if mask is None and not silent:
         print("No mask used!")
 
     return mask
     
 
-def loadMask(mask_file):
+def loadMask(mask_file, silent=False):
     """ Load the mask image. """
 
     # If there is no mask file
@@ -178,7 +181,8 @@ def loadMask(mask_file):
             mask = loadImage(mask_file, flatten=0)
         
     except:
-        print("WARNING! The mask file could not be loaded! File path: {:s}".format(mask_file))
+        if not silent:
+            print("WARNING! The mask file could not be loaded! File path: {:s}".format(mask_file))
         return None
 
     # Convert the RGB image to one channel image (if not already one channel)

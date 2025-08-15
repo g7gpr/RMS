@@ -18,9 +18,12 @@ from __future__ import print_function, division, absolute_import
 
 import os
 import shutil
+import gc
 from curses.ascii import isalnum
 
 import cv2
+from pip._internal import resolution
+
 import RMS.Formats.FFfits as FFfits
 import sqlite3
 import time
@@ -33,7 +36,7 @@ import subprocess
 import json
 import requests
 import tqdm
-from RMS.Astrometry.Conversions import latLonAlt2ECEF
+from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt
 from RMS.Routines.MaskImage import getMaskFile
 from RMS.Formats.Platepar import Platepar
 import RMS.ConfigReader as cr
@@ -47,6 +50,7 @@ USER_NAME = "analysis"
 STATION_COORDINATES_DICT = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
 STATIONS_DATA_DIR = "StationData"
 REMOTE_STATION_PROCESSED_DIR = "/home/$STATION/files/processed"
+WORKING_DIRECTORY = os.path.expanduser("~/RMS_data/Coverage")
 
 def retrieveBz2File(file_name, server):
 
@@ -1041,24 +1045,97 @@ def makeStationsInfoDict(config, stations_data_dir=STATIONS_DATA_DIR):
     stations_data_full_path = os.path.join(config.data_dir, stations_data_dir)
     stations_list = sorted(os.listdir(stations_data_full_path))
     for station in tqdm.tqdm(stations_list):
-        print("Loading {}".format(station))
+
         station_info_path = os.path.join(stations_data_full_path, station)
         config_path = os.path.join(station_info_path,".config")
         if os.path.exists(config_path):
             config = cr.parse(os.path.join(station_info_path,".config"))
         else:
-            print("No config file found for {}".format(station))
+
             continue
         lat_rads, lon_rads, ele_m = np.radians(config.latitude), np.radians(config.longitude), config.elevation
         x, y, z = latLonAlt2ECEF(lat_rads, lon_rads, ele_m)
-        mask_struct = getMaskFile(station_info_path, config)
+        mask_struct = getMaskFile(station_info_path, config, silent=True)
         pp = Platepar()
         pp.read(os.path.join(station_info_path, config.platepar_name))
-        stations_info_dict[station.lower()] =    {'ecef' : (x, y, z),
+        stations_info_dict[station.lower()] =    {'ecef' : (int(x), int(y), int(z)),
                                                   'geo': {'lat_rads': lat_rads, 'lon_rads': lon_rads, 'ele_m': ele_m},
                                                   'pp': pp,
                                                   'mask': mask_struct}
+
     return stations_info_dict
+
+def filterPointsByElevation(points_list, min_ele, max_ele):
+
+    points_filtered_by_elevation = []
+    for point in points_list:
+        lat_rads, lon_rads, alt = ecef2LatLonAlt(point[0], point[1], point[2])
+        if min_ele < alt < max_ele:
+            points_filtered_by_elevation.append(point)
+
+    return points_filtered_by_elevation
+
+def roundList(list, resolution_m):
+
+    output_list = []
+
+    for point in list:
+        output_coord = []
+        for coord in point:
+            output_coord.append(round(coord / resolution_m) * resolution_m)
+        output_list.append(output_coord)
+
+    return output_list
+
+def makeECEFPointListAroundStations(station_info_dict, max_distance_to_station_m, resolution_m, min_ele_m=20000, max_ele_m=100000):
+
+
+    if not len(station_info_dict):
+        return []
+
+    # Compute a list of offsets to apply to each station - do this only once and reuse
+    offsets_list = np.arange(0 - max_distance_to_station_m, 0 + max_distance_to_station_m + resolution_m,
+                                       resolution_m)
+    # Make a cube
+
+    x_list, y_list, z_list = np.meshgrid(offsets_list, offsets_list, offsets_list, indexing='ij')
+    del offsets_list
+    gc.collect()
+    local_points_cube = np.vstack([x_list.ravel(), y_list.ravel(), z_list.ravel()]).T
+    del x_list, y_list, z_list
+    gc.collect()
+    # Trim away anything outside of the sphere of max distance
+    points_template = local_points_cube[np.linalg.norm(local_points_cube, axis=1) <= max_distance_to_station_m]
+    del local_points_cube
+    gc.collect()
+
+    # Create a list of points for each station
+    combined_points_array = np.empty((0,3))
+    for station in tqdm.tqdm(station_info_dict):
+
+        station_ecef = station_info_dict[station]['ecef']
+
+        # create local points by shifting template by station origin
+        local_points = points_template + station_ecef
+
+        # Combine with points found so far
+        combined_points_array = np.vstack([ np.array(filterPointsByElevation(local_points, min_ele_m, max_ele_m)), combined_points_array])
+
+        # Round to resolution and force to integers for speed (not sure if this applies in python)
+        indices = (combined_points_array / resolution_m).round().astype(int)
+
+        # Remove duplicates
+        combined_points_array = np.array((list(set([tuple(row) for row in indices])))) * resolution_m
+
+    return combined_points_array
+
+
+def makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m = 100000, max_distance_to_station_m=500000):
+
+
+    ecef_point_array_around_stations = makeECEFPointListAroundStations(station_info_dict, max_distance_to_station_m, resolution_m, min_ele_m=min_ele_m, max_ele_m=max_ele_m)
+
+    return ecef_point_array_around_stations
 
 if __name__ == "__main__":
 
@@ -1067,10 +1144,18 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="""Compute coverage quality of the GMN \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
+
     cwd = os.getcwd()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
 
-    station_list = getStationList()
-    makeConfigPlateParMaskLib(config, station_list)
+    mkdirP(WORKING_DIRECTORY)
+    #station_list = getStationList()
+    #makeConfigPlateParMaskLib(config, station_list)
     station_info_dict = makeStationsInfoDict(config)
+    ecef_point_list = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=5000)
+
+    print("Making array of coordinates at resolution {}km around {} stations".format(resolution_m, resolution_m / 1000))
+    ecef_array_full_path = os.path.join(WORKING_DIRECTORY, "ecef_point_array_around_stations.npy")
+    np.save(ecef_array_full_path, ecef_point_list)
+
     pass
