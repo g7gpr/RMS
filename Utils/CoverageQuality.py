@@ -1185,7 +1185,9 @@ def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
 
 
     jd = 2451545
+    mask, i = np.zeros(len(vecs_normalised_array), dtype=bool), 0
     for vec_norm, station in zip(vecs_normalised_array, station_name_list):
+
         station_info = station_info_dict[station]
         pp = station_info['pp']
         mask_struct = station_info['mask']
@@ -1194,26 +1196,29 @@ def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
         station_ecef = station_info['ecef']
         ele_m = station_info['geo']['ele_m']
 
+
+
         check_point_az_deg, check_point_alt_deg = ECEF2AltAz(station_ecef, station_ecef + vec_norm)
         check_point_ra_deg, check_point_dec_deg = altAz2RADec(check_point_az_deg, check_point_alt_deg, jd, lat_degs, lon_degs)
         fov_ra, fov_dec = altAz2RADec(pp.az_centre, pp.alt_centre, jd, lat_degs, lon_degs)
-        fov_vect = raDec2Vector(fov_ra, fov_dec)
         angular_separation = angularSeparationDeg(fov_ra, fov_dec, check_point_ra_deg, check_point_dec_deg)
-
-
 
         if angular_separation > np.hypot(pp.fov_h, pp.fov_v ) / 2:
             visible = False
         else:
             x_arr, y_arr = raDecToXYPP(np.array([fov_ra]), np.array([fov_dec]), np.array([jd]), pp)
-            print(angular_separation, x_arr, y_arr)
+            print(pp.station_code, angular_separation, x_arr[0], y_arr[0])
+            x, y = int(x_arr[0]), int(y_arr[0])
 
+            if mask_struct.img[y, x] == 255:
+                visible = True
+            else:
+                visible = False
 
+        mask[i] = visible
+        i += 1
 
-        pass
-
-
-    return
+    return mask
 
 def computeAngles(station_info_dict, mapping_list):
 
@@ -1225,8 +1230,12 @@ def computeAngles(station_info_dict, mapping_list):
         vectors_array = observed_point_array - station_ecef_array  # shape (N, 3)
         normalisation_array = np.linalg.norm(vectors_array, axis=1, keepdims=True)
         vecs_normalized_array = vectors_array / normalisation_array  # shape (N, 3)
-        checkVisible(station_info_dict, vecs_normalized_array, station_name_list)
+        visible_mask = checkVisible(station_info_dict, vecs_normalized_array, station_name_list)
 
+
+        station_ecef_array = station_ecef_array[visible_mask]
+        station_name_list = station_name_list[visible_mask]
+        vecs_normalized_array = vecs_normalized_array[visible_mask]
 
         # Dot product matrix
         dot_matrix = np.dot(vecs_normalized_array, vecs_normalized_array.T)  # shape (N, N)
