@@ -24,7 +24,8 @@ from curses.ascii import isalnum
 from scipy.constants import electron_mass
 from scipy.spatial import cKDTree
 import pickle
-from RMS.Astrometry.Conversions import ECEF2AltAz, altAz2RADec
+
+from RMS.Astrometry.Conversions import ECEF2AltAz, altAz2RADec, raDec2Vector
 import cv2
 from pip._internal import resolution
 
@@ -40,7 +41,8 @@ import subprocess
 import json
 import requests
 import tqdm
-from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, ECEF2AltAz, altAz2RADec
+from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, ECEF2AltAz, altAz2RADec, vector2RaDec, J2000_JD
+from RMS.Math import angularSeparationVect, angularSeparationDeg
 from RMS.Routines.MaskImage import getMaskFile
 from RMS.Formats.Platepar import Platepar
 import RMS.ConfigReader as cr
@@ -1066,7 +1068,7 @@ def makeStationsInfoDict(config, stations_data_dir=STATIONS_DATA_DIR):
         x, y, z = latLonAlt2ECEF(lat_rads, lon_rads, ele_m)
         mask_struct = getMaskFile(station_info_path, config, silent=True)
         pp = Platepar()
-        pp_full_path = os.path.join(station_info_path, config.platepar_name)
+        pp_full_path = os.path.join(station_info_path, config.platepar_name, config.platepar_name)
         if os.path.exists(pp_full_path):
             print(pp_full_path)
         else:
@@ -1180,19 +1182,31 @@ def addStationsToECEFArray(ecef_point_array, station_info_dict, radius=50000):
 def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
 
 
-    jd = 2460903
+    jd = 2451545
     for vec_norm, station in zip(vecs_normalised_array, station_name_list):
         station_info = station_info_dict[station]
         pp = station_info['pp']
-        print(pp.station_code)
         mask_struct = station_info['mask']
         lat_degs = np.degrees(station_info['geo']['lat_rads'])
         lon_degs = np.degrees(station_info['geo']['lon_rads'])
         station_ecef = station_info['ecef']
         ele_m = station_info['geo']['ele_m']
-        az_deg, alt_deg = ECEF2AltAz(station_ecef, station_ecef + vec_norm)
 
-        ra_deg, dec_deg = altAz2RADec(az_deg, alt_deg, jd, lat_degs, lon_degs)
+        check_point_az_deg, check_point_alt_deg = ECEF2AltAz(station_ecef, station_ecef + vec_norm)
+        check_point_ra_deg, check_point_dec_deg = altAz2RADec(check_point_az_deg, check_point_alt_deg, jd, lat_degs, lon_degs)
+        fov_ra, fov_dec = altAz2RADec(pp.az_centre, pp.alt_centre, jd, lat_degs, lon_degs)
+        fov_vect = raDec2Vector(fov_ra, fov_dec)
+        angular_separation = angularSeparationDeg(fov_ra, fov_dec, check_point_ra_deg, check_point_dec_deg)
+        print(r, d)
+        print(check_point_ra_deg, check_point_dec_deg)
+        print(angular_separation)
+
+        if angular_separation > max(pp.fov_h, pp.fov_v ) / 2:
+            visible = False
+
+
+
+        print(angular_separation)
 
         pass
 
@@ -1239,22 +1253,22 @@ if __name__ == "__main__":
     ecef_array_path = os.path.join(WORKING_DIRECTORY, "ecef_point_array_around_stations.npy")
     ecef_point_to_camera_mapping_path = os.path.join(WORKING_DIRECTORY, "ecef_point_to_camera_mapping.pkl")
 
-    if True:
+    if False:
         station_list = getStationList()
         makeConfigPlateParMaskLib(config, station_list)
 
-    if True:
+    if False:
         station_info_dict = makeStationsInfoDict(config)
         with open(station_info_dict_path, 'wb') as f:
             pickle.dump(station_info_dict, f)
 
     station_info_dict = pickle.load(open(station_info_dict_path, 'rb'))
 
-    if True:
+    if False:
         ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=20000)
         np.save(ecef_array_path, ecef_point_array)
 
-    if Trueg:
+    if True:
         ecef_point_array = np.load(ecef_array_path)
         ecef_point_to_camera_mapping = addStationsToECEFArray(ecef_point_array, station_info_dict, radius=500000)
 
