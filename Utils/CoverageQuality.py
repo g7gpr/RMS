@@ -1024,7 +1024,10 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
             mkdirP(extraction_dir)
             extractBz2(t, extraction_dir)
 
-            if os.path.exists(extracted_config_path) and os.path.exists(extracted_config_path) and os.path.exists(extracted_mask_path):
+            if os.path.exists(extracted_config_path) and \
+               os.path.exists(extracted_platepar_path) and \
+               os.path.exists(extracted_mask_path):
+
                 mkdirP(local_platepar_path)
                 shutil.move(extracted_config_path, local_config_path)
                 shutil.move(extracted_platepar_path, local_platepar_path)
