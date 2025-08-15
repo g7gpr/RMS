@@ -16,7 +16,7 @@
 
 from __future__ import print_function, division, absolute_import
 
-
+import matplotlib.pyplot as plt
 import os
 import socket
 from curses.ascii import isalnum
@@ -45,7 +45,7 @@ from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, ECEF2AltA
 from RMS.Math import angularSeparationVect, angularSeparationDeg
 from RMS.Routines.MaskImage import getMaskFile
 from RMS.Formats.Platepar import Platepar
-from RMS.Astrometry.ApplyAstrometry import raDecToXYPP
+from RMS.Astrometry.ApplyAstrometry import raDecToXYPP, geoHt2XY, xyHt2Geo, xyToRaDecPP
 
 import RMS.ConfigReader as cr
 import gc
@@ -54,7 +54,7 @@ import shutil
 
 from RMS.Misc import mkdirP
 from RMS.Formats.FTPdetectinfo import readFTPdetectinfo
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
 
 REMOTE_SERVER = 'gmn.uwo.ca'
 USER_NAME = "analysis"
@@ -62,6 +62,8 @@ STATION_COORDINATES_DICT = "https://globalmeteornetwork.org/data/kml_fov/GMN_sta
 STATIONS_DATA_DIR = "StationData"
 REMOTE_STATION_PROCESSED_DIR = "/home/$STATION/files/processed"
 WORKING_DIRECTORY = os.path.expanduser("~/RMS_data/Coverage")
+
+JD_2000 = 2451545.0
 
 def retrieveBz2File(file_name, server):
 
@@ -1184,7 +1186,8 @@ def addStationsToECEFArray(ecef_point_array, station_info_dict, radius=50000):
 def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
 
 
-    jd = 2451545
+
+    x_list, y_list = [], []
     mask, i = np.zeros(len(vecs_normalised_array), dtype=bool), 0
     for vec_norm, station in zip(vecs_normalised_array, station_name_list):
 
@@ -1194,58 +1197,267 @@ def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
         lat_degs = np.degrees(station_info['geo']['lat_rads'])
         lon_degs = np.degrees(station_info['geo']['lon_rads'])
         station_ecef = station_info['ecef']
-        ele_m = station_info['geo']['ele_m']
 
 
 
         check_point_az_deg, check_point_alt_deg = ECEF2AltAz(station_ecef, station_ecef + vec_norm)
-        check_point_ra_deg, check_point_dec_deg = altAz2RADec(check_point_az_deg, check_point_alt_deg, jd, lat_degs, lon_degs)
-        fov_ra, fov_dec = altAz2RADec(pp.az_centre, pp.alt_centre, jd, lat_degs, lon_degs)
+        check_point_ra_deg, check_point_dec_deg = altAz2RADec(check_point_az_deg, check_point_alt_deg, JD_2000, lat_degs, lon_degs)
+        fov_ra, fov_dec = altAz2RADec(pp.az_centre, pp.alt_centre, JD_2000, lat_degs, lon_degs)
         angular_separation = angularSeparationDeg(fov_ra, fov_dec, check_point_ra_deg, check_point_dec_deg)
 
         if angular_separation > np.hypot(pp.fov_h, pp.fov_v ) / 2:
             visible = False
         else:
-            x_arr, y_arr = raDecToXYPP(np.array([fov_ra]), np.array([fov_dec]), np.array([jd]), pp)
-            print(pp.station_code, angular_separation, x_arr[0], y_arr[0])
-            x, y = int(x_arr[0]), int(y_arr[0])
+            point = station_ecef + vec_norm * 1000
+            point_lat_rads, point_lon_rads, point_alt_m  = ecef2LatLonAlt(point[0], point[1], point[2])
+            point_lat_degs, point_lon_degs = np.degrees(point_lat_rads), np.degrees(point_lon_rads)
+            #print("Notional point location = {:.6f}, {:.6f}, {:.1f}".format(point_lat_degs, point_lon_degs, point_alt_m))
+            #print("Station at                {:.6f}, {:.6f}, {:.1f}".format(pp.lat, pp.lon, pp.elev))
 
-            if mask_struct.img[y, x] == 255:
+            x, y = geoHt2XY(pp, point_lat_degs, point_lon_degs, point_alt_m)
+            x, y = int(x), int(y)
+
+            #print("Angular separation {:.2f} x,y:{},{} ".format(angular_separation, x, y))
+
+
+            x, y = geoHt2XY(pp, point_lat_degs, point_lon_degs, point_alt_m)
+            x, y = int(x), int(y)
+
+            #print("Angular separation {:.2f} x,y:{},{} ".format(angular_separation, x, y))
+
+            # Get mask resolution
+            if mask_struct is None:
                 visible = True
             else:
-                visible = False
+                y_res, x_res = (np.array((mask_struct.img)).shape)
+                if 0 < x < x_res and 0 < y < y_res:
+                    if mask_struct.img[int(y), int(x)] == 255:
+                        visible = True
+                    else:
+                        visible = False
+                else:
+                    visible = False
+
 
         mask[i] = visible
         i += 1
+        if visible:
+            x_list.append(x)
+            y_list.append(y)
 
-    return mask
 
-def computeAngles(station_info_dict, mapping_list):
+    return mask, x_list, y_list
+
+
+def ray_intersection_point(c1, d1, c2, d2):
+    """
+    Find closest point between two rays (least-squares intersection).
+
+    Parameters:
+        c1, c2: (3,) camera positions
+        d1, d2: (3,) unit direction vectors
+
+    Returns:
+        p: (3,) estimated intersection point
+        d1_len, d2_len: distances from each camera to p
+    """
+    d1 = d1 / np.linalg.norm(d1)
+    d2 = d2 / np.linalg.norm(d2)
+    w0 = c1 - c2
+
+    a = np.dot(d1, d1)
+    b = np.dot(d1, d2)
+    c = np.dot(d2, d2)
+    d = np.dot(d1, w0)
+    e = np.dot(d2, w0)
+
+    denom = a * c - b * b
+    if denom == 0:
+        # Parallel rays — return midpoint between origins
+        p = (c1 + c2) / 2
+    else:
+        s = (b * e - c * d) / denom
+        t = (a * e - b * d) / denom
+        p1 = c1 + s * d1
+        p2 = c2 + t * d2
+        p = (p1 + p2) / 2  # midpoint of closest approach
+
+    return p, np.linalg.norm(p - c1), np.linalg.norm(p - c2)
+
+def asymmetric_cone_volume(r, h):
+    """Volume of a narrow cone: V = (π/3) * r² * h"""
+    return (np.pi / 3) * r**2 * h
+
+
+def pairwise_cone_volumes_actual(camera_positions, pixel_directions, angular_fovs, resolutions):
+    """
+    Compute pairwise cone volumes using actual ray intersection geometry.
+
+    Parameters:
+        camera_positions: (N, 3)
+        pixel_directions: (N, 3)
+        angular_fovs: (N,) in radians
+        resolutions: (N,) pixel counts
+
+    Returns:
+        volume_matrix: (N, N) symmetric matrix of combined cone volumes
+    """
+    N = len(camera_positions)
+    dirs = pixel_directions / np.linalg.norm(pixel_directions, axis=1, keepdims=True)
+    cone_angles = angular_fovs / resolutions
+
+    volume_matrix = np.zeros((N, N))
+
+    for i in range(N):
+        for j in range(i + 1, N):
+            p, d_i, d_j = ray_intersection_point(camera_positions[i], dirs[i],
+                                                 camera_positions[j], dirs[j])
+
+            r_i = d_i * np.tan(cone_angles[i])
+            r_j = d_j * np.tan(cone_angles[j])
+
+            v_i = asymmetric_cone_volume(r_i, d_i)
+            v_j = asymmetric_cone_volume(r_j, d_j)
+
+            volume = min(v_i, v_j)  # conservative estimate
+            volume_matrix[i, j] = volume
+            volume_matrix[j, i] = volume
+
+    return volume_matrix
+
+
+import numpy as np
+
+def intersectionOfRays(o1, d1, o2, d2):
+
+    """
+    Compute the closest point between two rays defined by origins o1, o2 and unit directions d1, d2.
+    Returns the midpoint of the shortest segment connecting the two rays.
+    """
+    # Ensure directions are unit vectors
+    d1 = d1 / np.linalg.norm(d1)
+    d2 = d2 / np.linalg.norm(d2)
+
+    # Cross product to get normal vector
+    n = np.cross(d1, d2)
+    n_norm = np.linalg.norm(n)
+
+    if n_norm < 1e-8:
+        # Rays are nearly parallel; return midpoint between origins
+        return (o1 + o2) / 2
+
+    # Matrix system to solve for scalars along d1 and d2
+    A = np.stack([d1, -d2, n], axis=1)
+    b = o2 - o1
+    try:
+        t = np.linalg.lstsq(A, b, rcond=None)[0]
+        p1 = o1 + t[0] * d1
+        p2 = o2 + t[1] * d2
+        return (p1 + p2) / 2
+    except np.linalg.LinAlgError:
+        return (o1 + o2) / 2
+
+def pairwiseTriangulation(origins_ecef, direction_unit_vectors):
+    """
+    Given arrays of origins and unit directions, compute closest intersection points for all unique pairs.
+    Returns a list of (i, j, point) tuples.
+    """
+    n = len(origins_ecef)
+    results = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            pt = intersectionOfRays(origins_ecef[i], direction_unit_vectors[i], origins_ecef[j], direction_unit_vectors[j])
+            results.append((i, j, pt))
+    return results
+
+
+def getCalculatedPositionFromImageCoordinates(station_info_dict, station_name_list, x_list, y_list):
+
+    origin_list, vector_list = [], []
+    for station_name, x, y in zip(station_name_list, x_list, y_list):
+        station_info = station_info_dict[station_name]
+        pp = station_info["pp"]
+        print(pp.station_code)
+        _, ra, dec, _ = xyToRaDecPP(np.array([JD_2000]), np.array([x]), np.array([y]), np.array([1]), pp,   jd_time=True)
+        print(ra, dec)
+
+        vector = raDec2Vector(ra, dec)
+        az, alt = ECEF2AltAz(station_info['ecef'],np.array(station_info['ecef']) - vector)
+        print("{} {}".format(np.degrees(station_info['geo']['lat_rads']), np.degrees(station_info['geo']['lon_rads'])))
+        origin_list.append(np.array(station_info['ecef']))
+        vector_list.append(vector)
+
+    calculated_position_list = pairwiseTriangulation(origin_list, vector_list)
+    return calculated_position_list, vector_list
+
+def computeAnglesPerPoint(station_info_dict, mapping_list):
 
     mapping_list_with_angles=[]
 
-
-    for observed_point_array, station_ecef_array, station_name_list in mapping_list:
+    output_mapping_list = []
+    for observed_point_array, station_ecef_array, station_name_list in tqdm.tqdm(mapping_list):
         # Vectors from stations to reference_point
         vectors_array = observed_point_array - station_ecef_array  # shape (N, 3)
         normalisation_array = np.linalg.norm(vectors_array, axis=1, keepdims=True)
         vecs_normalized_array = vectors_array / normalisation_array  # shape (N, 3)
-        visible_mask = checkVisible(station_info_dict, vecs_normalized_array, station_name_list)
+        visible_mask, x_list, y_list = checkVisible(station_info_dict, vecs_normalized_array, station_name_list)
 
-
+        print(len(x_list), len(y_list), len(visible_mask))
         station_ecef_array = station_ecef_array[visible_mask]
         station_name_list = station_name_list[visible_mask]
         vecs_normalized_array = vecs_normalized_array[visible_mask]
+
+        if not len(station_name_list):
+            continue
 
         # Dot product matrix
         dot_matrix = np.dot(vecs_normalized_array, vecs_normalized_array.T)  # shape (N, N)
         dot_matrix = np.clip(dot_matrix, -1.0, 1.0)  # numerical safety
 
-        # Angle matrix in degrees
-        angle_matrix = np.sin(np.arccos(dot_matrix))  # shape (N, N)
-        pass
+        # Angle and Score matrix in sin(degrees)
+        angle_matrix = np.degrees(np.arccos(dot_matrix))
+        sin_score_matrix = np.sin(np.arccos(dot_matrix))  # shape (N, N)
+        calculated_position_list, vector_list = getCalculatedPositionFromImageCoordinates(station_info_dict, station_name_list, x_list, y_list)
+        print(vecs_normalized_array)
+        print(vector_list)
+        print(observed_point_array)
+        print(calculated_position_list[0][2])
+        if len(station_name_list) > 3 and False:
+            lat_rads, lon_rads, alt_m = ecef2LatLonAlt(observed_point_array[0], observed_point_array[1], observed_point_array[2])
+            #print("Stations {}".format(station_name_list))
+            #print("lat {:.4f} lon {:.4f} alt:{:.0f}".format(np.degrees(lat_rads), np.degrees(lon_rads), alt_m))
 
-    return mapping_list_with_angles
+            if False:
+                # Create scatter plot
+
+                lats, lons, labs = [], [], []
+                lats.append(np.degrees(lat_rads))
+                lons.append(np.degrees(lon_rads))
+                labs.append("Point")
+                for station in station_name_list:
+                    station_info = station_info_dict[station]
+                    lats.append(np.degrees(station_info['geo']['lat_rads']))
+                    lons.append(np.degrees(station_info['geo']['lon_rads']))
+                    labs.append("{} {}".format(len(labs) - 1, station))
+
+                plt.figure(figsize=(8, 6))
+                plt.scatter(lons, lats, c='blue', marker='o')
+                for lon, lat, label in zip(lons, lats, labs):
+                    plt.text(lon+0.01, lat+0.01, label, fontsize=9)  # Offset to avoid overlap
+
+                # Label axes
+                plt.xlabel("Longitude")
+                plt.ylabel("Latitude")
+                plt.title("Scatter Plot of Latitude and Longitude")
+
+                plt.grid(True)
+                plt.show()
+                plt.close()
+                pass
+
+        output_mapping_list.append([observed_point_array, station_ecef_array, station_name_list, angle_matrix, sin_score_matrix])
+
+    return output_mapping_list
 
 if __name__ == "__main__":
 
@@ -1263,6 +1475,7 @@ if __name__ == "__main__":
     station_info_dict_path = os.path.join(WORKING_DIRECTORY, "station_info_dict_path.pkl")
     ecef_array_path = os.path.join(WORKING_DIRECTORY, "ecef_point_array_around_stations.npy")
     ecef_point_to_camera_mapping_path = os.path.join(WORKING_DIRECTORY, "ecef_point_to_camera_mapping.pkl")
+    station_point_angle_score_mapping_list_path = os.path.join(WORKING_DIRECTORY, "station_point_angle_score_mapping_list.pkl")
 
     if False:
         station_list = getStationList()
@@ -1276,10 +1489,10 @@ if __name__ == "__main__":
     station_info_dict = pickle.load(open(station_info_dict_path, 'rb'))
 
     if False:
-        ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=20000)
+        ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=50000)
         np.save(ecef_array_path, ecef_point_array)
 
-    if True:
+    if False:
         ecef_point_array = np.load(ecef_array_path)
         ecef_point_to_camera_mapping = addStationsToECEFArray(ecef_point_array, station_info_dict, radius=500000)
 
@@ -1290,8 +1503,9 @@ if __name__ == "__main__":
     ecef_point_to_camera_mapping = pickle.load(open(ecef_point_to_camera_mapping_path, 'rb'))
 
     if True:
-        computeAngles(station_info_dict, ecef_point_to_camera_mapping)
+        station_point_angle_score_mapping_list = computeAnglesPerPoint(station_info_dict, ecef_point_to_camera_mapping)
 
-
+    with open(station_point_angle_score_mapping_list_path, 'wb') as f:
+        pickle.dump(station_point_angle_score_mapping_list, f)
 
     pass
