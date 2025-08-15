@@ -1179,18 +1179,30 @@ if __name__ == "__main__":
     config = cr.parse(os.path.join(os.getcwd(),".config"))
 
     mkdirP(WORKING_DIRECTORY)
-    #station_list = getStationList()
-    #makeConfigPlateParMaskLib(config, station_list)
-    station_info_dict = makeStationsInfoDict(config)
 
+    station_info_dict_path = os.path.join(WORKING_DIRECTORY, "station_info_dict_path.pkl")
+    ecef_array_path = os.path.join(WORKING_DIRECTORY, "ecef_point_array_around_stations.npy")
+    ecef_point_to_camera_mapping_path = os.path.join(WORKING_DIRECTORY, "ecef_point_to_camera_mapping.pkl")
 
-    ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=2500)
-    ecef_array_full_path = os.path.join(WORKING_DIRECTORY, "ecef_point_array_around_stations.npy")
-    np.save(ecef_array_full_path, ecef_point_array)
-    ecef_point_array = np.load(ecef_array_full_path)
+    if True:
+        station_list = getStationList()
+        makeConfigPlateParMaskLib(config, station_list)
+
+    if True:
+        station_info_dict = makeStationsInfoDict(config)
+        with open(station_info_dict_path, 'wb') as f:
+            pickle.dump(station_info_dict, f)
+
+    station_info_dict = pickle.load(open(station_info_dict_path, 'rb'))
+
+    if True:
+        ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=2500)
+        np.save(ecef_array_path, ecef_point_array)
+
+    ecef_point_array = np.load(ecef_array_path)
     ecef_point_to_camera_mapping = addStationsToECEFArray(ecef_point_array, station_info_dict, radius=500000)
 
-    ecef_point_to_camera_mapping_path = os.path.join(WORKING_DIRECTORY, "ecef_point_to_camera_mapping.pkl")
+
     with open(ecef_point_to_camera_mapping_path, 'wb') as f:
         pickle.dump(ecef_point_to_camera_mapping, f)
 
