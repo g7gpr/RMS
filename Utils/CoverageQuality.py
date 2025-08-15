@@ -1096,23 +1096,28 @@ def makeECEFPointListAroundStations(station_info_dict, max_distance_to_station_m
     # Compute a list of offsets to apply to each station - do this only once and reuse
     offsets_list = np.arange(0 - max_distance_to_station_m, 0 + max_distance_to_station_m + resolution_m,
                                        resolution_m)
-    # Make a cube
-
+    # Make the vertices
     x_list, y_list, z_list = np.meshgrid(offsets_list, offsets_list, offsets_list, indexing='ij')
-    del offsets_list
-    gc.collect()
+
+    # Fill the cube
     local_points_cube = np.vstack([x_list.ravel(), y_list.ravel(), z_list.ravel()]).T
-    del x_list, y_list, z_list
-    gc.collect()
-    # Trim away anything outside of the sphere of max distance
+
+    # Trim away anything outside the sphere of max distance - this will leave some points with negative elevations for
+    # some stations
+
     points_template = local_points_cube[np.linalg.norm(local_points_cube, axis=1) <= max_distance_to_station_m]
-    del local_points_cube
+
+    # Free up some memory
+    del x_list, y_list, z_list, offsets_list, local_points_cube
     gc.collect()
 
-    # Create a list of points for each station
+    # Create a list of points within elevation range for all stations, without duplicates
+
     combined_points_array = np.empty((0,3))
+
     for station in tqdm.tqdm(station_info_dict):
 
+        # Get the ecef information for this station
         station_ecef = station_info_dict[station]['ecef']
 
         # create local points by shifting template by station origin
@@ -1132,7 +1137,7 @@ def makeECEFPointListAroundStations(station_info_dict, max_distance_to_station_m
 
 def makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m = 100000, max_distance_to_station_m=500000):
 
-
+    print("Making array of coordinates at resolution {}km around {} stations".format(resolution_m, len(station_info_dict)))
     ecef_point_array_around_stations = makeECEFPointListAroundStations(station_info_dict, max_distance_to_station_m, resolution_m, min_ele_m=min_ele_m, max_ele_m=max_ele_m)
 
     return ecef_point_array_around_stations
@@ -1149,12 +1154,13 @@ if __name__ == "__main__":
     config = cr.parse(os.path.join(os.getcwd(),".config"))
 
     mkdirP(WORKING_DIRECTORY)
-    #station_list = getStationList()
-    #makeConfigPlateParMaskLib(config, station_list)
+    station_list = getStationList()
+    makeConfigPlateParMaskLib(config, station_list)
     station_info_dict = makeStationsInfoDict(config)
-    ecef_point_list = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=5000)
 
-    print("Making array of coordinates at resolution {}km around {} stations".format(resolution_m, resolution_m / 1000))
+    ecef_point_list = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=10000)
+
+
     ecef_array_full_path = os.path.join(WORKING_DIRECTORY, "ecef_point_array_around_stations.npy")
     np.save(ecef_array_full_path, ecef_point_list)
 
