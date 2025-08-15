@@ -1200,16 +1200,15 @@ def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
         fov_vect = raDec2Vector(fov_ra, fov_dec)
         angular_separation = angularSeparationDeg(fov_ra, fov_dec, check_point_ra_deg, check_point_dec_deg)
 
-        print(check_point_ra_deg, check_point_dec_deg)
-        print(angular_separation)
 
-        if angular_separation > max(pp.fov_h, pp.fov_v ) / 2:
+
+        if angular_separation > np.hypot(pp.fov_h, pp.fov_v ) / 2:
             visible = False
+        else:
+            x_arr, y_arr = raDecToXYPP(np.array([fov_ra]), np.array([fov_dec]), np.array([jd]), pp)
+            print(angular_separation, x_arr, y_arr)
 
-        x_arr, y_arr = raDecToXYPP(np.array((fov_ra)), np.array((fov_dec)), np.array((jd)), pp)
 
-
-        print(x_arr, y_arr)
 
         pass
 
