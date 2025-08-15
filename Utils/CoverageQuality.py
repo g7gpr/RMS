@@ -19,7 +19,10 @@ from __future__ import print_function, division, absolute_import
 import os
 import shutil
 import gc
+import socket
 from curses.ascii import isalnum
+from scipy.spatial import cKDTree
+import pickle
 
 import cv2
 from pip._internal import resolution
@@ -58,7 +61,7 @@ def retrieveBz2File(file_name, server):
     return
 
 
-def lsRemote(host, username, port, remote_path):
+def lsRemote(host, username, port, remote_path, sock=None):
     """Return the files in a remote directory.
 
     Arguments:
@@ -73,7 +76,7 @@ def lsRemote(host, username, port, remote_path):
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # Accept unknown host keys
-    ssh.connect(hostname=host, port=port, username=username)
+    ssh.connect(hostname=host, port=port, username=username, sock=sock)
 
     try:
         sftp = ssh.open_sftp()
@@ -1001,6 +1004,8 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
                               remote_station_processed_dir=REMOTE_STATION_PROCESSED_DIR, host=REMOTE_SERVER, username=USER_NAME, port=22):
 
     stations_data_full_path = os.path.join(config.data_dir, stations_data_dir)
+
+
     for station in tqdm.tqdm(station_list):
         local_target = os.path.join(stations_data_full_path, station.lower())
 
@@ -1142,6 +1147,26 @@ def makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, reso
 
     return ecef_point_array_around_stations
 
+def addStationsToECEFArray(ecef_point_array, station_info_dict, radius=50000):
+
+
+    station_position_ecef_list, station_name_list = [], []
+    for station in station_info_dict:
+        station_ecef = station_info_dict[station]['ecef']
+        station_position_ecef_list.append(station_ecef)
+        station_name_list.append(station)
+
+    station_name_array = np.array((station_name_list))
+    station_position_ecef_array = np.array((station_position_ecef_list))
+    tree = cKDTree(station_position_ecef_array)
+    cameras_in_range = tree.query_ball_point(ecef_point_array, r=radius)
+
+    mapping = []
+    for i, indices in enumerate(cameras_in_range):
+        mapping.append((ecef_point_array[i], station_position_ecef_array[indices], station_name_array[indices]))
+
+    return mapping
+
 if __name__ == "__main__":
 
     import argparse
@@ -1154,14 +1179,20 @@ if __name__ == "__main__":
     config = cr.parse(os.path.join(os.getcwd(),".config"))
 
     mkdirP(WORKING_DIRECTORY)
-    station_list = getStationList()
-    makeConfigPlateParMaskLib(config, station_list)
+    #station_list = getStationList()
+    #makeConfigPlateParMaskLib(config, station_list)
     station_info_dict = makeStationsInfoDict(config)
 
-    ecef_point_list = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=10000)
 
-
+    ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=2500)
     ecef_array_full_path = os.path.join(WORKING_DIRECTORY, "ecef_point_array_around_stations.npy")
-    np.save(ecef_array_full_path, ecef_point_list)
+    np.save(ecef_array_full_path, ecef_point_array)
+    ecef_point_array = np.load(ecef_array_full_path)
+    ecef_point_to_camera_mapping = addStationsToECEFArray(ecef_point_array, station_info_dict, radius=500000)
+
+    ecef_point_to_camera_mapping_path = os.path.join(WORKING_DIRECTORY, "ecef_point_to_camera_mapping.pkl")
+    with open(ecef_point_to_camera_mapping_path, 'wb') as f:
+        pickle.dump(ecef_point_to_camera_mapping, f)
+
 
     pass
