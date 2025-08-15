@@ -1177,8 +1177,9 @@ def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
         mask_struct = station_info['mask']
         lat_rads = station_info['geo']['lat_rads']
         lon_rads = station_info['geo']['lon_rads']
+        station_ecef = station_info['ecef']
         ele_m = station_info['geo']['ele_m']
-        pass
+
 
 
     return
