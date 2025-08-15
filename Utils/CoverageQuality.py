@@ -16,6 +16,7 @@
 
 from __future__ import print_function, division, absolute_import
 
+
 import os
 import shutil
 import gc
@@ -25,7 +26,7 @@ from curses.ascii import isalnum
 from scipy.constants import electron_mass
 from scipy.spatial import cKDTree
 import pickle
-
+from RMS.Astrometry.Conversions import ECEF2AltAz, altAz2RADec
 import cv2
 from pip._internal import resolution
 
@@ -41,7 +42,7 @@ import subprocess
 import json
 import requests
 import tqdm
-from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt
+from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, ECEF2AltAz, altAz2RADec
 from RMS.Routines.MaskImage import getMaskFile
 from RMS.Formats.Platepar import Platepar
 import RMS.ConfigReader as cr
@@ -1040,7 +1041,7 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
                os.path.exists(extracted_platepar_path) and \
                os.path.exists(extracted_mask_path):
 
-                mkdirP(local_platepar_path)
+                mkdirP(local_target_full_path)
                 shutil.move(extracted_config_path, local_config_path)
                 shutil.move(extracted_platepar_path, local_platepar_path)
                 shutil.move(extracted_mask_path, local_mask_path)
@@ -1064,7 +1065,13 @@ def makeStationsInfoDict(config, stations_data_dir=STATIONS_DATA_DIR):
         x, y, z = latLonAlt2ECEF(lat_rads, lon_rads, ele_m)
         mask_struct = getMaskFile(station_info_path, config, silent=True)
         pp = Platepar()
-        pp.read(os.path.join(station_info_path, config.platepar_name))
+        pp_full_path = os.path.join(station_info_path, config.platepar_name)
+        if os.path.exists(pp_full_path):
+            print(pp_full_path)
+        else:
+            print("Path does not exist {}".format(pp_full_path))
+        pp.read(pp_full_path)
+        print(pp.station_code)
         stations_info_dict[station.lower()] =    {'ecef' : (int(x), int(y), int(z)),
                                                   'geo': {'lat_rads': lat_rads, 'lon_rads': lon_rads, 'ele_m': ele_m},
                                                   'pp': pp,
@@ -1171,15 +1178,22 @@ def addStationsToECEFArray(ecef_point_array, station_info_dict, radius=50000):
 
 def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
 
+
+    jd = 2460903
     for vec_norm, station in zip(vecs_normalised_array, station_name_list):
         station_info = station_info_dict[station]
         pp = station_info['pp']
+        print(pp.station_code)
         mask_struct = station_info['mask']
-        lat_rads = station_info['geo']['lat_rads']
-        lon_rads = station_info['geo']['lon_rads']
+        lat_degs = np.degrees(station_info['geo']['lat_rads'])
+        lon_degs = np.degrees(station_info['geo']['lon_rads'])
         station_ecef = station_info['ecef']
         ele_m = station_info['geo']['ele_m']
+        az_deg, alt_deg = ECEF2AltAz(station_ecef, station_ecef + vec_norm)
 
+        ra_deg, dec_deg = altAz2RADec(az_deg, alt_deg, jd, lat_degs, lon_degs)
+
+        pass
 
 
     return
@@ -1224,22 +1238,22 @@ if __name__ == "__main__":
     ecef_array_path = os.path.join(WORKING_DIRECTORY, "ecef_point_array_around_stations.npy")
     ecef_point_to_camera_mapping_path = os.path.join(WORKING_DIRECTORY, "ecef_point_to_camera_mapping.pkl")
 
-    if False:
+    if True:
         station_list = getStationList()
         makeConfigPlateParMaskLib(config, station_list)
 
-    if False:
+    if True:
         station_info_dict = makeStationsInfoDict(config)
         with open(station_info_dict_path, 'wb') as f:
             pickle.dump(station_info_dict, f)
 
     station_info_dict = pickle.load(open(station_info_dict_path, 'rb'))
 
-    if False:
+    if True:
         ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=20000)
         np.save(ecef_array_path, ecef_point_array)
 
-    if False:
+    if True:
         ecef_point_array = np.load(ecef_array_path)
         ecef_point_to_camera_mapping = addStationsToECEFArray(ecef_point_array, station_info_dict, radius=500000)
 
