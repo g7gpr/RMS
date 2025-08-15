@@ -18,8 +18,6 @@ from __future__ import print_function, division, absolute_import
 
 
 import os
-import shutil
-import gc
 import socket
 from curses.ascii import isalnum
 
@@ -46,6 +44,9 @@ from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, ECEF2AltA
 from RMS.Routines.MaskImage import getMaskFile
 from RMS.Formats.Platepar import Platepar
 import RMS.ConfigReader as cr
+import gc
+import shutil
+
 
 from RMS.Misc import mkdirP
 from RMS.Formats.FTPdetectinfo import readFTPdetectinfo
@@ -1253,7 +1254,7 @@ if __name__ == "__main__":
         ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=20000)
         np.save(ecef_array_path, ecef_point_array)
 
-    if True:
+    if Trueg:
         ecef_point_array = np.load(ecef_array_path)
         ecef_point_to_camera_mapping = addStationsToECEFArray(ecef_point_array, station_info_dict, radius=500000)
 
