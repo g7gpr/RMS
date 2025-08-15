@@ -1204,6 +1204,7 @@ def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
         if angular_separation > max(pp.fov_h, pp.fov_v ) / 2:
             visible = False
 
+        radec
 
 
         print(angular_separation)
