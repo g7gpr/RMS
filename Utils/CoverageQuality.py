@@ -28,6 +28,7 @@ from scipy.constants import electron_mass
 from scipy.spatial import cKDTree
 import pickle
 
+from mpl_toolkits.mplot3d import Axes3D
 from RMS.Astrometry.Conversions import ECEF2AltAz, altAz2RADec, raDec2Vector, raDec2AltAz, AER2ECEF
 import cv2
 from pip._internal import resolution
@@ -45,7 +46,7 @@ import json
 import requests
 import tqdm
 from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, ECEF2AltAz, altAz2RADec, vector2RaDec, J2000_JD, trueRaDec2ApparentAltAz
-from RMS.Math import angularSeparationVect, angularSeparationDeg, vectNorm
+from RMS.Math import angularSeparationVect, angularSeparationDeg, vectNorm, dimHypot
 from RMS.Routines.MaskImage import getMaskFile
 from RMS.Formats.Platepar import Platepar
 from RMS.Astrometry.ApplyAstrometry import raDecToXYPP, geoHt2XY, xyHt2Geo, xyToRaDecPP
@@ -65,6 +66,7 @@ STATION_COORDINATES_DICT = "https://globalmeteornetwork.org/data/kml_fov/GMN_sta
 STATIONS_DATA_DIR = "StationData"
 REMOTE_STATION_PROCESSED_DIR = "/home/$STATION/files/processed"
 WORKING_DIRECTORY = os.path.expanduser("~/RMS_data/Coverage")
+CHARTS = "charts"
 
 
 
@@ -1373,52 +1375,133 @@ def pairwiseTriangulationError(origins_ecef, direction_unit_vectors, expected_re
     return calculated_position_list, error_arr
 
 
-def getCalculatedPositionErrorFromImageCoordinates(station_info_dict, station_name_list, x_list, y_list, vecs_normalised_array, observed_point_array):
+def getCalculatedPositionErrorFromImageCoordinates(station_info_dict, station_name_list, x_list, y_list, vecs_normalised_array, observed_point_array, iterations=100):
 
-    origin_list, vector_list = [], []
-    for station_name, x, y, v in zip(station_name_list, x_list, y_list, vecs_normalised_array):
-        station_info = station_info_dict[station_name]
-        pp = station_info["pp"]
-        print("Station at : Lat {}, Lon {}".format(np.degrees(station_info['geo']["lat_rads"]), np.degrees(station_info['geo']["lon_rads"])))
-        print("Station ecef {}".format(station_info["ecef"]))
-        calculate_station_ecef = latLonAlt2ECEF(station_info['geo']["lat_rads"], station_info['geo']["lon_rads"], pp.elev)
-        print("Station ecef {}".format(calculate_station_ecef))
+    error_matrix_list = []
+    for i in range(iterations):
 
-        print("Point at {}".format(observed_point_array))
-        vector_station_to_point = vectNorm(observed_point_array - station_info['ecef'])
-        print("Known normalised vector station to point      :{}".format(vector_station_to_point))
+        origin_list, vector_list = [], []
+        for station_name, x, y, v in zip(station_name_list, x_list, y_list, vecs_normalised_array):
+            # Populate the origin list entry
+            station_info = station_info_dict[station_name]
+            origin_list.append(np.array(station_info['ecef']))
 
-        jd_array, ra_deg_array,  dec_deg_array, _ = xyToRaDecPP(np.array([pp.JD]), np.array([x]), np.array([y]), np.array([1]), pp, jd_time=True, extinction_correction=False, measurement=False)
-        x_check, y_check = raDecToXYPP(ra_deg_array, dec_deg_array, jd_array, pp)
-        print("x, y  :{},{}".format(x, y))
-        print("r, d  :{},{}".format(ra_deg_array[0], dec_deg_array[0]))
-        print("check :{},{}".format(x_check[0], y_check[0]))
-        az, alt = raDec2AltAz(ra_deg_array, dec_deg_array, pp.JD, pp.lat, pp.lon)
-        print("az, alt :{},{}".format(az[0], alt[0]))
-        ra_check, dec_check = altAz2RADec(az, alt, pp.JD, pp.lat, pp.lon)
-        print("ra_check, dec_check: {},{}".format(ra_check, dec_check))
-        az, alt = 30, 30
-        ecef_point_x, ecef_point_y, ecef_point_z = AER2ECEF(az, alt, 1, pp.lat, pp.lon, pp.elev)
-        calculate_station_ecef = latLonAlt2ECEF(np.radians(pp.lat), np.radians(pp.lon), pp.elev)
-        check_az, check_alt = ECEF2AltAz(calculate_station_ecef, (ecef_point_x, ecef_point_y, ecef_point_z))
-        print("Check az, alt {}, {}".format(check_az, check_alt))
-        az_alt_angle_error = angularSeparationDeg(az,alt, check_az, check_alt)
-        print("Az alt angle error {}".format(az_alt_angle_error))
-        ecef_station = np.array(station_info['ecef'])
-        ecef_v_x = ecef_point_x[0] - ecef_station[0]
-        ecef_v_y = ecef_point_y[0] - ecef_station[1]
-        ecef_v_z = ecef_point_z[0] - ecef_station[2]
-        ecef_sta_pt = vectNorm((ecef_v_x, ecef_v_y, ecef_v_z))
-        angle_error = np.degrees(angularSeparationVect(vector_station_to_point, ecef_sta_pt))
-        angle_error = np.degrees(angularSeparationVect(vector_station_to_point, ecef_sta_pt))
-        print("Calculated normalised vector station to point :{}".format(ecef_sta_pt))
-        print("Angle error from unknown source : {}".format(angle_error))
 
-        origin_list.append(np.array(station_info['ecef']))
-        vector_list.append(ecef_sta_pt)
+            pp = station_info["pp"]
 
-    calculated_position_list, error_matrix = pairwiseTriangulationError(origin_list, vector_list, observed_point_array)
-    return calculated_position_list, vector_list
+            random_ecef = np.array((np.random.random() * 100 - 50, np.random.random() * 100 - 50, np.random.random() * 100 - 50))
+            random_angle_x = np.random.random() * 0.5 - 0.25
+            random_angle_y = np.random.random() * 0.5 - 0.25
+            random_angle_x_in_pixels = pp.X_res * random_angle_x / pp.fov_h
+            random_angle_y_in_pixels = pp.Y_res * random_angle_y / pp.fov_v
+            random_pixel_x = np.random.random() * 3 - 1.5 + random_angle_x_in_pixels
+            random_pixel_y = np.random.random() * 3 - 1.5 + random_angle_y_in_pixels
+
+            distance_to_point_m = RMS.Math.dimHypot(observed_point_array, np.array(station_info['ecef']))
+
+            jd_array, ra_deg_array,  dec_deg_array, _ = xyToRaDecPP(np.array([pp.JD]), np.array([x + random_pixel_x]), np.array([y + random_pixel_y]), np.array([1]), pp, jd_time=True, extinction_correction=False, measurement=False)
+            az, alt = raDec2AltAz(ra_deg_array, dec_deg_array, pp.JD, pp.lat, pp.lon)
+            ecef_point = AER2ECEF(az, alt, distance_to_point_m, pp.lat, pp.lon, pp.elev)
+            ecef_point = (ecef_point[0][0], ecef_point[1][0], ecef_point[2][0])
+            ecef_sta_pt = vectNorm(ecef_point - np.array(station_info['ecef'] + random_ecef))
+            vector_list.append(ecef_sta_pt)
+
+
+        calculated_position_list, error_matrix = pairwiseTriangulationError(origin_list, vector_list, observed_point_array)
+        error_matrix_list.append(error_matrix)
+
+    # This is ugly, but works more quickly
+    error_matrix_over_iterations = np.stack(error_matrix_list)
+
+    # Compute mean error over all iterations per combination
+    error_matrix = np.mean(error_matrix_over_iterations, axis=0)
+
+
+    # Exclude errors of station against same station
+    non_reflexive_errors = error_matrix[~np.eye(error_matrix.shape[0], dtype=bool)]
+
+    # Compute stats
+    mean_error, std_dev = np.mean(non_reflexive_errors), np.std(non_reflexive_errors)
+    best_pair = []
+
+
+
+    if len(non_reflexive_errors) > 2:
+
+        min_error = np.min(non_reflexive_errors)
+        station_pair_indices = np.where(error_matrix == min_error)
+
+
+        best_pair.append(station_name_list[station_pair_indices[0][0]])
+        best_pair.append(station_name_list[station_pair_indices[1][0]])
+    elif len(non_reflexive_errors) == 2:
+        min_error = np.min(non_reflexive_errors)
+        station_pair_indices = np.where(error_matrix == min_error)
+
+        best_pair.append(station_name_list[station_pair_indices[0][0]])
+        best_pair.append(station_name_list[station_pair_indices[1][0]])
+    else:
+        min_error = None
+
+    return calculated_position_list, error_matrix, min_error, best_pair, mean_error, std_dev
+
+def computeOrigin(points_list):
+
+    x_list, y_list, z_list = np.array(points_list).T
+
+    ele_m_list = []
+    min_ele_m_initialised = False
+    for x, y, z, in zip(x_list, y_list, z_list):
+        lat_rads, lon_rads, ele_m = ecef2LatLonAlt(x, y, z)
+
+        if min_ele_m_initialised:
+            if  ele_m < min_ele_m:
+                min_ele_m = ele_m
+                min_x, min_y, min_z = x, y, z
+        else:
+            min_ele_m = ele_m
+            min_x, min_y, min_z = x, y, z
+            min_ele_m_initialised = True
+
+
+    x = np.mean((np.min(x_list), np.max(x_list)))
+    y = np.mean((np.min(y_list), np.max(y_list)))
+    z = np.mean((np.min(z_list), np.max(z_list)))
+
+    min_r = (min_x ** 2 + min_y ** 2 + min_z ** 2) ** 0.5
+    origin_r = (x ** 2 + y ** 2 + z ** 2) ** 0.5
+
+    correction_factor = min_r / origin_r
+
+    x, y, z = x * correction_factor, y * correction_factor, z * correction_factor
+
+    lat_rads, lon_rads, ele_m = ecef2LatLonAlt(x, y, z)
+
+    lat_deg, lon_deg = np.degrees(lat_rads), np.degrees(lon_rads)
+
+    return lat_deg, lon_deg, ele_m, x, y, z
+
+
+def latLonAlt2ENUDeg(lat_deg, lon_deg, ele_m, lat_origin_deg, lon_origin_deg, ele_origin_m):
+
+    lat_origin_rads, lon_origin_rads = np.radians(lat_origin_deg), np.radians(lon_origin_deg)
+    lat_rad, lon_rad = np.radians(lat_deg), np.radians(lon_deg)
+    ecef_origin_m = latLonAlt2ECEF(lat_origin_rads, lon_origin_rads, ele_origin_m)
+    ecef_point_m = np.array(latLonAlt2ECEF(lat_rad, lon_rad, ele_m))
+    translation = ecef_point_m - ecef_origin_m
+    r = np.array([
+        [-np.sin(lon_origin_rads), np.cos(lon_origin_rads), 0],
+        [-np.sin(lat_origin_rads) * np.cos(lon_origin_rads), -np.sin(lat_origin_rads) * np.sin(lon_origin_rads),
+         np.cos(lat_origin_rads)],
+        [np.cos(lat_origin_rads) * np.cos(lon_origin_rads), np.cos(lat_origin_rads) * np.sin(lon_origin_rads),
+         np.sin(lat_origin_rads)]
+    ])
+    e, n, u = r @ translation
+
+    return e, n, u
+
+
+
 
 def computeAnglesPerPoint(station_info_dict, mapping_list):
 
@@ -1427,6 +1510,10 @@ def computeAnglesPerPoint(station_info_dict, mapping_list):
     output_mapping_list = []
     for observed_point_array, station_ecef_array, station_name_list in tqdm.tqdm(mapping_list):
         # Vectors from stations to reference_point
+
+        point_lat, point_lon, point_ele = ecef2LatLonAlt(observed_point_array[0], observed_point_array[1], observed_point_array[2])
+
+
         vectors_array = observed_point_array - station_ecef_array  # shape (N, 3)
         normalisation_array = np.linalg.norm(vectors_array, axis=1, keepdims=True)
         vecs_normalized_array = vectors_array / normalisation_array  # shape (N, 3)
@@ -1447,48 +1534,94 @@ def computeAnglesPerPoint(station_info_dict, mapping_list):
         # Angle and Score matrix in sin(degrees)
         angle_matrix = np.degrees(np.arccos(dot_matrix))
         sin_score_matrix = np.sin(np.arccos(dot_matrix))  # shape (N, N)
-        calculated_position_list, vector_list = getCalculatedPositionErrorFromImageCoordinates(station_info_dict, station_name_list, x_list, y_list, vecs_normalized_array, observed_point_array)
-
-        ecef_coords = np.array([entry[2] for entry in calculated_position_list])
-        # Compute mean and standard deviation
-        mean_ecef = np.mean(ecef_coords, axis=0)
-        sd_ecef = np.std(ecef_coords, axis=0)
-        error_ecef = observed_point_array - mean_ecef
-        if len(station_name_list) > 3:
+        calculated_position_list, error_matrix, min_error, best_pair, mean_error, sd = \
+            getCalculatedPositionErrorFromImageCoordinates(station_info_dict, station_name_list, x_list, y_list, vecs_normalized_array, observed_point_array, iterations = 50)
 
 
-            if False:
+        if len(station_name_list) > 6:
+
+
+            if True:
                 # Create scatter plot
 
-                lats, lons, labs = [], [], []
 
-                point_lat_rads, point_lon_rads, _ = ecef2LatLonAlt(observed_point_array[0], observed_point_array[1], observed_point_array[2])
+                ecef_locations = []
+                for station_name in station_name_list:
+                    station = station_info_dict[station_name]
+                    ecef_locations.append(station['ecef'])
+                    s_x, s_y, s_z = station['ecef']
+                    _,_,ele_m = ecef2LatLonAlt(s_x, s_y, s_z)
 
-                lats.append(np.degrees(point_lat_rads))
-                lons.append(np.degrees(point_lon_rads))
-                labs.append("Point")
+                ecef_locations.append([observed_point_array[0], observed_point_array[1], observed_point_array[2]])
+
+                lat_origin_deg, lon_origin_deg, ele_origin_m, x, y, z = computeOrigin(ecef_locations)
+                point_lat_rads, point_lon_rads, point_ht = ecef2LatLonAlt(observed_point_array[0], observed_point_array[1], observed_point_array[2])
+                e_list, n_list, u_list, labs_list = [], [], [], []
+
+                lat_deg = np.degrees(point_lat_rads)
+                lon_deg = np.degrees(point_lon_rads)
+                ele_m  =  point_ht
+                e_point, n_point, u_point = latLonAlt2ENUDeg(lat_deg, lon_deg, ele_m, lat_origin_deg, lon_origin_deg, ele_origin_m)
+                e_list.append(e_point / 1000)
+                n_list.append(n_point / 1000)
+                u_list.append(u_point / 1000)
+                labs_list.append("Point alt {:.1f}km".format(point_ht/1000))
+
+                coordinates_of_good_station = []
                 for station in station_name_list:
                     station_info = station_info_dict[station]
-                    lats.append(np.degrees(station_info['geo']['lat_rads']))
-                    lons.append(np.degrees(station_info['geo']['lon_rads']))
-                    labs.append("{} {}".format(len(labs) - 1, station))
+                    lat_deg = np.degrees(station_info['geo']['lat_rads'])
+                    lon_deg = np.degrees(station_info['geo']['lon_rads'])
+                    ele_m = station_info['geo']['ele_m']
 
-                plt.figure(figsize=(8, 6))
-                plt.scatter(lons, lats, c='blue', marker='o')
-                for lon, lat, label in zip(lons, lats, labs):
-                    plt.text(lon+0.01, lat+0.01, label, fontsize=9)  # Offset to avoid overlap
+                    labs_list.append("{} {}".format(len(labs_list) - 1, station))
+                    e, n, u =   latLonAlt2ENUDeg(lat_deg, lon_deg, ele_m, lat_origin_deg, lon_origin_deg, ele_origin_m)
+                    if station in best_pair:
+                        coordinates_of_good_station.append([e, n, u])
+                    e_list.append(e / 1000)
+                    n_list.append(n / 1000)
+                    u_list.append(u / 1000)
+
+                fig = plt.figure(figsize=(16, 12))
+                ax = fig.add_subplot(111, projection='3d')
+
+                ax.scatter(e_list, n_list , u_list, c='blue', marker='o')
+                for e, n, u, label in zip(n_list, e_list, u_list, labs_list):
+                    ax.text(n+5, e+5, u +5 , label, fontsize=9)  # Offset to avoid overlap
+
+                ax.set_aspect('equal')
+
+                for coordinates in coordinates_of_good_station:
+                    x_points, y_points, u_points = [], [], []
+                    x_points.append(coordinates[0] / 1000)
+                    y_points.append(coordinates[1] / 1000)
+                    u_points.append(coordinates[2] / 1000)
+                    x_points.append(e_point / 1000)
+                    y_points.append(n_point / 1000)
+                    u_points.append(u_point / 1000)
+
+                    ax.plot(x_points, y_points, u_points, color='red', label='Connecting Line')
 
                 # Label axes
-                plt.xlabel("Longitude")
-                plt.ylabel("Latitude")
-                plt.title("Scatter Plot of Latitude and Longitude")
+                ax.set_xlabel("North km")
+                ax.set_ylabel("East km")
+                ax.set_zlabel("Up km")
+                i_1, i_2 = np.where(station_name_list == best_pair[0]), np.where(station_name_list == best_pair[1])
+                convergence_angle = angle_matrix[i_1, i_2][0][0]
 
+                plot_title = "Stations and reference point minimum error {:.0f}m with stations {} {} angle {:.1f} degrees".format(min_error, best_pair[0], best_pair[1], convergence_angle)
+
+                plt.title(plot_title)
+
+                plot_file_name = "{}_{}_angle_{}_deg.png".format(best_pair[0], best_pair[1], convergence_angle)
                 plt.grid(True)
-                plt.show()
-                plt.close()
+                plot_dir = os.path.join(WORKING_DIRECTORY, CHARTS)
+                mkdirP(plot_dir)
+                plot_full_path =  os.path.join(plot_dir, plot_file_name)
+                plt.savefig(plot_full_path)
                 pass
 
-        output_mapping_list.append([observed_point_array, station_ecef_array, station_name_list, angle_matrix, sin_score_matrix, error_ecef, sd_ecef])
+        output_mapping_list.append([observed_point_array, station_ecef_array, station_name_list, angle_matrix, sin_score_matrix, calculated_position_list,  error_matrix, mean_error, sd])
 
     return output_mapping_list
 
@@ -1514,18 +1647,18 @@ if __name__ == "__main__":
         station_list = getStationList()
         makeConfigPlateParMaskLib(config, station_list)
 
-    if False:
+    if not os.path.exists(station_info_dict_path):
         station_info_dict = makeStationsInfoDict(config)
         with open(station_info_dict_path, 'wb') as f:
             pickle.dump(station_info_dict, f)
 
     station_info_dict = pickle.load(open(station_info_dict_path, 'rb'))
 
-    if False:
+    if not os.path.exists(ecef_array_path):
         ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=50000)
         np.save(ecef_array_path, ecef_point_array)
 
-    if False:
+    if not os.path.exists(ecef_point_to_camera_mapping_path):
         ecef_point_array = np.load(ecef_array_path)
         ecef_point_to_camera_mapping = addStationsToECEFArray(ecef_point_array, station_info_dict, radius=500000)
 
