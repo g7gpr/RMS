@@ -24,7 +24,7 @@ ecef_point_x, ecef_point_y, ecef_point_z = AER2ECEF(az, alt, 1000, pp.lat, pp.lo
 # Take the reverse of this function
 check_az, check_alt = ECEF2AltAz(station_ecef, (ecef_point_x, ecef_point_y, ecef_point_z))
 
-print("Orginal az, alt {:.3f} , {:.3f}".format(az,alt))
+print("Oroginal az, alt {:.3f} , {:.3f}".format(az,alt))
 print("Check   az, alt {:.3f},  {:.3f}".format(check_az, check_alt))
 
 # Compute the differences in az alt
