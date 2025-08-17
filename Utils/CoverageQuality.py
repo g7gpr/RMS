@@ -265,11 +265,7 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
             local_config_path = os.path.join(local_target_full_path, os.path.basename(config.config_file_name))
             local_platepar_path = os.path.join(local_target_full_path, config.platepar_name)
             local_mask_path = os.path.join(local_target_full_path, config.mask_file)
-            extracted_files_path = os.path.join(extraction_dir, station.lower(), latest_remote_file.split(".")[0])
-            extracted_config_path = os.path.join(extracted_files_path, ".config")
-            extracted_platepar_path = os.path.join(extracted_files_path, config.platepar_name)
-            extracted_mask_path = os.path.join(extracted_files_path, config.mask_file)
-            full_remote_path_to_bz2 = os.path.join(remote_dir, latest_remote_file)
+
 
 
             # If data already exists, then continue to next station
@@ -287,6 +283,13 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
                 latest_remote_file = remote_files[0]
             else:
                 continue
+
+            extracted_files_path = os.path.join(extraction_dir, station.lower(), latest_remote_file.split(".")[0])
+            extracted_config_path = os.path.join(extracted_files_path, ".config")
+            extracted_platepar_path = os.path.join(extracted_files_path, config.platepar_name)
+            extracted_mask_path = os.path.join(extracted_files_path, config.mask_file)
+            full_remote_path_to_bz2 = os.path.join(remote_dir, latest_remote_file)
+
 
             # Download, and extract the file into a subdir
             downloadFile(host, username, port, full_remote_path_to_bz2, t)
