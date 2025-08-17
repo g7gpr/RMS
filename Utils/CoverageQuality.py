@@ -17,27 +17,8 @@
 from __future__ import print_function, division, absolute_import
 
 import RMS.Math
-
-J2000 = 2451545.0
-import matplotlib.pyplot as plt
 import os
-import socket
-from curses.ascii import isalnum
-
-from scipy.constants import electron_mass
-from scipy.spatial import cKDTree
 import pickle
-
-from mpl_toolkits.mplot3d import Axes3D
-from RMS.Astrometry.Conversions import ECEF2AltAz, altAz2RADec, raDec2Vector, raDec2AltAz, AER2ECEF
-import cv2
-from pip._internal import resolution
-
-import RMS.Formats.FFfits as FFfits
-import sqlite3
-import time
-import datetime
-import numpy as np
 import tempfile
 import tarfile
 import paramiko
@@ -45,36 +26,31 @@ import subprocess
 import json
 import requests
 import tqdm
-from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, ECEF2AltAz, altAz2RADec, vector2RaDec, J2000_JD, trueRaDec2ApparentAltAz
-from RMS.Math import angularSeparationVect, angularSeparationDeg, vectNorm, dimHypot
-from RMS.Routines.MaskImage import getMaskFile
-from RMS.Formats.Platepar import Platepar
-from RMS.Astrometry.ApplyAstrometry import raDecToXYPP, geoHt2XY, xyHt2Geo, xyToRaDecPP
-
 import RMS.ConfigReader as cr
 import gc
 import shutil
+import sys
+
+
+from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, ECEF2AltAz, altAz2RADec, raDec2AltAz, AER2ECEF
+from RMS.Math import angularSeparationDeg, vectNorm
+from RMS.Routines.MaskImage import getMaskFile
+from RMS.Formats.Platepar import Platepar
+from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP
+from scipy.spatial import cKDTree
 
 
 from RMS.Misc import mkdirP
-from RMS.Formats.FTPdetectinfo import readFTPdetectinfo
 import matplotlib.pyplot as plt
 
 REMOTE_SERVER = 'gmn.uwo.ca'
 USER_NAME = "analysis"
-STATION_COORDINATES_DICT = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
+STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
 STATIONS_DATA_DIR = "StationData"
 REMOTE_STATION_PROCESSED_DIR = "/home/$STATION/files/processed"
 WORKING_DIRECTORY = os.path.expanduser("~/RMS_data/Coverage")
 CHARTS = "charts"
-
-
-
-def retrieveBz2File(file_name, server):
-
-
-    return
-
+PORT = 22
 
 def lsRemote(host, username, port, remote_path, sock=None):
     """Return the files in a remote directory.
@@ -101,46 +77,22 @@ def lsRemote(host, username, port, remote_path, sock=None):
         sftp.close()
         ssh.close()
 
-def parseTrajectoryReport(trajectory_report_path):
-
-    with open(os.path.expanduser(trajectory_report_path), 'rb') as f:
-        report = f.read().decode('utf-8').splitlines()
-
-        trajectory_report_dict = {}
-        timing_offsets_dict = {}
-        section = None
-        for line in report:
-            if len(line):
-                if line.startswith('Timing offsets (from input data):'):
-                    section = "TimingOffsets"
-                elif line.startswith('Reference point on the trajectory:'):
-                    section = "ReferencePointOnTheTrajectory"
-
-            if section == "TimingOffsets":
-                if ": " in line:
-                    key_value = line.split(":")
-                    key = key_value[0].strip()
-                    value = float(key_value[1].strip().split()[0])
-                    timing_offsets_dict[key] = value
-
-
-    trajectory_report_dict['TimingOffsets'] = timing_offsets_dict
-    return trajectory_report_dict
-
-
-
-def createTemporaryWorkArea(temp_dir=None):
-
-    if temp_dir is None:
-        temp_dir = tempfile.TemporaryDirectory().name
-    else:
-        temp_dir = os.path.expanduser(temp_dir)
-        mkdirP(temp_dir)
-        temp_dir = os.path.expanduser(temp_dir)
-
-    return temp_dir
-
 def extractBz2(input_directory, working_directory, local_target_list=None):
+
+    """
+    Extract BZ2 files from a directory.
+
+    Arguments:
+        input_directory: [str] directory containing bz2 files.
+        working_directory: [str] directory to work in, possibly a /tmp/ directory.
+
+    Keyword arguments:
+        local_target_list: optional, default None, specify files to extract, if None, extract all ending .bz2
+
+    Returns:
+
+    """
+
 
     bz2_list = []
     input_directory = os.path.expanduser(input_directory)
@@ -156,10 +108,28 @@ def extractBz2(input_directory, working_directory, local_target_list=None):
 
     return working_directory
 
-def extractBz2Files(bz2_list, input_directory, working_directory, silent=True):
+def extractBz2Files(bz2_list, input_directory, working_directory, silent=True, host=REMOTE_SERVER, username=USER_NAME, port=PORT):
+    """
+    Extract BZ2 files from a directory into a subdirectory of working_directory, if extraction fails, redownload.
+
+    Arguments:
+        bz2_list: list file names of bz2 files, paths will be stripped.
+        input_directory: directory containing bz2 files.
+        working_directory: directory path to hold the subdirectorie of extracted bz2 files.
+
+    Keyword Arguments:
+        silent: optional, default True.
+        host: optional, default REMOTE_SERVER constant.
+        username: optional, default USER_NAME constant.
+        port: optional, default PORT constant.
+
+    Return:
+        Nothing.
+    """
+
     for bz2 in bz2_list:
-        basename_bz2 = os.path.basename(bz2)
-        station_directory = os.path.join(working_directory, basename_bz2.split("_")[0]).lower()
+        basename_bz2 = str(os.path.basename(bz2))
+        station_directory = str(os.path.join(working_directory, basename_bz2.split("_")[0]).lower())
         mkdirP(station_directory)
         bz2_directory = os.path.join(station_directory, basename_bz2.split(".")[0])
         if os.path.exists(bz2_directory):
@@ -172,626 +142,26 @@ def extractBz2Files(bz2_list, input_directory, working_directory, silent=True):
             with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
                 tar.extractall(path=bz2_directory)
         except:
-            print("Redownloading {}".format(basename_bz2))
-            path = os.path.join("/home", basename_bz2.split("_")[0].lower(), "files", "processed")
-            downloadFile("gmn.uwo.ca", "analysis", 22, path, bz2_directory )
+            if not silent:
+                print("Redownloading {}".format(basename_bz2))
+            path = REMOTE_STATION_PROCESSED_DIR.replace("$STATION", basename_bz2.split("_")[0].lower())
+            downloadFile(host, username, path, port, bz2_directory )
             with tarfile.open(os.path.join(input_directory, basename_bz2), 'r:bz2') as tar:
                 tar.extractall(path=bz2_directory)
 
-def readInFTPDetectInfoFiles(working_directory, station_list=None, local_available_directories=None, event_time=None):
-
-
-    archived_directory_list, station_directories = getArchivedDirectories(working_directory, event_time=event_time, station_list=station_list)
-    if local_available_directories is not None:
-        archived_directory_list = local_available_directories
-    ftp_dict = getFTPFileDictionary(archived_directory_list, station_directories, working_directory, station_list=station_list, event_time=event_time)
-    return ftp_dict
-
-def getFTPFileDictionary(archived_directory_list, station_directories, working_directory, station_list=None, event_time=None):
-
-    ftp_dict = {}
-
-    for archived_directory in sorted(archived_directory_list, reverse=True):
-        station = os.path.basename(archived_directory).split("_")[0].lower()
-        print("Working on station {}".format(station))
-        if station_list is not None:
-            if not station in station_list:
-                continue
-            if not event_time is None:
-                directory_date = os.path.basename(archived_directory).split("_")[1]
-                directory_time = os.path.basename(archived_directory).split("_")[2]
-                year, month, day = directory_date[0:4], directory_date[4:6], directory_date[6:8]
-                hour, minute, second = directory_time[0:2], directory_time[2:4], directory_time[4:6]
-                directory_time_object = datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(second))
-                if directory_time_object < event_time:
-
-                    ftp_file_name = getFTPFileName(archived_directory, station, working_directory)
-                    if ftp_file_name is None:
-                        print("     Could not find a suitable FTP file for {}".format(station))
-                        continue
-                    ftp_path = os.path.join(working_directory, station, archived_directory)
-                    ftp_dict[station] = readFTPdetectinfo(ftp_path, ftp_file_name)
-
-    return ftp_dict
-
-def getFTPFileName(archived_directory, station, working_directory):
-    basename_archived_directory = os.path.basename(archived_directory)
-    ar_date, ar_time = basename_archived_directory.split("_")[1], basename_archived_directory.split("_")[2]
-    ar_milliseconds = basename_archived_directory.split("_")[3]
-    ftp_file_name = "FTPdetectinfo_{}_{}_{}_{}.txt".format(station.upper(), ar_date, ar_time, ar_milliseconds)
-    if not os.path.exists(os.path.join(working_directory, station, archived_directory, ftp_file_name)):
-        directory_containing_ftp = os.path.join(working_directory, station.lower(), archived_directory)
-        ftp_file_name = None
-
-        for file_name in os.listdir(directory_containing_ftp):
-
-            if file_name.startswith("FTPdetectinfo") and file_name.endswith(".txt") and "manual" in file_name:
-                ftp_file_name = file_name
-                return ftp_file_name
-
-
-        for file_name in os.listdir(directory_containing_ftp):
-
-            if file_name.startswith("FTPdetectinfo") and file_name.endswith(".txt") and file_name.split("_")[1] == station.upper():
-
-                ftp_file_name = file_name
-                return ftp_file_name
-
-    else:
-
-        print("     Expected FTP file {} was found".format(ftp_file_name))
-
-    print("Returning {}".format(ftp_file_name))
-    return ftp_file_name
-
-def getArchivedDirectories(working_directory, event_time=None, station_list=None):
-
-    if station_list is None:
-        station_directories = sorted(os.listdir((working_directory)))
-    else:
-        station_directories = station_list
-    archived_directory_list = []
-    for station_directory in station_directories:
-        target_path = os.path.join(working_directory, station_directory)
-        if not os.path.exists(target_path):
-            print("No files found for {}".format(target_path))
-            continue
-        extracted_directories_directory_list = os.listdir(os.path.join(working_directory, station_directory))
-        if extracted_directories_directory_list is not None:
-            extracted_directories_directory_list.sort(reverse=True)
-            for extracted_directory in extracted_directories_directory_list:
-                fits_list = []
-                extracted_directory_date = extracted_directory.split("_")[1]
-                extracted_directory_time = extracted_directory.split("_")[2]
-                year, month, day = extracted_directory_date[0:4], extracted_directory_date[4:6], extracted_directory_date[6:8]
-                hour, minute, second = extracted_directory_time[0:2], extracted_directory_time[2:4], extracted_directory_time[4:6]
-                extracted_directory_time_object = datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(second))
-                if extracted_directory_time_object < event_time:
-                    extracted_directory_files = os.listdir(os.path.join(working_directory, station_directory, extracted_directory))
-                    for file_name in extracted_directory_files:
-                        if file_name.startswith("FF_{}".format(station_directory.upper())) and file_name.endswith(".fits"):
-                            fits_list.append(file_name)
-                    for fits_file in fits_list:
-                        file_time = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(fits_file), "%Y-%m-%d %H:%M:%S.%f")
-                        if abs(event_time - file_time).total_seconds() < 20:
-                            archived_directory_list.append(os.path.join(working_directory, station_directory, extracted_directory))
-
-
-    return archived_directory_list, station_directories
-
-def clusterByTime(ftp_dict, station_list, event_time, duration):
-    # Rearrange into time
-
-    observations = getObservations(ftp_dict, station_list=station_list, event_time=event_time,duration=duration)
-    events = groupObservationsIntoEvents(observations)
-
-    return events
-
-def groupObservationsIntoEvents(observations):
-    events = []
-    first_observation = True
-    observation_list = []
-    for observation in observations:
-        observation_start_time = observation[0]
-        observation_end_time = observation[1]
-        if not first_observation:
-            time_gap_seconds = (observation_start_time - latest_observation_end_time).total_seconds()
-            if time_gap_seconds > 5:
-                if len(observation_list) > 1:
-                    station_name_list = []
-                    for station_name in observation_list:
-                        station_name = station_name[2][1]
-                        if not station_name in station_name_list:
-                            station_name_list.append(station_name)
-                            if len(station_name_list) > 1:
-                                events.append(sorted(observation_list, key=lambda x: x[0]))
-                observation_list = []
-                observation_list.append(observation)
-                latest_observation_end_time = max(observation_end_time, latest_observation_end_time)
-            else:
-                observation_list.append(observation)
-                latest_observation_end_time = observation_end_time
-        else:
-            first_observation = False
-            observation_list.append(observation)
-        _observation_end_time = observation_end_time
-        latest_observation_end_time = observation_end_time
-    if len(observation_list) > 1:
-        events.append(sorted(observation_list))
-    return events
-
-def getObservations(ftp_dict, station_list=None, event_time=None, duration=None):
-    observations = []
-    for station in sorted(ftp_dict):
-        if station_list is not None:
-            if station not in station_list:
-                continue
-        for observation in ftp_dict[station]:
-            ff_name = observation[0]
-            fits_date = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(ff_name), "%Y-%m-%d %H:%M:%S.%f")
-            observation_start_frame = observation[11][0][1]
-            observation_end_frame = observation[11][-1][1]
-            observation_start_time = fits_date + datetime.timedelta(seconds=observation_start_frame / observation[4])
-            observation_end_time = fits_date + datetime.timedelta(seconds=observation_end_frame / observation[4])
-            if event_time is None or duration is None:
-                observations.append([observation_start_time, observation_end_time, observation])
-            else:
-                if abs((observation_start_time - event_time).total_seconds()) < 2 and \
-                   abs((observation_end_time - (event_time + datetime.timedelta(seconds=duration))).total_seconds()) < 2:
-                    observations.append([observation_start_time, observation_end_time, observation])
-    observations = sorted(observations, key=lambda x: x[0])
-    return observations
-
-def createImagesDict(events, working_area, ftp_dict):
-
-    events_with_fits_dict = {}
-    for event in events:
-        event_with_fits = addFITSToEvent(event, working_area, ftp_dict)
-
-        if len(event_with_fits) > 1:
-            events_with_fits_dict[event[0][0]] = event_with_fits
-
-    return events_with_fits_dict
-
-def addFITSToEvent(event, working_area, ftp_dict):
-    event_with_fits = []
-    print("Start loading fits files")
-    for observation in event:
-        fits_file = observation[2][0]
-        station_directory = os.path.join(working_area, observation[2][1].lower())
-        bz2_directory_list = os.listdir(station_directory)
-        for bz2_directory in bz2_directory_list:
-            fits_path = os.path.join(station_directory, bz2_directory, fits_file)
-            if os.path.exists(fits_path):
-
-                if fits_file.endswith(".bin"):
-                    fits_file = fits_file.replace('.bin', '.fits')
-                if fits_file.startswith("FR_"):
-                    fits_file = fits_file.replace('FR_', 'FF_')
-                ff = FFfits.read(os.path.join(station_directory, bz2_directory), fits_file)
-                print("     Loading {}".format(fits_file))
-                observation_and_fits = [observation, ff]
-                event_with_fits.append(observation_and_fits)
-    return event_with_fits
-
-def rotateCapture(input_image, angle, rotation_centre, length,run_in=100, run_out=100, y_dim = 100, show_intermediate=False):
-
-    # working area
-    size = 4000
-    axis_centre = size / 2
-    image_centre = (axis_centre, axis_centre)
-    working_image_dim = (size, size)
-    translated_image = translateToOrigin(axis_centre, input_image, rotation_centre, working_image_dim)
-    rotated_image = rotateToHorizontal(angle, image_centre, translated_image, working_image_dim)
-    final_image = translateResize(axis_centre, length, rotated_image, run_in, run_out, y_dim)
-
-    return final_image
-
-def translateResize(axis_centre, length, rotated_image, run_in, run_out, y_dim):
-    translate_x, translate_y = int(run_in - axis_centre), int(y_dim / 2 - axis_centre)
-    translation_matrix = np.float32([[1, 0, translate_x], [0, 1, translate_y]])
-    final_img_dim_x, final_img_dim_y = int(length + run_in + run_out), int(y_dim)
-    final_img_dim = (final_img_dim_x, final_img_dim_y)
-    final_image = cv2.warpAffine(rotated_image, translation_matrix, final_img_dim)
-    return final_image
-
-def rotateToHorizontal(angle, image_centre, translated_image, working_image_dim):
-    rotation_matrix = cv2.getRotationMatrix2D(image_centre, angle, 1.0)
-    rotated_image = cv2.warpAffine(translated_image, rotation_matrix, working_image_dim)
-    return rotated_image
-
-def translateToOrigin(axis_centre, input_image, rotation_centre, working_image_dim):
-    translate_x, translate_y = 0 - int(rotation_centre[0] - axis_centre), 0 - int(rotation_centre[1] - axis_centre)
-    translation_matrix = np.float32([[1, 0, translate_x], [0, 1, translate_y]])
-    translated_image = cv2.warpAffine(input_image, translation_matrix, working_image_dim)
-    return translated_image
-
-def rotateCoordinateList(points, angle_degrees):
-    if not points:
-        return []
-
-    angle_radians = np.radians(angle_degrees)
-    fx, cx, cy = points[0]  # Pivot point (the first coordinate)
-
-    cos_theta = np.cos(angle_radians)
-    sin_theta = np.sin(angle_radians)
-
-    rotated = []
-    for frame, x, y in points:
-        # Translate point to origin
-        tx, ty = x - cx, y - cy
-
-        # Rotate around origin
-        rx = tx * cos_theta - ty * sin_theta
-        ry = tx * sin_theta + ty * cos_theta
-
-        # Translate back
-        rotated.append((frame, rx, ry))
-
-    return rotated
-
-def straightenFlight(img, coordinates, run_in, run_out):
-
-
-
-    x = 0
-
-    y_correction = [coordinate[1] for coordinate in coordinates]
-    x_correction = [coordinate[2] for coordinate in coordinates]
-    working_img = np.zeros_like(img)
-
-    for x in range(img.shape[1]):
-
-
-
-        if x - run_in > 0:
-            ty = np.interp(x - run_in, x_correction, y_correction)
-        else:
-            ty = 0
-
-
-        for y in range(img.shape[0]):
-            if 0 < (y + ty) < img.shape[0]:
-                working_img[y, x] = img[int(y + ty), x]
-
-
-
-    return working_img
-
-def addTimingInformation(image_data, image_array, rotated_coordinates, run_in, run_out, trajectory_summary_report):
-
-    frame_count_list, y_coordinate_list = getFrameCoordinateMapping(rotated_coordinates)
-
-    station = image_data[0][2][1]
-    time_correction = getTimeCorrection(station, trajectory_summary_report)
-
-    time_column_list = getObservationTimingData(frame_count_list, image_array, image_data, run_in, run_out, y_coordinate_list, time_correction)
-    final_time_stamp, image_start, seconds_per_column = computeTimingsForObservation(run_in, time_column_list, time_correction)
-    time_column_list = procesRunIn(image_start, run_in, seconds_per_column, time_column_list)
-    time_column_list = processRunOut(final_time_stamp, image_array, run_out, seconds_per_column, time_column_list)
-    time_column_list.sort()
-
-    return image_data, image_array, time_column_list
-
-
-def getTimeCorrection(station, trajectory_summary_report):
-    time_correction = 0
-    if "TimingOffsets" in trajectory_summary_report:
-        value_list = []
-        for key in trajectory_summary_report["TimingOffsets"]:
-            if key.startswith(station):
-                value_list.append(trajectory_summary_report['TimingOffsets'][key])
-        time_correction = sum(value_list) / len(value_list) if len(value_list) > 0 else 0
-    time_correction = 0
-    return datetime.timedelta(seconds=time_correction)
-
-
-def computeTimingsForObservation(run_in, time_column_list, time_correction):
-    first_time_stamp = time_column_list[0][1] + time_correction
-    final_time_stamp = time_column_list[-1][1] + time_correction
-    observation_duration = (final_time_stamp - first_time_stamp).total_seconds()
-    seconds_per_column = observation_duration / len(time_column_list)
-    image_start = first_time_stamp - datetime.timedelta(seconds=seconds_per_column * run_in)
-    return final_time_stamp, image_start, seconds_per_column
-
-def processRunOut(final_time_stamp, image_array, run_out, seconds_per_column, time_column_list):
-    c = 0
-    for column in range(len(image_array[0]) - run_out, len(image_array[0])):
-        frame_time_stamp = final_time_stamp + datetime.timedelta(seconds=(c * seconds_per_column))
-        time_column_list.append([column, frame_time_stamp])
-        c += 1
-        pass
-    return time_column_list
-
-def procesRunIn(image_start, run_in, seconds_per_column, time_column_list):
-    c = 0
-    for column in range(0, run_in + 1):
-        frame_time_stamp = image_start + datetime.timedelta(seconds=c * seconds_per_column)
-        time_column_list.append([column, frame_time_stamp])
-        c += 1
-        pass
-    return time_column_list
-
-def getObservationTimingData(frame_count_list, image_array, image_data, run_in, run_out, y_coordinate_list, time_correction):
-
-    fps = image_data[0][2][4]
-    c = 0
-    time_column_list = []
-    first_frame_number = image_data[0][2][11][0][1]
-    first_frame = image_data[0][0]
-
-    for column in range(run_in, len(image_array.T) - run_out):
-        frame = np.interp(c, y_coordinate_list, frame_count_list)
-        frame_time_stamp = first_frame + datetime.timedelta(seconds=(frame - first_frame_number) / fps)
-        time_column_list.append([c + run_in, frame_time_stamp + time_correction])
-        c += 1
-
-
-    return time_column_list
-
-def getFrameCoordinateMapping(rotated_coordinates):
-    frame_count_list, y_coordinate_list = [], []
-    for frame_count, _, y in rotated_coordinates:
-        frame_count_list.append(frame_count)
-        y_coordinate_list.append(y)
-    return frame_count_list, y_coordinate_list
-
-def processEventImages(event_images, event_images_with_timing_dict, run_in, run_out, y_dim, trajectory_summary_report):
-    first_image = True
-    for image in event_images:
-        ff_file = image[0][2][0]
-        ftp_entry = image[0][2][11]
-        station = image[0][2][1]
-        coordinates_list = []
-        time_correction = getTimeCorrection(station, trajectory_summary_report)
-        observation_end, observation_start = getObservationTimeExtent(coordinates_list, ftp_entry, image)
-        observation_end += time_correction
-        observation_start += time_correction
-        angle_deg, img, length, start_x, start_y = getImageInformation(image)
-        rotated_coordinates = rotateCoordinateList(coordinates_list, angle_deg)
-        img = rotateCapture(img, angle_deg, (start_x, start_y), length, run_in=run_in, run_out=run_out, y_dim=y_dim)
-        img = straightenFlight(img, rotated_coordinates, run_in, run_out)
-        image_data, image_array, img_timing = addTimingInformation(image, img, rotated_coordinates, run_in, run_out, trajectory_summary_report)
-
-        if first_image:
-            first_image = False
-            event_start, event_end = observation_start, observation_end
-        else:
-            event_start, event_end = min(observation_start, event_start), max(observation_end, event_end)
-
-        event_images_with_timing_dict[ff_file] = [img_timing, image_data, image_array]
-    return event_start, event_end, img, event_images_with_timing_dict
-
-def interpolateByTime(target_time, reference_times_list, reference_value_list):
-
-    first_iteration = True
-
-    if target_time < reference_times_list[0]:
-        return 0
-    if target_time > reference_times_list[-1]:
-        return 0
-
-    for reference_time, reference_value in zip(reference_times_list, reference_value_list):
-        if first_iteration:
-            _reference_time = reference_time
-            _reference_value = reference_value
-            first_iteration = False
-        else:
-            if reference_time >= target_time:
-                break
-            else:
-                _reference_time = reference_time
-                _reference_value = reference_value
-
-    reference_time_steps = (reference_time - _reference_time).total_seconds()
-    reference_value_difference = float(reference_value) - float(_reference_value)
-    time_discrepancy = (target_time - _reference_time).total_seconds()
-
-    if reference_time_steps == 0:
-        interpolated_value = reference_value
-    else:
-        interpolated_value = _reference_value + time_discrepancy * (reference_value_difference / reference_time_steps)
-    if interpolated_value > 0:
-        #print("_reference value, interpolated value, reference value {},{},{}".format(_reference_value, interpolated_value, reference_value))
-        pass
-    return interpolated_value
-
-def createOutputChartColumnTimings(chart_x_min_time, columns_per_second, output_array):
-    column_count, output_column_time_list = 0, []
-    for column in output_array:
-        column_time = chart_x_min_time + datetime.timedelta(seconds=(column_count / columns_per_second))
-        output_column_time_list.append(column_time)
-        column_count += 1
-    return output_column_time_list
-
-def getImageInformation(image):
-    ff = image[1]
-    ftp_info = image[0][2]
-    img = ff.maxpixel
-    start_x, start_y = int(ftp_info[11][0][2]), int(ftp_info[11][0][3])
-    end_x, end_y = int(ftp_info[11][-1][2]), int(ftp_info[11][-1][3])
-    length = np.hypot(end_x - start_x, end_y - start_y)
-    angle_rads = np.arctan2(end_y - start_y, end_x - start_x)
-    angle_deg = np.degrees(angle_rads)
-    return angle_deg, img, length, start_x, start_y
-
-def getObservationTimeExtent(coordinates_list, ftp_entry, image):
-    for coordinate_line in ftp_entry:
-        ftp_frame_no, y_coordinate, x_coordinate = coordinate_line[1], coordinate_line[2], coordinate_line[3]
-        coordinates_list.append([ftp_frame_no, x_coordinate, y_coordinate])
-    observation_start, observation_end = image[0][0], image[0][1]
-    return observation_end, observation_start
-
-def annotateChart(chart_x_resolution, event_images, event_images_with_timing_dict, img, output_array,
-                  output_column_time_list, y_dim, trajectory_summary_report):
-    y_origin = 0
-    y_labels, y_label_coords, plot_annotations_dict = [], [], {}
-    for image_key in sorted(event_images_with_timing_dict):
-
-        y_labels.append("{}".format(image_key.split('_')[1]))
-        y_label_coords.append(y_origin + 0.5 * y_dim)
-        station = image_key.split('_')[1]
-        time_correction = getTimeCorrection(station, trajectory_summary_report)
-        observation_start_time = event_images_with_timing_dict[image_key][1][0][0] + time_correction
-        observation_end_time = event_images_with_timing_dict[image_key][1][0][1] + time_correction
-        row_timing = event_images_with_timing_dict[image_key][0]
-        row_timing = [item[1] for item in row_timing]
-        image_array = event_images_with_timing_dict[image_key][2]
-
-        for y in range(0, y_dim):
-            row_intensity = image_array[y]
-            for x in range(0, chart_x_resolution):
-                output_image_time = output_column_time_list[x]
-
-                brightness = interpolateByTime(output_image_time, row_timing, row_intensity)
-                output_array[x, y_origin + y] = brightness
-
-        display_array = output_array.T
-        for event in event_images:
-            pass
-            ff_name = event[0][2][0]
-            camera_name = event[0][2][1]
-            if camera_name == image_key:
-                observation_start_time, observation_end_time = event[0][0], event[0][1]
-                time_correction = getTimeCorrection(camera_name, trajectory_summary_report)
-                break
-
-        annotation = '{}'.format(image_key)
-        plot_annotations_dict[(10, y_origin + y_dim - 10)] = annotation
-        annotation = "{:.3f}s".format(float(observation_start_time.strftime("%S.%f")))
-        c = 0
-        for t in output_column_time_list:
-            c += 1
-            if t > observation_start_time:
-                break
-        plot_annotations_dict[(c - 20, int(y_origin + y_dim * 0.4))] = annotation
-
-        annotation = "{:.3f}s".format(float(observation_end_time.strftime("%S.%f")))
-        c = 0
-        for t in output_column_time_list:
-            c += 1
-            if t > observation_end_time:
-                break
-        plot_annotations_dict[(c - 20, int(y_origin + y_dim * 0.7))] = annotation
-
-        y_origin += y_dim
-
-    return display_array, plot_annotations_dict, y_label_coords, y_labels
-
-def plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels, target_file_name=None, magnitude=None):
-    # Plot
-    plot_x_range, plot_y_range = display_array.shape[0] / 100, display_array.shape[1] / 100
-    fig, ax = plt.subplots(figsize=(plot_y_range, plot_x_range))
-
-    im = ax.imshow(display_array, aspect='auto', cmap='gray')
-    # Set x-axis to custom time scale
-    earliest_time = output_column_time_list[0]
-    latest_time = output_column_time_list[-1]
-    duration_seconds = (latest_time - earliest_time).total_seconds()
-    if duration_seconds < 2:
-        pass
-        ticks_per_second = 10
-    elif duration_seconds < 5:
-        ticks_per_second = 4
-    elif duration_seconds < 10:
-        ticks_per_second = 2
-    elif duration_seconds < 30:
-        ticks_per_second = 1
-    else:
-        ticks_per_second = 0.5
-    mark_tick = False
-    first_iteration = True
-    tick_times = []
-    for t in output_column_time_list:
-        # Convert to total microseconds
-        total_microseconds = (t.second + t.microsecond / 1e6) * ticks_per_second
-        rounded_units = np.ceil(total_microseconds)
-
-        # Construct the new time
-        rounded_seconds = rounded_units / ticks_per_second
-        t_rounded = t.replace(microsecond=0, second=0) + datetime.timedelta(seconds=rounded_seconds)
-
-        if first_iteration:
-            _t_rounded = t_rounded
-            first_iteration = False
-        else:
-
-            if t > _t_rounded:
-                tick_times.append(_t_rounded)
-                _t_rounded = t_rounded
-    tick_positions = []
-    for tick in tick_times:
-        c = 0
-        for col_time in output_column_time_list:
-
-            c += 1
-            if col_time >= tick:
-                tick_positions.append(c)
-                break
-    tick_positions.sort()
-    tick_times.sort()
-    tick_times = tick_times[0:len(tick_positions)]
-
-    ax.set_xticks(tick_positions)
-    ax.set_xticklabels(["{:.2f}".format(float(tick.strftime('%S.%f'))) for tick in tick_times], rotation=90, fontsize=16)
-    ax.set_xlabel('Time (s)', fontsize=16)
-    ax.set_yticks(y_label_coords)
-    ax.set_yticklabels(y_labels, fontsize=16)
-    ax.set_ylabel('Station', fontsize=16)
-    # Optional: format with DateFormatter if using mdates
-    # ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    # plt.colorbar(im, ax=ax, label='Intensity')
-    time_without_microseconds = tick_times[int(len(tick_times) / 2)].replace(microsecond=0).isoformat()
-    if magnitude is None:
-        plt.title('{}'.format(time_without_microseconds), fontsize=20)
-    else:
-        plt.title('{} Magnitude :{}'.format(time_without_microseconds, magnitude), fontsize=18)
-
-    for (x_coord, y_coord), label in plot_annotations_dict.items():
-        plt.annotate(
-            label,
-            xy=(x_coord, y_coord),
-            xytext=(x_coord, y_coord),  # offset text slightly
-            fontsize=12,
-            color=(0.9, 0.9, 0.9)
-        )
-    plt.tight_layout()
-    if target_file_name is None:
-        plt.show()
-    else:
-        print("Saving {}".format(target_file_name))
-        plt.savefig(target_file_name)
-
-def getPathsOfFilesToRetrieve(station_list, event_time):
-
-    files_to_retrieve = []
-    for station in station_list:
-        remote_path = os.path.join("/home", station.lower(), "files", "processed")
-        bz2_files = []
-        while bz2_files == []:
-            try:
-                bz2_files = lsRemote("gmn.uwo.ca", "analysis", 22, remote_path)
-            except:
-                time.sleep(120)
-
-        bz2_files.sort(reverse=True)
-        for file_name in bz2_files:
-            file_name_time = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(file_name), "%Y-%m-%d %H:%M:%S.%f")
-            if file_name_time < event_time:
-                files_to_retrieve.append(os.path.join(remote_path, file_name))
-                break
-
-    return files_to_retrieve
-
-def downloadFile(host, username, port, remote_path, local_path):
-    """Download a single file try compressed rsync first, then fall back to Paramiko
+def downloadFile(host, username, local_path, port=PORT, remote_path=REMOTE_STATION_PROCESSED_DIR, silent=False):
+    """Download a single file try compressed rsync first, then fall back to Paramiko.
 
     Arguments:
         host: [str] hostname of remote machine.
         username: [str] username for remote machine.
-        port: [str] port.
-        remote_path: [path] full path to destination.
         local_path: [path] full path of local target.
+
+
+    Keyword arguments:
+        port: [str] Optional, default PORT constant.
+        remote_path: [path] optional, default REMOTE_STATION_PROCESSED_DIR constant.
+        silent: [bool] optional, default False.
 
     Return:
         Nothing.
@@ -802,13 +172,16 @@ def downloadFile(host, username, port, remote_path, local_path):
         remote = "{}@{}:{}".format(username, host, remote_path)
         result = subprocess.run(['rsync', '-z', remote], capture_output=True, text=True)
         if "No such file or directory" in result.stderr :
-            print("Remote file {} was not found.".format(os.path.basename(remote)))
+            if not silent:
+                print("Remote file {} was not found.".format(os.path.basename(remote)))
             return
         else:
             result = subprocess.run(['rsync', '-z', remote, local_path], capture_output=True, text=True)
         if not os.path.exists(os.path.expanduser(local_path)):
-            print("Download of {} from {}@{} failed. You need to add your keys to remote using ssh-copy-id.".format(remote_path, username,host))
-            quit()
+            if not silent:
+                print("Download of {} from {}@{} failed. You need to add your keys to remote using ssh-copy-id."
+                                .format(remote_path, username,host))
+            sys.exit(1)
         return
     except:
         pass
@@ -818,8 +191,10 @@ def downloadFile(host, username, port, remote_path, local_path):
     try:
         ssh.connect(hostname=host, port=port, username=username)
     except:
-        print("Login to {}@{} failed. You need to add your keys to remote using ssh-copy-id.".format(username,host))
-        quit()
+        if not silent:
+            print("Login to {}@{} failed. You may need to add your keys to remote using ssh-copy-id."
+              .format(username,host))
+        sys.exit()
     try:
         sftp = ssh.open_sftp()
         remote_file_list = sftp.listdir(os.path.dirname(remote_path))
@@ -832,183 +207,20 @@ def downloadFile(host, username, port, remote_path, local_path):
 
     return
 
-def filesNotAvailableLocally(station_list, event_time):
+def getStationList(url=STATION_COORDINATES_JSON):
 
-    station_files_to_retrieve = []
-    local_dirs_to_use = []
-    for station in station_list:
-        file_present_locally = False
-        local_station_path = os.path.expanduser(os.path.join("~/tmp/collate_working_area/", station.lower()))
-        if not os.path.exists(local_station_path):
-            station_files_to_retrieve.append(station)
-            print("     Must retrieve files for {}".format(station))
-            continue
-        station_detected_dir_list = os.listdir(local_station_path)
-        station_detected_dir_list.sort(reverse=True)
+    """
+    Get a list of stations.
 
-        for detected_dir in station_detected_dir_list:
-            file_present_locally = False
-            detected_dir_date = detected_dir.split("_")[1]
-            detected_dir_time = detected_dir.split("_")[2]
-            year, month, day = detected_dir_date[0:4], detected_dir_date[4:6], detected_dir_date[6:8]
-            hour, minute, second = detected_dir_time[0:2], detected_dir_time[2:4], detected_dir_time[4:6]
-            detected_dir_time = datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(second))
-            if detected_dir_time < event_time:
-                detected_dir_full_path = os.path.join("~/tmp/collate_working_area", station.lower(), detected_dir)
-                detected_dir_full_path = os.path.expanduser(detected_dir_full_path)
-                detected_dir_list = os.listdir(detected_dir_full_path)
-                fits_files_list = []
-                for test_file in detected_dir_list:
-                    if test_file.startswith("FF_{}".format(station.upper())) and test_file.endswith(".fits"):
-                        fits_files_list.append(test_file)
-                        found_in = detected_dir
+    Arguments:
+        url: [str] Optional, default STATION_COORDINATES_JSON, url of the json of station coordinates
+
+    Returns:
+        [list] station names
+    """
 
 
-                fits_files_list.sort(reverse=True)
-
-                for ff_name in fits_files_list:
-                    fits_date = datetime.datetime.strptime(FFfits.filenameToDatetimeStr(ff_name), "%Y-%m-%d %H:%M:%S.%f")
-                    time_difference_seconds = (fits_date - event_time).total_seconds()
-
-                    if time_difference_seconds < 11:
-                        print("Using fits file {}".format(ff_name))
-                        file_present_locally = True
-                        local_dirs_to_use.append(detected_dir_full_path)
-                        break
-
-                if file_present_locally:
-                    break
-
-        if not file_present_locally:
-            print("No file present locally for station {}, adding to retrieve list".format(station.lower()))
-            station_files_to_retrieve.append(station)
-
-    return station_files_to_retrieve, local_dirs_to_use
-
-def produceCollatedChart(input_directory, run_in=100, run_out=100, y_dim=300, x_image_extent=1000, event_run_in=0.05, event_run_out=0.05, target_file_name=None, show_debug_info=False, station_list=None, event_time=None, duration=None, magnitude=None):
-
-
-    if station_list is not None and duration is not None and event_time is not None:
-        station_list_to_get, local_available_directories = filesNotAvailableLocally(station_list, event_time)
-        remote_path_list = getPathsOfFilesToRetrieve(station_list_to_get, event_time)
-        if len(remote_path_list):
-            print("Retrieving from remote:")
-            for d in remote_path_list:
-                print("     {}".format(d))
-        if len(local_available_directories):
-            print("These directories already available:")
-            for d in local_available_directories:
-                print("     {}".format(d))
-        local_target_list = []
-        for path in remote_path_list:
-            basename = os.path.basename(path)
-            local_target = os.path.join(os.path.expanduser("~/RMS_data/bz2files/"), basename)
-            local_target_list.append(local_target)
-            if not os.path.exists(local_target):
-                print("Downloading {} to {}".format(basename, local_target))
-                downloadFile("gmn.uwo.ca", "analysis", 22, path, local_target )
-
-
-
-    working_area = createTemporaryWorkArea("~/tmp/collate_working_area")
-
-
-    working_area = extractBz2("~/RMS_data/bz2files", working_area, local_target_list)
-
-
-    ftp_dict = readInFTPDetectInfoFiles(working_area, station_list, event_time=event_time)
-    events = clusterByTime(ftp_dict, station_list, event_time, duration)
-    # trajectory_summary_report = parseTrajectoryReport("~/RMS_data/bz2files/initial_part/20200109_232639_report.txt")
-    trajectory_summary_report = {}
-    event_images_dict = createImagesDict(events, working_area, ftp_dict)
-
-    print("Producing chart")
-    event_images_with_timing_dict = {}
-    for key in event_images_dict:
-        event_images = event_images_dict[key]
-        event_images_with_timing_dict = {}
-        event_start, event_end, img, event_images_with_timing_dict = processEventImages(event_images, event_images_with_timing_dict, run_in,
-                                                         run_out, y_dim, trajectory_summary_report)
-        if len(event_images_with_timing_dict) < 2:
-            continue
-        event_duration_seconds = (event_end - event_start).total_seconds()
-        columns_per_second = x_image_extent / event_duration_seconds
-        chart_x_min_time = event_start - datetime.timedelta(seconds=event_duration_seconds * event_run_in)
-        chart_x_max_time = event_end + datetime.timedelta(seconds=event_duration_seconds * event_run_out)
-        chart_duration_seconds = (chart_x_max_time - chart_x_min_time).total_seconds()
-        chart_x_resolution = round(chart_duration_seconds * columns_per_second)
-        number_of_observations = round(len(event_images_with_timing_dict))
-        chart_y_resolution = y_dim * number_of_observations
-
-        if show_debug_info:
-            print("Chart x min time       :{}".format(chart_x_min_time))
-            print("Event start            :{}".format(event_start))
-            print("Event end              :{}".format(event_end))
-            print("Chart x max time       :{}".format(chart_x_max_time))
-            print("Event duration (s)     :{}".format(event_duration_seconds))
-            print("Chart duration (s)     :{}".format(chart_duration_seconds))
-            print("Columns per second     :{}".format(columns_per_second))
-            print("Number of observations: {}".format(number_of_observations))
-            print("Output resolution (x,y):({},{})".format(chart_x_resolution, chart_y_resolution))
-
-        output_array = np.zeros((chart_x_resolution, chart_y_resolution))
-        output_column_time_list = createOutputChartColumnTimings(chart_x_min_time, columns_per_second, output_array)
-
-        display_array, plot_annotations_dict, y_label_coords, y_labels = annotateChart(chart_x_resolution,
-                                                                                     event_images,
-                                                                                       event_images_with_timing_dict,
-                                                                                       img, output_array,
-                                                                                       output_column_time_list,
-                                                                                       y_dim, trajectory_summary_report)
-
-        plotChart(display_array, output_column_time_list, plot_annotations_dict, y_label_coords, y_labels, target_file_name=target_file_name, magnitude=magnitude)
-
-    return
-
-def processDatabase(database_path, country_code):
-    print("Connecting to {}".format(database_path))
-    conn = sqlite3.connect(database_path)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute(
-        'SELECT "Unique trajectory identifier", "Beginning UTC Time", "Duration sec", "Participating Stations", "Peak AbsMag" '
-        'FROM Trajectories '
-        'WHERE "Peak AbsMag" < -4 '
-        'ORDER BY "Peak AbsMag" ASC'.format(country_code))
-    row_list = []
-    for row in cursor:
-        row_list.append(row)
-    cursor.close()
-    conn.close()
-    for row in row_list:
-        uti, utc_time, duration_sec, stations, magnitude = row[0], row[1].strip(), row[2], row[3].lower(), row[4]
-        if datetime.datetime.strptime(utc_time, "%Y-%m-%d %H:%M:%S.%f") < datetime.datetime(year=2024, month=1, day=1, hour=0, minute=0, second=0, microsecond=0):
-            continue
-
-        stations = stations.replace('\n','').replace(" ","")
-        station_list = stations.split(",")
-        event_time = datetime.datetime.strptime(utc_time.strip(), "%Y-%m-%d %H:%M:%S.%f")
-        output_file = os.path.join(os.path.expanduser("~/RMS_data/trajectory_images"), uti)
-        output_file = "{}.png".format(output_file)
-        if not os.path.exists(output_file):
-            print("Producing chart for uti  {}".format(uti))
-            print("Involving stations       {}".format(station_list))
-            print("At time                  {}".format(utc_time))
-            print("Magnitude                {}".format(magnitude))
-
-            produceCollatedChart(input_directory,
-                             station_list=station_list,
-                             event_time=event_time,
-                             duration=duration_sec, target_file_name=output_file, magnitude=magnitude)
-        else:
-            print("Chart for uti {} already exists".format(uti))
-    pass
-
-def getStationList(user=USER_NAME, host=REMOTE_SERVER, remote_path=STATION_COORDINATES_DICT):
-
-    station_list = []
-
-    stations_dict = json.loads(requests.get(remote_path).content.decode('utf-8'))
+    station_list, stations_dict = [], json.loads(requests.get(url).content.decode('utf-8'))
 
     for station in stations_dict:
         station_list.append(station)
@@ -1016,7 +228,27 @@ def getStationList(user=USER_NAME, host=REMOTE_SERVER, remote_path=STATION_COORD
     return sorted(station_list)
 
 def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_DATA_DIR,
-                              remote_station_processed_dir=REMOTE_STATION_PROCESSED_DIR, host=REMOTE_SERVER, username=USER_NAME, port=22):
+                              remote_station_processed_dir=REMOTE_STATION_PROCESSED_DIR,
+                              host=REMOTE_SERVER, username=USER_NAME, port=PORT):
+
+    """
+    In a subdirectoy of station_data_dir create a directory for each station containing mask
+    platepar and config file.
+
+    Arguments:
+        config: [config] RMS config instance - used to get data_dir.
+        station_list: [list] list of stations.
+
+    Keyword arguments:
+        stations_data_dir: [str] target name in RMS_data, optional, default STATIONS_DATA_DIR.
+        remote_station_processed_dir: [str] path on remote server, optional, default REMOTE_STATION_PROCESSED_DIR.
+        host: [str] host name of remote machine, optional, default REMOTE_SERVER.
+        username: [str] username for remote machine, optional, default USER_NAME.
+        port: [int] optional, default PORT constant, optional, default PORT.
+
+    Return:
+        Nothing.
+    """
 
     stations_data_full_path = os.path.join(config.data_dir, stations_data_dir)
 
@@ -1027,28 +259,41 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
         with tempfile.TemporaryDirectory() as t:
             remote_dir = remote_station_processed_dir.replace("$STATION", station.lower())
 
+            # Create paths up front to reduce clutter
             extraction_dir = os.path.join(t, "extracted")
             local_target_full_path = os.path.join(local_target)
             local_config_path = os.path.join(local_target_full_path, os.path.basename(config.config_file_name))
             local_platepar_path = os.path.join(local_target_full_path, config.platepar_name)
             local_mask_path = os.path.join(local_target_full_path, config.mask_file)
-            if os.path.exists(local_config_path) and os.path.exists(local_platepar_path) and os.path.exists(local_mask_path):
-                continue
-            remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
-            if len(remote_files):
-                latest_remote_file = remote_files[0]
-            else:
-                continue
             extracted_files_path = os.path.join(extraction_dir, station.lower(), latest_remote_file.split(".")[0])
             extracted_config_path = os.path.join(extracted_files_path, ".config")
             extracted_platepar_path = os.path.join(extracted_files_path, config.platepar_name)
             extracted_mask_path = os.path.join(extracted_files_path, config.mask_file)
             full_remote_path_to_bz2 = os.path.join(remote_dir, latest_remote_file)
-            downloadFile(host, username, port, full_remote_path_to_bz2, t)
 
+
+            # If data already exists, then continue to next station
+            if os.path.exists(local_config_path) and \
+                    os.path.exists(local_platepar_path) and \
+                        os.path.exists(local_mask_path):
+                continue
+
+
+            # Get the list of the files, newest at the top
+            remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
+
+            # Pick the newest file, or continue to next station if no files returned
+            if len(remote_files):
+                latest_remote_file = remote_files[0]
+            else:
+                continue
+
+            # Download, and extract the file into a subdir
+            downloadFile(host, username, port, full_remote_path_to_bz2, t)
             mkdirP(extraction_dir)
             extractBz2(t, extraction_dir)
 
+            # If the source files exist in this tempdir copy everything to the target
             if os.path.exists(extracted_config_path) and \
                os.path.exists(extracted_platepar_path) and \
                os.path.exists(extracted_mask_path):
@@ -1059,39 +304,83 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
                 shutil.move(extracted_mask_path, local_mask_path)
 
 
-def makeStationsInfoDict(config, stations_data_dir=STATIONS_DATA_DIR):
+def makeStationsInfoDict(c, stations_data_dir=STATIONS_DATA_DIR):
+    """
+    Make a dictionary, keyed by station name including location, geo (rads) and ecef, platepar and mask.
 
+    Arguments:
+        c: [config] RMS config instance.
+
+    Keyword arguments:
+        stations_data_dir: [str] target name in RMS_data, optional, default STATIONS_DATA_DIR.
+
+    Return:
+        stations_info_dict: [dict] dictionary with station name as key.
+    """
+
+    # Initiaise
     stations_info_dict = {}
-    stations_data_full_path = os.path.join(config.data_dir, stations_data_dir)
+    stations_data_full_path = os.path.join(c.data_dir, stations_data_dir)
+
+    # Get the stations from the directory names in data_dit/STATIONS_DATA_DIR
     stations_list = sorted(os.listdir(stations_data_full_path))
+
+    # Iterate and populate if all the expected fies are present
     for station in tqdm.tqdm(stations_list):
 
+        # Create paths
         station_info_path = os.path.join(stations_data_full_path, station)
         config_path = os.path.join(station_info_path,".config")
-        if os.path.exists(config_path):
-            config = cr.parse(os.path.join(station_info_path,".config"))
-        else:
+        pp_full_path = os.path.join(station_info_path, c.platepar_name, c.platepar_name)
 
-            continue
-        lat_rads, lon_rads, ele_m = np.radians(config.latitude), np.radians(config.longitude), config.elevation
-        x, y, z = latLonAlt2ECEF(lat_rads, lon_rads, ele_m)
-        mask_struct = getMaskFile(station_info_path, config, silent=True)
-        pp = Platepar()
-        pp_full_path = os.path.join(station_info_path, config.platepar_name, config.platepar_name)
-        if os.path.exists(pp_full_path):
-            print(pp_full_path)
+        if os.path.exists(config_path):
+            c = cr.parse(os.path.join(station_info_path, ".config"))
         else:
-            print("Path does not exist {}".format(pp_full_path))
-        pp.read(pp_full_path)
-        print(pp.station_code)
-        stations_info_dict[station.lower()] =    {'ecef' : (x, y, z),
-                                                  'geo': {'lat_rads': lat_rads, 'lon_rads': lon_rads, 'ele_m': ele_m},
-                                                  'pp': pp,
-                                                  'mask': mask_struct}
+            continue
+
+        # Locations
+        lat_rads, lon_rads, ele_m = np.radians(c.latitude), np.radians(c.longitude), c.elevation
+        x, y, z = latLonAlt2ECEF(lat_rads, lon_rads, ele_m)
+
+        # Masks
+        mask_struct = getMaskFile(station_info_path, c, silent=True)
+
+        # Platepar
+        pp = Platepar()
+        if os.path.exists(pp_full_path):
+            pp.read(pp_full_path)
+        else:
+            continue
+
+        # Write dict
+        stations_info_dict[station.lower()] =    {
+                                                    'ecef' : (x, y, z),
+                                                    'geo':
+                                                        {
+                                                            'lat_rads': lat_rads,
+                                                            'lon_rads': lon_rads,
+                                                            'ele_m': ele_m
+                                                            },
+                                                    'pp': pp,
+                                                    'mask': mask_struct
+                                                        }
 
     return stations_info_dict
 
 def filterPointsByElevation(points_list, min_ele, max_ele):
+
+    """
+    Filter points based on elevation, excludes the limits.
+
+    Args:
+        points_list: [list] list of ECEF points (x,y,z).
+        min_ele: [float] minimum elevation in metres.
+        max_ele: [float] maximum elevation in metres.
+
+    Returns:
+        [list] filtered list of points based on elevation.
+
+    """
 
     points_filtered_by_elevation = []
     for point in points_list:
@@ -1102,6 +391,17 @@ def filterPointsByElevation(points_list, min_ele, max_ele):
     return points_filtered_by_elevation
 
 def roundList(list, resolution_m):
+    """
+    Round a list of lists of numbers to the specified resolution.
+
+    Args:
+        list: [[list]] list of lists of numbers.
+        resolution_m: [float] resolution.
+
+    Returns:
+        [[list]] rounded list of lists of numbers, rounded to resolution.
+    """
+
 
     output_list = []
 
@@ -1113,15 +413,25 @@ def roundList(list, resolution_m):
 
     return output_list
 
-def makeECEFPointListAroundStations(station_info_dict, max_distance_to_station_m, resolution_m, min_ele_m=20000, max_ele_m=100000):
+def makeECEFPointListAroundStations(station_info_dict, max_dist_m, resolution_m, min_ele_m=20000, max_ele_m=100000):
+    """
 
+    Args:
+        station_info_dict: [dict] station info dict.
+        max_dist_m: [float] maximum distance to the station in metres.
+        resolution_m: [float] resolution in metres.
+        min_ele_m: [float] minimum elevation in metres.
+        max_ele_m: [float] maximum elevation in metres.
+
+    Returns:
+        combined_points_array: [array] Unique points in ECEF snapped to resolution around each station.
+    """
 
     if not len(station_info_dict):
         return []
 
     # Compute a list of offsets to apply to each station - do this only once and reuse
-    offsets_list = np.arange(0 - max_distance_to_station_m, 0 + max_distance_to_station_m + resolution_m,
-                                       resolution_m)
+    offsets_list = np.arange(0 - max_dist_m, 0 + max_dist_m + resolution_m, resolution_m)
     # Make the vertices
     x_list, y_list, z_list = np.meshgrid(offsets_list, offsets_list, offsets_list, indexing='ij')
 
@@ -1129,18 +439,17 @@ def makeECEFPointListAroundStations(station_info_dict, max_distance_to_station_m
     local_points_cube = np.vstack([x_list.ravel(), y_list.ravel(), z_list.ravel()]).T
 
     # Trim away anything outside the sphere of max distance - this will leave some points with negative elevations for
-    # some stations
-
-    points_template = local_points_cube[np.linalg.norm(local_points_cube, axis=1) <= max_distance_to_station_m]
+    # some stations - expected.
+    points_template = local_points_cube[np.linalg.norm(local_points_cube, axis=1) <= max_dist_m]
 
     # Free up some memory
     del x_list, y_list, z_list, offsets_list, local_points_cube
     gc.collect()
 
-    # Create a list of points within elevation range for all stations, without duplicates
-
+    # Initialise an array for points within elevation range for all stations, without duplicates
     combined_points_array = np.empty((0,3))
 
+    # Iterate over all the stations
     for station in tqdm.tqdm(station_info_dict):
 
         # Get the ecef information for this station
@@ -1149,29 +458,63 @@ def makeECEFPointListAroundStations(station_info_dict, max_distance_to_station_m
         # create local points by shifting template by station origin
         local_points = points_template + station_ecef
 
-        # Combine with points found so far
+        # Combine the points within the elevation limit for this station with points found so far
         combined_points_array = np.vstack([ np.array(filterPointsByElevation(local_points, min_ele_m, max_ele_m)), combined_points_array])
 
         # Round to resolution and force to integers for speed (not sure if this applies in python)
         indices = (combined_points_array / resolution_m).round().astype(int)
 
-        # Remove duplicates
+        # Remove duplicates better for memory to do this each iteration - worse for time
         combined_points_array = np.array((list(set([tuple(row) for row in indices])))) * resolution_m
 
     return combined_points_array
 
 
 def makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m = 200000, max_distance_to_station_m=500000):
+    """
+    Given the station info dict, make a list of ECEF points around the stations in the list within the local WGS84
+    elevation limits and at the specified resolution.
 
-    print("Making array of coordinates, radius {:.0f}km at resolution {:.1f}km around {} stations".format(max_distance_to_station_m / 1000, resolution_m / 1000, len(station_info_dict)))
-    ecef_point_array_around_stations = makeECEFPointListAroundStations(station_info_dict, max_distance_to_station_m, resolution_m, min_ele_m=min_ele_m, max_ele_m=max_ele_m)
+    Args:
+        station_info_dict: [dict] station info dict.
+
+    Keyword arguments:
+        min_ele_m: [float] minimum elevation in metres.
+        max_ele_m: [float] maximum elevation in metres.
+        resolution_m: [float] resolution in metres.
+        max_distance_to_station_m: [float] maximum distance to station in metres.
+
+    Returns:
+        [dict] list of ECEF points around the station.
+    """
+
+    print("Making array of coordinates, radius {:.0f}km at resolution {:.1f}km around {} stations"
+          .format(max_distance_to_station_m / 1000, resolution_m / 1000, len(station_info_dict)))
+
+    ecef_point_array_around_stations = makeECEFPointListAroundStations(station_info_dict,
+                                                                       max_distance_to_station_m, resolution_m,
+                                                                       min_ele_m=min_ele_m, max_ele_m=max_ele_m)
 
     return ecef_point_array_around_stations
 
-def addStationsToECEFArray(ecef_point_array, station_info_dict, radius=50000):
+def addStationsToECEFArray(ecef_point_array, station_info_dict, radius=500000):
+    """
+    Given an array of ECEF points, and the station_info_dict, return a list of mappings per ECEF point to station
+    positions and names
 
+    Arguments:
+        ecef_point_array: [array] array of ECEF points.
+        station_info_dict: [dict] station info dict.
+
+    Keyword arguments:
+        radius: [float] radius in metres around station to permit association.
+
+    Returns:
+        mapping_list: [list] [[ecef_point:(x, y, z), [station_ecef:(x, y, z)], [station_names]]
+    """
 
     station_position_ecef_list, station_name_list = [], []
+
     for station in station_info_dict:
         station_ecef = station_info_dict[station]['ecef']
         station_position_ecef_list.append(station_ecef)
@@ -1189,44 +532,65 @@ def addStationsToECEFArray(ecef_point_array, station_info_dict, radius=50000):
     return mapping_list
 
 def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
+    """
+    Are the vectors in an array of vectors visible from stations in a list
 
+    Arguments:
+        station_info_dict: [dict] station info dict.
+        vecs_normalised_array: [array] array of normalized vectors with the pointing information from station to pont
+        station_name_list: [list] list of stations names.
 
+    Return:
+        visible_mask: [array of bool] for each item in vecs_normalised_array and station_name_list True if visible
+        x_list: [list] array of x coordinates, or np.nan if not visible
+        y_list: [list] array of y coordinates, or np.nan if not visible
+    """
 
+    # Initialise lists to hold points
     x_list, y_list = [], []
-    mask, i = np.zeros(len(vecs_normalised_array), dtype=bool), 0
+
+    # Initialise an array for a mask for whether stations can see a point, and a counter
+    mask_visibla, i = np.zeros(len(vecs_normalised_array), dtype=bool), 0
     for vec_norm, station in zip(vecs_normalised_array, station_name_list):
 
-        station_info = station_info_dict[station]
-        pp = station_info['pp']
-        mask_struct = station_info['mask']
-        lat_degs = np.degrees(station_info['geo']['lat_rads'])
-        lon_degs = np.degrees(station_info['geo']['lon_rads'])
+        # Get the station info
+        station_info, pp, mask_struct = station_info_dict[station], station_info['pp'], station_info['mask']
+        lat_degs, lon_degs = np.degrees(station_info['geo']['lat_rads']), np.degrees(station_info['geo']['lon_rads'])
         station_ecef = station_info['ecef']
 
+        # From the station ECEF, and the normalised vector to the point compute az and alt
         check_point_az_deg, check_point_alt_deg = ECEF2AltAz(station_ecef, station_ecef + vec_norm)
+
+        # And ra dec - working at platpar reference time
         check_point_ra_deg, check_point_dec_deg = altAz2RADec(check_point_az_deg, check_point_alt_deg, pp.JD, lat_degs, lon_degs)
+
+        # Now get the pp ra dec at platepar reference time
         fov_ra, fov_dec = altAz2RADec(pp.az_centre, pp.alt_centre, pp.JD, lat_degs, lon_degs)
+
+        # Compute angular separation
         angular_separation = angularSeparationDeg(fov_ra, fov_dec, check_point_ra_deg, check_point_dec_deg)
 
-        if angular_separation > np.hypot(pp.fov_h, pp.fov_v ) / 2:
-            visible = False
-        else:
+        # Initialse the image coordinates
+        x_float, y_float = np.nan, np.nan
+
+        # Is it within FoV
+        if angular_separation < np.hypot(pp.fov_h, pp.fov_v ) / 2:
+
+            # Get a notional point which is in the correct direction 1000m meters away
             point = station_ecef + vec_norm * 1000
+
+            # Find the lat and lon and elevation
             point_lat_rads, point_lon_rads, point_alt_m  = ecef2LatLonAlt(point[0], point[1], point[2])
             point_lat_degs, point_lon_degs = np.degrees(point_lat_rads), np.degrees(point_lon_rads)
-            #print("Notional point location = {:.6f}, {:.6f}, {:.1f}".format(point_lat_degs, point_lon_degs, point_alt_m))
-            #print("Station at                {:.6f}, {:.6f}, {:.1f}".format(pp.lat, pp.lon, pp.elev))
 
-            #print("Angular separation {:.2f} x,y:{},{} ".format(angular_separation, x, y))
-
-
+            # Get the image coordinates for this point
             x_float_arr, y_float_arr = geoHt2XY(pp, point_lat_degs, point_lon_degs, point_alt_m)
             x_float, y_float = x_float_arr[0], y_float_arr[0]
+
+            # Take ints - pixels are always integer values
             x, y = int(x_float), int(y_float)
 
-            #print("Angular separation {:.2f} x,y:{},{} ".format(angular_separation, x, y))
-
-            # Get mask resolution
+            # Check against the image mask
             if mask_struct is None:
                 visible = True
             else:
@@ -1238,16 +602,20 @@ def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
                         visible = False
                 else:
                     visible = False
+        else:
+            visible = False
 
+        # Update the mask
+        mask_visibla[i] = visible
 
-        mask[i] = visible
+        # Increment the counter
         i += 1
-        if visible:
-            x_list.append(x_float)
-            y_list.append(y_float)
 
+        # Always append to the coordinates list, so that the mask will work, store at best precision
+        x_list.append(x_float)
+        y_list.append(y_float)
 
-    return mask, x_list, y_list
+    return mask_visibla, x_list, y_list
 
 
 def ray_intersection_point(c1, d1, c2, d2):
@@ -1389,53 +757,72 @@ def getCalculatedPositionErrorFromImageCoordinates(station_info_dict, station_na
 
             pp = station_info["pp"]
 
+            # Add some noise
+
+            # Error in station location
             random_ecef = np.array((np.random.random() * 100 - 50, np.random.random() * 100 - 50, np.random.random() * 100 - 50))
+
+            # Angle error - atmospheric effects
             random_angle_x = np.random.random() * 0.5 - 0.25
             random_angle_y = np.random.random() * 0.5 - 0.25
             random_angle_x_in_pixels = pp.X_res * random_angle_x / pp.fov_h
             random_angle_y_in_pixels = pp.Y_res * random_angle_y / pp.fov_v
+
+            # Pixel offset, and the angle error
             random_pixel_x = np.random.random() * 3 - 1.5 + random_angle_x_in_pixels
             random_pixel_y = np.random.random() * 3 - 1.5 + random_angle_y_in_pixels
 
+
+            # Compute the normal vectors from stations to the point
+
+            # Get the distance to the point
             distance_to_point_m = RMS.Math.dimHypot(observed_point_array, np.array(station_info['ecef']))
 
+            # Express is ra dec and add noise
             jd_array, ra_deg_array,  dec_deg_array, _ = xyToRaDecPP(np.array([pp.JD]), np.array([x + random_pixel_x]), np.array([y + random_pixel_y]), np.array([1]), pp, jd_time=True, extinction_correction=False, measurement=False)
+
+            # Convert to local az alt
             az, alt = raDec2AltAz(ra_deg_array, dec_deg_array, pp.JD, pp.lat, pp.lon)
+
+            # Get the point in ecef
             ecef_point = AER2ECEF(az, alt, distance_to_point_m, pp.lat, pp.lon, pp.elev)
             ecef_point = (ecef_point[0][0], ecef_point[1][0], ecef_point[2][0])
+
+            # Compute normal vectors from the station to the point, with noise
             ecef_sta_pt = vectNorm(ecef_point - np.array(station_info['ecef'] + random_ecef))
+
+            # Add to the list of vectors
             vector_list.append(ecef_sta_pt)
 
 
+        # For ech pair of stations compute performance data for this point
         calculated_position_list, error_matrix = pairwiseTriangulationError(origin_list, vector_list, observed_point_array)
+
+        # Add the error matrices to a list
         error_matrix_list.append(error_matrix)
 
-    # This is ugly, but works more quickly
+    # And stack ths list of matrices - one matrix per iteratiojn
     error_matrix_over_iterations = np.stack(error_matrix_list)
 
     # Compute mean error over all iterations per combination
     error_matrix = np.mean(error_matrix_over_iterations, axis=0)
-
 
     # Exclude errors of station against same station
     non_reflexive_errors = error_matrix[~np.eye(error_matrix.shape[0], dtype=bool)]
 
     # Compute stats
     mean_error, std_dev = np.mean(non_reflexive_errors), np.std(non_reflexive_errors)
-    best_pair = []
 
+    # Init a variable to hold the best pair of stations
+    best_pair = []
 
 
     if len(non_reflexive_errors) > 2:
 
+        # Find the lowest error between different stations
         min_error = np.min(non_reflexive_errors)
-        station_pair_indices = np.where(error_matrix == min_error)
 
-
-        best_pair.append(station_name_list[station_pair_indices[0][0]])
-        best_pair.append(station_name_list[station_pair_indices[1][0]])
-    elif len(non_reflexive_errors) == 2:
-        min_error = np.min(non_reflexive_errors)
+        # Identfy where it is in the matrix, and return the pair of station names
         station_pair_indices = np.where(error_matrix == min_error)
 
         best_pair.append(station_name_list[station_pair_indices[0][0]])
@@ -1519,31 +906,37 @@ def computeAnglesPerPoint(station_info_dict, mapping_list):
         vecs_normalized_array = vectors_array / normalisation_array  # shape (N, 3)
         visible_mask, x_list, y_list = checkVisible(station_info_dict, vecs_normalized_array, station_name_list)
 
-
-        station_ecef_array = station_ecef_array[visible_mask]
-        station_name_list = station_name_list[visible_mask]
-        vecs_normalized_array = vecs_normalized_array[visible_mask]
+        # Create masked copies
+        station_ecef_array_visible = station_ecef_array[visible_mask]
+        station_name_list_visible = station_name_list[visible_mask]
+        vecs_normalized_array_visible = vecs_normalized_array[visible_mask]
+        x_list_visible, y_list_visible = x_list[visible_mask], y_list[visible_mask]
 
         if not len(station_name_list):
             continue
 
         # Dot product matrix
-        dot_matrix = np.dot(vecs_normalized_array, vecs_normalized_array.T)  # shape (N, N)
-        dot_matrix = np.clip(dot_matrix, -1.0, 1.0)  # numerical safety
+        dot_matrix = np.dot(vecs_normalized_array_visible, vecs_normalized_array_visible.T)  # shape (N, N)
+        dot_matrix = np.clip(dot_matrix, -1.0, 1.0)
 
-        # Angle and Score matrix in sin(degrees)
+        # Angle matrix degrees
         angle_matrix = np.degrees(np.arccos(dot_matrix))
+
+        # Score matrix in sin(angle)
         sin_score_matrix = np.sin(np.arccos(dot_matrix))  # shape (N, N)
+
+        # Calculate errors in positions
         calculated_position_list, error_matrix, min_error, best_pair, mean_error, sd = \
-            getCalculatedPositionErrorFromImageCoordinates(station_info_dict, station_name_list, x_list, y_list, vecs_normalized_array, observed_point_array, iterations = 50)
+            getCalculatedPositionErrorFromImageCoordinates(station_info_dict, station_name_list_visible,
+                                                           x_list_visible, y_list_visible,
+                                                           vecs_normalized_array_visible,
+                                                           observed_point_array, iterations = 50)
 
-
+        # If more than 6 stations saw the point, plot and save a chart
         if len(station_name_list) > 6:
-
 
             if True:
                 # Create scatter plot
-
 
                 ecef_locations = []
                 for station_name in station_name_list:
@@ -1558,13 +951,13 @@ def computeAnglesPerPoint(station_info_dict, mapping_list):
                 point_lat_rads, point_lon_rads, point_ht = ecef2LatLonAlt(observed_point_array[0], observed_point_array[1], observed_point_array[2])
                 e_list, n_list, u_list, labs_list = [], [], [], []
 
-                lat_deg = np.degrees(point_lat_rads)
-                lon_deg = np.degrees(point_lon_rads)
-                ele_m  =  point_ht
+                lat_deg, lon_deg, ele_m = np.degrees(point_lat_rads), np.degrees(point_lon_rads), point_ht
                 e_point, n_point, u_point = latLonAlt2ENUDeg(lat_deg, lon_deg, ele_m, lat_origin_deg, lon_origin_deg, ele_origin_m)
+
                 e_list.append(e_point / 1000)
                 n_list.append(n_point / 1000)
                 u_list.append(u_point / 1000)
+
                 labs_list.append("Point alt {:.1f}km".format(point_ht/1000))
 
                 coordinates_of_good_station = []
@@ -1619,9 +1012,13 @@ def computeAnglesPerPoint(station_info_dict, mapping_list):
                 mkdirP(plot_dir)
                 plot_full_path =  os.path.join(plot_dir, plot_file_name)
                 plt.savefig(plot_full_path)
+                plt.close()
                 pass
 
-        output_mapping_list.append([observed_point_array, station_ecef_array, station_name_list, angle_matrix, sin_score_matrix, calculated_position_list,  error_matrix, mean_error, sd])
+        # Add information to the mapping
+        output_mapping_list.append([observed_point_array, station_ecef_array_visible, station_name_list_visible,
+                                    angle_matrix, sin_score_matrix,
+                                    calculated_position_list,  error_matrix, mean_error, sd])
 
     return output_mapping_list
 
@@ -1658,7 +1055,7 @@ if __name__ == "__main__":
         ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=50000)
         np.save(ecef_array_path, ecef_point_array)
 
-    if not os.path.exists(ecef_point_to_camera_mapping_path):
+    if not os.path.exists(ecef_point_to_camera_mapping_path) or True:
         ecef_point_array = np.load(ecef_array_path)
         ecef_point_to_camera_mapping = addStationsToECEFArray(ecef_point_array, station_info_dict, radius=500000)
 
