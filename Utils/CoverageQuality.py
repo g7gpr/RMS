@@ -66,14 +66,29 @@ def lsRemote(host, username, port, remote_path, sock=None):
         files: [list of strings] Names of remote files.
     """
 
+
+
+    try:
+
+        remote = "{}@{}:{}".format(username, host, os.path.join(remote_path))
+        result_lines = subprocess.run(['rsync', '-z', "{}/".format(remote)], capture_output=True, text=True).stdout.splitlines()
+
+        file_list = []
+        for line in result_lines:
+            file_list.append(line.split()[-1])
+
+        return file_list
+    except:
+        pass
+
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # Accept unknown host keys
     ssh.connect(hostname=host, port=port, username=username, sock=sock)
 
     try:
         sftp = ssh.open_sftp()
-        files = sftp.listdir(remote_path)
-        return files
+        file_list = sftp.listdir(remote_path)
+        return file_list
     finally:
         sftp.close()
         ssh.close()
@@ -252,6 +267,9 @@ def filterByDate(files_list, earliest_date=None, latest_date=None):
 
     filtered_files_list = []
     for file in files_list:
+
+        if len(file.split("_")) != 5:
+            continue
 
         date = file.split("_")[1]
         time = file.split("_")[2]
