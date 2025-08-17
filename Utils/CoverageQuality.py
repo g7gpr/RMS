@@ -307,7 +307,7 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
 
     stations_data_full_path = os.path.join(config.data_dir, stations_data_dir)
 
-
+    print("Starting to download files.")
     for station in tqdm.tqdm(station_list):
         local_target = os.path.join(stations_data_full_path, station.lower())
 
