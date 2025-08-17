@@ -334,6 +334,7 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
 
 
             # Download, and extract the file into a subdir
+            log.info("Downloading {}".formaat(full_remote_path_to_bz2))
             downloadFile(host, username, port, full_remote_path_to_bz2, t)
             mkdirP(extraction_dir)
             extractBz2(t, extraction_dir)
