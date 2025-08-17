@@ -376,7 +376,7 @@ def makeStationsInfoDict(c, stations_data_dir=STATIONS_DATA_DIR):
         # Create paths
         station_info_path = os.path.join(stations_data_full_path, station)
         config_path = os.path.join(station_info_path,".config")
-        pp_full_path = os.path.join(station_info_path, c.platepar_name, c.platepar_name)
+        pp_full_path = os.path.join(station_info_path, c.platepar_name)
 
         if os.path.exists(config_path):
             c = cr.parse(os.path.join(station_info_path, ".config"))
