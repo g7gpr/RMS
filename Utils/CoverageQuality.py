@@ -308,7 +308,7 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
             if os.path.exists(local_config_path) and \
                     os.path.exists(local_platepar_path) and \
                         os.path.exists(local_mask_path):
-                contine
+                continue
 
 
             # Get the list of the files, newest at the top
