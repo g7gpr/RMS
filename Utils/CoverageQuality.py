@@ -1040,7 +1040,7 @@ if __name__ == "__main__":
     ecef_point_to_camera_mapping_path = os.path.join(WORKING_DIRECTORY, "ecef_point_to_camera_mapping.pkl")
     station_point_angle_score_mapping_list_path = os.path.join(WORKING_DIRECTORY, "station_point_angle_score_mapping_list.pkl")
 
-    if False:
+    if True:
         station_list = getStationList()
         makeConfigPlateParMaskLib(config, station_list)
 
