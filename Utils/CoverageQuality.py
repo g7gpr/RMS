@@ -308,13 +308,17 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
             if os.path.exists(local_config_path) and \
                     os.path.exists(local_platepar_path) and \
                         os.path.exists(local_mask_path):
-                pass
+                contine
 
 
             # Get the list of the files, newest at the top
             remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
 
             remote_files = filterByDate(remote_files)
+
+            if not len(remote_files):
+                continue
+
 
             # Pick the newest file, or continue to next station if no files returned
             if len(remote_files):
