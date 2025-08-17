@@ -30,6 +30,7 @@ import RMS.ConfigReader as cr
 import gc
 import shutil
 import sys
+import datetime
 
 
 from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, ECEF2AltAz, altAz2RADec, raDec2AltAz, AER2ECEF
@@ -227,6 +228,41 @@ def getStationList(url=STATION_COORDINATES_JSON):
 
     return sorted(station_list)
 
+def filterByDate(files_list, earliest_date=None, latest_date=None):
+    """
+    Filter a list of bz2 files by date.
+    Arguments:
+        files_list: [list] list of bz2 files
+
+    Keyword arguments:
+        earliest_date: optional, default None, earliest date to pick, if None, 3 days before now
+        latest_date: optional, default None, latest date to pick, if None, 3 days after now
+
+    Returns:
+        filtered_files_list: [list] list of bz2 files filtered by date
+    """
+
+
+    if earliest_date is None:
+        earliest_date = datetime.datetime.now() - datetime.timedelta(days=3)
+
+    if latest_date is None:
+        latest_date = datetime.datetime.now() + datetime.timedelta(days=3)
+
+    filtered_files_list = []
+    for file in files_list:
+
+        date = file.split("_")[1]
+        time = file.split("_")[2]
+        year, month, day = int(date[0:4]), int(date[4:6]), int(date[6:8])
+        hour, minute, second = int(time[0:2]), int(time[2:4]), int(time[4:6])
+        file_date = datetime.datetime(year=year, month=month, day=day, hour=hour, minute=minute, second=second)
+        if earliest_date < file_date < latest_date:
+            filtered_files_list.append(file)
+
+    return filtered_files_list
+
+
 def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_DATA_DIR,
                               remote_station_processed_dir=REMOTE_STATION_PROCESSED_DIR,
                               host=REMOTE_SERVER, username=USER_NAME, port=PORT):
@@ -272,11 +308,13 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
             if os.path.exists(local_config_path) and \
                     os.path.exists(local_platepar_path) and \
                         os.path.exists(local_mask_path):
-                continue
+                pass
 
 
             # Get the list of the files, newest at the top
             remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
+
+            remote_files = filterByDate(remote_files)
 
             # Pick the newest file, or continue to next station if no files returned
             if len(remote_files):
