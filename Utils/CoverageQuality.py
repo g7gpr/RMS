@@ -145,23 +145,24 @@ def extractBz2Files(bz2_list, input_directory, working_directory, silent=True, h
         except:
             if not silent:
                 print("Redownloading {}".format(basename_bz2))
-            path = REMOTE_STATION_PROCESSED_DIR.replace("$STATION", basename_bz2.split("_")[0].lower())
-            downloadFile(host, username, path, port, bz2_directory )
+            remote_path = REMOTE_STATION_PROCESSED_DIR.replace("$STATION", basename_bz2.split("_")[0].lower())
+            remote_path = os.path.join(remote_path, basename_bz2)
+            downloadFile(host, username, remote_path, port)
             with tarfile.open(os.path.join(input_directory, basename_bz2), 'r:bz2') as tar:
                 tar.extractall(path=bz2_directory)
 
-def downloadFile(host, username, local_path, port=PORT, remote_path=REMOTE_STATION_PROCESSED_DIR, silent=False):
+def downloadFile(host, username, local_path, remote_path, port=PORT,  silent=False):
     """Download a single file try compressed rsync first, then fall back to Paramiko.
 
     Arguments:
         host: [str] hostname of remote machine.
         username: [str] username for remote machine.
         local_path: [path] full path of local target.
-
+        remote_path: [path] full path of remote target
 
     Keyword arguments:
         port: [str] Optional, default PORT constant.
-        remote_path: [path] optional, default REMOTE_STATION_PROCESSED_DIR constant.
+
         silent: [bool] optional, default False.
 
     Return:
@@ -302,8 +303,6 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
             local_platepar_path = os.path.join(local_target_full_path, config.platepar_name)
             local_mask_path = os.path.join(local_target_full_path, config.mask_file)
 
-
-
             # If data already exists, then continue to next station
             if os.path.exists(local_config_path) and \
                     os.path.exists(local_platepar_path) and \
@@ -334,8 +333,8 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
 
 
             # Download, and extract the file into a subdir
-            print("Downloading {}".formaat(full_remote_path_to_bz2))
-            downloadFile(host, username, port, full_remote_path_to_bz2, t)
+            print("Downloading {}".format(full_remote_path_to_bz2))
+            downloadFile(host, username, t, full_remote_path_to_bz2)
             mkdirP(extraction_dir)
             extractBz2(t, extraction_dir)
 
