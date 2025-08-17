@@ -53,14 +53,14 @@ WORKING_DIRECTORY = os.path.expanduser("~/RMS_data/Coverage")
 CHARTS = "charts"
 PORT = 22
 
-def lsRemote(host, username, port, remote_path, sock=None):
-    """Return the files in a remote directory.
+def lsRemote(host, username, port, remote_path):
+    """Return the files in a remote directory, prefer rsync if available
 
     Arguments:
         host: [str] remote host.
         username: [str] user account to use.
         port: [int] remote port number.
-        remote_pat: [str] path of remote directory to list.
+        remote_path: [str] path of remote directory to list.
 
     Return:
         files: [list of strings] Names of remote files.
