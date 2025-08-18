@@ -44,7 +44,7 @@ from scipy.spatial import cKDTree
 from RMS.Misc import mkdirP
 import matplotlib.pyplot as plt
 
-from Utils.PointingTools import enu2LatLonAltDeg, enu2Ecef
+
 
 REMOTE_SERVER = 'gmn.uwo.ca'
 USER_NAME = "analysis"
@@ -963,6 +963,36 @@ def latLonAlt2ENUDeg(lat_deg, lon_deg, ele_m, lat_origin_deg, lon_origin_deg, el
     return e, n, u
 
 
+def enu2Ecef(e, n, u, lat_ref, lon_ref, alt_ref):
+    # Constants
+    a = 6378137.0  # WGS-84 semi-major axis
+    f = 1 / 298.257223563
+    e2 = f * (2 - f)
+
+    lat = np.radians(lat_ref)
+    lon = np.radians(lon_ref)
+
+    N = a / np.sqrt(1 - e2 * np.sin(lat)**2)
+    x0 = (N + alt_ref) * np.cos(lat) * np.cos(lon)
+    y0 = (N + alt_ref) * np.cos(lat) * np.sin(lon)
+    z0 = ((1 - e2) * N + alt_ref) * np.sin(lat)
+
+    # ENU to ECEF rotation
+    R = np.array([
+        [-np.sin(lon), -np.sin(lat)*np.cos(lon),  np.cos(lat)*np.cos(lon)],
+        [ np.cos(lon), -np.sin(lat)*np.sin(lon),  np.cos(lat)*np.sin(lon)],
+        [          0,            np.cos(lat),            np.sin(lat)]
+    ])
+    enu_vec = np.array([e, n, u])
+    ecef_offset = R @ enu_vec
+    return np.array([x0, y0, z0]) + ecef_offset
+
+def enu2LatLonAltDeg(e, n, u, lat_origin_deg, lon_origin_deg, ele_origin_deg):
+
+    x, y, z = enu2Ecef(e, n, u, lat_origin_deg, lon_origin_deg, ele_origin_deg)
+    lat_deg, lon_deg, ele_m = ecef2LatLonAltDeg(x, y, z)
+
+    return lat_deg, lon_deg, ele_m
 
 
 def computeAnglesPerPoint(station_info_dict, mapping_list, plot_charts=False):
