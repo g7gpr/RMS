@@ -678,7 +678,7 @@ def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
         x_list.append(x_float)
         y_list.append(y_float)
 
-    return mask_visibla, x_list, y_list
+    return mask_visibla, np.array(x_list), np.array(y_list)
 
 
 def ray_intersection_point(c1, d1, c2, d2):
@@ -975,6 +975,7 @@ def computeAnglesPerPoint(station_info_dict, mapping_list):
         vecs_normalized_array_visible = vecs_normalized_array[visible_mask]
         x_list_visible, y_list_visible = x_list[visible_mask], y_list[visible_mask]
 
+
         if not len(station_name_list):
             continue
 
@@ -996,13 +997,13 @@ def computeAnglesPerPoint(station_info_dict, mapping_list):
                                                            observed_point_array, iterations = 50)
 
         # If more than 6 stations saw the point, plot and save a chart
-        if len(station_name_list) > 6:
+        if len(station_name_list_visible) > 6:
 
             if True:
                 # Create scatter plot
 
                 ecef_locations = []
-                for station_name in station_name_list:
+                for station_name in station_name_list_visible:
                     station = station_info_dict[station_name]
                     ecef_locations.append(station['ecef'])
                     s_x, s_y, s_z = station['ecef']
@@ -1062,7 +1063,7 @@ def computeAnglesPerPoint(station_info_dict, mapping_list):
                 ax.set_xlabel("North km")
                 ax.set_ylabel("East km")
                 ax.set_zlabel("Up km")
-                i_1, i_2 = np.where(station_name_list == best_pair[0]), np.where(station_name_list == best_pair[1])
+                i_1, i_2 = np.where(station_name_list_visible == best_pair[0]), np.where(station_name_list_visible == best_pair[1])
                 convergence_angle = angle_matrix[i_1, i_2][0][0]
 
                 plot_title = "Stations and reference point minimum error {:.0f}m with stations {} {} angle {:.1f} degrees".format(min_error, best_pair[0], best_pair[1], convergence_angle)
