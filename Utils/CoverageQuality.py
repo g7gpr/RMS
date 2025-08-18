@@ -617,7 +617,7 @@ def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
 
         # Get the station info
         station_info  = station_info_dict[station]
-        pp, mask_struct = station_info['pp'], station['mask']
+        pp, mask_struct = station_info['pp'], station_info['mask']
         lat_degs, lon_degs = np.degrees(station_info['geo']['lat_rads']), np.degrees(station_info['geo']['lon_rads'])
         station_ecef = station_info['ecef']
 
@@ -1103,7 +1103,7 @@ if __name__ == "__main__":
     ecef_point_to_camera_mapping_path = os.path.join(WORKING_DIRECTORY, "ecef_point_to_camera_mapping.pkl")
     station_point_angle_score_mapping_list_path = os.path.join(WORKING_DIRECTORY, "station_point_angle_score_mapping_list.pkl")
 
-    if True:
+    if False:
         station_list = getStationList()
         makeConfigPlateParMaskLib(config, station_list)
 
