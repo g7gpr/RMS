@@ -44,6 +44,8 @@ from scipy.spatial import cKDTree
 from RMS.Misc import mkdirP
 import matplotlib.pyplot as plt
 
+from Utils.PointingTools import enu2LatLonAltDeg, enu2Ecef
+
 REMOTE_SERVER = 'gmn.uwo.ca'
 USER_NAME = "analysis"
 STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
@@ -897,37 +899,47 @@ def getCalculatedPositionErrorFromImageCoordinates(station_info_dict, station_na
 
 def computeOrigin(points_list):
 
+    """
+    Compute the origin - by taking the mid points of East and North and the minimum of Up
+    Arguments:
+        points_list: [list] List os points in ECEF
+
+    Returns:
+        lat_deg:[float] Latitude in degrees
+        lon_deg:[float] Longitude in degrees
+        ele_deg:[float] Elevation in meters
+        x: [float] x coordinate
+        y: [float] y coordinate
+        z: [float] z coordinate
+    """
+
+
+    # Transpose list of ECEF into three lists
     x_list, y_list, z_list = np.array(points_list).T
 
-    ele_m_list = []
-    min_ele_m_initialised = False
+    # Initialise working lists of east, north, up
+    e_list, n_list, u_list = [], [], []
+
+    # Take the mid point of ECEF as our first origin
+    lat_o_rad, lon_o_rad, ele_m_o =  ecef2LatLonAlt(np.mean(x_list), np.mean(y_list), np.mean(z_list))
+    lat_o_deg, lon_o_deg = np.degrees(lat_o_rad), np.degrees(lon_o_rad)
+
+    # Convert all the ECEF points into ENU using this estimate of an origin
     for x, y, z, in zip(x_list, y_list, z_list):
         lat_rads, lon_rads, ele_m = ecef2LatLonAlt(x, y, z)
+        e, n, u = latLonAlt2ENUDeg(np.degrees(lat_rads), np.degrees(lon_rads), ele_m, lat_o_deg, lon_o_deg, ele_m_o)
+        e_list.append(e)
+        n_list.append(n)
+        u_list.append(n)
 
-        if min_ele_m_initialised:
-            if  ele_m < min_ele_m:
-                min_ele_m = ele_m
-                min_x, min_y, min_z = x, y, z
-        else:
-            min_ele_m = ele_m
-            min_x, min_y, min_z = x, y, z
-            min_ele_m_initialised = True
+    # Take the mid point of east and north and the minimum of up
+    e_mid_m, n_mid_m, u_min = np.mean((np.min(e_list), np.max(e_list))), np.mean((np.min(n_list), np.max(n_list))), np.min(u_list)
 
+    # Convert that into lat and lon using out temporary origin
+    lat_deg, lon_deg, ele_m = enu2LatLonAltDeg(e_mid_m, n_mid_m, u_min, lat_o_deg, lon_o_deg, ele_m_o)
 
-    x = np.mean((np.min(x_list), np.max(x_list)))
-    y = np.mean((np.min(y_list), np.max(y_list)))
-    z = np.mean((np.min(z_list), np.max(z_list)))
-
-    min_r = (min_x ** 2 + min_y ** 2 + min_z ** 2) ** 0.5
-    origin_r = (x ** 2 + y ** 2 + z ** 2) ** 0.5
-
-    correction_factor = min_r / origin_r
-
-    x, y, z = x * correction_factor, y * correction_factor, z * correction_factor
-
-    lat_rads, lon_rads, ele_m = ecef2LatLonAlt(x, y, z)
-
-    lat_deg, lon_deg = np.degrees(lat_rads), np.degrees(lon_rads)
+    # And ECEF
+    x, y, z = enu2Ecef(lat_deg, lon_deg, ele_m, lat_o_deg, lon_o_deg, ele_m_o)
 
     return lat_deg, lon_deg, ele_m, x, y, z
 
@@ -953,7 +965,7 @@ def latLonAlt2ENUDeg(lat_deg, lon_deg, ele_m, lat_origin_deg, lon_origin_deg, el
 
 
 
-def computeAnglesPerPoint(station_info_dict, mapping_list):
+def computeAnglesPerPoint(station_info_dict, mapping_list, plot_charts=False):
 
     mapping_list_with_angles=[]
 
@@ -999,7 +1011,7 @@ def computeAnglesPerPoint(station_info_dict, mapping_list):
         # If more than 6 stations saw the point, plot and save a chart
         if len(station_name_list_visible) > 6:
 
-            if True:
+            if plot_charts:
                 # Create scatter plot
 
                 ecef_locations = []
@@ -1007,7 +1019,8 @@ def computeAnglesPerPoint(station_info_dict, mapping_list):
                     station = station_info_dict[station_name]
                     ecef_locations.append(station['ecef'])
                     s_x, s_y, s_z = station['ecef']
-                    _,_,ele_m = ecef2LatLonAlt(s_x, s_y, s_z)
+                    lat_rads , lon_rads ,ele_m = ecef2LatLonAlt(s_x, s_y, s_z)
+                    print("Station {} at lat, lon ({}, {})".format(station_name, np.rad2deg(lat_rads), np.rad2deg(lon_rads)))
 
                 ecef_locations.append([observed_point_array[0], observed_point_array[1], observed_point_array[2]])
 
@@ -1093,6 +1106,9 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="""Compute coverage quality of the GMN \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
+    arg_parser.add_argument('-p', '--plot', dest='plot_charts', default=False, action="store_true",
+                            help="Plot chart for debugging purposes.")
+
 
     cwd = os.getcwd()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
@@ -1116,7 +1132,7 @@ if __name__ == "__main__":
     station_info_dict = pickle.load(open(station_info_dict_path, 'rb'))
 
     if not os.path.exists(ecef_array_path):
-        ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=50000)
+        ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=10000)
         np.save(ecef_array_path, ecef_point_array)
 
     if not os.path.exists(ecef_point_to_camera_mapping_path) or True:
@@ -1130,7 +1146,7 @@ if __name__ == "__main__":
     ecef_point_to_camera_mapping = pickle.load(open(ecef_point_to_camera_mapping_path, 'rb'))
 
     if True:
-        station_point_angle_score_mapping_list = computeAnglesPerPoint(station_info_dict, ecef_point_to_camera_mapping)
+        station_point_angle_score_mapping_list = computeAnglesPerPoint(station_info_dict, ecef_point_to_camera_mapping, plot_charts)
 
     with open(station_point_angle_score_mapping_list_path, 'wb') as f:
         pickle.dump(station_point_angle_score_mapping_list, f)
