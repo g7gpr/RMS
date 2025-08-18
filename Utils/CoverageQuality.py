@@ -616,7 +616,8 @@ def checkVisible(station_info_dict, vecs_normalised_array, station_name_list):
     for vec_norm, station in zip(vecs_normalised_array, station_name_list):
 
         # Get the station info
-        station_info, pp, mask_struct = station_info_dict[station], station_info['pp'], station_info['mask']
+        station_info  = station_info_dict[station]
+        pp, mask_struct = station_info['pp'], station['mask']
         lat_degs, lon_degs = np.degrees(station_info['geo']['lat_rads']), np.degrees(station_info['geo']['lon_rads'])
         station_ecef = station_info['ecef']
 
