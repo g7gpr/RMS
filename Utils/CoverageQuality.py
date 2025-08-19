@@ -1177,10 +1177,12 @@ if __name__ == "__main__":
 
     ecef_point_to_camera_mapping = pickle.load(open(ecef_point_to_camera_mapping_path, 'rb'))
 
-    if True:
+    if False:
         station_point_angle_score_mapping_list = computeAnglesPerPoint(station_info_dict, ecef_point_to_camera_mapping, cml_args.plot_charts)
 
-    with open(station_point_angle_score_mapping_list_path, 'wb') as f:
-        pickle.dump(station_point_angle_score_mapping_list, f)
+        with open(station_point_angle_score_mapping_list_path, 'wb') as f:
+            pickle.dump(station_point_angle_score_mapping_list, f)
+
+    station_point_angle_score_mapping_list = pickle.load(open(station_point_angle_score_mapping_list_path, 'rb'))
 
     pass
