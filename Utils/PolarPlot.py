@@ -21,28 +21,46 @@ import sys
 import pickle
 import argparse
 import subprocess
+from datetime import tzinfo
+import moviepy
+
 import cv2
 import numpy as np
+import time
+import matplotlib.pyplot as plt
 
 
 import RMS.ConfigReader as cr
 import datetime
 import pathlib
-import time
+import json
 import imageio as imageio
 import tqdm
 
 from RMS.Astrometry.Conversions import altAz2RADec, raDec2AltAz, jd2Date, date2JD, J2000_JD
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP, correctVignetting
 from RMS.Formats.FFfile import read as readFF
-from RMS.Formats.Platepar import Platepar
+from RMS.Formats.Platepar import Platepar, stationData
 from RMS.Math import angularSeparationDeg
 from RMS.Misc import mkdirP
 from RMS.Routines.MaskImage import loadMask
 from RMS.Astrometry.CyFunctions import equatorialCoordPrecession
 
 
-def cartesianToAltAz(x, y, dimension_x_min, dimension_x_max, dimension_y_min, dimension_y_max,  minimum_elevation_deg):
+def startOfPreviousDay():
+
+    this_time_yesterday = datetime.datetime.now(datetime.timezone.utc)  - datetime.timedelta(days=1)
+    yesterday_start_time = datetime.datetime.combine(this_time_yesterday, datetime.datetime.min.time())
+
+    return yesterday_start_time.replace(tzinfo=datetime.timezone.utc)
+
+def startOfThisDay(time_object):
+
+    return datetime.datetime.combine(time_object, datetime.datetime.min.time()).replace(tzinfo=datetime.timezone.utc)
+
+
+
+def azimuthalProjectionToAltAz(x, y, dimension_x_min, dimension_x_max, dimension_y_min, dimension_y_max, minimum_elevation_deg):
 
     """
     Convert Cartesian coordinates (x, y) on a polar plot to azimuth and altitude angles.
@@ -58,31 +76,27 @@ def cartesianToAltAz(x, y, dimension_x_min, dimension_x_max, dimension_y_min, di
 
     Return:
         alt_deg   : Altitude angle in degrees (from horizon up)
-        az_deg    : Azimuth angle in degrees (0° = right, 90° = up)
+        az_deg    : Azimuth angle in degrees (0° = up, 90° = right)
 
     """
-    # Normalize coordinates to center
-    x0 = (dimension_x_min + dimension_x_max) / 2
-    y0 = (dimension_y_min + dimension_y_max) / 2
-    dx = x - x0
-    dy = (dimension_y_max - y) - y0
+    # Compute origin
+    x0, y0 = (dimension_x_min + dimension_x_max) / 2, (dimension_y_min + dimension_y_max) / 2
+
+    # Normalise coordinates to centre
+    dx, dy = x - x0, (dimension_y_max - y) - y0
 
     # Compute azimuth (angle around center)
-    az_rad = np.arctan2(dy, dx)
-    az_deg = np.degrees(az_rad) % 360
+    az_deg = np.degrees(np.arctan2(dy, dx)) % 360
 
-    # Compute radial distance from center
-    r = np.sqrt(dx ** 2 + dy ** 2)
-    rmax = min(dimension_x_max - x0, dimension_y_max - y0)
+    # Compute radial distance from center - limit is edge of image, not corner to corner
+    r, rmax = np.sqrt(dx ** 2 + dy ** 2), min(dimension_x_max - x0, dimension_y_max - y0)
 
     # Map radius to altitude (center = 90°, edge = min_elev_deg)
     alt_deg = 90 - (90 - minimum_elevation_deg) * (r / rmax)
-    # alt_deg = np.clip(alt_deg, minimum_elevation_deg, 90)
 
     return alt_deg, (az_deg - 90) % 360
 
-
-def altAzToCartesian(az_deg, alt_deg, dimension_x_min, dimension_x_max, dimension_y_min, dimension_y_max,  minimum_elevaton_deg):
+def altAzToAzimuthalProjection(az_deg, alt_deg, dimension_x_min, dimension_x_max, dimension_y_min, dimension_y_max, minimum_elevaton_deg):
     """
     Convert azimuth and altitude angles to Cartesian coordinates on a polar plot.
 
@@ -122,7 +136,6 @@ def altAzToCartesian(az_deg, alt_deg, dimension_x_min, dimension_x_max, dimensio
 
 
     return x, y
-
 
 def getStationsInfoDict(path_list=None, print_activity=False):
 
@@ -308,6 +321,261 @@ def getStationsInfoDict(path_list=None, print_activity=False):
 
     return stations_info_dict
 
+def getCommaSeparatedListofStations(stations_info_dict):
+
+
+    stations_as_text = ""
+    for s in stations_info_dict.keys():
+        stations_as_text = "{}, {}".format(stations_as_text, s.strip())
+
+    if len(stations_as_text):
+        stations_as_text = stations_as_text[2:]
+
+
+    return stations_as_text
+
+def getFitsFiles(transformation_layer_list, stations_info_dict, target_jd, print_activity=False):
+    """
+    Get the paths to fits files, in the same order as stations_list using info from stations_info_dict around target_image time.
+
+    Arguments:
+        transformation_layer_list: [[list]] list of [stations, time offsets]
+        stations_info_dict: [dict] dictionary of station information.
+        target_jd: [float] target time for image as a jd float
+
+    Return:
+        station_files_list:[[list]] list of [station, path to fits file]
+    """
+
+
+    target_image_time = jdToPyTime(target_jd)
+    stations_files_list = []
+
+
+    for s, time_offset_seconds in transformation_layer_list:
+        if print_activity:
+            print("Looking for fits files in station {} time offset {} from {}".format(s, time_offset_seconds, target_image_time))
+        c = stations_info_dict[s]['config']
+        captured_dir_path = os.path.join(c.data_dir, c.captured_dir)
+        captured_dirs = sorted(os.listdir(captured_dir_path), reverse=True)
+        if not len(captured_dirs):
+            stations_files_list.append([s, None])
+            continue
+
+        for captured_dir in captured_dirs:
+            dir_date, dir_time = captured_dir.split('_')[1], captured_dir.split('_')[2]
+            year, month, day = int(dir_date[0:4]), int(dir_date[4:6]), int(dir_date[6:8])
+            hour, minute, second = int(dir_time[0:2]), int(dir_time[2:4]), int(dir_time[4:6])
+            dir_time = datetime.datetime(year=year, month=month, day=day, hour=hour, minute=minute, second=second).replace(tzinfo=datetime.timezone.utc)
+            dir_time += datetime.timedelta(seconds=time_offset_seconds)
+            if dir_time < target_image_time:
+                break
+
+        if print_activity:
+            print("Using {}".format(captured_dir))
+
+        dir_files = sorted(os.listdir(os.path.join(captured_dir_path, captured_dir)))
+
+        min_time_delta = np.inf
+
+        closest_fits_file_full_path = None
+        for file in dir_files:
+            if file.startswith('FF_{}'.format(c.stationID)) and file.endswith('.fits'):
+
+                file_date, file_time = file.split('_')[2], file.split('_')[3]
+                year, month, day = int(file_date[0:4]), int(file_date[4:6]), int(file_date[6:8])
+                hour, minute, second = int(file_time[0:2]), int(file_time[2:4]), int(file_time[4:6])
+                file_time = datetime.datetime(year=year, month=month, day=day, hour=hour, minute=minute, second=second).replace(tzinfo=datetime.timezone.utc)
+                time_delta = abs(target_image_time + datetime.timedelta(seconds=time_offset_seconds) - file_time).total_seconds()
+                if time_delta < min_time_delta:
+                    closest_fits_file_full_path = os.path.join(c.data_dir, c.captured_dir, captured_dir, file)
+                    min_time_delta = time_delta
+
+        stations_files_list.append([s, closest_fits_file_full_path])
+        if print_activity:
+            if closest_fits_file_full_path is None:
+                print("Could not find a file for {} for stations {}".format(target_image_time + datetime.timedelta(seconds=time_offset_seconds), s))
+            else:
+                print("Added {} with a time delta of {} seconds".format(os.path.basename(closest_fits_file_full_path), min_time_delta))
+
+    return stations_files_list
+
+
+def getFramesFilesPaths(stations_info_dict, earliest_time=None, latest_time=None, print_activity=False):
+
+
+    frames_file_list = []
+    for station in sorted(stations_info_dict.keys()):
+        station_file_list = []
+        config = stations_info_dict[station]['config']
+        frames_dir_full_path = os.path.join(config.data_dir, config.frame_dir)
+
+        if not os.path.exists(frames_dir_full_path):
+            print(frames_dir_full_path)
+            frames_file_list.append(station_file_list)
+            continue
+
+        for obj in sorted(os.listdir(frames_dir_full_path)):
+            obj_full_path = os.path.join(frames_dir_full_path, obj)
+            if os.path.isdir(obj_full_path):
+                years_dir_list = sorted(os.listdir(obj_full_path))
+                for day_dir in years_dir_list:
+                    day_dir_full_path = os.path.join(obj_full_path, day_dir)
+                    if not os.path.isdir(day_dir_full_path):
+                        continue
+                    for hour_dir in sorted(os.listdir(day_dir_full_path)):
+                        hour_dir_full_path = os.path.join(day_dir_full_path, hour_dir)
+
+                        for image_file in sorted(os.listdir(hour_dir_full_path)):
+                            image_file_full_path = os.path.join(hour_dir_full_path, image_file)
+                            print(image_file_full_path)
+                            file_time_object = getFileTime(image_file)
+                            if earliest_time is None or latest_time is None:
+                                station_file_list.append([file_time_object, image_file_full_path])
+                            elif earliest_time is not None and latest_time is not None:
+                                if earliest_time < file_time_object < latest_time:
+                                    station_file_list.append([file_time_object, image_file_full_path])
+                            elif earliest_time is None and latest_time is not None:
+                                if file_time_object < latest_time:
+                                    station_file_list.append([file_time_object, image_file_full_path])
+                            elif earliest_time is not None and latest_time is None:
+                                if earliest_time < file_time_object:
+                                    station_file_list.append([file_time_object, image_file_full_path])
+
+
+        frames_file_list.append(station_file_list)
+    return frames_file_list
+
+
+
+def getClosestTimeIndex(time_path_list, target_time):
+
+
+    diffs = [abs((t[0] - target_time).total_seconds()) for t in time_path_list]
+
+    if len(diffs):
+        min_diffs = min(diffs)
+        return diffs.index(min_diffs), min_diffs
+    else:
+        return None, np.inf
+
+
+def getFramesAsList(stations_files_list, stations_info_dict, print_activity=False, compensation=[50, 80, 80, 99.75]):
+    """
+    Given a list of lists of stations and paths to fits files, return a list of images from
+    the fits compensated to an average intensity of zero.
+
+    Arguments:
+        stations_files_list: [[list]] list of [station, path to fits file].
+        stations_info_dict: [dict] dictionary of station information keyed by stationID.
+
+    Keyword Arguments:
+        print_activity: [bool] Optional, default False.
+
+    Return:
+        fits_list: [list] list of compensated fits images as arrays.
+    """
+
+    fits_dict, frames_list = {}, []
+    for s, f in stations_files_list:
+        if print_activity:
+            print("Load frame {}".format(f))
+        if f is None:
+            pp = stations_info_dict[s]['pp']
+            frames_list.append(np.array(np.zeros((pp.Y_res, pp.X_res))))
+        else:
+            frame = imageio.imread(f, pilmode='L')
+
+
+            #plt.imshow(frame, cmap="gray", vmin=0, vmax=255)
+            #$plt.axis("off")  # optional: hides axes for cleaner display
+            #plt.show()
+
+            min_threshold, max_threshold = np.percentile(frame, compensation[0]), np.percentile(frame, compensation[1])
+            if min_threshold == max_threshold:
+                compensated_frame =  np.full_like(frame, 128)
+            else:
+                compensated_frame = (2 ** 16 * (frame - min_threshold) / (max_threshold - min_threshold)) - 2 ** 15
+
+            frames_list.append(compensated_frame)
+
+    return frames_list
+
+def getFramesFiles(transformation_layer_list, stations_info_dict, target_jd, frames_files_paths_list=None, print_activity=False):
+    """
+    Get the paths to jpg files, in the same order as stations_list using info from stations_info_dict around target_image time.
+
+    Arguments:
+        transformation_layer_list: [[list]] list of [stations, time offsets]
+        stations_info_dict: [dict] dictionary of station information.
+        target_jd: [float] target time for image as a jd float
+
+    Return:
+        station_files_list:[[list]] list of [station, path to fits file]
+    """
+
+
+    target_image_time = jdToPyTime(target_jd)
+    stations_files_list = []
+    stations_list = stations_info_dict.keys()
+
+    for s, time_offset_seconds in transformation_layer_list:
+        if print_activity:
+            print("Looking for jpg files in station {} time offset {} from {}".format(s, time_offset_seconds, target_image_time))
+
+        stations_file_list = []
+        for station, frames_per_station_list in zip(stations_list, frames_files_paths_list):
+            closest_time_index, time_error = getClosestTimeIndex(frames_per_station_list, target_image_time)
+
+            if closest_time_index is not None and time_error < 20:
+                time_of_closest_file, path_to_closest_file = frames_per_station_list[closest_time_index]
+                stations_file_list.append([s, path_to_closest_file])
+            else:
+                stations_file_list.append([s, None])
+
+
+    return stations_file_list
+
+
+
+
+def getFitsAsList(stations_files_list, stations_info_dict, print_activity=False, compensation=[50, 80, 80, 99.75]):
+    """
+    Given a list of lists of stations and paths to fits files, return a list of images from
+    the fits compensated to an average intensity of zero.
+
+    Arguments:
+        stations_files_list: [[list]] list of [station, path to fits file].
+        stations_info_dict: [dict] dictionary of station information keyed by stationID.
+
+    Keyword Arguments:
+        print_activity: [bool] Optional, default False.
+
+    Return:
+        fits_list: [list] list of compensated fits images as arrays.
+    """
+
+    fits_dict, fits_list = {}, []
+    for s, f in stations_files_list:
+        if print_activity:
+            print("Load fits {}".format(f))
+        if f is None:
+            pp = stations_info_dict[s]['pp']
+            fits_list.append(np.array(np.zeros((pp.Y_res, pp.X_res))))
+        else:
+            ff = readFF(os.path.dirname(f), os.path.basename(f))
+
+            max_pixel = ff.maxpixel.astype(np.float32)
+            compensated_image = max_pixel
+            min_threshold, max_threshold = np.percentile(compensated_image, compensation[0]), np.percentile(compensated_image, compensation[1])
+            if min_threshold == max_threshold:
+                compensated_image =  np.full_like(compensated_image, 128)
+            else:
+                compensated_image = (2 ** 16 * (compensated_image - min_threshold) / (max_threshold - min_threshold)) - 2 ** 15
+
+            fits_list.append(compensated_image)
+
+    return fits_list
 
 def makeTransformation(stations_info_dict, size_x, size_y, minimum_elevation_deg=20, stack_depth=3, time_steps_seconds=256 / 25, print_activity=False):
 
@@ -329,11 +597,18 @@ def makeTransformation(stations_info_dict, size_x, size_y, minimum_elevation_deg
         time_steps_seconds:[int] Optional, default 256 / 25, number of seconds between images to use for stacking.
 
     Return:
-        stations_list: [list] List of stations.
-        source_coordinates_array: [Array] Array of source coordinates first column is the camera index.
-        dest_coordinates_array: [array] Array of destination coordinates.
+        stations_info_dict: [dict] Dictionary of station information.
+        transformation_layer_list: [[station, time_offset_seconds]] List of stations in same order as source_coordinates_array.
+        source_coordinates_array: [array] Array transformation_layer list indices, x_source, y_source.
         intensity_scaling_array: [array] Array of number of source pixels mapped to a destination pixel.
+        target_geo: [target_lat, target_lon, elevation] Target latitude, longitude, degrees, elevation meters
+
     """
+
+
+    # return stations_info_dict, transformation_layer_list, source_coordinates_array, dest_coordinates_array, intensity_scaling_array, [target_lat, target_lon, target_ele]
+
+
 
     # Intialise
     origin_x, origin_y = size_x / 2, size_y / 2
@@ -386,7 +661,7 @@ def makeTransformation(stations_info_dict, size_x, size_y, minimum_elevation_deg
                 # el_deg = 90 - np.hypot(_x * pixel_to_radius_scale_factor_x, _y * pixel_to_radius_scale_factor_y)
                 # az_deg = np.degrees(np.arctan2(_x, _y))
 
-                el_deg, az_deg = cartesianToAltAz(x_dest, y_dest, 0, size_x, 0, size_y, minimum_elevation_deg)
+                el_deg, az_deg = azimuthalProjectionToAltAz(x_dest, y_dest, 0, size_x, 0, size_y, minimum_elevation_deg)
 
 
 
@@ -446,111 +721,11 @@ def makeTransformation(stations_info_dict, size_x, size_y, minimum_elevation_deg
     for pair, count in zip(pairs, counts):
         intensity_scaling_array[pair[1]][pair[0]] = count
 
-    return transformation_layer_list, source_coordinates_array, dest_coordinates_array, intensity_scaling_array, [target_lat, target_lon, target_ele]
+    target_geo = [target_lat, target_lon, target_ele]
 
-def getFitsFiles(transformation_layer_list, stations_info_dict, target_image_time, print_activity=False):
-    """
-    Get the paths to fits files, in the same order as stations_list using info from stations_info_dict around target_image time.
+    return stations_info_dict, transformation_layer_list, source_coordinates_array, dest_coordinates_array, intensity_scaling_array, target_geo
 
-    Arguments:
-        transformation_layer_list: [[list]] list of [stations, time offsets]
-        stations_info_dict: [dict] dictionary of station information.
-        target_image_time: [datetime] target time for image. The closest fits files to this time will be selected.
-
-    Return:
-        station_files_list:[[list]] list of [station, path to fits file]
-    """
-
-
-    stations_files_list = []
-    for s, time_offset_seconds in transformation_layer_list:
-        if print_activity:
-            print("Looking for fits files in station {} time offset {} from {}".format(s, time_offset_seconds, target_image_time))
-        c = stations_info_dict[s]['config']
-        captured_dir_path = os.path.join(c.data_dir, c.captured_dir)
-        captured_dirs = sorted(os.listdir(captured_dir_path), reverse=True)
-        if not len(captured_dirs):
-            stations_files_list.append([s, None])
-            continue
-
-        for captured_dir in captured_dirs:
-            dir_date, dir_time = captured_dir.split('_')[1], captured_dir.split('_')[2]
-            year, month, day = int(dir_date[0:4]), int(dir_date[4:6]), int(dir_date[6:8])
-            hour, minute, second = int(dir_time[0:2]), int(dir_time[2:4]), int(dir_time[4:6])
-            dir_time = datetime.datetime(year=year, month=month, day=day, hour=hour, minute=minute, second=second).replace(tzinfo=datetime.timezone.utc)
-            dir_time += datetime.timedelta(seconds=time_offset_seconds)
-            if dir_time < target_image_time:
-                break
-
-        if print_activity:
-            print("Using {}".format(captured_dir))
-
-        dir_files = sorted(os.listdir(os.path.join(captured_dir_path, captured_dir)))
-
-        min_time_delta = np.inf
-
-        closest_fits_file_full_path = None
-        for file in dir_files:
-            if file.startswith('FF_{}'.format(c.stationID)) and file.endswith('.fits'):
-
-                file_date, file_time = file.split('_')[2], file.split('_')[3]
-                year, month, day = int(file_date[0:4]), int(file_date[4:6]), int(file_date[6:8])
-                hour, minute, second = int(file_time[0:2]), int(file_time[2:4]), int(file_time[4:6])
-                file_time = datetime.datetime(year=year, month=month, day=day, hour=hour, minute=minute, second=second).replace(tzinfo=datetime.timezone.utc)
-                time_delta = abs(target_image_time + datetime.timedelta(seconds=time_offset_seconds) - file_time).total_seconds()
-                if time_delta < min_time_delta:
-                    closest_fits_file_full_path = os.path.join(c.data_dir, c.captured_dir, captured_dir, file)
-                    min_time_delta = time_delta
-
-        stations_files_list.append([s, closest_fits_file_full_path])
-        if print_activity:
-            if closest_fits_file_full_path is None:
-                print("Could not find a file for {} for stations {}".format(target_image_time + datetime.timedelta(seconds=time_offset_seconds), s))
-            else:
-                print("Added {} with a time delta of {} seconds".format(os.path.basename(closest_fits_file_full_path), min_time_delta))
-
-    return stations_files_list
-
-
-def getFitsAsList(stations_files_list, stations_info_dict, print_activity=False, compensation=[50,80]):
-    """
-    Given a list of lists of stations and paths to fits files, return a list of images from
-    the fits compensated to an average intensity of zero.
-
-    Arguments:
-        stations_files_list: [[list]] list of [station, path to fits file].
-        stations_info_dict: [dict] dictionary of station information keyed by stationID.
-
-    Keyword Arguments:
-        print_activity: [bool] Optional, default False.
-
-    Return:
-        fits_list: [list] list of compensated fits images as arrays.
-    """
-
-    fits_dict, fits_list = {}, []
-    for s, f in stations_files_list:
-        if print_activity:
-            print("Load fits {}".format(f))
-        if f is None:
-            pp = stations_info_dict[s]['pp']
-            fits_list.append(np.array(np.zeros((pp.Y_res, pp.X_res))))
-        else:
-            ff = readFF(os.path.dirname(f), os.path.basename(f))
-
-            max_pixel = ff.maxpixel.astype(np.float32)
-            compensated_image = max_pixel
-            min_threshold, max_threshold = np.percentile(compensated_image, compensation[0]), np.percentile(compensated_image, compensation[1])
-            if min_threshold == max_threshold:
-                compensated_image =  np.full_like(compensated_image, 128)
-            else:
-                compensated_image = (2 ** 16 * (compensated_image - min_threshold) / (max_threshold - min_threshold)) - 2 ** 15
-
-            fits_list.append(compensated_image)
-
-    return fits_list
-
-def makeUpload(source_path, upload_to):
+def makeUpload(source_path, upload_to, print_activity=True, color=30):
     """
     Make upload of source_path
 
@@ -562,6 +737,8 @@ def makeUpload(source_path, upload_to):
         Nothing
 
     """
+    if upload_to is None:
+        return
 
     cmd = [
         "rsync",
@@ -569,168 +746,126 @@ def makeUpload(source_path, upload_to):
         source_path, upload_to
     ]
 
+
+    if print_activity:
+        print("Uploading to {}".format(upload))
+
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as e:
         print("Upload failed with {}".format(e))
 
+    if print_activity:
+        print("Uploaded")
 
-def SkyPolarProjection(config_paths, path_to_transform, force_recomputation=False, repeat=False, period=120,
-                       print_activity=True, size=500, stack_depth=3, upload=None, annotate=True, minimum_elevation_deg=20,
-                       target_jd=None, compensation=[50, 80, 80, 99.75], plot_constellations=True, write_image=True):
+    return
 
-    """
+def plotConstellations(img, target_image_time_jd, cam_coords, minimum_elevation_deg):
 
-    Arguments:
-        config_paths: [list] list of config file paths.
-        path_to_transform: [path] path to an existing source to destination transform, or the path where it should be saved.
+    size_x, size_y = img.shape[0], img.shape[1]
 
 
-    Keyword arguments:
-        force_recomputation: [bool] Optional, default false, force recomputaion of the transform.
-        period: [int] Optional default 120, period between plots.
-        print_activity: [bool] Optional default False, print activity.
-        size: [int] Optional default 500, size of both axes.
-        stack_depth: [int] Optional default 3, number of images to stack.
-        upload: [str] Optional, default None, if set where to upload finished image to.
-        annotate: [bool] Optional, default True, annotate image.
-
-    Return:
-        target_image_array: [bool] Array of image.
-    """
-
-    # Load the config files into a dict
-    stations_info_dict = getStationsInfoDict(config_paths)
-    size_x, size_y = size, size
-
-
-    # Load transform and check matches image size
-    if os.path.exists(path_to_transform) and not force_recomputation:
-        with open(path_to_transform, 'rb') as f:
-            transform_data = pickle.load(f)
-            stations_info_dict_loaded, transformation_layer_list, source_coordinates_array, dest_coordinates_array, intensity_scaling_array, cam_coords = transform_data
-            if stations_info_dict_loaded.keys() != stations_info_dict.keys():
-                force_recomputation = True
-
-
-            if size != intensity_scaling_array.shape[0]:
-                force_recomputation = True
-                if print_activity:
-                    print("Requested image size does not match size of intensity scaling array  - recomputing transform")
-
-    if not os.path.exists(path_to_transform) or force_recomputation:
-        transformation_layer_list, source_coordinates_array, dest_coordinates_array, intensity_scaling_array, cam_coords =  \
-            makeTransformation(stations_info_dict, size_x, size_y, minimum_elevation_deg=minimum_elevation_deg, print_activity=print_activity, stack_depth=stack_depth)
-        transform_data = [stations_info_dict, transformation_layer_list, source_coordinates_array, dest_coordinates_array,
-                          intensity_scaling_array, cam_coords]
-
-        with open(os.path.expanduser(path_to_transform), 'wb') as f:
-            pickle.dump(transform_data, f)
-
-    stations_info_dict, transformation_layer_list, source_coordinates_array, dest_coordinates_array, intensity_scaling_array, cam_coords = transform_data
-    next_iteration_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-
-    stations_as_text = ""
-    for s in stations_info_dict.keys():
-        stations_as_text = "{}, {}".format(stations_as_text,s.strip())
-
-    if len(stations_as_text):
-        stations_as_text = stations_as_text[2:]
-
-
-
-
-    while True:
-        this_iteration_start_time = next_iteration_start_time
-        next_iteration_start_time += datetime.timedelta(seconds=period)
-        # Compute epoch for this image
-        if target_jd is None:
-            target_image_time = datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(seconds=20)
-        else:
-            target_image_time = jd2Date(target_jd, dt_obj=True).replace(tzinfo=datetime.timezone.utc)
-
-            if print_activity:
-                print("Target image time from julian date {} is {}".format(target_jd, target_image_time))
-            repeat = False
-
-        annotation_text_l1 = "{} Stack depth {:.0f}".format(target_image_time.replace(microsecond=0), len(transformation_layer_list) / len(stations_info_dict))
-
-
-        annotation_text_l2 = "Lat:{:.3f} deg Lon:{:.3f} deg {}".format(cam_coords[0], cam_coords[1], stations_as_text)
-
-        # Get the fits files as a stack of fits, one per camera
-        fits_array = np.stack(getFitsAsList(getFitsFiles(transformation_layer_list, stations_info_dict, target_image_time), stations_info_dict, compensation=compensation), axis=0)
-
-        target_image_time_jd = date2JD(*(target_image_time.timetuple()[:6]))
-
-        # Form the uncompensated and target image arrays
-        target_image_array, target_image_array_uncompensated = np.full_like(intensity_scaling_array, 0), np.full_like(
-            intensity_scaling_array, 0)
-
-        # Unwrap the source coordinates array into component lists
-        camera_no, source_y, source_x, vignetting_factor_array = source_coordinates_array.T
-
-        # And the destination coordinates list
-        target_y, target_x = dest_coordinates_array.T
-
-        # Build the uncompensated image by mappings coordinates from each camera
-        intensities = fits_array[list(map(int, camera_no)), list(map(int, source_x)), list(map(int, source_y))]
-
-        # Stack the images
-        np.add.at(target_image_array_uncompensated, (target_x, target_y), intensities * vignetting_factor_array)
-
-        div_zero_replacement = np.min(intensities)
-        target_image_array = np.divide(target_image_array_uncompensated,
-                                       intensity_scaling_array,
-                                       out=np.full_like(target_image_array_uncompensated, div_zero_replacement, dtype=float),
-                                       where=intensity_scaling_array!=0).astype(float)
-
-        # Perform compensation
-        min_threshold, max_threshold = np.percentile(intensities, float(compensation[2])), np.percentile(intensities, compensation[3])
-        target_image_array = np.clip(255 * (target_image_array - min_threshold) / (max_threshold - min_threshold), 0, 255)
-
-        if plot_constellations:
-            constellation_coordinates_list = getConstellationsImageCoordinates(target_image_time_jd, cam_coords, size_x,
+    if plot_constellations:
+        constellation_coordinates_list = getConstellationsImageCoordinates(target_image_time_jd, cam_coords, size_x,
                                                                            size_y, minimum_elevation_deg)
-            for x, y, x_, y_ in constellation_coordinates_list:
-                cv2.line(target_image_array, (x, y), (x_, y_), 12, 1)
+        for x, y, x_, y_ in constellation_coordinates_list:
+            cv2.line(img, (x, y), (x_, y_), color, 1)
+
+    if print_activity:
+        print("Writing output to {:s}".format(output_path))
+
+    return img
+
+def jdToPyTime(jd):
+
+    # Convert jd into python time object
+
+    return jd2Date(jd, dt_obj=True).replace(tzinfo=datetime.timezone.utc)
+
+def pyTimetoJD(python_datetime_object):
+
+    return date2JD(*(python_datetime_object.replace(tzinfo=datetime.timezone.utc).timetuple()[:6]))
+
+def renderAzimuthalProjection(transform_data, annotate=False, target_jd=None, compensation=None, plot_constellations=False, frames_files_paths_list=None):
+
+    # If no compensation values passed use some reasonable values
+    if compensation is None:
+        compensation = [50, 80, 80, 99.75]
+
+    # Extract individual variables from transform data
+    stations_info_dict, transformation_layer_list, source_coordinates_array, dest_coordinates_array, intensity_scaling_array, cam_coords = transform_data
+
+    # Get the fits files as a stack of images, one per camera
+
+    if frames_files_paths_list is None:
+        # Work with fits
+        image_array = np.stack(getFitsAsList(getFitsFiles(transformation_layer_list, stations_info_dict, target_jd, print_activity=True),
+                                         stations_info_dict, compensation=compensation), axis=0)
+    else:
+        # Work with jpg from FramesFiles
+        image_array = np.stack(getFramesAsList(getFramesFiles(transformation_layer_list, stations_info_dict, target_jd, frames_files_paths_list=frames_files_paths_list),stations_info_dict))
+
+    # Form the uncompensated and target image arrays
+    target_image_array, target_image_array_uncompensated = np.full_like(intensity_scaling_array, 0), np.full_like(
+        intensity_scaling_array, 0)
+
+    # Unwrap the source coordinates array into component lists
+    camera_no, source_y, source_x, vignetting_factor_array = source_coordinates_array.T
+
+    # And the destination coordinates list
+    target_y, target_x = dest_coordinates_array.T
+
+    # Build the uncompensated image by mappings coordinates from each camera
+    intensities = image_array[list(map(int, camera_no)), list(map(int, source_x)), list(map(int, source_y))]
+
+    # Stack the images
+    np.add.at(target_image_array_uncompensated, (target_x, target_y), intensities * vignetting_factor_array)
+
+    # Replace zero divides with the darkest tone on the image
+    div_zero_replacement = np.min(intensities)
+
+    # Average when multiple frames are stacked
+    target_image_array = np.divide(target_image_array_uncompensated,
+                                   intensity_scaling_array,
+                                   out=np.full_like(target_image_array_uncompensated, div_zero_replacement,
+                                                    dtype=float),
+                                   where=intensity_scaling_array != 0).astype(float)
+
+    # Perform compensation on final image
+    min_threshold, max_threshold = np.percentile(intensities, float(compensation[2])), np.percentile(intensities, compensation[3])
+    target_image_array = np.clip(255 * (target_image_array - min_threshold) / (max_threshold - min_threshold), 0, 255)
+
+    if plot_constellations:
+        target_image_array = plotConstellations(target_image_array, target_jd, cam_coords, minimum_elevation_deg, color=255)
+
+    if annotate:
+        stations_as_text = getCommaSeparatedListofStations(stations_info_dict)
+        l1 = "{} Stack depth {:.0f}".format( jdToPyTime(target_jd).replace(microsecond=0),
+                                                            len(transformation_layer_list) / len(stations_info_dict))
+        l2 = "Lat:{:.3f} deg Lon:{:.3f} deg {}".format(cam_coords[0], cam_coords[1], stations_as_text)
+        target_image_array = annotateArray(target_image_array, [l1, l2])
+
+    return target_image_array
+
+def annotateArray(target_image_array, lines):
 
 
-
-        if print_activity:
-            print("Writing output to {:s}".format(output_path))
-
-
-        target_image_array = target_image_array.astype(np.uint8)
-
-        if annotate:
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.3
-            thickness = 1
-            position_l1 = (3, size_y - 20)
-            cv2.putText(target_image_array, annotation_text_l1, position_l1, font, font_scale, (55, 55, 55), thickness, cv2.LINE_AA)
-            position_l2 = (3, size_y - 5)
-            cv2.putText(target_image_array, annotation_text_l2, position_l2, font, font_scale, (55, 55, 55), thickness, cv2.LINE_AA)
-
-        if write_image and (output_path.endswith(".png") or output_path.endswith(".bmp")):
-            imageio.imwrite(output_path, target_image_array)
-        if print_activity:
-            print("Plotted in {:.1f} seconds".format((datetime.datetime.now(tz=datetime.timezone.utc) - this_iteration_start_time).total_seconds()))
-            if repeat:
-                print("Next run at {}".format(next_iteration_start_time.replace(microsecond=0)))
-
-        if upload is not None and not make_timelapse:
-            if print_activity:
-                print("Uploading to {}".format(upload))
-            makeUpload(output_path, upload)
-            if print_activity:
-                print("Uploaded")
-        if not repeat:
-            return target_image_array
-
-        time.sleep(max((next_iteration_start_time - datetime.datetime.now(tz=datetime.timezone.utc)).total_seconds(),0))
+    l1, l2 = lines[0], lines[1]
+    size_y = target_image_array.shape[1]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.3
+    thickness = 1
+    position_l1 = (3, size_y - 20)
 
 
+    cv2.putText(target_image_array, l1, position_l1, font, font_scale, (255, 255, 255), thickness,
+                cv2.LINE_AA)
+    position_l2 = (3, size_y - 5)
+
+    cv2.putText(target_image_array, l2, position_l2, font, font_scale, (255, 255, 255), thickness,
+                cv2.LINE_AA)
+
+    return target_image_array
 
 def getConstellationsImageCoordinates(jd, cam_coords, size_x, size_y, minimum_elevation_deg, print_activity=False):
 
@@ -791,13 +926,13 @@ def getConstellationsImageCoordinates(jd, cam_coords, size_x, size_y, minimum_el
 
     for alt, az, alt_, az_ in constellation_alt_az_above_horizon:
 
-        x, y = altAzToCartesian(az, alt, 0, size_x, 0, size_y, 20)
+        x, y = altAzToAzimuthalProjection(az, alt, 0, size_x, 0, size_y, 20)
 
         #alt_check, az_check = cartesianToAltAz(x, y, 0, size_x, 0, size_y, 20 )
         #print(alt, alt_check, az, az_check)
 
 
-        x_, y_ = altAzToCartesian(az_, alt_, 0, size_x, 0, size_y, 20)
+        x_, y_ = altAzToAzimuthalProjection(az_, alt_, 0, size_x, 0, size_y, 20)
 
         #alt_check_, az_check_ = cartesianToAltAz(x_, y_, 0, size_x, 0, size_y, 20 )
         #print(alt_, alt_check_, az_, az_check_)
@@ -816,6 +951,274 @@ def getConstellationsImageCoordinates(jd, cam_coords, size_x, size_y, minimum_el
         imageio.imwrite('cons.png', img)
 
     return image_coordinates
+
+def getTransformation(path_to_transform, stations_info_dict, size_x, size_y, minimum_elevation_deg, stack_depth, force_recomputation=False, print_activity=False):
+
+    if os.path.exists(path_to_transform) and not force_recomputation:
+        with open(path_to_transform, 'rb') as f:
+            transform_data = pickle.load(f)
+
+    if not os.path.exists(path_to_transform) or force_recomputation:
+        transform_data = makeTransformation(stations_info_dict, size_x, size_y,
+                                            minimum_elevation_deg=minimum_elevation_deg,
+                                            print_activity=print_activity, stack_depth=stack_depth)
+
+        with open(os.path.expanduser(path_to_transform), 'wb') as f:
+            pickle.dump(transform_data, f)
+
+    return transform_data
+
+def singleImage(transform_data, annotate, target_jd, plot_constellations, output_path, upload=None):
+
+    azimuthal_projection = renderAzimuthalProjection(transform_data, annotate=annotate, target_jd=target_jd,
+                                                     plot_constellations=plot_constellations)
+    if output_path.endswith(".png") or output_path.endswith(".bmp"):
+        imageio.imwrite(output_path, azimuthal_projection.astype(np.uint8))
+        makeUpload(output_path, upload)
+
+def makeTimelapse(transform_data, annotate, timelapse_start, timelapse_end, plot_constellations, output_path, upload=None):
+
+
+    frame_count = int(((jd2Date(timelapse_end, dt_obj=True) - jd2Date(timelapse_start,
+                                                                      dt_obj=True)).total_seconds()) / seconds_per_frame)
+    start_time_obj = datetime.datetime(*jd2Date(timelapse_start, dt_obj=True).timetuple()[:6])
+    with imageio.get_writer(output_file_name, fps=25, codec="libx264", quality=8) as writer:
+        for frame_no in tqdm.tqdm(range(0, frame_count)):
+            frame_time_obj = start_time_obj + datetime.timedelta(seconds=frame_no * seconds_per_frame)
+            target_jd = date2JD(*frame_time_obj.timetuple()[:6])
+
+            if print_activity:
+                print("Making frame at time {}".format(jd2Date(target_jd, dt_obj=True)))
+            azimuthal_projection = renderAzimuthalProjection(transform_data, annotate=annotate, target_jd=target_jd,
+                                                             plot_constellations=plot_constellations)
+            writer.append_data(azimuthal_projection)
+    makeUpload(output_path, upload)
+
+def getTime(file_name):
+
+    file_date = file_name.split("_")[1]
+    year = int(file_date[:4])
+    month = int(file_date[4:6])
+    day = int(file_date[6:8])
+
+    file_time = file_name.split("_")[2]
+    hour = int(file_time[:2])
+    minute = int(file_time[2:4])
+    second = int(file_time[4:6])
+
+    return datetime.datetime(year, month, day, hour, minute, second).replace(tzinfo=datetime.timezone.utc)
+
+def getLatestMP4EndTime(hourly_directory, daily_directory):
+
+    hourly_files = sorted(os.listdir(hourly_directory), reverse=True)
+    daily_files = sorted(os.listdir(daily_directory), reverse=True)
+    if len(hourly_files):
+        latest_hourly_file = getTime(hourly_files[0])
+        latest_hour_file_set = True
+    else:
+        latest_hour_file_set = False
+    if len(daily_files):
+        latest_daily_file = getTime(daily_files[0])
+        latest_daily_file_set = True
+    else:
+        latest_daily_file_set = False
+
+    if latest_hour_file_set and not latest_daily_file_set:
+        latest_complete_file = latest_hourly_file + datetime.timedelta(hours=1)
+    elif latest_daily_file_set and not latest_hour_file_set:
+        latest_complete_file = latest_daily_file + datetime.timedelta(days=1)
+    elif latest_daily_file_set and latest_hour_file_set:
+        latest_complete_file = max(latest_daily_file + datetime.timedelta(days=1), latest_hourly_file + datetime.timedelta(hours=1))
+    else:
+        latest_complete_file = datetime.datetime(2000, 1, 1, 1, 1, 1).replace(tzinfo=datetime.timezone.utc)
+
+    return latest_complete_file
+
+def getEarliestFrame(frames_files_paths_list):
+
+    earliest_frame = frames_files_paths_list[0][0][0]
+    for station_frame_list in frames_files_paths_list:
+        if len(station_frame_list):
+            first_frame_per_station = station_frame_list[0][0]
+            print(first_frame_per_station)
+            if first_frame_per_station < earliest_frame:
+                earliest_frame = first_frame_per_station
+
+    return earliest_frame.replace(tzinfo=datetime.timezone.utc)
+
+
+def waitForNextHour(time_point):
+
+    next_hour = (time_point + datetime.timedelta(hours=1)).replace(minute=0, second=0, microsecond=0, tzinfo=datetime.timezone.utc)
+    seconds_until_next_hour = int((next_hour - datetime.datetime.now(datetime.timezone.utc)).total_seconds())
+    print("Next hour starts in {}".format(seconds_until_next_hour))
+    time.sleep(max(0, seconds_until_next_hour + 5))
+
+    # If there is less than a 30 second margin until the end of the previous hour, return True
+    # When there is a big buffer of unprocessed frames files, the seconds_until_next hour will be very negative
+
+    return seconds_until_next_hour > (0 - 5)
+
+
+def getFileTime(file_name):
+
+
+    print(file_name)
+    file_name = os.path.basename(file_name)
+    file_date = file_name.split("_")[1]
+    year, month, day = file_date[0:4], file_date[4:6], file_date[6:8]
+    file_time = file_name.split("_")[2]
+    hour, minute, second = file_time[0:2], file_time[2:4], file_time[4:6]
+    print(year, month, day, hour, minute, second)
+    time_obj = datetime.datetime(year=int(year), month=int(month), day=int(day), hour=int(hour), minute=int(minute), second=int(second))
+    return time_obj.replace(tzinfo=datetime.timezone.utc)
+
+def pathToFilesToCollate(files_list, hourly_directory_path, daily_directory_path):
+
+    sorted_files_list = sorted(files_list)
+    first_hourly_file_time = getFileTime(os.path.basename(sorted_files_list[0]))
+    latest_hourly_file_time = getFileTime(os.path.basename(sorted_files_list[-1]))
+    latest_daily_file_end = getFileTime(sorted(os.listdir(daily_directory_path))[-1]) + datetime.timedelta(days=1)
+
+    start_day_of_latest_hourly_file_time = startOfThisDay(latest_hourly_file_time)
+    start_day_of_first_hourly_file_time = startOfThisDay(first_hourly_file_time)
+    time_gap = start_day_of_latest_hourly_file_time - start_day_of_first_hourly_file_time
+    print("Latest hourly file time is {}".format(latest_hourly_file_time))
+    print("Start day of latest hourly file time: {}".format(start_day_of_latest_hourly_file_time))
+    print("First hourly file time is {}".format(first_hourly_file_time))
+    print("Start day of first hourly file time is {}".format(start_day_of_first_hourly_file_time))
+    print("End 0f latest hourly file time is {}".format(latest_hourly_file_time))
+    print("End of latest daily file time is {}".format(latest_daily_file_end))
+
+    start_time_for_collation = max(latest_daily_file_end, start_day_of_latest_hourly_file_time)
+
+    if time_gap < datetime.timedelta(hours=24):
+        return []
+    else:
+        return getMP4HourFilePaths(hourly_directory_path, start_time_for_collation, start_day_of_latest_hourly_file_time)
+
+
+
+    return False
+
+def getMP4HourFilePaths(hourly_directory_paths, earliest_time_object, latest_time_object):
+
+    hourly_directory_files_list = sorted(os.listdir(hourly_directory_paths))
+    hour_files_list = []
+    for hourly_directory_file in hourly_directory_files_list:
+        if hourly_directory_file.endswith(".mp4"):
+            if earliest_time_object <= getFileTime(hourly_directory_file) < latest_time_object:
+                hour_files_list.append(os.path.join(hourly_directory_paths, hourly_directory_file))
+
+    return hour_files_list
+
+
+
+
+def collateHourFilesIntoDayFiles(file_paths, hourly_directory, daily_directory):
+
+
+    return
+
+def runLive(transform_data, annotate=True, plot_constellations=True,  upload=True, frames_files=True, output_file_name=None, print_activity=False):
+
+    # Extract individual variables from transform data
+    stations_info_dict, transformation_layer_list, source_coordinates_array, dest_coordinates_array, intensity_scaling_array, cam_coords = transform_data
+
+    base_full_path = os.path.expanduser("~/RMS_data/Polar")
+    video_full_path = os.path.join(base_full_path, "Video")
+    hourly_directory = os.path.join(video_full_path, "Hourly")
+    daily_directory = os.path.join(video_full_path, "Daily")
+    working_directory = os.path.join(base_full_path, "Working")
+    frames_directory = os.path.expanduser("~/RMS_data/FramesFiles")
+
+    mkdirP(os.path.expanduser(hourly_directory))
+    mkdirP(os.path.expanduser(daily_directory))
+    mkdirP(os.path.expanduser(working_directory))
+
+    # Filename format
+    # Hourly files  :   hostname_YYYYMMDD_HHMMSS.mp4
+    # Daily files   :   hostname_YYYYMMDD_HHMMSS.mp4
+
+    completed_hour_file_full_path_list = []
+    hour_file_names_list = os.listdir(hourly_directory)
+    for hour_file in hour_file_names_list:
+        completed_hour_file_full_path_list.append(os.path.join(hourly_directory, hour_file))
+
+
+    while True:
+
+        hour_file_path_list = pathToFilesToCollate(completed_hour_file_full_path_list, hourly_directory, daily_directory)
+        print("File paths to be collated {}".format(hour_file_path_list))
+        if len(hour_file_path_list):
+            hour_file_mp4_list = []
+            for hour_file_path in hour_file_path_list:
+                    mp4_handle = cv2.VideoCapture(hour_file_path)
+                    if mp4_handle.isOpened():
+                        hour_file_mp4_list.append(moviepy.VideoFileClip(hour_file_path))
+                    else:
+                        print("{} could not be read, not adding to full day timelapse video, and removing".format(os.path.basename(hour_file_path)))
+                        os.unlink(hour_file_path)
+
+
+            day_file_mp4 = moviepy.concatenate_videoclips(hour_file_mp4_list, method="compose")
+            date_of_first_file = startOfThisDay(getFileTime(sorted(hour_file_path_list)[0]))
+            day_file_name = "AP_{}.mp4".format(date_of_first_file.strftime("%Y%m%d_%H%M%S"))
+            day_file_full_path = os.path.join(daily_directory, day_file_name)
+            day_file_mp4.write_videofile(day_file_full_path, codec="libx264", audio_codec="aac")
+
+
+
+        frames_files_paths_list = getFramesFilesPaths(stations_info_dict)
+        earliest_frame = getEarliestFrame(frames_files_paths_list)
+        latest_mp4_end = getLatestMP4EndTime(hourly_directory, daily_directory)
+        start_of_yesterday = startOfPreviousDay()
+
+        timelapse_start = max(earliest_frame, latest_mp4_end, start_of_yesterday)
+        timelapse_end = timelapse_start + datetime.timedelta(hours=1)
+        seconds_per_frame = 5
+
+        frame_count = int((timelapse_end - timelapse_start).total_seconds() / seconds_per_frame)
+        time_string = timelapse_start.strftime("%Y%m%d_%H%M%S")
+        if output_file_name is None:
+            output_file_name = "AP_{}.mp4".format(time_string)
+        else:
+            output_file_name = "{}_{}.mp4".format(output_file_name, time_string)
+        output_path = os.path.join(hourly_directory, output_file_name)
+
+        # Wait until there should be a complete hour of frames files available
+        if waitForNextHour(timelapse_end):
+            # Get frames_files_paths_list again to pick up any new frames
+            frames_files_paths_list = getFramesFilesPaths(stations_info_dict, timelapse_start=timelapse_start, timelapse_end=timelapse_end)
+
+        with imageio.get_writer(output_path, format='mp4', fps=25, codec="libx264", quality=8) as writer:
+            print("Making video starting at {}".format(timelapse_start))
+            for frame_no in tqdm.tqdm(range(0, frame_count)):
+                frame_time_obj = timelapse_start + datetime.timedelta(seconds=frame_no * seconds_per_frame)
+                target_jd = pyTimetoJD(frame_time_obj)
+                if print_activity:
+                    print("Making frame at time {}".format(frame_time_obj))
+                azimuthal_projection = renderAzimuthalProjection(transform_data, annotate=annotate, target_jd=target_jd,
+                                                                 plot_constellations=plot_constellations, frames_files_paths_list=frames_files_paths_list,
+                                                                 compensation = [0,100,0,100]).astype(np.uint8)
+                writer.append_data(azimuthal_projection)
+
+
+
+        completed_hour_file_full_path_list.append(output_path)
+
+        makeUpload(output_path, upload)
+
+
+        pass
+
+
+
+
+    pass
+
+
+
 
 
 if __name__ == "__main__":
@@ -845,8 +1248,8 @@ if __name__ == "__main__":
     arg_parser.add_argument('-t', '--transform', dest='transform', default=False, action="store_true",
                             help="Force recomputing of transform - needed if platepar has been changed")
 
-    arg_parser.add_argument('-d', '--dimension', dest='dimension', default=[1000], type=int, nargs=1,
-                            help="Output image size - only square images are permitted. Default 1000 x 1000.")
+    arg_parser.add_argument('-d', '--dimension', dest='dimension', default=[1040], type=int, nargs=1,
+                            help="Output image size - only square images are permitted. Default 1040 x 1040.")
 
     arg_parser.add_argument('-q', '--quiet', dest='quiet', default=False, action="store_true",
                             help="Run quietly")
@@ -873,6 +1276,9 @@ if __name__ == "__main__":
     arg_parser.add_argument('-m', '--compensation', dest='compensation', nargs=4, type=float,
                             help="Image compensation values 50 80 90 99.85 work well")
 
+    arg_parser.add_argument('-v', '--run-live', dest='run_live', default=False, action="store_true",
+                            help="Capture frame files live an make into mp4 videos")
+
     cml_args = arg_parser.parse_args()
 
 
@@ -882,6 +1288,7 @@ if __name__ == "__main__":
     path_to_transform = os.path.expanduser("~/RMS_data/camera_combination.transform")
     force_recomputation = cml_args.transform
     repeat = cml_args.repeat
+    run_live = cml_args.run_live
 
     period = cml_args.period[0]
 
@@ -889,7 +1296,7 @@ if __name__ == "__main__":
         # round to even number
         size = int(cml_args.dimension[0] / 2) * 2
     else:
-        size = 500
+        size = 608
 
     config_paths = []
 
@@ -953,8 +1360,11 @@ if __name__ == "__main__":
 
     if cml_args.julian_date is None:
         target_jd = None
+        single_image = False
     else:
         target_jd = cml_args.julian_date[0]
+        single_image = True
+
 
     if cml_args.compensation is None:
         compensation = [80, 95, 50, 99.995]
@@ -968,70 +1378,56 @@ if __name__ == "__main__":
     else:
         output_file_name = os.path.expanduser(cml_args.output_file_name[0])
 
+    if not run_live:
+        if output_file_name is None:
+            mkdirP(os.path.expanduser("~/RMS_data/PolarPlot/Projection/"))
+            if make_timelapse:
+                output_path = os.path.expanduser(
+                    "~/RMS_data/PolarPlot/Projection/JD_{}_{}_timelapse.mp4".format(timelapse_start, timelapse_end))
 
-    if output_file_name is None:
-        mkdirP(os.path.expanduser("~/RMS_data/PolarPlot/Projection/"))
-        if make_timelapse:
-            output_path = os.path.expanduser(
-                "~/RMS_data/PolarPlot/Projection/JD_{}_timelapse.png".format(timelapse_start))
+            else:
+                output_path = os.path.expanduser(
+                    "~/RMS_data/PolarPlot/Projection/{}.png".format(target_image_time.strftime("%Y%m%d_%H%M%S")))
 
         else:
-            output_path = os.path.expanduser(
-                "~/RMS_data/PolarPlot/Projection/{}.png".format(target_image_time.strftime("%Y%m%d_%H%M%S")))
-
-    else:
-        if os.path.exists(os.path.expanduser(output_file_name)):
-            if os.path.isdir(os.path.expanduser(output_file_name)):
-                if make_timelapse:
-                    output_path = os.path.expanduser(
-                        "~/RMS_data/PolarPlot/Projection/JD_{}_timelapse.png".format(timelapse_start))
+            if os.path.exists(os.path.expanduser(output_file_name)):
+                if os.path.isdir(os.path.expanduser(output_file_name)):
+                    if make_timelapse:
+                        output_path = os.path.expanduser(
+                            "~/RMS_data/PolarPlot/Projection/JD_{}_timelapse.png".format(timelapse_start))
+                    else:
+                        output_path = os.path.join(os.path.expanduser(output_file_name),
+                                               "{}.png".format(target_image_time.strftime("%Y%m%d_%H%M%S")))
                 else:
-                    output_path = os.path.join(os.path.expanduser(output_file_name),
-                                           "{}.png".format(target_image_time.strftime("%Y%m%d_%H%M%S")))
+                    output_path = os.path.expanduser(output_file_name)
+            elif not os.path.exists(os.path.dirname(os.path.expanduser(output_file_name))):
+                mkdirP(os.path.dirname(os.path.expanduser(output_file_name)))
+                output_path = os.path.expanduser(output_file_name)
             else:
                 output_path = os.path.expanduser(output_file_name)
-        elif not os.path.exists(os.path.dirname(os.path.expanduser(output_file_name))):
-            mkdirP(os.path.dirname(os.path.expanduser(output_file_name)))
-            output_path = os.path.expanduser(output_file_name)
-        else:
-            output_path = os.path.expanduser(output_file_name)
-
-    if make_timelapse:
-        repeat = False
-        timelapse_frames = []
-        frame_count = int(((jd2Date(timelapse_end, dt_obj=True) - jd2Date(timelapse_start, dt_obj=True)).total_seconds()) / seconds_per_frame)
-        start_time_obj =  datetime.datetime(*jd2Date(timelapse_start, dt_obj=True).timetuple()[:6])
-        print("Output file name is {}".format(output_file_name))
-        with imageio.get_writer(output_file_name, fps=25, codec="libx264", quality=8) as writer:
-            for frame_no in tqdm.tqdm(range(0, frame_count)):
-                frame_time_obj = start_time_obj  + datetime.timedelta(seconds = frame_no * seconds_per_frame)
-                target_jd = date2JD(*frame_time_obj.timetuple()[:6])
-
-                if print_activity:
-                    print("Making frame at time {}".format(jd2Date(target_jd, dt_obj=True)))
-                writer.append_data(SkyPolarProjection(config_paths, path_to_transform, force_recomputation=force_recomputation,
-                                        repeat=repeat, period=period, print_activity=not quiet,
-                                        size=size, stack_depth=stack_depth, upload=upload, annotate=annotate,
-                                        target_jd=target_jd, minimum_elevation_deg=minimum_elevation_deg,
-                                        compensation=compensation, write_image=False,
-                                        plot_constellations=plot_constellations).astype(np.uint8))
-                # If recomputation was forced, then only do it once
-                force_recomputation = False
+    else:
+        print("Running live")
 
 
-        if upload is not None and make_timelapse:
-            if print_activity:
-                print("Uploading to {}".format(upload))
-            makeUpload(output_path, upload)
-            if print_activity:
-                print("Uploaded")
+    stations_info_dict = getStationsInfoDict(config_paths)
+    size_x, size_y = size, size
+    transform_data = getTransformation(path_to_transform, stations_info_dict, size_x, size_y, minimum_elevation_deg,
+                                       stack_depth, force_recomputation, print_activity)
 
+
+    if single_image:
+        singleImage(transform_data, annotate, target_jd, plot_constellations, output_path, upload=upload)
+
+    elif make_timelapse:
+        makeTimelapse(transform_data, annotate, target_jd, plot_constellations, output_path, upload=upload)
+
+
+    elif run_live:
+        runLive(transform_data, annotate, plot_constellations, upload=upload, frames_files=True)
 
         sys.exit()
 
 
-    SkyPolarProjection(config_paths, path_to_transform, force_recomputation=force_recomputation,
-                       repeat=repeat, period=period, print_activity=not quiet,
-                       size=size, stack_depth=stack_depth, upload=upload, annotate=annotate,
-                       target_jd=target_jd, minimum_elevation_deg=minimum_elevation_deg, compensation=compensation,
-                       plot_constellations=plot_constellations)
+
+
+
