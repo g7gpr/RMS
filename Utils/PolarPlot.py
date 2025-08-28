@@ -454,6 +454,7 @@ def getClosestTimeIndex(time_path_list, target_time):
 
     if len(diffs):
         min_diffs = min(diffs)
+        print(min_diffs)
         return diffs.index(min_diffs), min_diffs
     else:
         return None, np.inf
