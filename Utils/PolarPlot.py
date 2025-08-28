@@ -412,7 +412,6 @@ def getFramesFilesPaths(stations_info_dict, earliest_time=None, latest_time=None
         frames_dir_full_path = os.path.join(config.data_dir, config.frame_dir)
 
         if not os.path.exists(frames_dir_full_path):
-            print(frames_dir_full_path)
             frames_file_list.append(station_file_list)
             continue
 
@@ -429,7 +428,6 @@ def getFramesFilesPaths(stations_info_dict, earliest_time=None, latest_time=None
 
                         for image_file in sorted(os.listdir(hour_dir_full_path)):
                             image_file_full_path = os.path.join(hour_dir_full_path, image_file)
-                            print(image_file_full_path)
                             file_time_object = getFileTime(image_file)
                             if earliest_time is None or latest_time is None:
                                 station_file_list.append([file_time_object, image_file_full_path])
@@ -1070,7 +1068,6 @@ def getFileTime(file_name):
     year, month, day = file_date[0:4], file_date[4:6], file_date[6:8]
     file_time = file_name.split("_")[2]
     hour, minute, second = file_time[0:2], file_time[2:4], file_time[4:6]
-    print(year, month, day, hour, minute, second)
     time_obj = datetime.datetime(year=int(year), month=int(month), day=int(day), hour=int(hour), minute=int(minute), second=int(second))
     return time_obj.replace(tzinfo=datetime.timezone.utc)
 
@@ -1121,13 +1118,6 @@ def getMP4HourFilePaths(hourly_directory_paths, earliest_time_object, latest_tim
     return hour_files_list
 
 
-
-
-def collateHourFilesIntoDayFiles(file_paths, hourly_directory, daily_directory):
-
-
-    return
-
 def runLive(transform_data, annotate=True, plot_constellations=True,  upload=True, frames_files=True, output_file_name=None, print_activity=False):
 
     # Extract individual variables from transform data
@@ -1152,7 +1142,6 @@ def runLive(transform_data, annotate=True, plot_constellations=True,  upload=Tru
     hour_file_names_list = os.listdir(hourly_directory)
     for hour_file in hour_file_names_list:
         completed_hour_file_full_path_list.append(os.path.join(hourly_directory, hour_file))
-
 
     while True:
 
