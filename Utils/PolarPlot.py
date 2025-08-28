@@ -483,8 +483,11 @@ def getFramesAsList(stations_files_list, stations_info_dict, print_activity=Fals
             pp = stations_info_dict[s]['pp']
             frames_list.append(np.array(np.zeros((pp.Y_res, pp.X_res))))
         else:
-            frame = imageio.imread(f, pilmode='L')
-
+            try:
+                frame = imageio.v3.imread(f, pilmode='L')
+            except:
+                print("Unable to load frame {}".format(f))
+                frames_list.append(np.array(np.zeros((pp.Y_res, pp.X_res))))
 
             #plt.imshow(frame, cmap="gray", vmin=0, vmax=255)
             #$plt.axis("off")  # optional: hides axes for cleaner display
@@ -802,8 +805,8 @@ def renderAzimuthalProjection(transform_data, annotate=False, target_jd=None, co
                                          stations_info_dict, compensation=compensation), axis=0)
     else:
         # Work with jpg from FramesFiles
-        image_array = np.stack(getFramesAsList(getFramesFiles(transformation_layer_list, stations_info_dict, target_jd, frames_files_paths_list=frames_files_paths_list),stations_info_dict))
 
+            image_array = np.stack(getFramesAsList(getFramesFiles(transformation_layer_list, stations_info_dict, target_jd, frames_files_paths_list=frames_files_paths_list),stations_info_dict))
     # Form the uncompensated and target image arrays
     target_image_array, target_image_array_uncompensated = np.full_like(intensity_scaling_array, 0), np.full_like(
         intensity_scaling_array, 0)
@@ -1039,7 +1042,6 @@ def getEarliestFrame(frames_files_paths_list):
     for station_frame_list in frames_files_paths_list:
         if len(station_frame_list):
             first_frame_per_station = station_frame_list[0][0]
-            print(first_frame_per_station)
             if first_frame_per_station < earliest_frame:
                 earliest_frame = first_frame_per_station
 
