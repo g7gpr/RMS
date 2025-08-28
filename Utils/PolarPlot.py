@@ -1062,7 +1062,7 @@ def waitForNextHour(time_point):
 def getFileTime(file_name):
 
 
-    print(file_name)
+
     file_name = os.path.basename(file_name)
     file_date = file_name.split("_")[1]
     year, month, day = file_date[0:4], file_date[4:6], file_date[6:8]
