@@ -1189,10 +1189,10 @@ def runLive(transform_data, annotate=True, plot_constellations=True,  upload=Tru
         frame_count = int((timelapse_end - timelapse_start).total_seconds() / seconds_per_frame)
         time_string = timelapse_start.strftime("%Y%m%d_%H%M%S")
         if output_file_name is None:
-            output_file_name = "AP_{}.mp4".format(time_string)
+            output_file_name_with_timestamp = "AP_{}.mp4".format(time_string)
         else:
-            output_file_name = "{}_{}.mp4".format(output_file_name, time_string)
-        output_path = os.path.join(hourly_directory, output_file_name)
+            output_file_name_with_timestamp = "{}_{}.mp4".format(output_file_name, time_string)
+        output_path = os.path.join(hourly_directory, output_file_name_with_timestamp)
 
         # Wait until there should be a complete hour of frames files available
         if waitForNextHour(timelapse_end):
