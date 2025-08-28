@@ -34,7 +34,7 @@ import RMS.ConfigReader as cr
 import datetime
 import pathlib
 import json
-import imageio as imageio
+import imageio.v2 as imageio
 import tqdm
 
 from RMS.Astrometry.Conversions import altAz2RADec, raDec2AltAz, jd2Date, date2JD, J2000_JD
