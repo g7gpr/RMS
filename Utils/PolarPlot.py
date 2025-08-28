@@ -529,7 +529,9 @@ def getFramesFiles(transformation_layer_list, stations_info_dict, target_jd, fra
         for station, frames_per_station_list in zip(stations_list, frames_files_paths_list):
             closest_time_index, time_error = getClosestTimeIndex(frames_per_station_list, target_image_time)
 
-            if (closest_time_index is not None and time_error < 20) or True:
+            print(closest_time_index, time_error)
+            time.sleep(5)
+            if closest_time_index is not None and time_error < 20:
                 time_of_closest_file, path_to_closest_file = frames_per_station_list[closest_time_index]
                 stations_file_list.append([s, path_to_closest_file])
                 print("Added file {}".format(path_to_closest_file))
