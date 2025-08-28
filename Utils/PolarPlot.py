@@ -1076,30 +1076,37 @@ def getFileTime(file_name):
 def pathToFilesToCollate(files_list, hourly_directory_path, daily_directory_path):
 
     sorted_files_list = sorted(files_list)
-    first_hourly_file_time = getFileTime(os.path.basename(sorted_files_list[0]))
-    latest_hourly_file_time = getFileTime(os.path.basename(sorted_files_list[-1]))
-    latest_daily_file_end = getFileTime(sorted(os.listdir(daily_directory_path))[-1]) + datetime.timedelta(days=1)
+    if len(sorted_files_list):
+        first_hourly_file_time = getFileTime(os.path.basename(sorted_files_list[0]))
+        latest_hourly_file_time = getFileTime(os.path.basename(sorted_files_list[-1]))
+        if len(os.listdir(daily_directory_path)):
+            latest_daily_file_end = getFileTime(sorted(os.listdir(daily_directory_path))[-1]) + datetime.timedelta(days=1)
+        else:
+            latest_daily_file_end = datetime.datetime(2000, 1, 1, 1, 1, 1).replace(tzinfo=datetime.timezone.utc)
 
-    start_day_of_latest_hourly_file_time = startOfThisDay(latest_hourly_file_time)
-    start_day_of_first_hourly_file_time = startOfThisDay(first_hourly_file_time)
-    time_gap = start_day_of_latest_hourly_file_time - start_day_of_first_hourly_file_time
-    print("Latest hourly file time is {}".format(latest_hourly_file_time))
-    print("Start day of latest hourly file time: {}".format(start_day_of_latest_hourly_file_time))
-    print("First hourly file time is {}".format(first_hourly_file_time))
-    print("Start day of first hourly file time is {}".format(start_day_of_first_hourly_file_time))
-    print("End 0f latest hourly file time is {}".format(latest_hourly_file_time))
-    print("End of latest daily file time is {}".format(latest_daily_file_end))
-
-    start_time_for_collation = max(latest_daily_file_end, start_day_of_latest_hourly_file_time)
-
-    if time_gap < datetime.timedelta(hours=24):
-        return []
-    else:
-        return getMP4HourFilePaths(hourly_directory_path, start_time_for_collation, start_day_of_latest_hourly_file_time)
+        start_day_of_latest_hourly_file_time = startOfThisDay(latest_hourly_file_time)
+        start_day_of_first_hourly_file_time = startOfThisDay(first_hourly_file_time)
+        time_gap = start_day_of_latest_hourly_file_time - start_day_of_first_hourly_file_time
 
 
+        print("Latest hourly file time is {}".format(latest_hourly_file_time))
+        print("Start day of latest hourly file time: {}".format(start_day_of_latest_hourly_file_time))
+        print("First hourly file time is {}".format(first_hourly_file_time))
+        print("Start day of first hourly file time is {}".format(start_day_of_first_hourly_file_time))
+        print("End of latest hourly file time is {}".format(latest_hourly_file_time))
+        print("End of latest daily file time is {}".format(latest_daily_file_end))
 
-    return False
+
+
+        if time_gap < datetime.timedelta(hours=24):
+            return []
+        else:
+            start_time_for_collation = max(latest_daily_file_end, first_hourly_file_time)
+            return getMP4HourFilePaths(hourly_directory_path, start_time_for_collation, start_day_of_latest_hourly_file_time)
+
+
+
+    return []
 
 def getMP4HourFilePaths(hourly_directory_paths, earliest_time_object, latest_time_object):
 
@@ -1191,17 +1198,8 @@ def runLive(transform_data, annotate=True, plot_constellations=True,  upload=Tru
             # Get frames_files_paths_list again to pick up any new frames
             frames_files_paths_list = getFramesFilesPaths(stations_info_dict, timelapse_start=timelapse_start, timelapse_end=timelapse_end)
 
-        with imageio.get_writer(output_path, format='mp4', fps=25, codec="libx264", quality=8) as writer:
-            print("Making video starting at {}".format(timelapse_start))
-            for frame_no in tqdm.tqdm(range(0, frame_count)):
-                frame_time_obj = timelapse_start + datetime.timedelta(seconds=frame_no * seconds_per_frame)
-                target_jd = pyTimetoJD(frame_time_obj)
-                if print_activity:
-                    print("Making frame at time {}".format(frame_time_obj))
-                azimuthal_projection = renderAzimuthalProjection(transform_data, annotate=annotate, target_jd=target_jd,
-                                                                 plot_constellations=plot_constellations, frames_files_paths_list=frames_files_paths_list,
-                                                                 compensation = [0,100,0,100]).astype(np.uint8)
-                writer.append_data(azimuthal_projection)
+        makeVideo(annotate, frame_count, frames_files_paths_list, output_path, plot_constellations, print_activity,
+                  seconds_per_frame, timelapse_start, transform_data)
 
 
 
@@ -1218,7 +1216,20 @@ def runLive(transform_data, annotate=True, plot_constellations=True,  upload=Tru
     pass
 
 
-
+def makeVideo(annotate, frame_count, frames_files_paths_list, output_path, plot_constellations, print_activity,
+              seconds_per_frame, timelapse_start, transform_data):
+    with imageio.get_writer(output_path, format='mp4', fps=25, codec="libx264", quality=8) as writer:
+        print("Making video starting at {}".format(timelapse_start))
+        for frame_no in tqdm.tqdm(range(0, frame_count)):
+            frame_time_obj = timelapse_start + datetime.timedelta(seconds=frame_no * seconds_per_frame)
+            target_jd = pyTimetoJD(frame_time_obj)
+            if print_activity:
+                print("Making frame at time {}".format(frame_time_obj))
+            azimuthal_projection = renderAzimuthalProjection(transform_data, annotate=annotate, target_jd=target_jd,
+                                                             plot_constellations=plot_constellations,
+                                                             frames_files_paths_list=frames_files_paths_list,
+                                                             compensation=[0, 100, 0, 100]).astype(np.uint8)
+            writer.append_data(azimuthal_projection)
 
 
 if __name__ == "__main__":
