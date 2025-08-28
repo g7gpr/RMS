@@ -34,7 +34,7 @@ import RMS.ConfigReader as cr
 import datetime
 import pathlib
 import json
-import imageio.v2 as imageio
+
 import imageio
 import tqdm
 
