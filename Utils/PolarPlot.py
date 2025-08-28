@@ -535,7 +535,7 @@ def getFramesFiles(transformation_layer_list, stations_info_dict, target_jd, fra
             else:
                 stations_file_list.append([s, None])
 
-
+    print("Stations files list is ".format(stations_file_list))
     return stations_file_list
 
 
@@ -806,7 +806,7 @@ def renderAzimuthalProjection(transform_data, annotate=False, target_jd=None, co
     else:
         # Work with jpg from FramesFiles
 
-            image_array = np.stack(getFramesAsList(getFramesFiles(transformation_layer_list, stations_info_dict, target_jd, frames_files_paths_list=frames_files_paths_list),stations_info_dict))
+        image_array = np.stack(getFramesAsList(getFramesFiles(transformation_layer_list, stations_info_dict, target_jd, frames_files_paths_list=frames_files_paths_list),stations_info_dict))
     # Form the uncompensated and target image arrays
     target_image_array, target_image_array_uncompensated = np.full_like(intensity_scaling_array, 0), np.full_like(
         intensity_scaling_array, 0)
