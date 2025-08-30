@@ -1198,7 +1198,7 @@ def runLive(transform_data, annotate=True, plot_constellations=True,  upload=Tru
         # Wait until there should be a complete hour of frames files available
         if waitForNextHour(timelapse_end):
             # Get frames_files_paths_list again to pick up any new frames
-            frames_files_paths_list = getFramesFilesPaths(stations_info_dict, timelapse_start=timelapse_start, timelapse_end=timelapse_end)
+            frames_files_paths_list = getFramesFilesPaths(stations_info_dict, earliest_time=timelapse_start, latest_time=timelapse_end)
 
         makeVideo(annotate, frame_count, frames_files_paths_list, output_path, plot_constellations, print_activity,
                   seconds_per_frame, timelapse_start, transform_data)
