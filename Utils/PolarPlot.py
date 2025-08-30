@@ -1196,7 +1196,7 @@ def runLive(transform_data, annotate=True, plot_constellations=True,  upload=Tru
         output_path = os.path.join(hourly_directory, output_file_name_with_timestamp)
 
         # Wait until there should be a complete hour of frames files available
-        if waitForNextHour(timelapse_end):
+        if waitForNextHour(timelapse_start):
             # Get frames_files_paths_list again to pick up any new frames
             frames_files_paths_list = getFramesFilesPaths(stations_info_dict, earliest_time=timelapse_start, latest_time=timelapse_end)
 
