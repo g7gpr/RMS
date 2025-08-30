@@ -452,9 +452,9 @@ def getClosestTimeIndex(time_path_list, target_time):
 
     diffs = [abs((t[0] - target_time).total_seconds()) for t in time_path_list]
 
+
     if len(diffs):
         min_diffs = min(diffs)
-        print(min_diffs)
         return diffs.index(min_diffs), min_diffs
     else:
         return None, np.inf
@@ -519,27 +519,32 @@ def getFramesFiles(transformation_layer_list, stations_info_dict, target_jd, fra
 
 
     target_image_time = jdToPyTime(target_jd)
+    #target_image_time = datetime.datetime(year=2025, month=8, day=25, hour=3, minute=7, second=9).replace(tzinfo=datetime.timezone.utc)
     stations_files_list = []
     stations_list = stations_info_dict.keys()
+    stations_file_list = []
 
     for s, time_offset_seconds in transformation_layer_list:
-        if print_activity:
-            print("Looking for jpg files in station {} time offset {} from {}".format(s, time_offset_seconds, target_image_time))
-
-        stations_file_list = []
         for station, frames_per_station_list in zip(stations_list, frames_files_paths_list):
+            if s != station:
+                continue
+            if print_activity:
+                print("Looking for jpg files in station {} time offset {} from {}".format(s, time_offset_seconds,
+                                                                                          target_image_time))
             closest_time_index, time_error = getClosestTimeIndex(frames_per_station_list, target_image_time)
 
-            print(closest_time_index, time_error)
-            time.sleep(5)
+            if print_activity:
+                print("Index of closest image {} time error {}".format(closest_time_index, time_error))
+
             if closest_time_index is not None and time_error < 20:
                 time_of_closest_file, path_to_closest_file = frames_per_station_list[closest_time_index]
                 stations_file_list.append([s, path_to_closest_file])
-                print("Added file {}".format(path_to_closest_file))
+                if print_activity:
+                    print("Added file {}".format(path_to_closest_file))
             else:
                 stations_file_list.append([s, None])
-
-    print("Stations files list is ".format(stations_file_list))
+    if print_activity:
+        print("Stations files list is {}".format(stations_file_list))
     return stations_file_list
 
 
@@ -1178,7 +1183,7 @@ def runLive(transform_data, annotate=True, plot_constellations=True,  upload=Tru
         start_of_yesterday = startOfPreviousDay()
 
         timelapse_start = max(earliest_frame, latest_mp4_end, start_of_yesterday)
-        timelapse_start = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=6)
+        # timelapse_start = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=6)
         timelapse_end = timelapse_start + datetime.timedelta(hours=1)
         seconds_per_frame = 5
 
