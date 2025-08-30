@@ -1187,6 +1187,7 @@ def runLive(transform_data, annotate=True, plot_constellations=True,  upload=Tru
         # timelapse_start = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=6)
         seconds_per_frame = 5
 
+        timelapse_end = timelapse_start + datetime.timedelta(hours=1) if timelapse_end = None else timelapse_end
         frame_count = int((timelapse_end - timelapse_start).total_seconds() / seconds_per_frame)
         time_string = timelapse_start.strftime("%Y%m%d_%H%M%S")
         if output_file_name is None:
