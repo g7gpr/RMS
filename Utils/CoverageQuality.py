@@ -333,7 +333,7 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
             # Get the list of the files, newest at the top
             remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
 
-            remote_files = filterByDate(remote_files)
+            remote_files = filterByDate(remote_files, earliest_date=datetime.datetime(year=2024, month=1, day=1))
 
             if not len(remote_files):
                 continue
@@ -1152,7 +1152,7 @@ if __name__ == "__main__":
     ecef_point_to_camera_mapping_path = os.path.join(WORKING_DIRECTORY, "ecef_point_to_camera_mapping.pkl")
     station_point_angle_score_mapping_list_path = os.path.join(WORKING_DIRECTORY, "station_point_angle_score_mapping_list.pkl")
 
-    if False:
+    if True:
         station_list = getStationList()
         makeConfigPlateParMaskLib(config, station_list)
 
