@@ -226,7 +226,7 @@ def downloadFile(host, username, local_path, remote_path, port=PORT,  silent=Fal
 
     return
 
-def getStationList(url=STATION_COORDINATES_JSON):
+def getStationList(url=STATION_COORDINATES_JSON, country_code=None):
 
     """
     Get a list of stations.
@@ -238,12 +238,15 @@ def getStationList(url=STATION_COORDINATES_JSON):
         [list] station names
     """
 
-
+    print("Downloading station list from {}".format(url))
     station_list, stations_dict = [], json.loads(requests.get(url).content.decode('utf-8'))
 
     for station in stations_dict:
-        station_list.append(station)
-
+        if country_code is None:
+            station_list.append(station)
+        else:
+            if station.lower().startswith(country_code.lower()):
+                station_list.append(station)
     return sorted(station_list)
 
 def filterByDate(files_list, earliest_date=None, latest_date=None):
@@ -368,7 +371,33 @@ def makeConfigPlateParMaskLib(config, station_list, stations_data_dir=STATIONS_D
                 shutil.move(extracted_mask_path, local_mask_path)
 
 
-def makeStationsInfoDict(c, stations_data_dir=STATIONS_DATA_DIR):
+def makeGeoJson(names, lats, lons, output_file_path=None):
+    # Example input lists
+
+    # Build GeoJSON structure
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"name": name , "icon": "Binoculars"},
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [lon, lat]
+                }
+            }
+            for name, lat, lon in zip(names, lats, lons)
+        ]
+    }
+
+    if not output_file_path is None:
+        with open(os.path.expanduser(output_file_path), "w") as f:
+            json.dump(geojson, f, indent=2)
+
+    return geojson
+
+
+def makeStationsInfoDict(c, stations_data_dir=STATIONS_DATA_DIR, country_code=None):
     """
     Make a dictionary, keyed by station name including location, geo (rads) and ecef, platepar and mask.
 
@@ -382,8 +411,9 @@ def makeStationsInfoDict(c, stations_data_dir=STATIONS_DATA_DIR):
         stations_info_dict: [dict] dictionary with station name as key.
     """
 
-    # Initiaise
+    # Initialise
     stations_info_dict = {}
+    names_list, lats_list, lons_list = [], [], []
     stations_data_full_path = os.path.join(c.data_dir, stations_data_dir)
 
     # Get the stations from the directory names in data_dit/STATIONS_DATA_DIR
@@ -391,6 +421,10 @@ def makeStationsInfoDict(c, stations_data_dir=STATIONS_DATA_DIR):
 
     # Iterate and populate if all the expected fies are present
     for station in tqdm.tqdm(stations_list):
+
+        if country_code is not None:
+            if not station.lower().startswith(country_code.lower()):
+                continue
 
         # Create paths
         station_info_path = os.path.join(stations_data_full_path, station)
@@ -428,6 +462,15 @@ def makeStationsInfoDict(c, stations_data_dir=STATIONS_DATA_DIR):
                                                     'pp': pp,
                                                     'mask': mask_struct
                                                         }
+
+        # Update lists
+        names_list.append(station.lower())
+        lats_list.append(np.degrees(lat_rads))
+        lons_list.append(np.degrees(lon_rads))
+
+
+
+    makeGeoJson(names_list, lats_list, lons_list,"~/RMS_data/stations_geo_json.json")
 
     return stations_info_dict
 
@@ -1147,27 +1190,27 @@ if __name__ == "__main__":
 
     mkdirP(WORKING_DIRECTORY)
 
-    station_info_dict_path = os.path.join(WORKING_DIRECTORY, "station_info_dict_path.pkl")
+    station_info_dict_path = os.path.join(WORKING_DIRECTORY, "station_info_dict.pkl")
     ecef_array_path = os.path.join(WORKING_DIRECTORY, "ecef_point_array_around_stations.npy")
     ecef_point_to_camera_mapping_path = os.path.join(WORKING_DIRECTORY, "ecef_point_to_camera_mapping.pkl")
     station_point_angle_score_mapping_list_path = os.path.join(WORKING_DIRECTORY, "station_point_angle_score_mapping_list.pkl")
 
-    if True:
-        station_list = getStationList()
+    if False:
+        station_list = getStationList(country_code = "au")
         makeConfigPlateParMaskLib(config, station_list)
 
     if not os.path.exists(station_info_dict_path):
-        station_info_dict = makeStationsInfoDict(config)
+        station_info_dict = makeStationsInfoDict(config, country_code="au")
         with open(station_info_dict_path, 'wb') as f:
             pickle.dump(station_info_dict, f)
 
     station_info_dict = pickle.load(open(station_info_dict_path, 'rb'))
 
     if not os.path.exists(ecef_array_path):
-        ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=10000)
+        ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=2500)
         np.save(ecef_array_path, ecef_point_array)
 
-    if not os.path.exists(ecef_point_to_camera_mapping_path) or True:
+    if not os.path.exists(ecef_point_to_camera_mapping_path):
         ecef_point_array = np.load(ecef_array_path)
         ecef_point_to_camera_mapping = addStationsToECEFArray(ecef_point_array, station_info_dict, radius=500000)
 
@@ -1177,7 +1220,7 @@ if __name__ == "__main__":
 
     ecef_point_to_camera_mapping = pickle.load(open(ecef_point_to_camera_mapping_path, 'rb'))
 
-    if False:
+    if True:
         station_point_angle_score_mapping_list = computeAnglesPerPoint(station_info_dict, ecef_point_to_camera_mapping, cml_args.plot_charts)
 
         with open(station_point_angle_score_mapping_list_path, 'wb') as f:
