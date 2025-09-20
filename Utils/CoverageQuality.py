@@ -1207,7 +1207,7 @@ if __name__ == "__main__":
     station_info_dict = pickle.load(open(station_info_dict_path, 'rb'))
 
     if not os.path.exists(ecef_array_path):
-        ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=2500)
+        ecef_point_array = makeECEFPointList(station_info_dict, min_ele_m=20000, max_ele_m=100000, resolution_m=10000)
         np.save(ecef_array_path, ecef_point_array)
 
     if not os.path.exists(ecef_point_to_camera_mapping_path):
