@@ -281,6 +281,7 @@ def validStationName(candidate_station_name, country_codes):
         if not c.isalpha():
             return False
 
+    # todo: handle no station codes returned
     if not candidate_station_name[:2].lower() in country_codes:
         return False
 
