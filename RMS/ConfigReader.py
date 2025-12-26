@@ -784,7 +784,11 @@ def getDefaultValue(section_key, attribute_key):
     if os.path.exists(default_configuration_path):
         default_config = parse(default_configuration_path, allow_substitutions=False)
         substitute_value = getattr(default_config, attribute_key)
-        print(f"Substituting {substitute_value} into {section_key}{attribute_key}")
+
+        # Handle boolean cases
+        substitute_value = "true" if substitute_value == True else substitute_value
+        substitute_value = "false" if substitute_value == False else substitute_value
+
     return substitute_value
 
 def parse(path, strict=True, allow_substitutions=True):
