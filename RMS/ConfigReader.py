@@ -778,13 +778,26 @@ def removeInlineComments(cfgparser, delimiter):
         [cfgparser.set(section, item[0], item[1].split(delimiter)[0].strip()) for item in cfgparser.items(section)]
 
 
+def getDefaultValue(section_key, attribute_key):
 
-def parse(path, strict=True):
-    """ Parses config file at the given path and returns the corresponding Config object.
+    default_configuration_path = os.path.join(os.getcwd(),"RMS","ConfigurationDefaults",".config")
+    if os.path.exists(default_configuration_path):
+        default_config = parse(default_configuration_path, allow_substitutions=False)
+        substitute_value = getattr(default_config, attribute_key)
+        print(f"Substituting {substitute_value} into {section_key}{attribute_key}")
+    return substitute_value
+
+def parse(path, strict=True, allow_substitutions=True):
+    """ Parses config file at the given path and returns the corresponding Config object. If a config element
+    contains a 'default' value substitute in the value from the default configuration file. When parsing the
+    default configuration file set allow_substations as false to prevent recursion.
 
     Arguments:
         path: [str] path to file (.config or dfnstation.cfg)
         strict: [bool]
+
+    Keyword Arugments:
+        allow_substitutions: [bool] When parsing the configuration file containing defaults, refuse any substitutions
 
     Returns:
         config: [Config]
@@ -808,7 +821,16 @@ def parse(path, strict=True):
 
     # Remove inline comments
     removeInlineComments(parser, delimiter)
-    
+
+    if allow_substitutions:
+        sections_dict = parser._sections
+        for section_key in sections_dict:
+            for attribute_key in sections_dict[section_key]:
+                attribute = sections_dict[section_key][attribute_key]
+                if attribute == "default":
+                    sections_dict[section_key][attribute_key] = getDefaultValue(section_key, attribute_key)
+
+
     config = Config()
 
     # Store parsed config file name
