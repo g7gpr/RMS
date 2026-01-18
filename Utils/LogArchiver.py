@@ -74,7 +74,7 @@ def getLogTypes(config):
     """
     log_dir = os.path.join(config.data_dir, config.log_dir)
 
-    # Exclude non standard log file names - i.e. the set of log names which do not resolve to ISO_DATE_2000
+    # Form the set of log names where ISO_DATE_2000 is not returned
     log_file_set = {f for f in os.listdir(log_dir) if extractDateFromLogName(config, f) != ISO_DATE_2000}
 
     # Form the set of unique log types
