@@ -884,7 +884,8 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
         # Standard mode: need to run it all just once
         # Continuous mode: if the program just got done with nighttime processing and needs to reboot
-        elif (not config.continuous_capture) or (not daytime_mode_prev and config.reboot_after_processing):
+        elif (not config.continuous_capture) or (not daytime_mode_prev and
+                                                 (config.reboot_after_processing or config.terminate_after_processing)):
             break 
 
         ran_once = True
@@ -1204,9 +1205,12 @@ if __name__ == "__main__":
 
 
         # Reboot the computer after processing is done for the previous night
-        if ran_once and config.reboot_after_processing:
+        if ran_once and (config.reboot_after_processing or config.terminate_after_processing):
 
-            log.info("Trying to reboot after processing in 30 seconds...")
+            if config.reboot_after_processing:
+                log.info("Trying to reboot after processing in 30 seconds...")
+            elif config.terminate_after_processing:
+                log.info("Trying to terminate after processing in 30 seconds...")
             time.sleep(30)
 
             # Try rebooting for 4 hours, stop if capture should run
@@ -1219,13 +1223,13 @@ if __name__ == "__main__":
 
                     # Prevent rebooting if the upload manager is uploading
                     if upload_manager.upload_in_progress.value:
-                        log.info("Reboot delayed for 1 minute due to upload...")
+                        log.info("Reboot / terminate delayed for 1 minute due to upload...")
                         reboot_go = False
 
                 # Check if the reboot lock file exists
                 reboot_lock_file_path = os.path.join(config.data_dir, config.reboot_lock_file)
                 if os.path.exists(reboot_lock_file_path):
-                    log.info("Reboot delayed for 1 minute because the lock file exists: {:s}".format(reboot_lock_file_path))
+                    log.info("Reboot / terminate delayed for 1 minute because the lock file exists: {:s}".format(reboot_lock_file_path))
                     reboot_go = False
 
 
@@ -1235,12 +1239,22 @@ if __name__ == "__main__":
                     log.info('Rebooting now!')
 
                     # Reboot the computer (script needs sudo privileges, works only on Linux)
-                    try:
-                        os.system('sudo shutdown -r now')
+                    if config.reboot_after_processing:
+                        try:
+                            log.info("Calling for a system shutdown now")
+                            os.system('sudo shutdown -r now')
 
-                    except Exception as e:
-                        log.debug('Rebooting failed with message:\n' + repr(e))
-                        log.debug(repr(traceback.format_exception(*sys.exc_info())))
+                        except Exception as e:
+                            log.debug('Rebooting failed with message:\n' + repr(e))
+                            log.debug(repr(traceback.format_exception(*sys.exc_info())))
+                    elif config.terminate_after_processing:
+                        try:
+                            log.info("Calling for a program exit now")
+                            sys.exit(0)
+
+                        except Exception as e:
+                            log.debug('Terminating failed with message:\n' + repr(e))
+                            log.debug(repr(traceback.format_exception(*sys.exc_info())))
 
                 else:
 
