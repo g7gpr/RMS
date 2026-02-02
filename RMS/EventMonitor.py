@@ -2399,7 +2399,10 @@ class EventMonitor(multiprocessing.Process):
             self.getEventsAndCheck(last_check_start_time,next_check_start_time)
             last_check_start_time = check_start_time
 
-            start_time, duration = captureDuration(self.syscon.latitude, self.syscon.longitude, self.syscon.elevation)
+            start_time, duration = captureDuration(self.syscon.latitude,
+                                                   self.syscon.longitude,
+                                                   self.syscon.elevation,
+                                                   self.syscon.continuous_capture)
 
             if not isinstance(start_time, bool):
 
@@ -2409,7 +2412,7 @@ class EventMonitor(multiprocessing.Process):
                 next_check_start_time = (RmsDateTime.utcnow() + datetime.timedelta(minutes=self.check_interval))
                 next_check_start_time_str = next_check_start_time.replace(microsecond=0).strftime('%H:%M:%S')
                 log.info('Next EventMonitor run : {} UTC; {:3.1f} minutes from now'.format(next_check_start_time_str, int(self.check_interval)))
-                if time_left_before_start_minutes < 120:
+                if time_left_before_start_minutes < 12000:
                     log.debug('Next Capture start    : {} UTC; {:3.1f} minutes from now'.format(str(start_time.strftime('%H:%M:%S')),time_left_before_start_minutes))
                 else:
                     log.debug('Next Capture start    : {} UTC'.format(str(start_time.strftime('%H:%M:%S'))))
