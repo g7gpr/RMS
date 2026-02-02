@@ -29,6 +29,7 @@ import ctypes
 import threading
 import multiprocessing
 import traceback
+import psutil
 import git
 from RMS.Formats.ObservationSummary import getObsDBConn, addObsParam
 
@@ -1250,7 +1251,9 @@ if __name__ == "__main__":
                     elif config.terminate_after_processing:
                         try:
                             log.info("Calling for a program exit now")
-                            os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+                            parent = psutil.Process(os.getpid())
+                            for child in parent.children(recursive=True):
+                                child.kill()
 
                         except Exception as e:
                             log.debug('Terminating failed with message:\n' + repr(e))
