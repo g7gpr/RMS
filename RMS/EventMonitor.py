@@ -2423,7 +2423,7 @@ class EventMonitor(multiprocessing.Process):
                 next_check_start_time_str = next_check_start_time.replace(microsecond=0).strftime('%H:%M:%S')
                 log.info('Next EventMonitor run : {} UTC {:3.1f} minutes from now'.format(next_check_start_time_str, self.check_interval))
                 end_time = RmsDateTime.utcnow() + datetime.timedelta(seconds=duration)
-                time_left_before_end_minutes = round(end_time / 60)
+                time_left_before_end_minutes = round(duration / 60)
                 log.debug('Next Capture end    : {} UTC; {:3.1f} minutes from now'.format(str(end_time.strftime('%H:%M:%S')), time_left_before_end_minutes))
             # Wait for the next check
             self.exit.wait(60*self.check_interval)
