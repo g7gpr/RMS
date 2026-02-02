@@ -1250,7 +1250,7 @@ if __name__ == "__main__":
                     elif config.terminate_after_processing:
                         try:
                             log.info("Calling for a program exit now")
-                            sys.exit(0)
+                            os.killpg(os.getpgid(p.pid), signal.SIGTERM)
 
                         except Exception as e:
                             log.debug('Terminating failed with message:\n' + repr(e))
