@@ -2415,10 +2415,10 @@ class EventMonitor(multiprocessing.Process):
                 log.info('Next EventMonitor run : {} UTC; {:05.1f} minutes from now'.format(next_check_start_time_str,
                                                                                          self.check_interval))
                 if time_left_before_start_minutes < 120:
-                    log.info('Next Capture start    : {} UTC; {:05.1f} minutes from now'.format(str(start_time.strftime('%H:%M:%S')),
+                    log.info('Next night capture start    : {} UTC; {:05.1f} minutes from now'.format(str(start_time.strftime('%H:%M:%S')),
                                                                                              time_left_before_start_minutes))
                 else:
-                    log.info('Next Capture start    : {} UTC'.format(str(start_time.strftime('%H:%M:%S'))))
+                    log.info('Next night capture start    : {} UTC'.format(str(start_time.strftime('%H:%M:%S'))))
             else:
                 next_check_start_time = (RmsDateTime.utcnow() + datetime.timedelta(minutes=self.check_interval))
                 next_check_start_time_str = next_check_start_time.replace(microsecond=0).strftime('%H:%M:%S')
@@ -2427,7 +2427,7 @@ class EventMonitor(multiprocessing.Process):
                 end_time = RmsDateTime.utcnow() + datetime.timedelta(seconds=duration)
                 time_left_before_end_minutes = duration / 60
                 if time_left_before_end_minutes < 120:
-                    log.info('Next Capture end      : {} UTC; {:05.1f} minutes from now'.format(str(end_time.strftime('%H:%M:%S')),
+                    log.info('Next night capture end       : {} UTC; {:05.1f} minutes from now'.format(str(end_time.strftime('%H:%M:%S')),
                                                                                              time_left_before_end_minutes))
             # Wait for the next check
             self.exit.wait(60*self.check_interval)
