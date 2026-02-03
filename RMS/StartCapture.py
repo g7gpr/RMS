@@ -1521,9 +1521,16 @@ if __name__ == "__main__":
 
     if eventmonitor is not None:
 
-    # Stop the event monitor
+        # Stop the event monitor
         if eventmonitor.is_alive():
              log.debug('Closing eventmonitor...')
              eventmonitor.stop()
-
              del eventmonitor
+
+    if slideshow_view is not None:
+        log.info("Stopping slideshow...")
+        slideshow_view.stop()
+        slideshow_view.join()
+        del slideshow_view
+
+    sys.exit(0)
