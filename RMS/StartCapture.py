@@ -772,7 +772,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
                 except KeyboardInterrupt:
 
-                    log.info('Ctrl + C pressed, exiting...')
+                    log.info('Interrupt received, exiting...')
 
                     if upload_manager is not None:
 
@@ -1288,7 +1288,7 @@ if __name__ == "__main__":
 
             except KeyboardInterrupt:
 
-                log.info('Ctrl + C pressed, exiting...')
+                log.info('Interrupt received, exiting...')
 
                 if upload_manager is not None:
 
@@ -1393,7 +1393,7 @@ if __name__ == "__main__":
 
                 except KeyboardInterrupt:
 
-                    log.info('Ctrl + C pressed, exiting...')
+                    log.info('Interrupt received, exiting...')
 
                     if upload_manager is not None:
 
@@ -1533,4 +1533,5 @@ if __name__ == "__main__":
         slideshow_view.join()
         del slideshow_view
 
+    log.info("Program stop")
     sys.exit(0)
