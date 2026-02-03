@@ -1526,5 +1526,3 @@ if __name__ == "__main__":
              eventmonitor.stop()
 
              del eventmonitor
-
-    sys.exit(0)
