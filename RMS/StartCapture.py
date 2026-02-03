@@ -29,7 +29,6 @@ import ctypes
 import threading
 import multiprocessing
 import traceback
-import psutil
 import git
 from RMS.Formats.ObservationSummary import getObsDBConn, addObsParam
 
@@ -1248,16 +1247,11 @@ if __name__ == "__main__":
                         except Exception as e:
                             log.debug('Rebooting failed with message:\n' + repr(e))
                             log.debug(repr(traceback.format_exception(*sys.exc_info())))
-                    elif config.terminate_after_processing:
-                        try:
-                            log.info("Calling for a program exit now")
-                            parent = psutil.Process(os.getpid())
-                            for child in parent.children(recursive=True):
-                                child.kill()
 
-                        except Exception as e:
-                            log.debug('Terminating failed with message:\n' + repr(e))
-                            log.debug(repr(traceback.format_exception(*sys.exc_info())))
+                    elif config.terminate_after_processing:
+                        log.info("Calling for a program exit now")
+                        STOP_CAPTURE = True
+
 
                 else:
 
