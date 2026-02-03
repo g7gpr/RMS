@@ -2409,7 +2409,7 @@ class EventMonitor(multiprocessing.Process):
 
                 time_left_before_start = (start_time - RmsDateTime.utcnow())
                 time_left_before_start = time_left_before_start - datetime.timedelta(microseconds=time_left_before_start.microseconds)
-                time_left_before_start_minutes = int(time_left_before_start.total_seconds()/60)
+                time_left_before_start_minutes = time_left_before_start.total_seconds()/60
                 next_check_start_time = (RmsDateTime.utcnow() + datetime.timedelta(minutes=self.check_interval))
                 next_check_start_time_str = next_check_start_time.replace(microsecond=0).strftime('%H:%M:%S')
                 log.info('Next EventMonitor run : {} UTC; {:05.1f} minutes from now'.format(next_check_start_time_str,
@@ -2425,7 +2425,7 @@ class EventMonitor(multiprocessing.Process):
                 log.info('Next EventMonitor run : {} UTC {:05.1f} minutes from now'.format(next_check_start_time_str,
                                                                                            self.check_interval))
                 end_time = RmsDateTime.utcnow() + datetime.timedelta(seconds=duration)
-                time_left_before_end_minutes = round(duration / 60, 1)
+                time_left_before_end_minutes = duration / 60
                 if time_left_before_end_minutes < 120:
                     log.info('Next Capture end      : {} UTC; {:05.1f} minutes from now'.format(str(end_time.strftime('%H:%M:%S')),
                                                                                              time_left_before_end_minutes))
