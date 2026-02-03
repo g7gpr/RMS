@@ -1536,5 +1536,5 @@ if __name__ == "__main__":
         del slideshow_view
 
     log.info("Send SIGINT to self")
-    os.kill(pid, signal.SIGINT)
+    os.kill(pid, signal.SIGKILL)
     sys.exit(0)
