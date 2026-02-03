@@ -43,6 +43,9 @@ def captureDuration(lat, lon, elevation, continuous_capture=None, sun_angle=None
     """
 
     # Handle keyword parameters
+    # If a sun_angle is given, it always takes priority.
+    # If a continuous_capture is given, the appropriate constant is chosen.
+    # If nothing is given, then default to night time only capture settings
 
     if continuous_capture is None and sun_angle is None:
         sun_angle = CAPTURE_HORIZON_DEG
@@ -73,7 +76,7 @@ def captureDuration(lat, lon, elevation, continuous_capture=None, sun_angle=None
     o.date = current_time
 
     # Calculate the locations of the Sun
-    s = ephem.Sun()  
+    s = ephem.Sun(o)
     s.compute(o)
 
     # Calculate the time of next sunrise and sunset
