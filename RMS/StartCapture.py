@@ -1060,7 +1060,7 @@ if __name__ == "__main__":
 
     log.info("Program start")
     log.info("Station code: {:s}".format(str(config.stationID)))
-    log.info(f"Process ID {os.getpid()}")
+    log.info(f"Process ID (PID) {os.getpid()}")
 
     # Get the program version
     try:
