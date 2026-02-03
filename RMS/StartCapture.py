@@ -1057,10 +1057,12 @@ if __name__ == "__main__":
     # Get the logger handle
     log = getLogger("rmslogger")
 
+    # Get the process ID
+    pid = os.getpid()
 
     log.info("Program start")
     log.info("Station code: {:s}".format(str(config.stationID)))
-    log.info(f"Process ID (PID) {os.getpid()}")
+    log.info(f"Process ID (PID) {pid}")
 
     # Get the program version
     try:
@@ -1533,5 +1535,6 @@ if __name__ == "__main__":
         slideshow_view.join()
         del slideshow_view
 
-    log.info("Program stop")
+    log.info("Send SIGINT to self")
+    os.kill(pid, signal.SIGINT)
     sys.exit(0)
