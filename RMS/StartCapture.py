@@ -1058,8 +1058,9 @@ if __name__ == "__main__":
     log = getLogger("rmslogger")
 
 
-    log.info(f"Program start with pid {os.getpid()}")
+    log.info(f"Program start")
     log.info("Station code: {:s}".format(str(config.stationID)))
+    log.info(f"Process ID {os.getpid()}")
 
     # Get the program version
     try:
