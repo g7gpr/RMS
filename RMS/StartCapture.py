@@ -884,7 +884,8 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
         # Standard mode: need to run it all just once
         # Continuous mode: if the program just got done with nighttime processing and needs to reboot
-        elif (not config.continuous_capture) or (not daytime_mode_prev and config.reboot_after_processing):
+        elif (not config.continuous_capture) or (not daytime_mode_prev and
+                                                 (config.reboot_after_processing or config.terminate_after_processing)):
             break 
 
         ran_once = True
@@ -1059,6 +1060,7 @@ if __name__ == "__main__":
 
     log.info("Program start")
     log.info("Station code: {:s}".format(str(config.stationID)))
+    log.info(f"Process ID {os.getpid()}")
 
     # Get the program version
     try:
@@ -1204,9 +1206,12 @@ if __name__ == "__main__":
 
 
         # Reboot the computer after processing is done for the previous night
-        if ran_once and config.reboot_after_processing:
+        if ran_once and (config.reboot_after_processing or config.terminate_after_processing):
 
-            log.info("Trying to reboot after processing in 30 seconds...")
+            if config.reboot_after_processing:
+                log.info("Trying to reboot after processing in 30 seconds...")
+            elif config.terminate_after_processing:
+                log.info("Trying to terminate after processing in 30 seconds...")
             time.sleep(30)
 
             # Try rebooting for 4 hours, stop if capture should run
@@ -1219,13 +1224,13 @@ if __name__ == "__main__":
 
                     # Prevent rebooting if the upload manager is uploading
                     if upload_manager.upload_in_progress.value:
-                        log.info("Reboot delayed for 1 minute due to upload...")
+                        log.info("Reboot / terminate delayed for 1 minute due to upload...")
                         reboot_go = False
 
                 # Check if the reboot lock file exists
                 reboot_lock_file_path = os.path.join(config.data_dir, config.reboot_lock_file)
                 if os.path.exists(reboot_lock_file_path):
-                    log.info("Reboot delayed for 1 minute because the lock file exists: {:s}".format(reboot_lock_file_path))
+                    log.info("Reboot / terminate delayed for 1 minute because the lock file exists: {:s}".format(reboot_lock_file_path))
                     reboot_go = False
 
 
@@ -1235,12 +1240,19 @@ if __name__ == "__main__":
                     log.info('Rebooting now!')
 
                     # Reboot the computer (script needs sudo privileges, works only on Linux)
-                    try:
-                        os.system('sudo shutdown -r now')
+                    if config.reboot_after_processing:
+                        try:
+                            log.info("Calling for a system shutdown now")
+                            os.system('sudo shutdown -r now')
 
-                    except Exception as e:
-                        log.debug('Rebooting failed with message:\n' + repr(e))
-                        log.debug(repr(traceback.format_exception(*sys.exc_info())))
+                        except Exception as e:
+                            log.debug('Rebooting failed with message:\n' + repr(e))
+                            log.debug(repr(traceback.format_exception(*sys.exc_info())))
+
+                    elif config.terminate_after_processing:
+                        log.info("Calling for a program exit now")
+                        STOP_CAPTURE = True
+
 
                 else:
 
@@ -1509,10 +1521,16 @@ if __name__ == "__main__":
 
     if eventmonitor is not None:
 
-    # Stop the event monitor
+        # Stop the event monitor
         if eventmonitor.is_alive():
              log.debug('Closing eventmonitor...')
              eventmonitor.stop()
-
              del eventmonitor
 
+    if slideshow_view is not None:
+        log.info("Stopping slideshow...")
+        slideshow_view.stop()
+        slideshow_view.join()
+        del slideshow_view
+
+    sys.exit(0)
