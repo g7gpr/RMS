@@ -6,6 +6,7 @@ numpy>=1.21.0,<1.24.0 ; python_version>='3.7' and python_version<'3.10'
 numpy>=1.26.0,<2.0.0 ; python_version>='3.10'
 matplotlib>=2.1.1
 pyephem>=3.7.6.0
+psutil
 cython>=0.27.3
 scipy>=1.0.0
 Pillow>=4.3.0

@@ -8,6 +8,7 @@ import sys
 import importlib
 import multiprocessing
 import traceback
+import psutil
 
 import RMS.ConfigReader as cr
 from RMS.Logger import getLogger
@@ -109,7 +110,10 @@ def runExternalScript(captured_night_dir, archived_night_dir, config):
 
             p = multiprocessing.Process(target=target_function, args=args)
             p.start()
-            external_script_process_list.append(p)
+            process_create_time = psutil.Process(p.pid).create_time()
+            log.info(f"Create time recorded as {process_create_time}")
+            external_script_process_list.append([p, process_create_time])
+
 
             if config.external_script_log:
                 log.info(f'External script now running as a separate process with PID {p.pid}')
