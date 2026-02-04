@@ -230,7 +230,7 @@ def loadConfigFromDirectory(cml_args_config, dir_path):
     else:
         # Load the default configuration file
         config = parse(".config")
-        print("Loading the default config!")
+        print(f"Loaded config from {os.path.join(os.getcwd(),'.config')}")
 
 
     return config
