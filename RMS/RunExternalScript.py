@@ -119,7 +119,7 @@ def runExternalScript(captured_night_dir, archived_night_dir, config):
             log.error('Running external script failed with error:' + repr(e))
             log.error(*traceback.format_exception(*sys.exc_info()))
 
-        return process_list
+        return external_script_process_list
 
 
 if __name__ == "__main__":
