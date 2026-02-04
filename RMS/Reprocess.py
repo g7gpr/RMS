@@ -833,7 +833,7 @@ if __name__ == "__main__":
 
     if cml_args.run_extl_script:
         # Run the external script
-        runExternalScript(cml_args.dir_path[0], night_archive_dir, config)
+        process_list = runExternalScript(cml_args.dir_path[0], night_archive_dir, config)
 
     # Upload the archive, if upload is enabled
     if config.upload_enabled:

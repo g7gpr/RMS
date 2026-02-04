@@ -57,52 +57,69 @@ def runExternalScript(captured_night_dir, archived_night_dir, config):
         log.error('To run an external script, both the path to the script and the name of the function to run must be defined in the config file!')
         return None
 
-    # Check if the script path exists
-    if not os.path.isfile(os.path.expanduser(config.external_script_path)):
-        log.error('The script {:s} does not exist!'.format(config.external_script_path))
-        return None
+    # Initialise external_script_list
+    external_script_list, external_script_process_list = [], []
+
+    if "," in config.external_script_path:
+        log.info(f"Found a list of external script paths")
+        external_script_list = config.external_script_path.split(",")
+        for external_script in external_script_list:
+            log.info(f"                                     {external_script}")
+
+    else:
+        log.info(f"Found a single external script path {config.external_script_path}")
+        external_script_list = [config.external_script_path]
 
 
-    try:
+    for external_script_path in external_script_list:
 
-        # Extract the name of the folder and the script
-        external_script_dir, external_script_file = os.path.split(os.path.expanduser(config.external_script_path))
-
-        # Insert the path to the script
-        sys.path.insert(0, external_script_dir)
-
-        # Import the function from the external script
-        module = importlib.import_module(external_script_file.replace('.py', '').replace('.PY', ''))
-        externalFunction = getattr(module, config.external_function_name)
-
-        # Call the external function in a separate process, protecting the main process from potential crashes
-        
-        # If logging is disabled, create a wrapper function which removes all log handlers in the external 
-        # process
-        if not config.external_script_log:
-            # Use the wrapper function
-            log.info('Starting function "{}" from external script "{}" with logging inhibited'.format(externalFunction, module))
-            target_function = externalFunctionWrapper
-            args = (externalFunction, captured_night_dir, archived_night_dir, config)
-
-        else:
-            log.info('Starting function "{}" from external script "{}"'.format(externalFunction, module))
-            target_function = externalFunction
-            args = (captured_night_dir, archived_night_dir, config)
+        # Check if the script path exists
+        if not os.path.isfile(os.path.expanduser(external_script_path)):
+            log.error('The script {:s} does not exist!'.format(external_script_path))
+            continue
 
 
-        p = multiprocessing.Process(target=target_function, args=args)
-        p.start()
+        try:
 
-        if config.external_script_log:
-            log.info('External script now running as a separate process')
+            # Extract the name of the folder and the script
+            external_script_dir, external_script_file = os.path.split(os.path.expanduser(external_script_path))
+
+            # Insert the path to the script
+            sys.path.insert(0, external_script_dir)
+
+            # Import the function from the external script
+            module = importlib.import_module(external_script_file.replace('.py', '').replace('.PY', ''))
+            externalFunction = getattr(module, config.external_function_name)
+
+            # Call the external function in a separate process, protecting the main process from potential crashes
+
+            # If logging is disabled, create a wrapper function which removes all log handlers in the external
+            # process
+            if not config.external_script_log:
+                # Use the wrapper function
+                log.info('Starting function "{}" from external script "{}" with logging inhibited'.format(externalFunction, module))
+                target_function = externalFunctionWrapper
+                args = (externalFunction, captured_night_dir, archived_night_dir, config)
+
+            else:
+                log.info('Starting function "{}" from external script "{}"'.format(externalFunction, module))
+                target_function = externalFunction
+                args = (captured_night_dir, archived_night_dir, config)
 
 
-    except Exception as e:
-        log.error('Running external script failed with error:' + repr(e))
-        log.error(*traceback.format_exception(*sys.exc_info()))
+            p = multiprocessing.Process(target=target_function, args=args)
+            p.start()
+            external_script_process_list.append(p)
+
+            if config.external_script_log:
+                log.info(f'External script now running as a separate process with PID {p.pid}')
 
 
+        except Exception as e:
+            log.error('Running external script failed with error:' + repr(e))
+            log.error(*traceback.format_exception(*sys.exc_info()))
+
+        return process_list
 
 
 if __name__ == "__main__":
