@@ -161,7 +161,8 @@ def generateTimelapse(dir_path, keep_images=False, fps=None, output_file=None, h
             frames_remaining_to_process = total_ff - c
             remaining_time_seconds = frames_processed_each_second * frames_remaining_to_process
             remaining_time_str = str(timedelta(seconds=remaining_time_seconds))
-            estimated_completion_time = time.strftime("%H:%M:%S", RmsDateTime.utcnow() + timedelta(seconds = remaining_time_seconds))
+            estimated_completion_time = RmsDateTime.utcnow() + timedelta(seconds=remaining_time_seconds)
+            estimated_completion_time_hms = time.strftime("%H:%M:%S", estimated_completion_time)
 
             print("{:>5d}/{:>5d}, Elapsed: {:s}, Remaining: {:s}, Completion Time: {:s}"
                   .format(c, total_ff, str(elapsed_time), str(remaining_time_str), str(estimated_completion_time)), end="\r")
