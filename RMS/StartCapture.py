@@ -49,7 +49,7 @@ from RMS.Formats.FFfile import validFFName
 from RMS.Misc import mkdirP, RmsDateTime, UTCFromTimestamp
 from RMS.QueuedPool import QueuedPool
 from RMS.Reprocess import getPlatepar, processNight, processFramesFiles
-from RMS.RunExternalScript import runExternalScript
+from RMS.RunExternalScript import runExternalScript, checkExternalProcesses
 from RMS.UploadManager import UploadManager
 from RMS.EventMonitor import EventMonitor
 from RMS.DownloadMask import downloadNewMask
@@ -861,7 +861,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
 
             # Run the external script
-            process_list = runExternalScript(night_data_dir, night_archive_dir, config)
+            running_external_process_list = runExternalScript(night_data_dir, night_archive_dir, config)
 
 
         # If capture is terminated manually, or the disk is full, exit program
@@ -1196,6 +1196,8 @@ if __name__ == "__main__":
     # Automatic running and stopping the capture at sunrise and sunset
     ran_once = False
     slideshow_view = None
+    running_external_process_list = None
+
     while True:
 
         if config.continuous_capture:
@@ -1240,6 +1242,14 @@ if __name__ == "__main__":
                     log.info("Reboot / terminate delayed for 1 minute because the lock file exists: {:s}".format(reboot_lock_file_path))
                     reboot_go = False
 
+                # Check to see if any external scripts are still running
+                running_external_process_list, stopped_external_process_list = checkExternalProcesses(
+                    running_external_process_list)
+
+                if running_external_process_list is not None:
+                    if len(running_external_process_list):
+                        log.info("Reboot / terminate delayed for 1 minute because external processes are still running")
+                        reboot_go = False
 
                 # Reboot the computer
                 if reboot_go:
