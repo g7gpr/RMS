@@ -33,7 +33,7 @@ LOG_FILE_PREFIX = "EXTERNAL"
 
 log = getLogger("rmslogger", stdout=False)
 
-SLEEP_TIME = 40
+SLEEP_TIME = 2 * 60
 
 def createLock(config, log):
     """ If no file config.reboot_lock_file exists in config.data_dir, create one
