@@ -152,7 +152,7 @@ def generateTimelapse(dir_path, keep_images=False, fps=None, output_file=None, h
         # Print elapsed time and estimated completion time
         total_ff = len(ff_list)
         if c % 30 == 0:
-            elapsed_time = RmsDateTime.utcnow() - t1
+            elapsed_time = timedelta(round((RmsDateTime.utcnow() - t1).total_seconds()))
             if elapsed_time.total_seconds() == 0:
                 seconds_per_frame = 1
             else:
