@@ -1248,7 +1248,11 @@ if __name__ == "__main__":
                 # Reboot the computer
                 if reboot_go:
 
-                    log.info('Rebooting now!')
+                    if config.reboot_after_processing:
+                        log.info('Rebooting now!')
+
+                    if config.terminate_after_processing:
+                        log.info('Terminating now!')
 
                     # Reboot the computer (script needs sudo privileges, works only on Linux)
                     if config.reboot_after_processing:
