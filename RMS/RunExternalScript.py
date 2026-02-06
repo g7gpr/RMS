@@ -8,8 +8,11 @@ import sys
 import importlib
 import multiprocessing
 import traceback
+from time import strftime
+
 import psutil
 import time
+import datetime
 
 import RMS.ConfigReader as cr
 from RMS.Logger import getLogger
@@ -59,21 +62,21 @@ def runExternalScript(captured_night_dir, archived_night_dir, config):
         log.error('To run an external script, both the path to the script and the name of the function to run must be defined in the config file!')
         return None
 
-    # Initialise external_script_list
-    external_script_list, external_script_process_list = [], []
+    # Initialise external_script_path_list
+    external_script_path_list, external_script_process_dict = [], {}
 
     if "," in config.external_script_path:
         log.info(f"Found a list of external script paths")
-        external_script_list = config.external_script_path.split(",")
-        for external_script in external_script_list:
+        external_script_path_list = config.external_script_path.split(",")
+        for external_script in external_script_path_list:
             log.info(f"                                     {external_script.strip()}")
 
     else:
         log.info(f"Found a single external script path {config.external_script_path}")
-        external_script_list = [config.external_script_path]
+        external_script_path_list = [config.external_script_path]
 
 
-    for external_script_path in external_script_list:
+    for external_script_path in external_script_path_list:
 
         # Check if the script path exists
         external_script_path = os.path.expanduser(external_script_path.strip())
@@ -114,7 +117,10 @@ def runExternalScript(captured_night_dir, archived_night_dir, config):
             p.start()
             parent_pid = os.getpid()
             log.info(f"Process {p.pid} parent recorded as {parent_pid} running {external_script_path}")
-            external_script_process_list.append([p, parent_pid, external_script_path])
+            external_script_process_dict[p.pid] =  {"process" : p,
+                                                    "parent_pid" : parent_pid,
+                                                    "external_script_path" : external_script_path,
+                                                    "start_time" : datetime.datetime.now()}
 
 
             if config.external_script_log:
@@ -125,27 +131,38 @@ def runExternalScript(captured_night_dir, archived_night_dir, config):
             log.error('Running external script failed with error:' + repr(e))
             log.error(*traceback.format_exception(*sys.exc_info()))
 
-    return external_script_process_list
+    return external_script_process_dict
 
-def checkExternalProcesses(external_script_process_list):
+def checkExternalProcesses(external_script_process_dict):
 
-    if external_script_process_list is None:
-        return external_script_process_list, None
+    if external_script_process_dict is None:
+        return external_script_process_dict, None
 
-    running_list, ended_list = [], []
-    for external_script_process in external_script_process_list:
-        p = external_script_process[0]
-        process_parent = external_script_process[1]
-        external_script_path = external_script_process[2]
+    external_script_stopped_process_dict = {}
+    for external_script_process_key in external_script_process_dict:
+        process_dict = external_script_process_dict[external_script_process_key]
+        p = process_dict["process"]
+        process_parent = process_dict["parent_pid"]
+        external_script_path = process_dict["external_script_path"]
         if p.is_alive() and process_parent == os.getpid():
-            log.info(f"{external_script_path} continues to run")
-            running_list.append(external_script_process)
+            pass
         else:
-            ended_list.append(external_script_process)
+            external_script_stopped_process_dict[external_script_process_key] = process_dict
 
+    for external_script_process_key in external_script_stopped_process_dict:
+        del external_script_process_dict[external_script_process_key]
 
+    return external_script_process_dict, external_script_stopped_process_dict
 
-    return running_list, ended_list
+def runningExternalScripts(external_script_process_dict):
+
+    external_script_process_dict, external_script_stopped_process_dict = \
+        checkExternalProcesses(external_script_process_dict)
+
+    if len(external_script_stopped_process_dict):
+        return True
+    else:
+        return False
 
 if __name__ == "__main__":
 
@@ -181,15 +198,23 @@ if __name__ == "__main__":
         config = cr.loadConfigFromDirectory(cfg, pth)
 
     # Run the external script
-    running_external_process_list =  runExternalScript(cml_args.captured_path[0], cml_args.archived_path[0], config)
+    running_external_process_dict =  runExternalScript(cml_args.captured_path[0], cml_args.archived_path[0], config)
 
-    while len(running_external_process_list):
-        running_external_process_list, stopped_external_process_list = checkExternalProcesses(running_external_process_list)
-        for running_process in running_external_process_list:
-            log.info("Following processes are running")
-            log.info(running_process)
-        for stopped_process in stopped_external_process_list:
+    while len(running_external_process_dict):
+        running_external_process_dict, stopped_external_process_dict = checkExternalProcesses(running_external_process_dict)
+        log.info("Following external scripts are running")
+        for running_pid in running_external_process_dict:
+
+            log.info(f"  Path       : {running_external_process_dict[running_pid]['external_script_path']}")
+            log.info(f"  Parent     : {running_external_process_dict[running_pid]['parent_pid']}")
+            start_time = running_external_process_dict[running_pid]['start_time'].strftime("%H:%M:%S")
+            run_duration = datetime.datetime.now() - running_external_process_dict[running_pid]['start_time']
+            log.info(f"  Started    : {start_time}")
+            log.info(f"  Duration   : {run_duration - datetime.timedelta(microseconds=run_duration.microseconds)}")
+            log.info("")
+
+        for stopped_pid in stopped_external_process_dict:
             log.info("Following processes are stopped")
-            log.info(stopped_process)
+            log.info(stopped_external_process_dict[stopped_pid])
 
-        time.sleep(5)
+        time.sleep(30)

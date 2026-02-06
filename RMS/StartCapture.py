@@ -861,7 +861,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
 
             # Run the external script
-            running_external_process_list = runExternalScript(night_data_dir, night_archive_dir, config)
+            process_dict = runExternalScript(night_data_dir, night_archive_dir, config)
 
 
         # If capture is terminated manually, or the disk is full, exit program
@@ -983,7 +983,7 @@ def processIncompleteCaptures(config, upload_manager):
 
             # Run the external script if running after autoreprocess is enabled
             if config.external_script_run and config.auto_reprocess_external_script_run:
-                process_list = runExternalScript(captured_dir_path, night_archive_dir, config)
+                process_dict = runExternalScript(captured_dir_path, night_archive_dir, config)
 
             log.info("Folder {:s} reprocessed with success!".format(captured_dir_path))
 
@@ -1196,7 +1196,7 @@ if __name__ == "__main__":
     # Automatic running and stopping the capture at sunrise and sunset
     ran_once = False
     slideshow_view = None
-    running_external_process_list = None
+    running_external_process_dict = None
 
     while True:
 
@@ -1243,13 +1243,7 @@ if __name__ == "__main__":
                     reboot_go = False
 
                 # Check to see if any external scripts are still running
-                running_external_process_list, stopped_external_process_list = checkExternalProcesses(
-                    running_external_process_list)
-
-                if running_external_process_list is not None:
-                    if len(running_external_process_list):
-                        log.info("Reboot / terminate delayed for 1 minute because external processes are still running")
-                        reboot_go = False
+                reboot_go = False if checkExternalProcesses(running_external_process_dict) else reboot_go
 
                 # Reboot the computer
                 if reboot_go:
