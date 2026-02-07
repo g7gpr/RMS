@@ -129,6 +129,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
     # Strategy is to set upload_mode to True, and only allow the while loop to end
     # once all the stations and priorities have been iterated, with no upload
     upload_made = True
+    remote_host_address_path = os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))
     while upload_made:
         upload_made = False
         for local_path_modifier, descriptor in zip(local_path_modifier_list, modifier_descriptors_list):
@@ -143,7 +144,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 station_id = config.stationID
                 station_id_lower = station_id.lower()
 
-                remote_host_address_path = os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))
+
                 key_path = os.path.expanduser(config.rsa_private_key)
 
                 if not os.path.exists(remote_host_address_path):
@@ -189,6 +190,12 @@ def makeUpload(config_dict, return_after_each_upload=False):
             station_id = config.stationID
             station_id_lower = station_id.lower()
             key_path = os.path.expanduser(config.rsa_private_key)
+            if not os.path.exists(remote_host_address_path):
+                log.info("\t\tRemote host path not found")
+                continue
+            if not os.path.isfile(remote_host_address_path):
+                continue
+
             with open(remote_host_address_path) as f:
                 rsync_remote_host = f.readline()
                 user_host = f"{station_id_lower}@{rsync_remote_host}:".replace("\n", "")
