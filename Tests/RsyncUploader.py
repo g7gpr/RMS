@@ -211,5 +211,7 @@ if __name__ == '__main__':
 
     while True:
 
+        log.info("Calling make upload")
         makeUpload(config_dict, return_after_each_upload=True)
+        log.info("Returned from make upload")
         time.sleep(10)
