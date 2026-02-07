@@ -24,7 +24,7 @@ from RMS.Formats.Platepar import stationData
 from RMS.Logger import getLogger
 import argparse
 import RMS.ConfigReader as cr
-
+import time
 
 LOG_FILE_PREFIX = "EXTERNAL"
 
@@ -82,9 +82,14 @@ def uploadMade(rsync_stdout, log_uploaded_files=False):
     """
 
     rsync_stdout = rsync_stdout.decode('utf-8')
-    log.info(f"Processing {rsync_stdout}")
-    changed_files = [line for line in rsync_stdout.splitlines() if rsync_stdout.startswith((">", 'c', '*'))]
+    rsync_stdout_lines = rsync_stdout.splitlines()
 
+    changed_files = []
+    for line in rsync_stdout_lines:
+        if line.startswith("<"):
+            changed_files.append(line.split(" ")[1])
+
+    changed_files.sort()
     if log_uploaded_files:
         log.info("Uploaded files:")
         for f in changed_files:
@@ -139,8 +144,8 @@ def makeUpload(config, return_after_each_upload=False):
         log.info(f"Sending {local_path_modified}")
         # build rsync command
         command_string = f"rsync --progress -av --itemize-changes -e 'ssh -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
+        log.info(command_string)
         result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        log.info(f"Command returned {result.stdout}")
         # If return after each upload is selected, then return, so that a check is made for all the highest
         # priority files again
         if return_after_each_upload and uploadMade(result.stdout, log_uploaded_files=True):
@@ -150,9 +155,8 @@ def makeUpload(config, return_after_each_upload=False):
     # Now send the frame_dir
 
     local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
-    command_string = f"rsync --progress -av -e 'ssh -i {key_path}' {local_path} {user_host}{remote_path}"
+    command_string = f"rsync --progress -av --itemize-changes -e 'ssh -i {key_path}' {local_path} {user_host}{remote_path}"
     result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    log.info(f"Command returned {result.stdout}")
     if uploadMade(result.stdout, log_uploaded_files=True):
         return True
     else:
@@ -204,3 +208,4 @@ if __name__ == '__main__':
             log.info(f"Making uploads for {station}")
             if makeUpload(config_dict[station], return_after_each_upload=True):
                 break
+        time.sleep(10)
