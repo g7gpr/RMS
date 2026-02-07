@@ -203,6 +203,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 user_host = f"{station_id_lower}@{rsync_remote_host}:".replace("\n", "")
             local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
             command_string = f"rsync -av --itemize-changes  --partial-dir=partial/ -e  'ssh  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {key_path}'  {local_path} {user_host}{remote_path}"
+            log.info(f"\t\t{command_string}")
             result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             upload_made = uploadMade(result.stdout, log_uploaded_files=True)
 
