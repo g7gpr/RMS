@@ -155,6 +155,11 @@ def makeUpload(config_dict, return_after_each_upload=False):
                     # If return after each upload is selected, then return, so that a check is made for all the highest
                     # priority files again
                     upload_made = uploadMade(result.stdout, log_uploaded_files=True)
+                    if upload_made:
+                        if local_path_modifier_list.index(local_path_modifier) != 0:
+                            break
+                        else:
+                            log.info(f"Not breaking as still uploading {local_path_modifier}")
 
             # Now send the frame_dir
 
