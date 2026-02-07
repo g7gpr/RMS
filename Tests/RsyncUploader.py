@@ -24,6 +24,8 @@
 
 import os
 import subprocess
+
+from RMS.Formats.Platepar import stationData
 from RMS.Logger import getLogger
 import argparse
 import RMS.ConfigReader as cr
@@ -71,22 +73,39 @@ def removeLock(config, log):
     else:
         log.warning("No reboot lock file found at {}".format(lockfile))
 
+def uploadMade(rsync_stdout, log_uploaded_files=False):
 
-def rmsExternal(captured_night_dir, archived_night_dir, config):
-    """ Function for launch from main RMS process
 
+    changed_files = [line for line in rsync_stdout.splitlines() if rsync_stdout.startswith((">", 'c', '*'))]
+
+    if log_uploaded_files:
+        log.info("Uploaded files:")
+        for f in changed_files:
+            log.info(f"\t{f}")
+
+    if len(changed_files):
+        return True
+    else:
+        return False
+
+def makeUpload(config, return_after_each_upload=False):
+
+    """
     Arguments:
-        captured_night_dir: [path] to the captured night directory folder
-        archived_night_dir: [path] to the archived night directory folder
         config: [config] RMS config instance
+
+    Keyword arguments:
+        return_after_each_upload: [bool] After each file has been uploaded, return [default false]
 
     Upload files in priority order to a remote server using rsync
 
     """
-    createLock(config, log)
+
 
     station_id = config.stationID
     station_id_lower = station_id.lower()
+    print(config.rsa_private_key)
+
     key_path = os.path.expanduser(config.rsa_private_key)
 
     remote_path = os.path.join("/", "home",station_id_lower,"files","incoming")
@@ -111,15 +130,21 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
         local_path_modified = os.path.join(local_path, local_path_modifier)
         log.info(f"Sending {local_path_modified}")
         # build rsync command
-        command_string = f"rsync --progress -av -e 'ssh -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
-        subprocess.run(command_string, shell=True)
+        command_string = f"rsync --progress -av --itemize-changes -e 'ssh -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
+        result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if return_after_each_upload and uploadMade(result.stdout):
+            return True
+
 
     # Now send the frame_dir
 
     local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
     command_string = f"rsync --progress -av -e 'ssh -i {key_path}' {local_path} {user_host}{remote_path}"
-    subprocess.run(command_string, shell=True)
-    removeLock(config, log)
+    result = subprocess.run(command_string, shell=True)
+    if uploadMade(result.stdout):
+        return True
+    else
+        return False
 
 
 if __name__ == '__main__':
@@ -128,18 +153,41 @@ if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser(description=""" Upload files using rsync.
         """)
 
-    # Add a mutually exclusive for the parser (the arguments in the group can't be given at the same)
-    arg_group = arg_parser.add_mutually_exclusive_group()
 
-    arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str, \
+
+    arg_parser.add_argument('-c', '--config', metavar='CONFIG_PATH', type=str, \
         help="Path to a config file which will be used instead of the default one.")
 
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
 
-    # Load the config file
-    config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
+    if cml_args.config is not None:
+        # Load the config file
+        config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
+        log.info(f"Loaded config file for station {config.stationID}")
+        makeUpload(None, None, config)
+    else:
+        config = None
 
-    log.info(f"Loaded config file for station {config.stationID}")
+    potential_stations_list = os.listdir("/home/rms/source/Stations")
 
-    rmsExternal(None, None, config)
+    station_list = []
+
+    for potential_station in potential_stations_list:
+        if len(potential_station) == 6 and potential_station[:2].isalpha():
+            station_list.append(potential_station)
+
+    config_dict = {}
+
+    for station in station_list:
+        config_path_list = [os.path.join("/home/rms/source/Stations/", station,".config")]
+        if os.path.exists(config_path_list[0]):
+            if os.path.isfile(config_path_list[0]):
+                log.info(f"Loading config for {station} from {config_path_list[0]}")
+                config_dict[station] = cr.loadConfigFromDirectory(config_path_list, os.path.abspath('.'))
+
+    while True:
+        for station in config_dict:
+            log.info(f"Making uploads for {station}")
+            if makeUpload(config_dict[station], return_after_each_upload=True):
+                break
