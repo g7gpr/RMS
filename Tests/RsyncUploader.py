@@ -195,7 +195,7 @@ if __name__ == '__main__':
     else:
         config = None
 
-    potential_stations_list = os.listdir("/home/rms/source/Stations")
+    potential_stations_list = os.listdir("/home/rms/source/Stations") + os.listdir("/home/")
 
     station_list = []
 
@@ -211,7 +211,12 @@ if __name__ == '__main__':
         if os.path.exists(config_path_list[0]):
             if os.path.isfile(config_path_list[0]):
                 log.info(f"Loading config for {station} from {config_path_list[0]}")
-                config_dict[station] = cr.loadConfigFromDirectory(config_path_list, os.path.abspath('.'))
+                config = cr.loadConfigFromDirectory(config_path_list, os.path.abspath('.'))
+                if config.stationID.lower() == station.lower():
+                    log.info(f"Adding config for {station} from {config_path_list[0]} because stationID matches")
+                    config_dict[station] = config
+                else:
+                    log.info(f"Not adding config for {station} from {config_path_list[0]} because {config.stationID} from config does not match")
 
     next_start_time = datetime.datetime.now()
     while True:
