@@ -253,19 +253,18 @@ if __name__ == '__main__':
         config_dict[config.stationID] = config
 
     start_time = datetime.datetime.now()
-    next_start_time = start_time
+
     while True:
 
-        wait_time = (next_start_time - datetime.datetime.now())
+        wait_time = (start_time - datetime.datetime.now())
 
         if wait_time.total_seconds() > 0:
-            log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {next_start_time}")
+            log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time}")
             time.sleep(wait_time.total_seconds())
         else:
             if wait_time.total_seconds() < 5:
-                log.info(f"Starting upload process immediately, as due at {next_start_time}.")
+                log.info(f"Starting upload process immediately, as due at {start_time}.")
             else:
                 log.info(f"Starting upload process immediately, as overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
         makeUpload(config_dict, return_after_each_upload=True)
-        next_start_time = start_time + datetime.timedelta(minutes=15)
-        start_time = next_start_time
+        start_time = start_time + datetime.timedelta(minutes=15)
