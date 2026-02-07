@@ -146,7 +146,11 @@ def makeUpload(config_dict, return_after_each_upload=False):
 
                     remote_path = os.path.join("/", "home", station_id_lower, "files", "incoming")
                     local_path = os.path.join(config.data_dir, config.archived_dir)
-                    with open(os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))) as f:
+                    remote_host_address_path = os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))
+                    if os.path.exists(remote_host_address_path):
+                        if not os.path.isfile(remote_host_address_path):
+                            continue
+                    with open(remote_host_address_path) as f:
                         rsync_remote_host = f.readline()
                         user_host = f"{station_id_lower}@{rsync_remote_host}:".replace("\n", "")
                     # modify the local path to send files in the right order
