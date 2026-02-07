@@ -124,51 +124,53 @@ def makeUpload(config_dict, return_after_each_upload=False):
                                 "*_imgdata.tar.bz2",
                                 "*.tar.bz2"]
 
-    upload_made = False
-    for local_path_modifier in local_path_modifier_list:
-        if upload_made:
-            if local_path_modifier_list.index(local_path_modifier) != 0:
-                break
-            else:
-                log.info(f"Not breaking as still uploading {local_path_modifier}")
+    upload_made = True
+    while upload_made:
+        upload_made = False
+        for local_path_modifier in local_path_modifier_list:
+            if upload_made:
+                if local_path_modifier_list.index(local_path_modifier) != 0:
+                    break
+                else:
+                    log.info(f"Not breaking as still uploading {local_path_modifier}")
+
+            for station in config_dict:
+                    log.info(f"For station {station} uploading {local_path_modifier}")
+                    config = config_dict[station]
+                    station_id = config.stationID
+                    station_id_lower = station_id.lower()
+
+                    key_path = os.path.expanduser(config.rsa_private_key)
+
+                    remote_path = os.path.join("/", "home", station_id_lower, "files", "incoming")
+                    local_path = os.path.join(config.data_dir, config.archived_dir)
+                    with open(os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))) as f:
+                        rsync_remote_host = f.readline()
+                        user_host = f"{station_id_lower}@{rsync_remote_host}:".replace("\n", "")
+                    # modify the local path to send files in the right order
+                    local_path_modified = os.path.join(local_path, local_path_modifier)
+                    # build rsync command
+                    command_string = f"rsync --progress -av --itemize-changes  --partial-dir=partial/ -e  'ssh  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
+                    result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    # If return after each upload is selected, then return, so that a check is made for all the highest
+                    # priority files again
+                    upload_made = uploadMade(result.stdout, log_uploaded_files=True)
+
+            # Now send the frame_dir
 
         for station in config_dict:
-                log.info(f"For station {station} uploading {local_path_modifier}")
-                config = config_dict[station]
-                station_id = config.stationID
-                station_id_lower = station_id.lower()
+            if upload_made:
+                break
 
-                key_path = os.path.expanduser(config.rsa_private_key)
+            log.info(f"For station {station} uploading {config.frame_dir}")
+            config = config_dict[station]
+            station_id = config.stationID
+            station_id_lower = station_id.lower()
 
-                remote_path = os.path.join("/", "home", station_id_lower, "files", "incoming")
-                local_path = os.path.join(config.data_dir, config.archived_dir)
-                with open(os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))) as f:
-                    rsync_remote_host = f.readline()
-                    user_host = f"{station_id_lower}@{rsync_remote_host}:".replace("\n", "")
-                # modify the local path to send files in the right order
-                local_path_modified = os.path.join(local_path, local_path_modifier)
-                # build rsync command
-                command_string = f"rsync --progress -av --itemize-changes  --partial-dir=partial/ -e  'ssh  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
-                result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                # If return after each upload is selected, then return, so that a check is made for all the highest
-                # priority files again
-                upload_made = uploadMade(result.stdout, log_uploaded_files=True)
-
-        # Now send the frame_dir
-
-    for station in config_dict:
-        if upload_made:
-            break
-
-        log.info(f"For station {station} uploading {config.frame_dir}")
-        config = config_dict[station]
-        station_id = config.stationID
-        station_id_lower = station_id.lower()
-
-        local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
-        command_string = f"rsync --progress -av --itemize-changes  --partial-dir=partial/ -e  'ssh  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {key_path}'  {local_path} {user_host}{remote_path}"
-        result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        upload_made = uploadMade(result.stdout, log_uploaded_files=True)
+            local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
+            command_string = f"rsync --progress -av --itemize-changes  --partial-dir=partial/ -e  'ssh  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {key_path}'  {local_path} {user_host}{remote_path}"
+            result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            upload_made = uploadMade(result.stdout, log_uploaded_files=True)
 
 
 if __name__ == '__main__':
