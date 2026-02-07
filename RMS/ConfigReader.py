@@ -281,9 +281,7 @@ class Config:
         self.external_function_name = "rmsExternal"
 
         self.reboot_after_processing = False
-
         self.reboot_lock_file = ".reboot_lock"
-
         self.terminate_after_processing = False
 
         ##### Capture
