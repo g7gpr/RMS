@@ -255,7 +255,7 @@ if __name__ == '__main__':
     start_time = datetime.datetime.now()
     next_start_time = start_time
     while True:
-        next_start_time = start_time + datetime.timedelta(seconds=10)
+
         wait_time = (next_start_time - datetime.datetime.now())
 
         if wait_time.total_seconds() > 0:
@@ -267,5 +267,5 @@ if __name__ == '__main__':
             else:
                 log.info(f"Starting upload process immediately, as overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
         makeUpload(config_dict, return_after_each_upload=True)
-
+        next_start_time = start_time + datetime.timedelta(minutes=15)
         start_time = next_start_time
