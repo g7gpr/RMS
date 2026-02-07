@@ -132,7 +132,6 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 config = config_dict[station]
                 station_id = config.stationID
                 station_id_lower = station_id.lower()
-                print(config.rsa_private_key)
 
                 key_path = os.path.expanduser(config.rsa_private_key)
 
@@ -154,19 +153,24 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 # If return after each upload is selected, then return, so that a check is made for all the highest
                 # priority files again
-                if return_after_each_upload and uploadMade(result.stdout, log_uploaded_files=True):
-                    return True
+                _ = uploadMade(result.stdout, log_uploaded_files=True)
 
 
-                # Now send the frame_dir
+        # Now send the frame_dir
 
-                local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
-                command_string = f"rsync --progress -av --itemize-changes -e 'ssh -i {key_path}' {local_path} {user_host}{remote_path}"
-                result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if uploadMade(result.stdout, log_uploaded_files=True):
-                    return True
-                else:
-                    return False
+    for station in config_dict:
+
+        log.info(f"For station {station} uploading {config.frame_dir}")
+        config = config_dict[station]
+        station_id = config.stationID
+        station_id_lower = station_id.lower()
+
+        local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
+        command_string = f"rsync --progress -av --itemize-changes -e 'ssh -i {key_path}' {local_path} {user_host}{remote_path}"
+        log.info(command_string)
+
+        result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        uploadMade(result.stdout, log_uploaded_files=True)
 
 
 if __name__ == '__main__':
