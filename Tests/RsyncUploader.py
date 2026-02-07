@@ -147,7 +147,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 key_path = os.path.expanduser(config.rsa_private_key)
 
                 if not os.path.exists(remote_host_address_path):
-                    log.info("Remote host path not found")
+                    log.info("\t\tRemote host path not found")
                     continue
                 if not os.path.isfile(remote_host_address_path):
                     continue
