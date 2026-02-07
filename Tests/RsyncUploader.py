@@ -123,12 +123,16 @@ def makeUpload(config_dict, return_after_each_upload=False):
                                 "*_imgdata.tar.bz2",
                                 "*.tar.bz2"]
 
+    modifier_descriptors_list = ["metadata", "detected", "imgdata", "framesfiles."]
+
+
     # Strategy is to set upload_mode to True, and only allow the while loop to end
     # once all the stations and priorities have been iterated, with no upload
     upload_made = True
     while upload_made:
         upload_made = False
-        for local_path_modifier in local_path_modifier_list:
+        for local_path_modifier, descriptor in zip(local_path_modifier_list, modifier_descriptors_list):
+            log.info(f"Uploading {descriptor}")
             if upload_made:
                 if local_path_modifier_list.index(local_path_modifier) != 0:
                     break
