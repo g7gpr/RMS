@@ -166,8 +166,10 @@ def makeUpload(config_dict, return_after_each_upload=False):
                             log.info(f"Not breaking as still uploading {local_path_modifier}")
 
             if upload_made:
-                log.info("Breaking as this was the last station at this priority")
                 break
+
+        if upload_made:
+            break
 
             # Now send the frame_dir
 
