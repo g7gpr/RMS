@@ -124,8 +124,9 @@ def makeUpload(config_dict, return_after_each_upload=False):
 
     for local_path_modifier in local_path_modifier_list:
 
-        for station in config_dict:
 
+        for station in config_dict:
+                log.info(f"For station {station} uploading {local_path_modifier}")
                 config = config_dict[station]
                 station_id = config.stationID
                 station_id_lower = station_id.lower()
