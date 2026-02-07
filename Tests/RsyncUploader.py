@@ -181,9 +181,10 @@ if __name__ == '__main__':
 
     station_list = []
 
-    for potential_station in potential_stations_list:
+    for potential_station in sorted(potential_stations_list)
         if len(potential_station) == 6 and potential_station[:2].isalpha():
             station_list.append(potential_station)
+
 
     config_dict = {}
 
