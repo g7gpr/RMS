@@ -208,7 +208,15 @@ if __name__ == '__main__':
     else:
         config = None
 
-    potential_stations_list = os.listdir("/home/rms/source/Stations") + os.listdir("/home/")
+    path_list = [f"/home/{os.getlogin()}/source/Stations", "/home/"]
+
+    potential_stations_list = []
+    for p in path_list:
+        if os.path.exists(p):
+            if os.path.isdir(p):
+                potential_stations_list += os.listdir(p)
+                for s in potential_stations_list:
+                    log.info(f"Found station {s}")
 
     station_list = []
 
