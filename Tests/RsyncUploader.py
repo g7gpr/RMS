@@ -219,17 +219,18 @@ if __name__ == '__main__':
                 for station_path in os.listdir(p):
                     potential_station_paths_list.append(os.path.join(p, station_path))
 
-    station_paths_list = []
+    station_paths_list, station_list = [], []
 
     for potential_station_path in sorted(potential_station_paths_list):
         potential_station = os.path.basename(potential_station_path)
         if len(potential_station) == 6 and potential_station[:2].isalpha():
             station_paths_list.append(potential_station_path)
+            station_list.append(potential_station)
             log.info("Adding potential station %s", potential_station)
 
     config_dict = {}
 
-    for station_path in station_paths_list:
+    for station_path, station in zip(station_paths_list, station_list):
         config_path_list = os.path.join(station_path, ".config")
         if os.path.exists(config_path_list[0]):
             if os.path.isfile(config_path_list[0]):
