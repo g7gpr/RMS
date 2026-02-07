@@ -144,13 +144,14 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 station_id_lower = station_id.lower()
 
                 remote_host_address_path = os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))
+                key_path = os.path.expanduser(config.rsa_private_key)
 
                 if not os.path.exists(remote_host_address_path):
                     continue
                 if not os.path.isfile(remote_host_address_path):
                     continue
 
-                key_path = os.path.expanduser(config.rsa_private_key)
+
 
                 remote_path = os.path.join("/", "home", station_id_lower, "files", "incoming")
                 local_path = os.path.join(config.data_dir, config.archived_dir)
@@ -185,7 +186,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
             log.info(f"For station {station} uploading {config.frame_dir}")
             config = config_dict[station]
             station_id = config.stationID
-            station_id_lower = station_id.lower()
+            key_path = os.path.expanduser(config.rsa_private_key)
 
             local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
             command_string = f"rsync -av --itemize-changes  --partial-dir=partial/ -e  'ssh  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {key_path}'  {local_path} {user_host}{remote_path}"
