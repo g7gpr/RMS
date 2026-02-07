@@ -87,7 +87,6 @@ def uploadMade(rsync_stdout, log_uploaded_files=False):
 
     changed_files = []
     for line in rsync_stdout_lines:
-        log.info(line)
         if line.startswith("<"):
             changed_files.append(line.split(" ")[1])
 
@@ -133,8 +132,6 @@ def makeUpload(config_dict, return_after_each_upload=False):
             if upload_made:
                 if local_path_modifier_list.index(local_path_modifier) != 0:
                     break
-                else:
-                    log.info(f"Not breaking as still uploading {local_path_modifier}")
 
             for station in config_dict:
                 config = config_dict[station]
@@ -144,10 +141,9 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 remote_host_address_path = os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))
 
                 if not os.path.exists(remote_host_address_path):
-                        continue
+                    continue
                 if not os.path.isfile(remote_host_address_path):
                     continue
-                log.info(f"For station {station} uploading {local_path_modifier}")
 
                 key_path = os.path.expanduser(config.rsa_private_key)
 
@@ -164,13 +160,10 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 # If return after each upload is selected, then return, so that a check is made for all the highest
                 # priority files again
                 upload_made = uploadMade(result.stdout, log_uploaded_files=True)
-                log.info(f"Upload made is {upload_made}")
                 if upload_made:
                     if local_path_modifier_list.index(local_path_modifier) != 0:
-                        log.info("Breaking as not on highest priority and an upload was made")
                         break
                     else:
-                        log.info(f"Not breaking as still uploading {local_path_modifier}")
 
             if upload_made:
                 break
@@ -249,12 +242,10 @@ if __name__ == '__main__':
     for potential_station_path in sorted(potential_station_paths_list):
         potential_config_path = os.path.join(potential_station_path, ".config")
         if os.path.exists(potential_config_path):
-            log.info("Adding potential station %s", potential_station_path)
             config_paths_list.append(potential_config_path)
     config_dict = {}
 
     for config_path in config_paths_list:
-        log.info(f"Looking in {config_path}")
         config = cr.loadConfigFromDirectory([config_path], os.path.abspath('.'))
         config_dict[config.stationID] = config
 
