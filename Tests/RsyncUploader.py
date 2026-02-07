@@ -138,6 +138,7 @@ def makeUpload(config, return_after_each_upload=False):
         # build rsync command
         command_string = f"rsync --progress -av --itemize-changes -e 'ssh -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
         result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        log.info(f"Command returned {result}")
         # If return after each upload is selected, then return, so that a check is made for all the highest
         # priority files again
         if return_after_each_upload and uploadMade(result.stdout, log_uploaded_files=True):
@@ -149,6 +150,7 @@ def makeUpload(config, return_after_each_upload=False):
     local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
     command_string = f"rsync --progress -av -e 'ssh -i {key_path}' {local_path} {user_host}{remote_path}"
     result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    log.info(f"Command returned {result}")
     if uploadMade(result.stdout, log_uploaded_files=True):
         return True
     else:
