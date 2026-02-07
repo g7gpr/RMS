@@ -74,7 +74,17 @@ def removeLock(config, log):
         log.warning("No reboot lock file found at {}".format(lockfile))
 
 def uploadMade(rsync_stdout, log_uploaded_files=False):
+    """
+    Arguments:
+        rsync_stdout: [string] stdout from rsync
 
+    Keyword arguments:
+        log_uploaded_files: [bool] whether to log uploaded files
+
+    Return:
+        True if a file was uploaded, otherwise false
+
+    """
 
     changed_files = [line for line in rsync_stdout.splitlines() if rsync_stdout.startswith((">", 'c', '*'))]
 
@@ -132,6 +142,8 @@ def makeUpload(config, return_after_each_upload=False):
         # build rsync command
         command_string = f"rsync --progress -av --itemize-changes -e 'ssh -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
         result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # If return after each upload is selected, then return, so that a check is made for all the highest
+        # priority files again
         if return_after_each_upload and uploadMade(result.stdout):
             return True
 
@@ -143,7 +155,7 @@ def makeUpload(config, return_after_each_upload=False):
     result = subprocess.run(command_string, shell=True)
     if uploadMade(result.stdout):
         return True
-    else
+    else:
         return False
 
 
