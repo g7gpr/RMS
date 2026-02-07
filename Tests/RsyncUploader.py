@@ -140,6 +140,6 @@ if __name__ == '__main__':
     # Load the config file
     config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
 
-    log.info(f"Loaded config file for station {config.station}")
+    log.info(f"Loaded config file for station {config.stationID}")
 
     rmsExternal(None, None, config)
