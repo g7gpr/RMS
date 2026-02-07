@@ -229,7 +229,7 @@ if __name__ == '__main__':
     config_dict = {}
 
     for station in station_list:
-        config_path_list = [os.path.join("/home/rms/source/Stations/", station,".config")]
+        config_path_list = [os.path.join(f"/home/{os.getlogin()}/source/Stations/", station,".config")]
         if os.path.exists(config_path_list[0]):
             if os.path.isfile(config_path_list[0]):
                 log.info(f"Loading config for {station} from {config_path_list[0]}")
