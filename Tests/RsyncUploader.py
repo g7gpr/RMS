@@ -212,24 +212,25 @@ if __name__ == '__main__':
 
     path_list = [f"/home/{os.getlogin()}/source/Stations", "/home/"]
 
-    potential_stations_list = []
+    potential_station_paths_list = []
     for p in path_list:
         if os.path.exists(p):
             if os.path.isdir(p):
-                potential_stations_list += os.listdir(p)
+                for station_path in os.listdir(p):
+                    potential_station_paths_list.append(os.path.join(p, station_path))
 
+    station_paths_list = []
 
-    station_list = []
-
-    for potential_station in sorted(potential_stations_list):
+    for potential_station_path in sorted(potential_station_paths_list):
+        potential_station = os.path.basename(potential_station_path)
         if len(potential_station) == 6 and potential_station[:2].isalpha():
-            station_list.append(potential_station)
+            station_paths_list.append(potential_station_path)
             log.info("Adding potential station %s", potential_station)
 
     config_dict = {}
 
-    for station in station_list:
-        config_path_list = [os.path.join(f"/home/{os.getlogin()}/source/Stations/", station,".config")]
+    for station_path in station_paths_list:
+        config_path_list = os.path.join(station_path, ".config")
         if os.path.exists(config_path_list[0]):
             if os.path.isfile(config_path_list[0]):
                 log.info(f"Loading config for {station} from {config_path_list[0]}")
