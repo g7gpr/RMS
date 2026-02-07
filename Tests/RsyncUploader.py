@@ -232,6 +232,7 @@ if __name__ == '__main__':
 
     for station_path, station in zip(station_paths_list, station_list):
         config_path_list = os.path.join(station_path, ".config")
+        log.info(f"Looking in {config_path_list}")
         if os.path.exists(config_path_list[0]):
             if os.path.isfile(config_path_list[0]):
                 log.info(f"Loading config for {station} from {config_path_list[0]}")
