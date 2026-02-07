@@ -138,6 +138,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
                     break
 
             for station in config_dict:
+                log.info(f"\t\tfor {station}")
                 config = config_dict[station]
                 station_id = config.stationID
                 station_id_lower = station_id.lower()
