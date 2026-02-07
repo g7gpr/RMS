@@ -121,10 +121,14 @@ def makeUpload(config_dict, return_after_each_upload=False):
     local_path_modifier_list = ["*_metadata.tar.bz2",
                                 "*_detected.tar.bz2",
                                 "*_imgdata.tar.bz2",
-                                "*.tar.bz2"]
+                                "*.tar.bz2",
+                                "*.tar"]
 
-    modifier_descriptors_list = ["metadata", "detected", "imgdata", "everything else"]
+    modifier_descriptors_list = ["metadata", "detected", "imgdata", "everything else", "frames files"]
 
+    target_dir_list = ['archive', 'archive', 'archive', 'archive', 'frames']
+
+    base_path = []
 
     # Strategy is to set upload_mode to True, and only allow the while loop to end
     # once all the stations and priorities have been iterated, with no upload
@@ -132,7 +136,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
 
     while upload_made:
         upload_made = False
-        for local_path_modifier, descriptor in zip(local_path_modifier_list, modifier_descriptors_list):
+        for local_path_modifier, descriptor, target_dir in zip(local_path_modifier_list, modifier_descriptors_list, target_dir_list):
             log.info(f"Uploading {descriptor}")
             if upload_made:
                 if local_path_modifier_list.index(local_path_modifier) != 0:
@@ -153,10 +157,14 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 if not os.path.isfile(remote_host_address_path):
                     continue
 
-
-
                 remote_path = os.path.join("/", "home", station_id_lower, "files", "incoming")
-                local_path = os.path.join(config.data_dir, config.archived_dir)
+                if target_dir == "archive":
+                    target_dir_from_config = config.archived_dir
+                elif target_dir == "frames":
+                    target_dir_from_config = config.frames_dir
+                else:
+                    continue
+                local_path = os.path.join(config.data_dir, target_dir_from_config)
                 with open(remote_host_address_path) as f:
                     rsync_remote_host = f.readline()
                     user_host = f"{station_id_lower}@{rsync_remote_host}:".replace("\n", "")
@@ -182,7 +190,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
 
             # Now send the frame_dir
 
-        for station in config_dict:
+        for station in []: #config_dict:
             if upload_made:
                 break
 
@@ -274,7 +282,7 @@ if __name__ == '__main__':
     next_start_time = start_time
     while True:
         wait_time = (next_start_time - start_time)
-        next_start_time = start_time + datetime.timedelta(minutes=5)
+        next_start_time = start_time + datetime.timedelta(minutes=20)
         if wait_time.total_seconds() > 0:
             log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {next_start_time}")
             time.sleep(wait_time.total_seconds())
