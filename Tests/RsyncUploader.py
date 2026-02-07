@@ -86,6 +86,7 @@ def uploadMade(rsync_stdout, log_uploaded_files=False):
 
     changed_files = []
     for line in rsync_stdout_lines:
+        log.info(line)
         if line.startswith("<"):
             changed_files.append(line.split(" ")[1])
 
