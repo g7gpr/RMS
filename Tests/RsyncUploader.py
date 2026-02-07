@@ -123,7 +123,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
                                 "*_imgdata.tar.bz2",
                                 "*.tar.bz2"]
 
-    modifier_descriptors_list = ["metadata", "detected", "imgdata", "framesfiles."]
+    modifier_descriptors_list = ["metadata", "detected", "imgdata", "framesfiles"]
 
 
     # Strategy is to set upload_mode to True, and only allow the while loop to end
