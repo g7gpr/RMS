@@ -25,6 +25,7 @@ from RMS.Logger import getLogger
 import argparse
 import RMS.ConfigReader as cr
 import time
+import datetime
 
 LOG_FILE_PREFIX = "EXTERNAL"
 
@@ -215,9 +216,16 @@ if __name__ == '__main__':
                 log.info(f"Loading config for {station} from {config_path_list[0]}")
                 config_dict[station] = cr.loadConfigFromDirectory(config_path_list, os.path.abspath('.'))
 
+    next_start_time = datetime.datetime.now()
     while True:
-
+        start_time = datetime.datetime.now()
+        wait_time = (next_start_time - start_time)
+        next_start_time = start_time + datetime.timedelta(minutes=5)
+        if wait_time.total_seconds() > 0:
+            log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {next_start_time}")
+            time.sleep(wait_time.total_seconds())
+        else:
+            log.info(f"Restarting upload process immediately, as overdue by {0 - wait_time.total_seconds()} seconds")
         log.info("Calling make upload")
         makeUpload(config_dict, return_after_each_upload=True)
         log.info("Returned from make upload")
-        time.sleep(10)
