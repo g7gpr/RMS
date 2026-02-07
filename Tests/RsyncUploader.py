@@ -95,6 +95,7 @@ def uploadMade(rsync_stdout, log_uploaded_files=False):
         log.info("Uploaded files:")
         for f in changed_files:
             log.info(f"\t{f}")
+        log.info("End of uploaded files")
 
     if len(changed_files):
         return True
