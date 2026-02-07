@@ -213,11 +213,12 @@ if __name__ == '__main__':
 
     potential_station_paths_list = []
     stations_dir = f"/home/{os.getlogin()}/source/Stations"
-    for p in os.listdir(stations_dir):
-        p = os.path.join(stations_dir, p)
-        if os.path.exists(p):
-            if os.path.isdir(p):
-                potential_station_paths_list.append(p)
+    if os.path.exists(stations_dir):
+        for p in os.listdir(stations_dir):
+            p = os.path.join(stations_dir, p)
+            if os.path.exists(p):
+                if os.path.isdir(p):
+                    potential_station_paths_list.append(p)
 
     home_dir = "/home/"
     for p in os.listdir(home_dir):
