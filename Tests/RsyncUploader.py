@@ -148,7 +148,7 @@ def makeUpload(config, return_after_each_upload=False):
 
     local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
     command_string = f"rsync --progress -av -e 'ssh -i {key_path}' {local_path} {user_host}{remote_path}"
-    result = subprocess.run(command_string, shell=True)
+    result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if uploadMade(result.stdout, log_uploaded_files=True):
         return True
     else:
