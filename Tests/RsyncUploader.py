@@ -125,7 +125,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
 
     upload_made = False
     for local_path_modifier in local_path_modifier_list:
-        if upload_made:
+        if upload_made and local_path_modifier_list.index(local_path_modifier) != 0:
             break
 
         for station in config_dict:
