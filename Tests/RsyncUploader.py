@@ -161,7 +161,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 if target_dir == "archive":
                     target_dir_from_config = config.archived_dir
                 elif target_dir == "frames":
-                    target_dir_from_config = config.frames_dir
+                    target_dir_from_config = config.frame_dir
                 else:
                     continue
                 local_path = os.path.join(config.data_dir, target_dir_from_config)
