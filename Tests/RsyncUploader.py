@@ -163,7 +163,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 if upload_made:
                     if local_path_modifier_list.index(local_path_modifier) != 0:
                         break
-                    else:
+
 
             if upload_made:
                 break
