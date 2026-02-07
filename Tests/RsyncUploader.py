@@ -219,5 +219,5 @@ if __name__ == '__main__':
             log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {next_start_time}")
             time.sleep(wait_time.total_seconds())
         else:
-            log.info(f"Restarting upload process immediately, as overdue by {str(0 - wait_time.total_seconds()).split[0]} seconds")
+            log.info(f"Restarting upload process immediately, as overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
         makeUpload(config_dict, return_after_each_upload=True)
