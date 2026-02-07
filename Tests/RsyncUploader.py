@@ -100,7 +100,7 @@ def uploadMade(rsync_stdout, log_uploaded_files=False):
     else:
         return False
 
-def makeUpload(config, return_after_each_upload=False):
+def makeUpload(config_dict, return_after_each_upload=False):
 
     """using rsync, make an upload
 
@@ -115,20 +115,6 @@ def makeUpload(config, return_after_each_upload=False):
     """
 
 
-    station_id = config.stationID
-    station_id_lower = station_id.lower()
-    print(config.rsa_private_key)
-
-    key_path = os.path.expanduser(config.rsa_private_key)
-
-    remote_path = os.path.join("/", "home",station_id_lower,"files","incoming")
-    local_path = os.path.join(config.data_dir, config.archived_dir)
-    with open(os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))) as f:
-        rsync_remote_host = f.readline()
-        user_host = f"{station_id_lower}@{rsync_remote_host}:".replace("\n","")
-
-    log.info(f"Using key from {key_path}")
-    log.info(f"To copy files from {local_path} to {user_host}{remote_path}")
 
     local_path_modifier_list = ["*_metadata.tar.bz2",
                                 "*_detected.tar.bz2",
@@ -138,29 +124,46 @@ def makeUpload(config, return_after_each_upload=False):
 
     for local_path_modifier in local_path_modifier_list:
 
+        for station in config_dict:
 
-        # modify the local path to send files in the right order
-        local_path_modified = os.path.join(local_path, local_path_modifier)
-        log.info(f"Sending {local_path_modified}")
-        # build rsync command
-        command_string = f"rsync --progress -av --itemize-changes -e 'ssh -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
-        log.info(command_string)
-        result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # If return after each upload is selected, then return, so that a check is made for all the highest
-        # priority files again
-        if return_after_each_upload and uploadMade(result.stdout, log_uploaded_files=True):
-            return True
+                config = config_dict[station]
+                station_id = config.stationID
+                station_id_lower = station_id.lower()
+                print(config.rsa_private_key)
+
+                key_path = os.path.expanduser(config.rsa_private_key)
+
+                remote_path = os.path.join("/", "home", station_id_lower, "files", "incoming")
+                local_path = os.path.join(config.data_dir, config.archived_dir)
+                with open(os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))) as f:
+                    rsync_remote_host = f.readline()
+                    user_host = f"{station_id_lower}@{rsync_remote_host}:".replace("\n", "")
+
+                log.info(f"Using key from {key_path}")
+                log.info(f"To copy files from {local_path} to {user_host}{remote_path}")
+
+                # modify the local path to send files in the right order
+                local_path_modified = os.path.join(local_path, local_path_modifier)
+                log.info(f"Sending {local_path_modified}")
+                # build rsync command
+                command_string = f"rsync --progress -av --itemize-changes -e 'ssh -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
+                log.info(command_string)
+                result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                # If return after each upload is selected, then return, so that a check is made for all the highest
+                # priority files again
+                if return_after_each_upload and uploadMade(result.stdout, log_uploaded_files=True):
+                    return True
 
 
-    # Now send the frame_dir
+                # Now send the frame_dir
 
-    local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
-    command_string = f"rsync --progress -av --itemize-changes -e 'ssh -i {key_path}' {local_path} {user_host}{remote_path}"
-    result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if uploadMade(result.stdout, log_uploaded_files=True):
-        return True
-    else:
-        return False
+                local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
+                command_string = f"rsync --progress -av --itemize-changes -e 'ssh -i {key_path}' {local_path} {user_host}{remote_path}"
+                result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if uploadMade(result.stdout, log_uploaded_files=True):
+                    return True
+                else:
+                    return False
 
 
 if __name__ == '__main__':
@@ -181,6 +184,8 @@ if __name__ == '__main__':
         # Load the config file
         config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
         log.info(f"Loaded config file for station {config.stationID}")
+        config_dict = {}
+        config_dict[config.stationID] = config
         makeUpload(None, None, config)
     else:
         config = None
@@ -204,8 +209,7 @@ if __name__ == '__main__':
                 config_dict[station] = cr.loadConfigFromDirectory(config_path_list, os.path.abspath('.'))
 
     while True:
-        for station in config_dict:
-            log.info(f"Making uploads for {station}")
-            if makeUpload(config_dict[station], return_after_each_upload=True):
-                break
+
+        if makeUpload(config_dict, return_after_each_upload=True):
+            break
         time.sleep(10)
