@@ -81,6 +81,7 @@ def uploadMade(rsync_stdout, log_uploaded_files=False):
         True if a file was uploaded, otherwise false
     """
 
+    rsync_stdout = rsync_stdout.decode('utf-8')
     log.info(f"Processing {rsync_stdout}")
     changed_files = [line for line in rsync_stdout.splitlines() if rsync_stdout.startswith((">", 'c', '*'))]
 
