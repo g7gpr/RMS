@@ -93,7 +93,8 @@ def uploadMade(rsync_stdout, log_uploaded_files=False):
 
     changed_files.sort()
     if log_uploaded_files:
-        log.info("Uploaded files:")
+        if len(changed_files):
+            log.info("Uploaded files:")
         for f in changed_files:
             log.info(f"\t{f}")
 
@@ -222,7 +223,7 @@ if __name__ == '__main__':
             time.sleep(wait_time.total_seconds())
         else:
             if wait_time.total_seconds() < 5:
-                log.info(f"Restarting upload process immediately, as due now.")
+                log.info(f"Starting upload process immediately, as due now.")
             else:
-                log.info(f"Restarting upload process immediately, as overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
+                log.info(f"Starting upload process immediately, as overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
         makeUpload(config_dict, return_after_each_upload=True)
