@@ -157,8 +157,10 @@ def makeUpload(config_dict, return_after_each_upload=False):
                     # If return after each upload is selected, then return, so that a check is made for all the highest
                     # priority files again
                     upload_made = uploadMade(result.stdout, log_uploaded_files=True)
+                    log.info(f"Upload made is {upload_made}")
                     if upload_made:
                         if local_path_modifier_list.index(local_path_modifier) != 0:
+                            log.info("Breaking as not on highest priority and an upload was made")
                             break
                         else:
                             log.info(f"Not breaking as still uploading {local_path_modifier}")
@@ -215,15 +217,14 @@ if __name__ == '__main__':
         if os.path.exists(p):
             if os.path.isdir(p):
                 potential_stations_list += os.listdir(p)
-                for s in potential_stations_list:
-                    log.info(f"Found station {s}")
+
 
     station_list = []
 
     for potential_station in sorted(potential_stations_list):
         if len(potential_station) == 6 and potential_station[:2].isalpha():
             station_list.append(potential_station)
-
+            log.info("Adding potential station %s", potential_station)
 
     config_dict = {}
 
