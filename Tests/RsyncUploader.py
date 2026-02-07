@@ -211,6 +211,5 @@ if __name__ == '__main__':
 
     while True:
 
-        if makeUpload(config_dict, return_after_each_upload=True):
-            break
+        makeUpload(config_dict, return_after_each_upload=True)
         time.sleep(10)
