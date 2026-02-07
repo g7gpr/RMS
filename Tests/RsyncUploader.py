@@ -123,9 +123,10 @@ def makeUpload(config_dict, return_after_each_upload=False):
                                 "*_imgdata.tar.bz2",
                                 "*.tar.bz2"]
 
-
+    upload_made = False
     for local_path_modifier in local_path_modifier_list:
-
+        if upload_made:
+            break
 
         for station in config_dict:
                 log.info(f"For station {station} uploading {local_path_modifier}")
@@ -148,12 +149,13 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 # If return after each upload is selected, then return, so that a check is made for all the highest
                 # priority files again
-                _ = uploadMade(result.stdout, log_uploaded_files=True)
-
+                upload_made = uploadMade(result.stdout, log_uploaded_files=True)
 
         # Now send the frame_dir
 
     for station in config_dict:
+        if upload_made:
+            break
 
         log.info(f"For station {station} uploading {config.frame_dir}")
         config = config_dict[station]
@@ -165,7 +167,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
         log.info(command_string)
 
         result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        uploadMade(result.stdout, log_uploaded_files=True)
+        upload_made = uploadMade(result.stdout, log_uploaded_files=True)
 
 
 if __name__ == '__main__':
