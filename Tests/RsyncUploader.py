@@ -210,38 +210,43 @@ if __name__ == '__main__':
     else:
         config = None
 
-    path_list = [f"/home/{os.getlogin()}/source/Stations", "/home/"]
 
     potential_station_paths_list = []
-    for p in path_list:
+    stations_dir = f"/home/{os.getlogin()}/source/Stations"
+    for p in os.listdir(stations_dir):
+        p = os.path.join(stations_dir, p)
         if os.path.exists(p):
             if os.path.isdir(p):
-                for station_path in os.listdir(p):
-                    potential_station_paths_list.append(os.path.join(p, station_path))
+                potential_station_paths_list.append(p)
 
-    station_paths_list, station_list = [], []
+    home_dir = "/home/"
+    for p in os.listdir(home_dir):
+        p = os.path.join(home_dir, p)
+        if os.path.exists(p):
+            if os.path.isdir(p):
+                try:
+                    potential_station_paths_list.append(os.path.join(p, "source/RMS"))
+                except:
+                    pass
 
+
+
+
+
+    config_paths_list, station_list = [], []
+
+    potential_station_paths_list.sort()
     for potential_station_path in sorted(potential_station_paths_list):
-        potential_station = os.path.basename(potential_station_path)
-        if len(potential_station) == 6 and potential_station[:2].isalpha():
-            station_paths_list.append(potential_station_path)
-            station_list.append(potential_station)
-            log.info("Adding potential station %s", potential_station)
-
+        potential_config_path = os.path.join(potential_station_path, ".config")
+        if os.path.exists(potential_config_path):
+            log.info("Adding potential station %s", potential_station_path)
+            config_paths_list.append(potential_config_path)
     config_dict = {}
 
-    for station_path, station in zip(station_paths_list, station_list):
-        config_path_list = os.path.join(station_path, ".config")
-        log.info(f"Looking in {config_path_list}")
-        if os.path.exists(config_path_list[0]):
-            if os.path.isfile(config_path_list[0]):
-                log.info(f"Loading config for {station} from {config_path_list[0]}")
-                config = cr.loadConfigFromDirectory(config_path_list, os.path.abspath('.'))
-                if config.stationID.lower() == station.lower():
-                    log.info(f"Adding config for {station} from {config_path_list[0]} because stationID matches")
-                    config_dict[station] = config
-                else:
-                    log.info(f"Not adding config for {station} from {config_path_list[0]} because {config.stationID} from config does not match")
+    for config_path in config_paths_list:
+        log.info(f"Looking in {config_path}")
+        config = cr.loadConfigFromDirectory([config_path], os.path.abspath('.'))
+        config_dict[config.stationID] = config
 
     next_start_time = datetime.datetime.now()
     while True:
