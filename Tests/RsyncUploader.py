@@ -25,8 +25,7 @@
 import os
 import subprocess
 from RMS.Logger import getLogger
-import datetime
-
+import argparse
 import RMS.ConfigReader as cr
 
 
@@ -124,10 +123,21 @@ def rmsExternal(captured_night_dir, archived_night_dir, config):
 
 
 if __name__ == '__main__':
-    # test launch
-    config = cr.loadConfigFromDirectory(".config", os.path.expanduser("~/source/RMS"))
 
-    # Find the latest CapturedFiles and ArchivedFiles directory
-    captured_dirs = sorted(os.listdir(os.path.expanduser(os.path.join(config.data_dir, config.captured_dir))), reverse=True)
+    # Init the command line arguments parser
+    arg_parser = argparse.ArgumentParser(description=""" Upload files using rsync.
+        """)
 
-    rmsExternal(captured_dirs[0], captured_dirs[0], config)
+    # Add a mutually exclusive for the parser (the arguments in the group can't be given at the same)
+    arg_group = arg_parser.add_mutually_exclusive_group()
+
+    arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str, \
+        help="Path to a config file which will be used instead of the default one.")
+
+    # Parse the command line arguments
+    cml_args = arg_parser.parse_args()
+
+    # Load the config file
+    config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
+
+    log.info(f"Loaded config file for station {config.station}")
