@@ -152,7 +152,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
                     continue
                 if not os.path.isfile(remote_host_address_path):
                     continue
-                remote_host_address_path = os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))
+
 
 
                 remote_path = os.path.join("/", "home", station_id_lower, "files", "incoming")
@@ -190,6 +190,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
             station_id = config.stationID
             station_id_lower = station_id.lower()
             key_path = os.path.expanduser(config.rsa_private_key)
+            remote_host_address_path = os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))
             if not os.path.exists(remote_host_address_path):
                 log.info(f"\t\tRemote host path not found at {remote_host_address_path}")
                 continue
