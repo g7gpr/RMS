@@ -128,7 +128,6 @@ def makeUpload(config_dict, return_after_each_upload=False):
 
     target_dir_list = ['archive', 'archive', 'archive', 'archive', 'frames']
 
-    base_path = []
 
     # Strategy is to set upload_mode to True, and only allow the while loop to end
     # once all the stations and priorities have been iterated, with no upload
@@ -190,31 +189,6 @@ def makeUpload(config_dict, return_after_each_upload=False):
 
             # Now send the frame_dir
 
-        for station in []: #config_dict:
-            if upload_made:
-                break
-
-            log.info(f"For station {station} uploading {config.frame_dir}")
-            config = config_dict[station]
-            station_id = config.stationID
-            station_id_lower = station_id.lower()
-            key_path = os.path.expanduser(config.rsa_private_key)
-            remote_host_address_path = os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))
-            if not os.path.exists(remote_host_address_path):
-                log.info(f"\t\tRemote host path not found at {remote_host_address_path}")
-                continue
-            if not os.path.isfile(remote_host_address_path):
-                continue
-
-            with open(remote_host_address_path) as f:
-                rsync_remote_host = f.readline()
-                user_host = f"{station_id_lower}@{rsync_remote_host}:".replace("\n", "")
-            local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
-            remote_path = os.path.join("/", "home", station_id_lower, "files", "incoming")
-            command_string = f"rsync -av --itemize-changes  --partial-dir=partial/ -e  'ssh  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {key_path}'  {local_path} {user_host}{remote_path}"
-            log.info(f"\t\t{command_string}")
-            result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            upload_made = uploadMade(result.stdout, log_uploaded_files=True)
 
 
 if __name__ == '__main__':
@@ -281,15 +255,17 @@ if __name__ == '__main__':
     start_time = datetime.datetime.now()
     next_start_time = start_time
     while True:
-        wait_time = (next_start_time - start_time)
-        next_start_time = start_time + datetime.timedelta(minutes=20)
+        next_start_time = start_time + datetime.timedelta(seconds=10)
+        wait_time = (next_start_time - datetime.datetime.now())
+
         if wait_time.total_seconds() > 0:
             log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {next_start_time}")
             time.sleep(wait_time.total_seconds())
         else:
             if wait_time.total_seconds() < 5:
-                log.info(f"Starting upload process immediately, as due now.")
+                log.info(f"Starting upload process immediately, as due at {next_start_time}.")
             else:
                 log.info(f"Starting upload process immediately, as overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
         makeUpload(config_dict, return_after_each_upload=True)
+
         start_time = next_start_time
