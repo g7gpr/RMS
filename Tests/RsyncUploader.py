@@ -137,38 +137,40 @@ def makeUpload(config_dict, return_after_each_upload=False):
                     log.info(f"Not breaking as still uploading {local_path_modifier}")
 
             for station in config_dict:
-                    log.info(f"For station {station} uploading {local_path_modifier}")
-                    config = config_dict[station]
-                    station_id = config.stationID
-                    station_id_lower = station_id.lower()
+                config = config_dict[station]
+                station_id = config.stationID
+                station_id_lower = station_id.lower()
 
-                    key_path = os.path.expanduser(config.rsa_private_key)
+                remote_host_address_path = os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))
 
-                    remote_path = os.path.join("/", "home", station_id_lower, "files", "incoming")
-                    local_path = os.path.join(config.data_dir, config.archived_dir)
-                    remote_host_address_path = os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))
-                    if not os.path.exists(remote_host_address_path):
+                if not os.path.exists(remote_host_address_path):
                         continue
-                    if not os.path.isfile(remote_host_address_path):
-                        continue
-                    with open(remote_host_address_path) as f:
-                        rsync_remote_host = f.readline()
-                        user_host = f"{station_id_lower}@{rsync_remote_host}:".replace("\n", "")
-                    # modify the local path to send files in the right order
-                    local_path_modified = os.path.join(local_path, local_path_modifier)
-                    # build rsync command
-                    command_string = f"rsync -av --itemize-changes  --partial-dir=partial/ -e  'ssh  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
-                    result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    # If return after each upload is selected, then return, so that a check is made for all the highest
-                    # priority files again
-                    upload_made = uploadMade(result.stdout, log_uploaded_files=True)
-                    log.info(f"Upload made is {upload_made}")
-                    if upload_made:
-                        if local_path_modifier_list.index(local_path_modifier) != 0:
-                            log.info("Breaking as not on highest priority and an upload was made")
-                            break
-                        else:
-                            log.info(f"Not breaking as still uploading {local_path_modifier}")
+                if not os.path.isfile(remote_host_address_path):
+                    continue
+                log.info(f"For station {station} uploading {local_path_modifier}")
+
+                key_path = os.path.expanduser(config.rsa_private_key)
+
+                remote_path = os.path.join("/", "home", station_id_lower, "files", "incoming")
+                local_path = os.path.join(config.data_dir, config.archived_dir)
+                with open(remote_host_address_path) as f:
+                    rsync_remote_host = f.readline()
+                    user_host = f"{station_id_lower}@{rsync_remote_host}:".replace("\n", "")
+                # modify the local path to send files in the right order
+                local_path_modified = os.path.join(local_path, local_path_modifier)
+                # build rsync command
+                command_string = f"rsync -av --itemize-changes  --partial-dir=partial/ -e  'ssh  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
+                result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                # If return after each upload is selected, then return, so that a check is made for all the highest
+                # priority files again
+                upload_made = uploadMade(result.stdout, log_uploaded_files=True)
+                log.info(f"Upload made is {upload_made}")
+                if upload_made:
+                    if local_path_modifier_list.index(local_path_modifier) != 0:
+                        log.info("Breaking as not on highest priority and an upload was made")
+                        break
+                    else:
+                        log.info(f"Not breaking as still uploading {local_path_modifier}")
 
             if upload_made:
                 break
