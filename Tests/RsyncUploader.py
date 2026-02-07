@@ -1,4 +1,4 @@
-# rsync based uploader
+# rsync based uploader for RMS
 # Copyright (C) 2026 David Rollinson
 #
 #
@@ -14,11 +14,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-# This module provides a skeleton of an External Script. It only
-# handles applying and removing the reboot lock, and logs a few entries
-# to the log file, including the number of files in CapturedFiles path and
-# ArchivedFiles path
 
 
 
@@ -74,7 +69,8 @@ def removeLock(config, log):
         log.warning("No reboot lock file found at {}".format(lockfile))
 
 def uploadMade(rsync_stdout, log_uploaded_files=False):
-    """
+    """If stdout from rsync shows that a file was changed on the remote, return True.
+
     Arguments:
         rsync_stdout: [string] stdout from rsync
 
@@ -83,7 +79,6 @@ def uploadMade(rsync_stdout, log_uploaded_files=False):
 
     Return:
         True if a file was uploaded, otherwise false
-
     """
 
     changed_files = [line for line in rsync_stdout.splitlines() if rsync_stdout.startswith((">", 'c', '*'))]
@@ -100,7 +95,8 @@ def uploadMade(rsync_stdout, log_uploaded_files=False):
 
 def makeUpload(config, return_after_each_upload=False):
 
-    """
+    """using rsync, make an upload
+
     Arguments:
         config: [config] RMS config instance
 
@@ -144,7 +140,7 @@ def makeUpload(config, return_after_each_upload=False):
         result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         # If return after each upload is selected, then return, so that a check is made for all the highest
         # priority files again
-        if return_after_each_upload and uploadMade(result.stdout):
+        if return_after_each_upload and uploadMade(result.stdout, log_uploaded_files=True):
             return True
 
 
@@ -153,7 +149,7 @@ def makeUpload(config, return_after_each_upload=False):
     local_path = os.path.join(config.data_dir, config.frame_dir, "*.tar")
     command_string = f"rsync --progress -av -e 'ssh -i {key_path}' {local_path} {user_host}{remote_path}"
     result = subprocess.run(command_string, shell=True)
-    if uploadMade(result.stdout):
+    if uploadMade(result.stdout, log_uploaded_files=True):
         return True
     else:
         return False
