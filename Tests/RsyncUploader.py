@@ -124,6 +124,8 @@ def makeUpload(config_dict, return_after_each_upload=False):
                                 "*_imgdata.tar.bz2",
                                 "*.tar.bz2"]
 
+    # Strategy is to set upload_mode to True, and only allow the while loop to end
+    # once all the stations and priorities have been iterated, with no upload
     upload_made = True
     while upload_made:
         upload_made = False
