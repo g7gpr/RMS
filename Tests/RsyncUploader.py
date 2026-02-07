@@ -96,7 +96,6 @@ def uploadMade(rsync_stdout, log_uploaded_files=False):
         log.info("Uploaded files:")
         for f in changed_files:
             log.info(f"\t{f}")
-        log.info("End of uploaded files")
 
     if len(changed_files):
         return True
@@ -141,13 +140,8 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 with open(os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))) as f:
                     rsync_remote_host = f.readline()
                     user_host = f"{station_id_lower}@{rsync_remote_host}:".replace("\n", "")
-
-                log.info(f"Using key from {key_path}")
-                log.info(f"To copy files from {local_path} to {user_host}{remote_path}")
-
                 # modify the local path to send files in the right order
                 local_path_modified = os.path.join(local_path, local_path_modifier)
-                log.info(f"Sending {local_path_modified}")
                 # build rsync command
                 command_string = f"rsync --progress -av --itemize-changes -e 'ssh -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
                 log.info(command_string)
@@ -225,7 +219,5 @@ if __name__ == '__main__':
             log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {next_start_time}")
             time.sleep(wait_time.total_seconds())
         else:
-            log.info(f"Restarting upload process immediately, as overdue by {0 - wait_time.total_seconds()} seconds")
-        log.info("Calling make upload")
+            log.info(f"Restarting upload process immediately, as overdue by {str(0 - wait_time.total_seconds()).split[0]} seconds")
         makeUpload(config_dict, return_after_each_upload=True)
-        log.info("Returned from make upload")
