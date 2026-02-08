@@ -243,7 +243,12 @@ if __name__ == '__main__':
 
     for config_path in config_paths_list:
         config = cr.loadConfigFromDirectory([config_path], os.path.abspath('.'))
-        config_dict[config.stationID] = config
+        remote_host_path = os.path.join(config.data_dir,"rsync_remote_host.txt")
+        if os.path.exists(remote_host_path):
+            if os.path.isfile(remote_host_path):
+                config_dict[config.stationID] = config
+        else:
+            log.info(f"Excluding {config_path} because no remote_host_path was found")
 
     start_time = datetime.datetime.now()
 
