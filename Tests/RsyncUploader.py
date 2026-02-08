@@ -180,15 +180,8 @@ def makeUpload(config_dict, return_after_each_upload=False):
                     if local_path_modifier_list.index(local_path_modifier) != 0:
                         break
 
-
             if upload_made:
                 break
-
-        if upload_made:
-            break
-
-            # Now send the frame_dir
-
 
 
 if __name__ == '__main__':
