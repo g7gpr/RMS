@@ -180,7 +180,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
                         log.info("Made an upload, which was not highest priority, so restarting at highest priority of upload")
                         break
                     else:
-                        log.info("Made an upload, of the highest priority; continuing with other stations at this priority level")
+                        log.info("Made an upload, of the highest priority; continuing files from other stations at this priority level")
 
             if upload_made:
                 log.info("Made an upload, restarting with highest priority uploads")
