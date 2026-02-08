@@ -1080,7 +1080,7 @@ if __name__ == "__main__":
     running_under_systemd = runningUnderSystemd()
 
     if runningUnderSystemd():
-        log.info("Detected running under systemd")
+        log.info("Running under systemd")
 
     # Get the program version
     try:
