@@ -89,7 +89,6 @@ def interruptibleWait(seconds):
         signal.signal(signal.SIGINT, original_handler)
         raise
 
-
 def runWithTimeout(func, args=(), kwargs=None, timeout=60):
     """
     Run a function with a hard timeout using threading.
@@ -1169,3 +1168,30 @@ def sphericalDomainWrapping(ra_min, ra_max, dec_min, dec_max,
     query.append([ra_min, ra_max, ra_range_min, ra_range_max])
     query.append([dec_min, dec_max, dec_range_min, dec_range_max])
     return nDimensionDomainSplit(query)
+
+
+def runningUnderSystemd():
+    """
+    Detect if this process is running under systemd
+
+    Arguments:
+
+    Return:
+        [Boolean] True if running under systemd, False otherwise, or if not detected
+
+    """
+    try:
+
+        ppid = os.getppid()
+        parent_name = subprocess.check_output(
+            ["ps", "-p", str(ppid), "-o", "comm="],
+            text=True
+        ).strip()
+        if parent_name == "systemd":
+            return True
+
+    except Exception as e:
+        # In case of restricted environments or missing /proc
+        print(f"Detection error: {e}")
+
+    return False

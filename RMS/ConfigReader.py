@@ -282,7 +282,7 @@ class Config:
 
         self.reboot_after_processing = False
         self.reboot_lock_file = ".reboot_lock"
-        self.terminate_after_processing = False
+
 
         ##### Capture
         self.deviceID = 0
@@ -957,10 +957,6 @@ def parseSystem(config, parser):
 
     if parser.has_option(section, "reboot_lock_file"):
         config.reboot_lock_file = parser.get(section, "reboot_lock_file")
-
-    if parser.has_option(section, "terminate_after_processing"):
-        config.terminate_after_processing = parser.getboolean(section, "terminate_after_processing")
-
 
     if parser.has_option(section, "event_monitor_db_name"):
         config.event_monitor_db_name = parser.get(section, "event_monitor_db_name")

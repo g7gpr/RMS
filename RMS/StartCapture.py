@@ -46,7 +46,7 @@ from RMS.Compression import Compressor
 from RMS.DeleteOldObservations import deleteOldObservations
 from RMS.DetectStarsAndMeteors import detectStarsAndMeteors
 from RMS.Formats.FFfile import validFFName
-from RMS.Misc import mkdirP, RmsDateTime, UTCFromTimestamp
+from RMS.Misc import mkdirP, RmsDateTime, UTCFromTimestamp, runningUnderSystemd
 from RMS.QueuedPool import QueuedPool
 from RMS.Reprocess import getPlatepar, processNight, processFramesFiles
 from RMS.RunExternalScript import runExternalScript, checkExternalProcesses
@@ -893,7 +893,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
         # Standard mode: need to run it all just once
         # Continuous mode: if the program just got done with nighttime processing and needs to reboot
         elif (not config.continuous_capture) or (not daytime_mode_prev and
-                                                 (config.reboot_after_processing or config.terminate_after_processing)):
+                                                 (config.reboot_after_processing or runningUnderSystemd())):
             break 
 
         ran_once = True
@@ -1077,6 +1077,11 @@ if __name__ == "__main__":
     else:
         pid = None
 
+    running_under_systemd = runningUnderSystemd()
+
+    if runningUnderSystemd():
+        log.info("Detected running under systemd")
+
     # Get the program version
     try:
         # Get latest version's commit hash and time of commit
@@ -1223,11 +1228,11 @@ if __name__ == "__main__":
 
 
         # Reboot the computer after processing is done for the previous night
-        if ran_once and (config.reboot_after_processing or config.terminate_after_processing):
+        if ran_once and (config.reboot_after_processing or runningUnderSystemd()):
 
             if config.reboot_after_processing:
                 log.info("Trying to reboot after processing in 30 seconds...")
-            elif config.terminate_after_processing:
+            elif runningUnderSystemd():
                 log.info("Trying to terminate after processing in 30 seconds...")
             time.sleep(30)
 
@@ -1259,8 +1264,8 @@ if __name__ == "__main__":
                     if config.reboot_after_processing:
                         log.info('Rebooting now!')
 
-                    if config.terminate_after_processing:
-                        log.info('Terminating now!')
+                    if runningUnderSystemd():
+                        log.info('Terminating now, for code updates and restart by systemd!')
 
                     # Reboot the computer (script needs sudo privileges, works only on Linux)
                     if config.reboot_after_processing:
@@ -1272,7 +1277,7 @@ if __name__ == "__main__":
                             log.debug('Rebooting failed with message:\n' + repr(e))
                             log.debug(repr(traceback.format_exception(*sys.exc_info())))
 
-                    elif config.terminate_after_processing:
+                    elif runningUnderSystemd():
                         log.info("Calling for a program exit now")
                         STOP_CAPTURE = True
 
