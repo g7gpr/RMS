@@ -125,7 +125,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
                                 "*.tar.bz2",
                                 "*.tar"]
 
-    modifier_descriptors_list = ["metadata", "detected", "imgdata", "everything else", "frames files"]
+    modifier_descriptors_list = ["metadata", "detected", "imgdata", "all other tar.bz2 files", "frames files"]
 
     target_dir_list = ['archive', 'archive', 'archive', 'archive', 'frames']
 
@@ -256,7 +256,7 @@ if __name__ == '__main__':
         wait_time = (start_time - datetime.datetime.now())
 
         if wait_time.total_seconds() > 1:
-            log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time}")
+            log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time.strftime('%H:%M:%S')}")
             time.sleep(wait_time.total_seconds())
         else:
             if wait_time.total_seconds() > -3:
