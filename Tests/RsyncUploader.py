@@ -26,6 +26,7 @@ import argparse
 import RMS.ConfigReader as cr
 import time
 import datetime
+import getpass
 
 LOG_FILE_PREFIX = "EXTERNAL"
 
@@ -210,7 +211,7 @@ if __name__ == '__main__':
 
 
     potential_station_paths_list = []
-    stations_dir = f"/home/{os.getlogin()}/source/Stations"
+    stations_dir = f"/home/{getpass.getuser()}/source/Stations"
     if os.path.exists(stations_dir):
         for p in os.listdir(stations_dir):
             p = os.path.join(stations_dir, p)
