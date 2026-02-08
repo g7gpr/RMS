@@ -1183,12 +1183,9 @@ def runningUnderSystemd():
     try:
 
         ppid = os.getppid()
-        parent_name = subprocess.check_output(
-            ["ps", "-p", str(ppid), "-o", "comm="],
-            text=True
-        ).strip()
-        log.info(f"Parent name: {parent_name}")
-        if parent_name == "systemd":
+        parent_name = subprocess.check_output(["ps", "-p", str(ppid), "-o", "comm="], text=True).strip()
+
+        if "systemd" in parent_name:
             return True
 
     except Exception as e:
