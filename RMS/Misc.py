@@ -1187,11 +1187,12 @@ def runningUnderSystemd():
             ["ps", "-p", str(ppid), "-o", "comm="],
             text=True
         ).strip()
+        log.info(f"Parent name: {parent_name}")
         if parent_name == "systemd":
             return True
 
     except Exception as e:
         # In case of restricted environments or missing /proc
-        print(f"Detection error: {e}")
+        log.info(f"systemd Detection error: {e}")
 
     return False
