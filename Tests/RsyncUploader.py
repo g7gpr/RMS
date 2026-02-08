@@ -263,8 +263,8 @@ if __name__ == '__main__':
             time.sleep(wait_time.total_seconds())
         else:
             if wait_time.total_seconds() < 5:
-                log.info(f"Starting upload process immediately, as due at {start_time}.")
+                log.info(f"Starting upload process immediately, as due at {start_time} and time now is {datetime.datetime.now()}.")
             else:
-                log.info(f"Starting upload process immediately, as overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
-        makeUpload(config_dict, return_after_each_upload=True)
+                log.info(f"Starting upload process immediately, start time was {start_time}, time now is {datetime.datetime.now()}, overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
+                makeUpload(config_dict, return_after_each_upload=True)
         start_time = start_time + datetime.timedelta(minutes=15)
