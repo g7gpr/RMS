@@ -137,7 +137,7 @@ def makeUpload(config_dict, return_after_each_upload=False):
     while upload_made:
         upload_made = False
         for local_path_modifier, descriptor, target_dir in zip(local_path_modifier_list, modifier_descriptors_list, target_dir_list):
-            log.info(f"Uploading {descriptor}")
+            #log.info(f"Uploading {descriptor}")
             if upload_made:
                 if local_path_modifier_list.index(local_path_modifier) != 0:
                     break
@@ -177,13 +177,14 @@ def makeUpload(config_dict, return_after_each_upload=False):
                 upload_made = uploadMade(result.stdout, log_uploaded_files=True)
                 if upload_made:
                     if local_path_modifier_list.index(local_path_modifier) != 0:
-                        log.info("Made an upload, which was not highest priority, so restarting at highest priority of upload")
+                        #log.info("Made an upload, which was not highest priority, so restarting at highest priority of upload")
                         break
                     else:
-                        log.info("Made an upload, of the highest priority; continuing files from other stations at this priority level")
+                        #log.info("Made an upload, of the highest priority; continuing files from other stations at this priority level")
+                        pass
 
             if upload_made:
-                log.info("Made an upload, restarting with highest priority uploads")
+                #log.info("Made an upload, restarting with highest priority uploads")
                 break
 
 
