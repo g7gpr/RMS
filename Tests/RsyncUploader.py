@@ -212,7 +212,7 @@ if __name__ == '__main__':
     else:
         config = None
 
-
+    log.info("Uploader daemon starting")
     potential_station_paths_list = []
     stations_dir = f"/home/{getpass.getuser()}/source/Stations"
     if os.path.exists(stations_dir):
@@ -255,7 +255,7 @@ if __name__ == '__main__':
             log.info(f"Excluding {config_path} because no remote_host_path was found")
 
     start_time = datetime.datetime.now()
-
+    log.info(f"Uploader process initialised at {start_time}")
     while True:
 
         wait_time = (start_time - datetime.datetime.now())
@@ -265,9 +265,11 @@ if __name__ == '__main__':
             time.sleep(wait_time.total_seconds())
         else:
             if wait_time.total_seconds() > -3:
-                log.info(f"Starting upload process immediately, as due at {start_time.strftime('%H:%M:%S')} and time now is {datetime.datetime.now().strftime('%H:%M:%S')}.")
+                pass
+                #log.info(f"Starting upload process immediately, as due at {start_time.strftime('%H:%M:%S')} and time now is {datetime.datetime.now().strftime('%H:%M:%S')}.")
             else:
-                log.info(f"Starting upload process immediately, start time was {start_time.strftime('%H:%M:%S')}, time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
+                pass
+                #log.info(f"Starting upload process immediately, start time was {start_time.strftime('%H:%M:%S')}, time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
 
         makeUpload(config_dict, return_after_each_upload=True)
         start_time = start_time + datetime.timedelta(minutes=15)
