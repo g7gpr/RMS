@@ -261,7 +261,7 @@ if __name__ == '__main__':
         wait_time = (start_time - datetime.datetime.now())
 
         if wait_time.total_seconds() > 1:
-            log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time.strftime('%H:%M:%S')}")
+            #log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time.strftime('%H:%M:%S')}")
             time.sleep(wait_time.total_seconds())
         else:
             if wait_time.total_seconds() > -3:
