@@ -49,7 +49,7 @@ from RMS.Formats.FFfile import validFFName
 from RMS.Misc import mkdirP, RmsDateTime, UTCFromTimestamp, runningUnderSystemd
 from RMS.QueuedPool import QueuedPool
 from RMS.Reprocess import getPlatepar, processNight, processFramesFiles
-from RMS.RunExternalScript import runExternalScript, checkExternalProcesses
+from RMS.RunExternalScript import runExternalScript
 from RMS.UploadManager import UploadManager
 from RMS.EventMonitor import EventMonitor
 from RMS.DownloadMask import downloadNewMask
@@ -1233,7 +1233,7 @@ if __name__ == "__main__":
             if config.reboot_after_processing:
                 log.info("Trying to reboot after processing in 30 seconds...")
             elif runningUnderSystemd():
-                log.info("Trying to terminate after processing in 30 seconds...")
+                log.info(f"Trying to terminate after processing in 30 seconds reboot_go is {reboot_go}...")
             time.sleep(30)
 
             # Try rebooting for 4 hours, stop if capture should run
@@ -1255,9 +1255,7 @@ if __name__ == "__main__":
                     log.info("Reboot / terminate delayed for 1 minute because the lock file exists: {:s}".format(reboot_lock_file_path))
                     reboot_go = False
 
-                # Check to see if any external scripts are still running
-                reboot_go = False if checkExternalProcesses(running_external_process_dict) else reboot_go
-
+                log.info(f"reboot_go is {reboot_go} Running under systemD reports {runningUnderSystemd()}")
                 # Reboot the computer
                 if reboot_go:
 
@@ -1280,7 +1278,7 @@ if __name__ == "__main__":
                     elif runningUnderSystemd():
                         log.info("Calling for a program exit now")
                         STOP_CAPTURE = True
-
+                        log.info(f"STOP_CAPTURE is {STOP_CAPTURE}")
 
                 else:
 
@@ -1456,6 +1454,7 @@ if __name__ == "__main__":
 
         # Break the loop if capturing was stopped
         if STOP_CAPTURE:
+            log.info(f"Breaking loop because STOP_CAPTURE was set to {STOP_CAPTURE}")
             break
 
 
@@ -1538,7 +1537,9 @@ if __name__ == "__main__":
         ran_once = True
 
 
+    log.info("Starting shutdown process")
 
+    log.info("Stopping upload manager")
     if upload_manager is not None:
 
         # Stop the upload manager
@@ -1547,6 +1548,7 @@ if __name__ == "__main__":
             upload_manager.stop()
             del upload_manager
 
+    log.info("Stopped event monitor")
     if eventmonitor is not None:
 
         # Stop the event monitor
@@ -1556,12 +1558,15 @@ if __name__ == "__main__":
 
              del eventmonitor
 
+    log.info("Stopping slideshow_view")
     if slideshow_view is not None:
         log.info("Stopping slideshow...")
         slideshow_view.stop()
         slideshow_view.join()
         del slideshow_view
 
+    log.info("Checking platform and killing process")
+    log.info(f"Platform {sys.platform} PID {pid}")
     if sys.platform == 'linux' and pid is not None:
         log.info(f"Send SIGKILL to PID:{pid}")
         os.kill(pid, signal.SIGKILL)
