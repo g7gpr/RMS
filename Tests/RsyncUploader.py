@@ -261,15 +261,15 @@ if __name__ == '__main__':
         wait_time = (start_time - datetime.datetime.now())
 
         if wait_time.total_seconds() > 1:
-            #log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time.strftime('%H:%M:%S')}")
+            log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time.strftime('%H:%M:%S')}")
             time.sleep(wait_time.total_seconds())
         else:
             if wait_time.total_seconds() > -3:
                 pass
-                #log.info(f"Starting upload process immediately, as due at {start_time.strftime('%H:%M:%S')} and time now is {datetime.datetime.now().strftime('%H:%M:%S')}.")
+                log.info(f"Starting upload process immediately, as due at {start_time.strftime('%H:%M:%S')} and time now is {datetime.datetime.now().strftime('%H:%M:%S')}.")
             else:
                 pass
-                #log.info(f"Starting upload process immediately, start time was {start_time.strftime('%H:%M:%S')}, time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
+                log.info(f"Starting upload process immediately, start time was {start_time.strftime('%H:%M:%S')}, time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
 
         makeUpload(config_dict, return_after_each_upload=True)
         start_time = start_time + datetime.timedelta(minutes=15)
