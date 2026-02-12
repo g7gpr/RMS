@@ -1567,7 +1567,7 @@ if __name__ == "__main__":
 
     log.info("Checking platform and killing process")
     log.info(f"On platform {sys.platform} killing PID {pid}")
-    log.info("Sleeping for 60 seconds to allow logger to complete.")
+    log.info("Sleeping for 60 seconds to allow logger flush")
     time.sleep(60)
     if sys.platform == 'linux' and pid is not None:
         log.info(f"Send SIGKILL to PID:{pid}")
