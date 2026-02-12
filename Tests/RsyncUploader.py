@@ -269,7 +269,8 @@ if __name__ == '__main__':
                 log.info(f"Starting upload process immediately, as due at {start_time.strftime('%H:%M:%S')} and time now is {datetime.datetime.now().strftime('%H:%M:%S')}.")
             else:
                 pass
-                log.info(f"Starting upload process immediately, start time was {start_time.strftime('%H:%M:%S')}, time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {str(0 - wait_time.total_seconds()).split()[0]} seconds")
+                log.info(f"Starting upload process immediately, start time was {start_time.strftime('%H:%M:%S')}, "
+                         f"time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {str(round((0 - wait_time.total_seconds() / 60)))} minutes")
 
         makeUpload(config_dict, return_after_each_upload=True)
         start_time = start_time + datetime.timedelta(minutes=15)

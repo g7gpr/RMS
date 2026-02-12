@@ -1233,7 +1233,7 @@ if __name__ == "__main__":
             if config.reboot_after_processing:
                 log.info("Trying to reboot after processing in 30 seconds...")
             elif runningUnderSystemd():
-                log.info(f"Trying to terminate after processing in 30 seconds reboot_go is {reboot_go}...")
+                log.info(f"Trying to terminate after processing in 30 seconds...")
             time.sleep(30)
 
             # Try rebooting for 4 hours, stop if capture should run
