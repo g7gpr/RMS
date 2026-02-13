@@ -289,7 +289,7 @@ if __name__ == '__main__':
             else:
                 pass
                 log.info(f"Starting upload process immediately, start time was {start_time.strftime('%H:%M:%S')}, "
-                         f"time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {str(round((0 - wait_time.total_seconds() / 60)))} minutes")
+                         f"time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {str(datetime.timedelta(seconds = wait_time.total_seconds()))}")
 
         makeUpload(config_dict)
         start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
