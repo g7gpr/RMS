@@ -259,7 +259,7 @@ if __name__ == '__main__':
     start_time = datetime.datetime.now()
     cycle_time_seconds = 60 * cycle_time_minutes
     log.info(f"Uploader process initialised at {start_time}")
-    log.info(f"Cycle time is ")
+    log.info(f"Cycle time is {cycle_time_seconds} seconds")
     while True:
 
         wait_time = (start_time - datetime.datetime.now())
