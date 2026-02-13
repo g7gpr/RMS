@@ -103,7 +103,7 @@ def uploadMade(rsync_stdout, log_uploaded_files=False):
     else:
         return False
 
-def makeUpload(config_dict, return_after_each_upload=False):
+def makeUpload(config_dict):
 
     """using rsync, make an upload
 
@@ -199,6 +199,8 @@ if __name__ == '__main__':
     arg_parser.add_argument('-c', '--config', metavar='CONFIG_PATH', type=str, \
         help="Path to a config file which will be used instead of the default one.")
 
+    cycle_time_minutes = 15
+
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
 
@@ -255,10 +257,17 @@ if __name__ == '__main__':
             log.info(f"Excluding {config_path} because no remote_host_path was found")
 
     start_time = datetime.datetime.now()
+    cycle_time_seconds = 60 * cycle_time_minutes
     log.info(f"Uploader process initialised at {start_time}")
+    log.info(f"Cycle time is ")
     while True:
 
         wait_time = (start_time - datetime.datetime.now())
+        # If the uploader is more than one cycle late
+        while wait_time < (0 - cycle_time_seconds):
+            # Subtract a cycle time and check again
+            wait_time -= datetime.timedelta(seconds=cycle_time_seconds)
+            log.info("Skipping an uploade cycle, because more than a whole cycle late")
 
         if wait_time.total_seconds() > 1:
             log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time.strftime('%H:%M:%S')}")
@@ -272,5 +281,5 @@ if __name__ == '__main__':
                 log.info(f"Starting upload process immediately, start time was {start_time.strftime('%H:%M:%S')}, "
                          f"time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {str(round((0 - wait_time.total_seconds() / 60)))} minutes")
 
-        makeUpload(config_dict, return_after_each_upload=True)
+        makeUpload(config_dict)
         start_time = start_time + datetime.timedelta(minutes=15)
