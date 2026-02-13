@@ -199,7 +199,11 @@ if __name__ == '__main__':
     arg_parser.add_argument('-c', '--config', metavar='CONFIG_PATH', type=str, \
         help="Path to a config file which will be used instead of the default one.")
 
-    cycle_time_minutes = 15
+    arg_parser.add_argument('-t', '--time', metavar='TIME', type=int, \
+        help="Time between starts of the uploader, in minutes")
+
+
+
 
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
@@ -213,6 +217,12 @@ if __name__ == '__main__':
         makeUpload(None, None, config)
     else:
         config = None
+
+    if cml_args.time is None:
+        cycle_time_minutes = 15
+    else:
+        cycle_time_minutes = round(cml_args.time,0)
+
 
     log.info("Uploader daemon starting")
     potential_station_paths_list = []
@@ -259,7 +269,7 @@ if __name__ == '__main__':
     start_time = datetime.datetime.now()
     cycle_time_seconds = 60 * cycle_time_minutes
     log.info(f"Uploader process initialised at {start_time}")
-    log.info(f"Cycle time is {cycle_time_seconds} seconds")
+    log.info(f"Cycle time is {str(datetime.timedelta(seconds =cycle_time_seconds))}")
     while True:
 
         wait_time = (start_time - datetime.datetime.now())
@@ -282,4 +292,4 @@ if __name__ == '__main__':
                          f"time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {str(round((0 - wait_time.total_seconds() / 60)))} minutes")
 
         makeUpload(config_dict)
-        start_time = start_time + datetime.timedelta(minutes=15)
+        start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
