@@ -264,7 +264,7 @@ if __name__ == '__main__':
 
         wait_time = (start_time - datetime.datetime.now())
         # If the uploader is more than one cycle late
-        while wait_time < (0 - cycle_time_seconds):
+        while wait_time.total_seconds() < (0 - cycle_time_seconds):
             # Subtract a cycle time and check again
             wait_time -= datetime.timedelta(seconds=cycle_time_seconds)
             log.info("Skipping an upload cycle, because more than a whole cycle late")
