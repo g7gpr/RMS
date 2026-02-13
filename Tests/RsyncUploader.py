@@ -267,7 +267,7 @@ if __name__ == '__main__':
         while wait_time < (0 - cycle_time_seconds):
             # Subtract a cycle time and check again
             wait_time -= datetime.timedelta(seconds=cycle_time_seconds)
-            log.info("Skipping an uploade cycle, because more than a whole cycle late")
+            log.info("Skipping an upload cycle, because more than a whole cycle late")
 
         if wait_time.total_seconds() > 1:
             log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time.strftime('%H:%M:%S')}")
