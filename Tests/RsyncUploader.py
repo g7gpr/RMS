@@ -103,7 +103,7 @@ def uploadMade(rsync_stdout, log_uploaded_files=False):
     else:
         return False
 
-def makeUpload(config_dict):
+def makeUpload(config_dict, verbose=False):
 
     """using rsync, make an upload
 
@@ -171,7 +171,8 @@ def makeUpload(config_dict):
                 local_path_modified = os.path.join(local_path, local_path_modifier)
                 # build rsync command
                 command_string = f"rsync --progress -av --itemize-changes --bwlimit=512 --partial-dir=partial/ -e  'ssh  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
-                log.info(f"Running command: {command_string}")
+                if cml_args.verbose:
+                    log.info(f"Running command: {command_string}")
                 result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 # If return after each upload is selected, then return, so that a check is made for all the highest
                 # priority files again
@@ -203,8 +204,8 @@ if __name__ == '__main__':
     arg_parser.add_argument('-t', '--time', metavar='TIME', type=int, \
         help="Time between starts of the uploader, in minutes")
 
-
-
+    arg_parser.add_argument('-v', '--verbose', action="store_true",
+                            help="""Increase verbosity level""")
 
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
@@ -212,7 +213,8 @@ if __name__ == '__main__':
     if cml_args.config is not None:
         # Load the config file
         config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
-        log.info(f"Loaded config file for station {config.stationID}")
+        if cml_args.verbose:
+            log.info(f"Loaded config file for station {config.stationID}")
         config_dict = {}
         config_dict[config.stationID] = config
         makeUpload(None, None, config)
@@ -264,9 +266,11 @@ if __name__ == '__main__':
         if os.path.exists(remote_host_path):
             if os.path.isfile(remote_host_path):
                 config_dict[config.stationID] = config
-                log.info(f"Adding config for station {config.stationID}")
+                if cml_args.verbose:
+                    log.info(f"Adding config for station {config.stationID}")
         else:
-            log.info(f"Excluding {config_path} because no {remote_host_path} was found")
+            if cml_args.verbose:
+                log.info(f"Excluding {config_path} because no {remote_host_path} was found")
 
     start_time = datetime.datetime.now()
     cycle_time_seconds = 60 * cycle_time_minutes
@@ -279,7 +283,8 @@ if __name__ == '__main__':
         while wait_time.total_seconds() < (0 - cycle_time_seconds):
             # Add a cycle time and check again
             wait_time += datetime.timedelta(seconds=cycle_time_seconds)
-            log.info("Skipping an upload cycle, because more than a whole cycle late")
+            if cml_args.verbose:
+                log.info("Skipping an upload cycle, because more than a whole cycle late")
 
         if wait_time.total_seconds() > 1:
             log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time.strftime('%H:%M:%S')}")
@@ -294,5 +299,5 @@ if __name__ == '__main__':
                          f"time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {0 - round(wait_time.total_seconds() / 60)} minutes")
 
 
-        makeUpload(config_dict)
+        makeUpload(config_dict, verbose=cml_args.verbose)
         start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
