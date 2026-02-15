@@ -264,7 +264,7 @@ if __name__ == '__main__':
             if os.path.isfile(remote_host_path):
                 config_dict[config.stationID] = config
         else:
-            log.info(f"Excluding {config_path} because no remote_host_path was found")
+            log.info(f"Excluding {config_path} because no {remote_host_path} was found")
 
     start_time = datetime.datetime.now()
     cycle_time_seconds = 60 * cycle_time_minutes
