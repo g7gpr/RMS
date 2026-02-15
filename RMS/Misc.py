@@ -89,6 +89,7 @@ def interruptibleWait(seconds):
         signal.signal(signal.SIGINT, original_handler)
         raise
 
+
 def runWithTimeout(func, args=(), kwargs=None, timeout=60):
     """
     Run a function with a hard timeout using threading.
