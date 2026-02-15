@@ -171,6 +171,7 @@ def makeUpload(config_dict):
                 local_path_modified = os.path.join(local_path, local_path_modifier)
                 # build rsync command
                 command_string = f"rsync --progress -av --itemize-changes --bwlimit=512 --partial-dir=partial/ -e  'ssh  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
+                log.info(f"Running command: {command_string}")
                 result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 # If return after each upload is selected, then return, so that a check is made for all the highest
                 # priority files again
@@ -291,6 +292,7 @@ if __name__ == '__main__':
                 pass
                 log.info(f"Starting upload process immediately, start time was {start_time.strftime('%H:%M:%S')}, "
                          f"time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {0 - round(wait_time.total_seconds() / 60)} minutes")
+
 
         makeUpload(config_dict)
         start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
