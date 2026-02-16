@@ -32,8 +32,6 @@ import uuid
 import random
 import string
 
-from numpy.core.defchararray import endswith
-
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, correctVignetting, extinctionCorrectionApparentToTrue
 from matplotlib import pyplot as plt
 from RMS.Routines.MaskImage import loadMask
