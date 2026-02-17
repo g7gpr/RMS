@@ -217,7 +217,10 @@ def makeLogArchives(config, dest_dir, update_tracker=True):
     logs_to_send_by_type = []
     for log_file_type, log_list in zip(log_type_list, log_list_of_lists):
         logs_to_send = []
-        date_for_this_log_type = datetime.datetime.fromisoformat(latest_log_uploads_dict[log_file_type])
+        if log_file_type in latest_log_uploads_dict:
+            date_for_this_log_type = datetime.datetime.fromisoformat(latest_log_uploads_dict[log_file_type])
+        else:
+            date_for_this_log_type = datetime.datetime.fromisoformat(ISO_DATE_2000)
 
         for log_name in log_list:
             date_for_this_log_file = datetime.datetime.fromisoformat(extractDateFromLogName(config, log_name))
