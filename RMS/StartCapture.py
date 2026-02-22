@@ -1509,6 +1509,7 @@ if __name__ == "__main__":
             camera_mode_switch_trigger = multiprocessing.Value(ctypes.c_bool, True)
 
             # Setup the capture mode switcher on another thread
+            log.info("Starting captureModeSwitcher on another thread")
             capture_switcher = threading.Thread(target=captureModeSwitcher, args=(config, daytime_mode, camera_mode_switch_trigger))
             
             # To make sure the capture switcher thread exits automatically at the end
