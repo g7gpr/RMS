@@ -267,7 +267,7 @@ if __name__ == '__main__':
             if os.path.isfile(remote_host_path):
                 config_dict[config.stationID] = config
                 if cml_args.verbose:
-                    log.info(f"Adding config for station {config.stationID}")
+                    log.info(f"Adding config for station {config.stationID} from {config_path}")
         else:
             if cml_args.verbose:
                 log.info(f"Excluding {config_path} because no {remote_host_path} was found")
