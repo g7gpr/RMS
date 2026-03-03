@@ -28,47 +28,11 @@ import time
 import datetime
 import getpass
 
-LOG_FILE_PREFIX = "EXTERNAL"
+LOG_FILE_PREFIX = "MultiCamUploader"
 
 log = getLogger("rmslogger", stdout=False)
 
 
-def createLock(config, log):
-    """ If no file config.reboot_lock_file exists in config.data_dir, create one
-
-    Arguments:
-        config: [config] RMS config instance
-        log: [logger] logger instance
-
-    Returns:
-        Nothing
-    """
-
-
-    log.info("Applying reboot lock")
-    lockfile = os.path.join(os.path.expanduser(config.data_dir), config.reboot_lock_file)
-    with open(lockfile, 'w') as _:
-        pass
-
-    pass
-
-def removeLock(config, log):
-    """ If the file config.reboot_lock_file exists in config.data_dir, remove it
-
-    Arguments:
-        config: [config] RMS config instance
-        log: [logger] logger instance
-
-    Returns:
-        Nothing
-    """
-
-    log.info("Removing reboot lock")
-    lockfile = os.path.join(os.path.expanduser(config.data_dir), config.reboot_lock_file)
-    if os.path.exists(lockfile):
-        os.remove(lockfile)
-    else:
-        log.warning("No reboot lock file found at {}".format(lockfile))
 
 def uploadMade(rsync_stdout, log_uploaded_files=False):
     """If stdout from rsync shows that a file was changed on the remote, return True.
@@ -237,47 +201,12 @@ if __name__ == '__main__':
                 if os.path.isdir(p):
                     potential_station_paths_list.append(p)
 
-    home_dir = "/home/"
-    for p in os.listdir(home_dir):
-        p = os.path.join(home_dir, p)
-        if os.path.exists(p):
-            if os.path.isdir(p):
-                try:
-                    potential_station_paths_list.append(os.path.join(p, "source/RMS"))
-                except:
-                    pass
 
 
 
 
 
-    config_paths_list, station_list = [], []
 
-    potential_station_paths_list.sort()
-    for potential_station_path in sorted(potential_station_paths_list):
-        potential_config_path = os.path.join(potential_station_path, ".config")
-        if os.path.exists(potential_config_path):
-            config_paths_list.append(potential_config_path)
-    config_dict = {}
-
-    for config_path in config_paths_list:
-        config = cr.loadConfigFromDirectory([config_path], os.path.abspath('../Tests'))
-        remote_host_path = os.path.join(config.data_dir,"rsync_remote_host.txt")
-        if os.path.exists(remote_host_path):
-            if cml_args.verbose:
-                log.info(f"Found {remote_host_path}")
-            if os.path.isfile(remote_host_path):
-                config_dict[config.stationID] = config
-                if cml_args.verbose:
-                    log.info(f"Adding config for station {config.stationID} from {config_path}")
-        else:
-            if cml_args.verbose:
-                log.info(f"Excluding {config_path} because no {remote_host_path} was found")
-
-    start_time = datetime.datetime.now()
-    cycle_time_seconds = 60 * cycle_time_minutes
-    log.info(f"Uploader process initialised at {start_time}")
-    log.info(f"Cycle time is {str(datetime.timedelta(seconds =cycle_time_seconds))}")
     while True:
 
         wait_time = (start_time - datetime.datetime.now())
