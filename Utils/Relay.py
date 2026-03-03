@@ -100,6 +100,7 @@ if __name__ == '__main__':
 
         remote_processed_files = sftp.listdir(os.path.join("files","processed"))
         remote_processed_files.sort()
+        log.info(f"Adding {len(remote_processed_files)} files to {username}")
         remote_file_dict_of_lists[username] = remote_processed_files
 
 
