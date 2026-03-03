@@ -28,7 +28,7 @@ import argparse
 import RMS.ConfigReader as cr
 import time
 import datetime
-import getpass
+import paramiko
 
 LOG_FILE_PREFIX = "Relay"
 
