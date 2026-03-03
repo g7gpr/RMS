@@ -156,7 +156,7 @@ def makeUpload(config_dict, verbose=False):
                 if not os.path.isfile(remote_host_address_path):
                     continue
 
-                remote_path = os.path.join("/", "home", station_id_lower, "files", "incoming")
+                remote_path = os.path.join("/", "home", station_id_lower, "files")
                 if target_dir == "archive":
                     target_dir_from_config = config.archived_dir
                 elif target_dir == "frames":
@@ -212,7 +212,7 @@ if __name__ == '__main__':
 
     if cml_args.config is not None:
         # Load the config file
-        config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
+        config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('../Tests'))
         if cml_args.verbose:
             log.info(f"Loaded config file for station {config.stationID}")
         config_dict = {}
@@ -261,7 +261,7 @@ if __name__ == '__main__':
     config_dict = {}
 
     for config_path in config_paths_list:
-        config = cr.loadConfigFromDirectory([config_path], os.path.abspath('.'))
+        config = cr.loadConfigFromDirectory([config_path], os.path.abspath('../Tests'))
         remote_host_path = os.path.join(config.data_dir,"rsync_remote_host.txt")
         if os.path.exists(remote_host_path):
             if os.path.isfile(remote_host_path):
