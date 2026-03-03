@@ -41,7 +41,7 @@ if __name__ == '__main__':
 e.")
 
     arg_parser.add_argument('-t', '--time', metavar='TIME', type=int, \
-        help="Time between starts of the uploader, in minutes")
+        help="Time between starts of the relay, in minutes")
 
     arg_parser.add_argument('-v', '--verbose', action="store_true",
                             help="""Increase verbosity level""")
@@ -55,7 +55,7 @@ e.")
         cycle_time_minutes = round(cml_args.time,0)
 
 
-    log.info("Uploader daemon starting")
+    log.info("Uploader relay starting")
     potential_station_paths_list = []
     fs_root = "/home/"
     users_list = os.listdir(fs_root)
@@ -66,7 +66,10 @@ e.")
             if os.path.isdir(p):
                 station_files_paths_list.append(p)
 
-    log.info(station_files_paths_list)
+    station_files_paths_list.sort()
+    log.info("Found following potential station files paths")
+    for p in station_files_paths_list:
+        log.info(p)
 
 
 
