@@ -97,7 +97,7 @@ if __name__ == '__main__':
 
         remote_files = sftp.listdir(os.path.join("files","processed"))
 
-        for fi in remote_files:
+        for f in remote_files:
             log.info("Processing {}".format(f))
 
 
