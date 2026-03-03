@@ -103,24 +103,11 @@ if __name__ == '__main__':
             config_paths_list.append(potential_config_path)
     config_dict = {}
 
-    for config_path in config_paths_list:
-        config = cr.loadConfigFromDirectory([config_path], os.path.abspath('../Tests'))
-        remote_host_path = os.path.join(config.data_dir,"rsync_remote_host.txt")
-        if os.path.exists(remote_host_path):
-            if cml_args.verbose:
-                log.info(f"Found {remote_host_path}")
-            if os.path.isfile(remote_host_path):
-                config_dict[config.stationID] = config
-                if cml_args.verbose:
-                    log.info(f"Adding config for station {config.stationID} from {config_path}")
-        else:
-            if cml_args.verbose:
-                log.info(f"Excluding {config_path} because no {remote_host_path} was found")
 
     start_time = datetime.datetime.now()
     cycle_time_seconds = 60 * cycle_time_minutes
-    log.info(f"Uploader process initialised at {start_time}")
-    log.info(f"Cycle time is {str(datetime.timedelta(seconds =cycle_time_seconds))}")
+    log.info("Uploader process initialised at {}".format(start_time))
+    log.info("Cycle time is {}".format(str(datetime.timedelta(seconds =cycle_time_seconds))))
     while True:
 
         wait_time = (start_time - datetime.datetime.now())
@@ -132,17 +119,13 @@ if __name__ == '__main__':
                 log.info("Skipping an upload cycle, because more than a whole cycle late")
 
         if wait_time.total_seconds() > 1:
-            log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time.strftime('%H:%M:%S')}")
             time.sleep(wait_time.total_seconds())
         else:
             if wait_time.total_seconds() > -3:
                 pass
-                log.info(f"Starting upload process immediately, as due at {start_time.strftime('%H:%M:%S')} and time now is {datetime.datetime.now().strftime('%H:%M:%S')}.")
+
             else:
                 pass
-                log.info(f"Starting upload process immediately, start time was {start_time.strftime('%H:%M:%S')}, "
-                         f"time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {0 - round(wait_time.total_seconds() / 60)} minutes")
 
 
-        makeUpload(config_dict, verbose=cml_args.verbose)
         start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
