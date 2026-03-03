@@ -29,14 +29,70 @@ import RMS.ConfigReader as cr
 import time
 import datetime
 import paramiko
+import json
+
 
 LOG_FILE_PREFIX = "Relay"
-
 log = getLogger("rmslogger", stdout=False)
+REMOTE_FILES_DICT_PATH = "/home/gmn/relay/remotefiles.json"
+
+def getRemoteStationsPathsList(fs_root="/home/"):
+
+    users_list = os.listdir(fs_root)
+    station_files_paths_list = []
+    for p in users_list:
+        if len(p) != 6:
+            continue
+        p = os.path.join(fs_root, p)
+        if os.path.exists(p):
+            if os.path.isdir(p):
+                files_dir_path = os.path.join(p, "files")
+                if os.path.isdir(files_dir_path):
+                    station_files_paths_list.append(p)
+
+    station_files_paths_list.sort()
+
+    return station_files_paths_list
+
+
+def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca"):
+
+    log.info("Gather remote file information")
+
+    remote_file_dict_of_lists = {}
+    for p in station_files_paths_list:
+        log.info(f"Working on {p}")
+        username = os.path.basename(p)
+        key_path = os.path.join(p, ".ssh", "id_rsa")
+        try:
+            key = paramiko.RSAKey.from_private_key_file(key_path)
+            log.info(f"Found key for {username}")
+        except:
+            log.info("No key for {}".format(username))
+            continue
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        log.info(f"Attempting connection to {username}@{hostname} using key from {key_path}")
+        ssh.connect(hostname=hostname, username=username, pkey=key)
+
+        try:
+            sftp = ssh.open_sftp()
+        except:
+            log.info(f"Unable to open sftp connection for {username}")
+            continue
+
+        remote_processed_files = sftp.listdir(os.path.join("files", "processed"))
+        remote_processed_files.sort()
+        log.info(f"Adding {len(remote_processed_files)} files to {username}")
+        remote_file_dict_of_lists[username] = remote_processed_files
+
+    return remote_file_dict_of_lists
 
 
 if __name__ == '__main__':
 
+
+    start_time = datetime.datetime.
     # Init the command line arguments parser
     arg_parser = argparse.ArgumentParser(description=""" Upload files using sftp.""")
 
@@ -55,69 +111,21 @@ if __name__ == '__main__':
     else:
         cycle_time_minutes = round(cml_args.time,0)
 
+    cycle_time_seconds = cycle_time_minutes * 60
+
 
     log.info("Uploader relay starting")
-    potential_station_paths_list = []
-    fs_root = "/home/"
-    users_list = os.listdir(fs_root)
-    station_files_paths_list = []
-    for p in users_list:
-        p = os.path.join(fs_root, p)
-        if os.path.exists(p):
-            if os.path.isdir(p):
-                station_files_paths_list.append(p)
+    stations_paths_list = getRemoteStationsPathsList()
+    remote_files_dict = getRemoteFilesDict(stations_paths_list)
 
-    station_files_paths_list.sort()
-    log.info("Found following potential station files paths")
-    for p in station_files_paths_list:
-        log.info(p)
+    remote_files_dict_dir = os.path.dirname(REMOTE_FILES_DICT_PATH)
 
-    log.info("Gather remote file information")
+    log.info(f"Making directory for {remote_files_dict_dir}")
+    if not os.path.exists(remote_files_dict_dir):
+        os.makedirs(remote_files_dict_dir)
+    with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
+        json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
 
-    hostname = 'gmn.uwo.ca'
-
-    remote_file_dict_of_lists = {}
-    for p in station_files_paths_list:
-        log.info(f"Working on {p}")
-        username = os.path.basename(p)
-        key_path = os.path.join(p, ".ssh", "id_rsa")
-        try:
-            key = paramiko.RSAKey.from_private_key_file(key_path)
-            log.info(f"Found key for {username}")
-        except:
-            log.info("No key for {}".format(username))
-            continue
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-        ssh.connect(hostname=hostname, username=username, pkey=key)
-
-        try:
-            sftp = ssh.open_sftp()
-        except:
-            log.info(f"Unable to open sftp connection for {username}")
-            continue
-
-        remote_processed_files = sftp.listdir(os.path.join("files","processed"))
-        remote_processed_files.sort()
-        log.info(f"Adding {len(remote_processed_files)} files to {username}")
-        remote_file_dict_of_lists[username] = remote_processed_files
-
-
-    config_paths_list, station_list = [], []
-
-    potential_station_paths_list.sort()
-    for potential_station_path in sorted(potential_station_paths_list):
-        potential_config_path = os.path.join(potential_station_path, ".config")
-        if os.path.exists(potential_config_path):
-            config_paths_list.append(potential_config_path)
-    config_dict = {}
-
-
-    start_time = datetime.datetime.now()
-    cycle_time_seconds = 60 * cycle_time_minutes
-    log.info("Uploader process initialised at {}".format(start_time))
-    log.info("Cycle time is {}".format(str(datetime.timedelta(seconds =cycle_time_seconds))))
     while True:
 
         wait_time = (start_time - datetime.datetime.now())
@@ -137,5 +145,7 @@ if __name__ == '__main__':
             else:
                 pass
 
-
         start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
+
+        for station in remote_files_dict:
+            log.info(f"Working on {station}")

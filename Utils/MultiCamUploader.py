@@ -156,6 +156,10 @@ def makeUpload(config_dict, verbose=False):
 
 if __name__ == '__main__':
 
+
+
+    start_time = datetime.datetime.now()
+
     # Init the command line arguments parser
     arg_parser = argparse.ArgumentParser(description=""" Upload files using rsync.
         """)
@@ -174,6 +178,17 @@ if __name__ == '__main__':
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
 
+    if cml_args.time is None:
+        cycle_time_minutes = 15
+    else:
+        cycle_time_minutes = round(cml_args.time,0)
+
+
+    cycle_time_seconds = 60 * cycle_time_minutes
+    log.info(f"Uploader process initialised at {start_time}")
+    log.info(f"Cycle time is {str(datetime.timedelta(seconds =cycle_time_seconds))}")
+
+
     if cml_args.config is not None:
         # Load the config file
         config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('../Tests'))
@@ -185,10 +200,6 @@ if __name__ == '__main__':
     else:
         config = None
 
-    if cml_args.time is None:
-        cycle_time_minutes = 15
-    else:
-        cycle_time_minutes = round(cml_args.time,0)
 
 
     log.info("Uploader daemon starting")
@@ -201,10 +212,26 @@ if __name__ == '__main__':
                 if os.path.isdir(p):
                     potential_station_paths_list.append(p)
 
+    config_paths_list, station_list = [], []
 
+    potential_station_paths_list.sort()
+    for potential_station_path in sorted(potential_station_paths_list):
+        potential_config_path = os.path.join(potential_station_path, ".config")
+        if os.path.exists(potential_config_path):
+            config_paths_list.append(potential_config_path)
+    config_dict = {}
 
-
-
+    for config_path in config_paths_list:
+        config = cr.loadConfigFromDirectory([config_path], os.path.abspath('../Tests'))
+        remote_host_path = os.path.join(config.data_dir,"rsync_remote_host.txt")
+        if os.path.exists(remote_host_path):
+            if os.path.isfile(remote_host_path):
+                config_dict[config.stationID] = config
+                if cml_args.verbose:
+                    log.info(f"Adding config for station {config.stationID} from {config_path}")
+        else:
+            if cml_args.verbose:
+                log.info(f"Excluding {config_path} because no {remote_host_path} was found")
 
 
     while True:
