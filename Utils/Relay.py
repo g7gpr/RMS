@@ -76,12 +76,14 @@ if __name__ == '__main__':
 
     hostname = 'gmn.uwo.ca'
 
-
+    remote_file_dict_of_lists = {}
     for p in station_files_paths_list:
+        log.info(f"Working on {p}")
         username = os.path.basename(p)
         key_path = os.path.join(p, ".ssh", "id_rsa")
         try:
             key = paramiko.RSAKey.from_private_key_file(key_path)
+            log.info(f"Found key for {username}")
         except:
             log.info("No key for {}".format(username))
             continue
@@ -93,15 +95,12 @@ if __name__ == '__main__':
         try:
             sftp = ssh.open_sftp()
         except:
-            log.info("No key for ")
+            log.info(f"Unable to open sftp connection for {username}")
+            continue
 
-        remote_files_set = set(sftp.listdir(os.path.join("files","processed")))
-
-        local_files_set = set(os.listdir(p))
-        files_to_upload = local_files_set - remote_files_set
-
-        for f in files_to_upload:
-            log.info("Uploading {}".format(f))
+        remote_processed_files = sftp.listdir(os.path.join("files","processed"))
+        remote_processed_files.sort()
+        remote_file_dict_of_lists[username] = remote_processed_files
 
 
     config_paths_list, station_list = [], []
