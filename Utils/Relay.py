@@ -79,7 +79,7 @@ if __name__ == '__main__':
 
     for p in station_files_paths_list:
         username = os.path.basename(p)
-        key_path = os.path.join(p, "ssh", "id_rsa")
+        key_path = os.path.join(p, ".ssh", "id_rsa")
         key = paramiko.RSAKey.from_private_key_file(key_path)
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
