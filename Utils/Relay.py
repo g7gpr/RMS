@@ -95,11 +95,13 @@ if __name__ == '__main__':
         except:
             log.info("No key for ")
 
-        remote_files = sftp.listdir(os.path.join("files","processed"))
+        remote_files_set = set(sftp.listdir(os.path.join("files","processed")))
 
-        remote_files.sort()
-        for f in remote_files:
-            log.info("Processing {}".format(f))
+        local_files_set = set(os.listdir(p))
+        files_to_upload = local_files_set - remote_files_set
+
+        for f in files_to_upload:
+            log.info("Uploading {}".format(f))
 
 
     config_paths_list, station_list = [], []
