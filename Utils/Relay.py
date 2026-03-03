@@ -36,9 +36,8 @@ log = getLogger("rmslogger", stdout=False)
 if __name__ == '__main__':
 
     # Init the command line arguments parser
-    arg_parser = argparse.ArgumentParser(description=""" Upload files using sftp.
-        """)
-e.")
+    arg_parser = argparse.ArgumentParser(description=""" Upload files using sftp.""")
+
 
     arg_parser.add_argument('-t', '--time', metavar='TIME', type=int, \
         help="Time between starts of the relay, in minutes")
@@ -70,6 +69,8 @@ e.")
     log.info("Found following potential station files paths")
     for p in station_files_paths_list:
         log.info(p)
+
+    log.info("Gather remote file information")
 
 
 
