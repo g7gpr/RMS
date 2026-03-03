@@ -20,6 +20,8 @@
 import os
 import subprocess
 
+import paramiko
+
 from RMS.Formats.Platepar import stationData
 from RMS.Logger import getLogger
 import argparse
@@ -71,6 +73,22 @@ if __name__ == '__main__':
         log.info(p)
 
     log.info("Gather remote file information")
+
+    hostname = 'gmn.uwo.ca'
+
+
+    for p in station_files_paths_list:
+        username = os.path.basename(p)
+        key_path = os.path.join(p, "ssh", "id_rsa")
+        key = paramiko.RSAKey.from_private_key_file(key_path)
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        ssh.connect(hostname=hostname, username=username, pkey=key)
+
+        sftp = ssh.open_sftp()
+
+        remote_files = sftp.listdir(os.path.join("files","processed"))
 
 
 
