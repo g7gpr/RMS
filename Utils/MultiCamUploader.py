@@ -264,6 +264,8 @@ if __name__ == '__main__':
         config = cr.loadConfigFromDirectory([config_path], os.path.abspath('../Tests'))
         remote_host_path = os.path.join(config.data_dir,"rsync_remote_host.txt")
         if os.path.exists(remote_host_path):
+            if cml_args.verbose:
+                log.info(f"Found {remote_host_path}")
             if os.path.isfile(remote_host_path):
                 config_dict[config.stationID] = config
                 if cml_args.verbose:
