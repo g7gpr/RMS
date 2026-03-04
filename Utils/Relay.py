@@ -218,7 +218,7 @@ if __name__ == '__main__':
             if len(files_to_upload):
                 log.info(f"Files to upload for {station}")
                 for f in files_to_upload:
-                    upload_success = uploadFile(station, f, test=False)
+                    upload_success = uploadFile(station, f, test=True)
                     if upload_success:
                         log.info("File {f} was uploaded successfully")
                         remote_files_set = set(remote_files_dict[station])
