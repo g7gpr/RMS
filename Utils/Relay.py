@@ -19,7 +19,7 @@
 
 import os
 import subprocess
-
+import shutil
 
 
 from RMS.Formats.Platepar import stationData
@@ -162,6 +162,30 @@ def uploadFile(station, f, hostname=HOSTNAME, test=False):
 
     return success
 
+def doMaintenance(stations_paths_list):
+
+    for station_path in stations_paths_list:
+        log.info(f"Performing maintenance of {os.path.basename(station_path)}")
+        pass
+        incoming_directory_path = os.path.join(station_path,"files","incoming")
+        files_directory_path = os.path.join(station_path, "files")
+        if os.path.exists(incoming_directory_path):
+            if os.path.isdir(incoming_directory_path):
+                for f in os.listdir(incoming_directory_path):
+                    source_file = os.path.join(incoming_directory_path, f)
+                    if os.path.isfile(source_file):
+                        if f.endswith(".confirmed"):
+                            os.unlink(source_file)
+                            continue
+                        if f.endswith(".tar") or f.endswith(".tar.bz2"):
+                            destination_file = os.path.join(files_directory_path, f)
+                            shutil.move(source_file, destination_file)
+            log.info(f"Removing {incoming_directory_path}")
+            try:
+                shutil.rmtree(incoming_directory_path)
+            except:
+                log.info("Failed")
+
 if __name__ == '__main__':
 
 
@@ -188,6 +212,7 @@ if __name__ == '__main__':
 
     log.info("Uploader relay starting")
     stations_paths_list = getRemoteStationsPathsList(fs_root=FS_ROOT)
+    doMaintenance(stations_paths_list)
     remote_files_dict = getRemoteFilesDict(stations_paths_list)
 
     remote_files_dict_dir = os.path.dirname(REMOTE_FILES_DICT_PATH)

@@ -212,6 +212,8 @@ if __name__ == '__main__':
                 if os.path.isdir(p):
                     potential_station_paths_list.append(p)
 
+
+
     config_paths_list, station_list = [], []
 
     potential_station_paths_list.sort()
@@ -255,6 +257,7 @@ if __name__ == '__main__':
                 pass
                 log.info(f"Starting upload process immediately, start time was {start_time.strftime('%H:%M:%S')}, "
                          f"time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {0 - round(wait_time.total_seconds() / 60)} minutes")
+
 
 
         makeUpload(config_dict, verbose=cml_args.verbose)
