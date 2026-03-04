@@ -213,6 +213,18 @@ if __name__ == '__main__':
                     potential_station_paths_list.append(p)
 
 
+    home_dir = "/home/"
+    for p in os.listdir(home_dir):
+        p = os.path.join(home_dir, p)
+        if os.path.exists(p):
+            if os.path.isdir(p):
+                try:
+                    potential_station_paths_list.append(os.path.join(p, "source/RMS"))
+                except:
+                    pass
+
+
+
 
     config_paths_list, station_list = [], []
 
@@ -234,16 +246,6 @@ if __name__ == '__main__':
         else:
             if cml_args.verbose:
                 log.info(f"Excluding {config_path} because no {remote_host_path} was found")
-
-    home_dir = "/home/"
-    for p in os.listdir(home_dir):
-        p = os.path.join(home_dir, p)
-        if os.path.exists(p):
-            if os.path.isdir(p):
-                try:
-                    potential_station_paths_list.append(os.path.join(p, "source/RMS"))
-                except:
-                    pass
 
     while True:
 
