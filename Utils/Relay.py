@@ -275,7 +275,7 @@ if __name__ == '__main__':
                         log.info(f"File {f} was uploaded successfully")
                         remote_files_set = set(remote_files_dict[station])
                         remote_files_set.add(f)
-                        remote_files_dict[station] = remote_files_set
+                        remote_files_dict[station] = list(remote_files_set)
 
                         with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
                             json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)

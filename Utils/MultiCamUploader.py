@@ -223,9 +223,6 @@ if __name__ == '__main__':
                 except:
                     pass
 
-
-
-
     config_paths_list, station_list = [], []
 
     potential_station_paths_list.sort()
