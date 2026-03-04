@@ -270,7 +270,7 @@ if __name__ == '__main__':
 
                 files_to_upload = sortByPriority(files_to_upload)
                 for f in files_to_upload:
-                    upload_success = uploadFile(station, f, test=True)
+                    upload_success = uploadFile(station, f, test=False)
                     if upload_success:
                         log.info(f"File {f} was uploaded successfully")
                         remote_files_set = set(remote_files_dict[station])
