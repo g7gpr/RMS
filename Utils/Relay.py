@@ -213,9 +213,9 @@ if __name__ == '__main__':
     log.info("Uploader relay starting")
     stations_paths_list = getRemoteStationsPathsList(fs_root=FS_ROOT)
     doMaintenance(stations_paths_list)
-    remote_files_dict = getRemoteFilesDict(stations_paths_list)
 
     if not os.path.exists(REMOTE_FILES_DICT_PATH):
+        remote_files_dict = getRemoteFilesDict(stations_paths_list)
         remote_files_dict_dir = os.path.dirname(REMOTE_FILES_DICT_PATH)
 
         if not os.path.exists(remote_files_dict_dir):
