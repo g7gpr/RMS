@@ -30,7 +30,7 @@ import time
 import datetime
 import paramiko
 import json
-
+import logging
 
 LOG_FILE_PREFIX = "Relay"
 log = getLogger("rmslogger", stdout=False)
@@ -39,6 +39,13 @@ FS_ROOT = "/home/"
 HOSTNAME = "gmn.uwo.ca"
 
 
+
+
+for name in ("paramiko", "paramiko.transport", "paramiko.hostkeys"):
+    logger = logging.getLogger(name)
+    logger.handlers.clear()      # remove any handlers Paramiko attached
+    logger.propagate = False     # stop messages bubbling to root
+    logger.setLevel(logging.CRITICAL)
 
 
 
@@ -223,7 +230,8 @@ if __name__ == '__main__':
             os.makedirs(remote_files_dict_dir)
         with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
             json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
-
+            file_handle.flush()
+            
     with open(REMOTE_FILES_DICT_PATH, "r") as file_handle:
         remote_files_dict = json.load(file_handle)
 
