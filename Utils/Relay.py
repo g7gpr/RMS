@@ -220,7 +220,7 @@ if __name__ == '__main__':
                 for f in files_to_upload:
                     upload_success = uploadFile(station, f, test=True)
                     if upload_success:
-                        log.info("File {f} was uploaded successfully")
+                        log.info(f"File {f} was uploaded successfully")
                         remote_files_set = set(remote_files_dict[station])
                         remote_files_set.add(f)
                         remote_files_dict[station] = remote_files_set
