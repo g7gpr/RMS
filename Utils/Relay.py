@@ -119,6 +119,7 @@ def uploadFile(station, f, hostname=HOSTNAME, test=False):
     log.info(f"Attempting connection to {username}@{hostname} using key from {key_path}")
     ssh.connect(hostname=hostname, username=username, pkey=key)
 
+
     try:
         sftp = ssh.open_sftp()
         log.info(f"Opened connection {username}@{hostname}")
