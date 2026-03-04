@@ -51,7 +51,6 @@ def sortByPriority(f_list, order=None):
 
     def fileRank(f):
 
-
         rank = {word: i for i, word in enumerate(order)}
         for word in order:
             if word in f:
@@ -252,3 +251,6 @@ if __name__ == '__main__':
                         remote_files_set = set(remote_files_dict[station])
                         remote_files_set.add(f)
                         remote_files_dict[station] = remote_files_set
+
+                        with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
+                            json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
