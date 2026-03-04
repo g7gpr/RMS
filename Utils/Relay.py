@@ -38,6 +38,27 @@ REMOTE_FILES_DICT_PATH = "/home/gmn/relay/remotefiles.json"
 FS_ROOT = "/home/"
 HOSTNAME = "gmn.uwo.ca"
 
+
+
+
+def fileRank(order=None):
+
+    if order is None:
+        order = ["metadata", "detected", "imgdata", "frames_timelapse"]
+    rank = {word: i for i, word in enumerate(order)}
+    for word in order:
+        if word in f:
+            return rank[word]
+    return len(order)
+
+
+def sortByPriority(f_list):
+
+    return sorted(f_list, key=fileRank(order), reverse=False)
+
+
+
+
 def getRemoteStationsPathsList(fs_root="/home/"):
 
     users_list = os.listdir(fs_root)
@@ -140,6 +161,10 @@ def uploadFile(station, f, hostname=HOSTNAME, test=False):
 if __name__ == '__main__':
 
 
+    test_list = ["imgdata", 'kjsdhfsdf_metadata_', "skjdhfs_detected_", "sdfs_frames_files"]
+
+    print(sortByPriority(test_list))
+
     start_time = datetime.datetime.now()
     # Init the command line arguments parser
     arg_parser = argparse.ArgumentParser(description=""" Upload files using sftp.""")
@@ -217,6 +242,8 @@ if __name__ == '__main__':
             files_to_upload = sorted(list(local_files_set - remote_files_set))
             if len(files_to_upload):
                 log.info(f"Files to upload for {station}")
+
+                files_to_upload = sortByPriority(files_to_upload)
                 for f in files_to_upload:
                     upload_success = uploadFile(station, f, test=True)
                     if upload_success:
