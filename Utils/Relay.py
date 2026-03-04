@@ -41,20 +41,25 @@ HOSTNAME = "gmn.uwo.ca"
 
 
 
-def fileRank(order=None):
+
+
+
+def sortByPriority(f_list, order=None):
 
     if order is None:
         order = ["metadata", "detected", "imgdata", "frames_timelapse"]
-    rank = {word: i for i, word in enumerate(order)}
-    for word in order:
-        if word in f:
-            return rank[word]
-    return len(order)
+
+    def fileRank(f):
 
 
-def sortByPriority(f_list):
+        rank = {word: i for i, word in enumerate(order)}
+        for word in order:
+            if word in f:
+                return rank[word]
+        return len(order)
 
-    return sorted(f_list, key=fileRank(order), reverse=False)
+    order = ["metadata", "detected", "imgdata", "frames_timelapse"]
+    return sorted(sorted(f_list), key=fileRank, reverse=False)
 
 
 
@@ -160,10 +165,6 @@ def uploadFile(station, f, hostname=HOSTNAME, test=False):
 
 if __name__ == '__main__':
 
-
-    test_list = ["imgdata", 'kjsdhfsdf_metadata_', "skjdhfs_detected_", "sdfs_frames_files"]
-
-    print(sortByPriority(test_list))
 
     start_time = datetime.datetime.now()
     # Init the command line arguments parser
