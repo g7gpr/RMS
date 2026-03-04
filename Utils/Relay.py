@@ -163,7 +163,7 @@ if __name__ == '__main__':
 
     log.info("Uploader relay starting")
     stations_paths_list = getRemoteStationsPathsList(fs_root=FS_ROOT)
-    #remote_files_dict = getRemoteFilesDict(stations_paths_list)
+    remote_files_dict = getRemoteFilesDict(stations_paths_list)
 
     remote_files_dict_dir = os.path.dirname(REMOTE_FILES_DICT_PATH)
 
@@ -173,8 +173,8 @@ if __name__ == '__main__':
 
 
 
-    #with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
-    #    json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
+    with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
+        json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
 
     with open(REMOTE_FILES_DICT_PATH, "r") as file_handle:
         remote_files_dict = json.load(file_handle)
