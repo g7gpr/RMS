@@ -35,6 +35,8 @@ import json
 LOG_FILE_PREFIX = "Relay"
 log = getLogger("rmslogger", stdout=False)
 REMOTE_FILES_DICT_PATH = "/home/gmn/relay/remotefiles.json"
+FS_ROOT = "/home/"
+HOSTNAME = "gmn.uwo.ca"
 
 def getRemoteStationsPathsList(fs_root="/home/"):
 
@@ -60,10 +62,11 @@ def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca"):
     log.info("Gather remote file information")
 
     remote_file_dict_of_lists = {}
-    for p in station_files_paths_list:
-        log.info(f"Working on {p}")
-        username = os.path.basename(p)
-        key_path = os.path.join(p, ".ssh", "id_rsa")
+    remote_timelapse_files = []
+    for station_path in station_files_paths_list:
+        log.info(f"Working on {station_path}")
+        username = os.path.basename(station_path)
+        key_path = os.path.join(station_path, ".ssh", "id_rsa")
         try:
             key = paramiko.RSAKey.from_private_key_file(key_path)
             log.info(f"Found key for {username}")
@@ -82,17 +85,61 @@ def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca"):
             continue
 
         remote_processed_files = sftp.listdir(os.path.join("files", "processed"))
-        remote_processed_files.sort()
-        log.info(f"Adding {len(remote_processed_files)} files to {username}")
-        remote_file_dict_of_lists[username] = remote_processed_files
+        remote_unprocessed_files = sftp.listdir(os.path.join("files"))
+        for f in remote_unprocessed_files:
+            if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
+                remote_timelapse_files.append(f)
+        remote_files = remote_processed_files + remote_timelapse_files
+        remote_files.sort()
+
+        log.info(f"Adding {len(remote_files)} files to {username}")
+        remote_file_dict_of_lists[username] = remote_files
+        pass
 
     return remote_file_dict_of_lists
 
 
+def uploadFile(station, f, hostname=HOSTNAME, test=False):
+
+    if test:
+        return True
+    username = station.lower()
+    log.info(f"Starting to upload file {f} for station {station}")
+    station_path = os.path.join(FS_ROOT, username)
+    key_path = os.path.join(station_path, ".ssh", "id_rsa")
+    try:
+        key = paramiko.RSAKey.from_private_key_file(key_path)
+        log.info(f"Found key for {username}")
+    except:
+        log.info("No key for {}".format(username))
+        return False
+
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    log.info(f"Attempting connection to {username}@{hostname} using key from {key_path}")
+    ssh.connect(hostname=hostname, username=username, pkey=key)
+
+    try:
+        sftp = ssh.open_sftp()
+        log.info(f"Opened connection {username}@{hostname}")
+    except:
+        log.info(f"Unable to open sftp connection for {username}")
+        return False
+
+    local_file_path = os.path.join(FS_ROOT, station.lower(),"files",f)
+    remote_file_path = os.path.join("files",f)
+    if test:
+        log.info(f"Simulating good upload of {local_file_path} to {remote_file_path} for station {station}")
+        return True
+    log.info(f"Uploading {local_file_path} to {station}@{hostname}:{remote_file_path}")
+    success = sftp.put(local_file_path, remote_file_path, confirm=True)
+
+    return success
+
 if __name__ == '__main__':
 
 
-    start_time = datetime.datetime.
+    start_time = datetime.datetime.now()
     # Init the command line arguments parser
     arg_parser = argparse.ArgumentParser(description=""" Upload files using sftp.""")
 
@@ -113,18 +160,25 @@ if __name__ == '__main__':
 
     cycle_time_seconds = cycle_time_minutes * 60
 
-
     log.info("Uploader relay starting")
-    stations_paths_list = getRemoteStationsPathsList()
-    remote_files_dict = getRemoteFilesDict(stations_paths_list)
+    stations_paths_list = getRemoteStationsPathsList(fs_root=FS_ROOT)
+    #remote_files_dict = getRemoteFilesDict(stations_paths_list)
 
     remote_files_dict_dir = os.path.dirname(REMOTE_FILES_DICT_PATH)
 
     log.info(f"Making directory for {remote_files_dict_dir}")
     if not os.path.exists(remote_files_dict_dir):
         os.makedirs(remote_files_dict_dir)
-    with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
-        json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
+
+
+
+    #with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
+    #    json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
+
+    with open(REMOTE_FILES_DICT_PATH, "r") as file_handle:
+        remote_files_dict = json.load(file_handle)
+
+
 
     while True:
 
@@ -137,6 +191,7 @@ if __name__ == '__main__':
                 log.info("Skipping an upload cycle, because more than a whole cycle late")
 
         if wait_time.total_seconds() > 1:
+            log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time.strftime('%H:%M:%S')}")
             time.sleep(wait_time.total_seconds())
         else:
             if wait_time.total_seconds() > -3:
@@ -149,3 +204,22 @@ if __name__ == '__main__':
 
         for station in remote_files_dict:
             log.info(f"Working on {station}")
+            remote_files_set = set(remote_files_dict[station])
+            local_files = set(os.listdir(os.path.join(FS_ROOT,station,"files")))
+            local_data_files = []
+            for f in local_files:
+                if f.startswith(station.upper()) and f.endswith(".tar.bz2"):
+                    local_data_files.append(f)
+                if f.startswith(station.upper()) and f.endswith("_frames_timelapse.tar"):
+                    local_data_files.append(f)
+            local_files_set = set(local_data_files)
+            files_to_upload = sorted(list(local_files_set - remote_files_set))
+            if len(files_to_upload):
+                log.info(f"Files to upload for {station}")
+                for f in files_to_upload:
+                    upload_success = uploadFile(station, f, test=False)
+                    if upload_success:
+                        log.info("File {f} was uploaded successfully")
+                        remote_files_set = set(remote_files_dict[station])
+                        remote_files_set.add(f)
+                        remote_files_dict[station] = remote_files_set
