@@ -215,21 +215,17 @@ if __name__ == '__main__':
     doMaintenance(stations_paths_list)
     remote_files_dict = getRemoteFilesDict(stations_paths_list)
 
-    remote_files_dict_dir = os.path.dirname(REMOTE_FILES_DICT_PATH)
+    if not os.path.exists(REMOTE_FILES_DICT_PATH):
+        remote_files_dict_dir = os.path.dirname(REMOTE_FILES_DICT_PATH)
 
-    log.info(f"Making directory for {remote_files_dict_dir}")
-    if not os.path.exists(remote_files_dict_dir):
-        os.makedirs(remote_files_dict_dir)
-
-
-
-    with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
-        json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
+        if not os.path.exists(remote_files_dict_dir):
+            log.info(f"Making directory for {remote_files_dict_dir}")
+            os.makedirs(remote_files_dict_dir)
+        with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
+            json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
 
     with open(REMOTE_FILES_DICT_PATH, "r") as file_handle:
         remote_files_dict = json.load(file_handle)
-
-
 
     while True:
 
