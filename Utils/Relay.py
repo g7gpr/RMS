@@ -98,7 +98,8 @@ def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca"):
     remote_file_dict_of_lists = {}
     remote_timelapse_files = []
     for station_path in station_files_paths_list:
-        log.info(f"Working on {station_path}")
+        if cml_args.verbose:
+            log.info(f"Working on {station_path}")
         username = os.path.basename(station_path)
         key_path = os.path.join(station_path, ".ssh", "id_rsa")
         try:
