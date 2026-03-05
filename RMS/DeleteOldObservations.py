@@ -18,6 +18,7 @@ from RMS.CaptureDuration import captureDuration
 from RMS.ConfigReader import loadConfigFromDirectory
 from RMS.Logger import LoggingManager, getLogger
 from RMS.Misc import RmsDateTime, UTCFromTimestamp
+from Utils.Relay import getRemoteFilesDict
 from pathlib import Path
 
 # Get the logger from the main module
@@ -760,6 +761,12 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
     log.info('clearing down old data')
     deleteOldDirs(data_dir, config)
 
+    if True:
+        remote_dict = getRemoteFilesDict([os.path.join(config.remote_dir, config.station.lower())])
+        for station in remote_dict:
+            remote_files = set(remote_dict[station])
+            for f in remote_files:
+                print(f)
 
     if config.quota_management_enabled:
         # calculate the captured directory allowance and print to log
