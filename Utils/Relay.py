@@ -198,6 +198,15 @@ if __name__ == '__main__':
     stations_paths_list = getRemoteStationsPathsList(fs_root=FS_ROOT)
     doMaintenance(stations_paths_list)
 
+    if os.path.exists(REMOTE_FILES_DICT_PATH):
+        try:
+            with open(REMOTE_FILES_DICT_PATH, "r") as file_handle:
+                remote_files_dict = json.load(file_handle)
+
+        except:
+            log.info("Unable to load remote files dictionary, removing")
+            os.unlink(REMOTE_FILES_DICT_PATH)
+
     if not os.path.exists(REMOTE_FILES_DICT_PATH):
         remote_files_dict = getRemoteFilesDict(stations_paths_list)
         remote_files_dict_dir = os.path.dirname(REMOTE_FILES_DICT_PATH)
@@ -208,9 +217,7 @@ if __name__ == '__main__':
         with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
             json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
             file_handle.flush()
-            
-    with open(REMOTE_FILES_DICT_PATH, "r") as file_handle:
-        remote_files_dict = json.load(file_handle)
+
 
     while True:
 
@@ -289,6 +296,7 @@ if __name__ == '__main__':
 
                         with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
                             json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
+                            file_handle.flush()
 
                         time_elapsed_on_this_station_seconds = (datetime.datetime.now() - start_station_time).total_seconds()
                         # If we have been here too long. then break this loop and start on the next station
