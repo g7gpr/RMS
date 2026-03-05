@@ -37,7 +37,7 @@ log = getLogger("rmslogger", stdout=False)
 REMOTE_FILES_DICT_PATH = "/home/gmn/relay/remotefiles.json"
 FS_ROOT = "/home/"
 HOSTNAME = "gmn.uwo.ca"
-
+MAX_TIME_PER_STATION = 120
 
 
 
@@ -131,45 +131,18 @@ def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca"):
     return remote_file_dict_of_lists
 
 
-def uploadFile(station, f, hostname=HOSTNAME, test=False):
+def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False):
 
     if test:
         return True
-    username = station.lower()
-    log.info(f"Starting to upload file {f} for station {station}")
-    station_path = os.path.join(FS_ROOT, username)
-    key_path = os.path.join(station_path, ".ssh", "id_rsa")
-    try:
-        key = paramiko.RSAKey.from_private_key_file(key_path)
-        log.info(f"Found key for {username}")
-    except:
-        log.info("No key for {}".format(username))
-        return False
-
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    log.info(f"Attempting connection to {username}@{hostname} using key from {key_path}")
-    ssh.connect(hostname=hostname, username=username, pkey=key)
-
-
-    try:
-        sftp = ssh.open_sftp()
-        log.info(f"Opened connection {username}@{hostname}")
-    except:
-        log.info(f"Unable to open sftp connection for {username}")
-        return False
 
     local_file_path = os.path.join(FS_ROOT, station.lower(),"files",f)
     remote_file_path = os.path.join("files",f)
     if test:
         log.info(f"Simulating good upload of {local_file_path} to {remote_file_path} for station {station}")
         return True
-    log.info(f"Uploading {local_file_path} to {station}@{hostname}:{remote_file_path}")
-    try:
-        success = sftp.put(local_file_path, remote_file_path, confirm=True)
-    except:
-        success = False
-        log.info(f"Upload of {local_file_path} to {station}@{hostname}:{remote_file_path} failed.")
+    log.info(f"Uploading {os.path.basename(local_file_path)} to {station}@{hostname}:{remote_file_path}")
+    success = sftp.put(local_file_path, remote_file_path, confirm=True)
 
     return success
 
@@ -277,8 +250,37 @@ if __name__ == '__main__':
                 log.info(f"Files to upload for {station}")
 
                 files_to_upload = sortByPriority(files_to_upload)
+                username = station.lower()
+                station_path = os.path.join(FS_ROOT, username)
+                key_path = os.path.join(station_path, ".ssh", "id_rsa")
+                try:
+                    key = paramiko.RSAKey.from_private_key_file(key_path)
+                    log.info(f"Found key for {username}")
+                except:
+                    log.info("No key for {}".format(username))
+                    continue
+
+                ssh = paramiko.SSHClient()
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                log.info(f"Attempting connection to {username}@{HOSTNAME} using key from {key_path}")
+                ssh.connect(hostname=HOSTNAME, username=username, pkey=key)
+
+                try:
+                    sftp = ssh.open_sftp()
+                    log.info(f"Opened connection {username}@{HOSTNAME}")
+                except:
+                    log.info(f"Unable to open sftp connection for {username}")
+                    continue
+
+                # Record a start time for this station
+                start_station_time =  datetime.datetime.now()
+                if len(files_to_upload) > 0:
+                    if len(files_to_upload) == 1:
+                        log.info(f"For station {station}, 1 file to upload")
+                    else:
+                        log.info(f"For station {station}, {len(files_to_upload)} files to upload")
                 for f in files_to_upload:
-                    upload_success = uploadFile(station, f, test=False)
+                    upload_success = uploadFile(station, f, sftp, test=False)
                     if upload_success:
                         log.info(f"File {f} was uploaded successfully")
                         remote_files_set = set(remote_files_dict[station])
@@ -287,3 +289,9 @@ if __name__ == '__main__':
 
                         with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
                             json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
+
+                        time_elapsed_on_this_station_seconds = (datetime.datetime.now() - start_station_time).total_seconds()
+                        # If we have been here too long. then break this loop and start on the next station
+                        if time_elapsed_on_this_station_seconds > MAX_TIME_PER_STATION:
+                            log.info(f"Spent {time_elapsed_on_this_station_seconds:.2f} seconds, moving onto the next station")
+                            break
