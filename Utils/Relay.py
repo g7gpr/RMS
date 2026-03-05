@@ -275,7 +275,8 @@ if __name__ == '__main__':
 
                 ssh = paramiko.SSHClient()
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                log.info(f"Attempting connection to {username}@{HOSTNAME} using key from {key_path}")
+                if cml_args.verbose:
+                    log.info(f"Attempting connection to {username}@{HOSTNAME} using key from {key_path}")
                 ssh.connect(hostname=HOSTNAME, username=username, pkey=key)
 
                 try:
@@ -288,7 +289,7 @@ if __name__ == '__main__':
 
                 # Record a start time for this station
                 start_station_time =  datetime.datetime.now()
-                if len(files_to_upload) > 0:
+                if len(files_to_upload) > 0 and cml_args.verbose:
                     if len(files_to_upload) == 1:
                         log.info(f"For station {station}, 1 file to upload")
                     else:
