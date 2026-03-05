@@ -231,10 +231,21 @@ if __name__ == '__main__':
             json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
             file_handle.flush()
 
+    missing_stations = []
+    for station_path in stations_paths_list:
+        station = os.path.basename(station_path)
+        if not station in remote_files_dict:
+            log.info(f"Station {station} is missing from the remote files dict.")
+            remote_files_dict[station] = getRemoteFilesDict([station_path])[station]
+            if station in remote_files_dict:
+                log.info(f"Station {station} has been added")
+                with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
+                    json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
+                    file_handle.flush()
 
     out_of_time = False
     while True:
-        
+
         wait_time = (start_time - datetime.datetime.now())
         # If the uploader is more than one cycle late
         while wait_time.total_seconds() < (0 - cycle_time_seconds):
