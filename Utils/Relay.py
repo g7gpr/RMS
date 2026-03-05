@@ -150,7 +150,7 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
     upload_end_time = datetime.datetime.now()
     time_elapsed_seconds = (upload_end_time - upload_start_time).total_seconds()
     size = os.path.getsize(local_file_path)  / (1000 * 1000)
-    data_rate = size / (time_elapsed_seconds)
+    data_rate = size / time_elapsed_seconds
     if counter is None:
         log.info(f"Uploaded {os.path.basename(local_file_path)} to {station}@{hostname}:{remote_file_path} at {data_rate:6.2f}MB/s")
     else:
@@ -342,8 +342,7 @@ if __name__ == '__main__':
                         log.info(f"For station {station}, {len(files_to_upload)} files to upload")
                 i, data_sent, time_elapsed_on_this_station_seconds, data_rate = 0, 0, None, 0
                 for f in files_to_upload:
-                    time_elapsed_on_this_station_seconds = (
-                                datetime.datetime.now() - start_station_time).total_seconds()
+                    time_elapsed_on_this_station_seconds = (datetime.datetime.now() - start_station_time).total_seconds()
                     # If we have been here too long. then break this loop and start on the next station
                     if time_elapsed_on_this_station_seconds > MAX_TIME_PER_STATION:
                         log.info(f"Spent {time_elapsed_on_this_station_seconds:.0f} seconds, moving onto the next station")
@@ -360,6 +359,7 @@ if __name__ == '__main__':
                         remote_files_set = set(remote_files_dict[station])
                         remote_files_set.add(f)
                         remote_files_dict[station] = list(remote_files_set)
+                    time_elapsed_on_this_station_seconds = (datetime.datetime.now() - start_station_time).total_seconds()
                 if time_elapsed_on_this_station_seconds is not None:
                     data_rate = data_sent / time_elapsed_on_this_station_seconds
                 log.info(f"{data_sent:4.0f}MB were uploaded for station {station} at {data_rate:3.2f}MB/s")
