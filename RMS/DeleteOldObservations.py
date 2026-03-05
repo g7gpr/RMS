@@ -93,12 +93,12 @@ def quotaReport(capt_dir_quota, config, after=False):
 
 
     rep = "\n\n"
-    rep += ("-----------------------------------------------------\n")
+    rep += ("--------------------------------------------------------------\n")
     if after:
         rep += ("Directory quotas after management\n")
     else:
         rep += ("Directory quotas before management\n")
-    rep += ("-----------------------------------------------------\n")
+    rep += ("--------------------------------------------------------------\n")
     rep += ("Usage and quotas\n")
     rep += "\n"
     rep += ("                                           Used     Quota\n")
@@ -116,7 +116,7 @@ def quotaReport(capt_dir_quota, config, after=False):
     rep += "\n"
     rep += ("Space on drive                          \n")
     rep += ("           Available space on drive : {:7.02f}GB\n".format(availableSpace(config.data_dir) / (1024 ** 3)))
-    rep += ("-----------------------------------------------------\n")
+    rep += ("--------------------------------------------------------------\n")
 
     return rep
 
