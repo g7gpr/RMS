@@ -123,7 +123,7 @@ def quotaReport(capt_dir_quota, config, after=False):
     rep += ("    total for archived and captured : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(usedSpace(config.data_dir), config.rms_data_quota, total_rms_data_pc))
     rep += "\n"
     rep += ("Logical partition information\n")
-    rep += ("                     RMS_data       : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(usage.used / (1024 ** 3), usage.total / (1024 ** 3) , 100 * usage.used / usage.total))
+    rep += ("      partition containing RMS_data : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(usage.used / (1024 ** 3), usage.total / (1024 ** 3) , 100 * usage.used / usage.total))
     rep += ("--------------------------------------------------------------\n")
 
     return rep
