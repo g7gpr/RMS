@@ -90,6 +90,11 @@ def quotaReport(capt_dir_quota, config, after=False):
     else:
         total_rms_data_pc = 0
 
+    if capt_dir_quota != 0:
+        captured_dir_pc = 100 * usedSpace(captured_dir) / capt_dir_quota
+    else:
+        captured_dir_pc = 0
+
 
 
     rep = "\n\n"
@@ -111,7 +116,7 @@ def quotaReport(capt_dir_quota, config, after=False):
     rep += ("                          bz2 files : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(sizeBz2Files(config), config.bz2_files_quota, bz2_files_pc))
     rep += ("               archived directories : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(sizeArchivedDirs(config), config.arch_dir_quota, arch_dir_pc))
     rep += ("                 total for archives : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(usedSpace(archived_dir), config.arch_dir_quota + config.bz2_files_quota, total_arch_pc))
-    rep += ("               captured directories : {:7.02f}GB\n".format(usedSpace(captured_dir), capt_dir_quota))
+    rep += ("               captured directories : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(usedSpace(captured_dir), capt_dir_quota, captured_dir_pc))
     rep += ("                 total for RMS_data : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(usedSpace(config.data_dir), config.rms_data_quota, total_rms_data_pc))
     rep += "\n"
     rep += ("Space on drive                          \n")
