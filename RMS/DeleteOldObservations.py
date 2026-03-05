@@ -762,7 +762,7 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
     deleteOldDirs(data_dir, config)
 
     if True:
-        remote_dict = getRemoteFilesDict([os.path.join(config.remote_dir, config.stationID.lower())])
+        remote_dict = getRemoteFilesDict([os.path.join("/home/", config.stationID.lower())])
         for station in remote_dict:
             remote_files = set(remote_dict[station])
             for f in remote_files:

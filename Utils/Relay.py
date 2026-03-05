@@ -123,6 +123,7 @@ def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca", verbose=
             log.info(f"Unable to open sftp connection for {username}")
             continue
 
+        ssh.close()
         for f in remote_unprocessed_files:
             if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
                 remote_timelapse_files.append(f)
@@ -363,7 +364,7 @@ if __name__ == '__main__':
                         if time_elapsed_on_this_station_seconds is not None:
                             data_rate = data_sent / time_elapsed_on_this_station_seconds
                         log.info(f"{data_sent:4.0f}MB were uploaded for station {station} at {data_rate:3.2f}MB/s")
-
+                        ssh.close()
                 except:
                     log.info(f"Unable to open sftp connection for {username}")
                     continue
