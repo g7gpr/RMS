@@ -122,7 +122,7 @@ def quotaReport(capt_dir_quota, config, after=False):
     rep += ("               captured directories : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(usedSpace(captured_dir), capt_dir_quota, captured_dir_pc))
     rep += ("    total for archived and captured : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(usedSpace(config.data_dir), config.rms_data_quota, total_rms_data_pc))
     rep += "\n"
-    rep += ("Space on drive                          \n")
+    rep += ("Drive information                          \n")
     rep += ("                     RMS_data drive : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(usage.used / (1024 ** 3), usage.total / (1024 ** 3) , 100 * usage.used / usage.total))
     rep += ("--------------------------------------------------------------\n")
 
