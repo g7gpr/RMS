@@ -60,7 +60,7 @@ def quotaReport(capt_dir_quota, config, after=False):
     video_files_used_space = usedSpace(video_files)
     continuous_capture_used_space = frames_files_used_space + time_files_used_space + video_files_used_space
 
-    if config.log_files_quota != 0
+    if config.log_files_quota != 0:
         log_files_pc = 100 * usedSpace(log_dir) / config.log_files_quota
     else:
         log_files_pc = 0
