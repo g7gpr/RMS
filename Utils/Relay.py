@@ -245,7 +245,8 @@ if __name__ == '__main__':
         start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
 
         for station in remote_files_dict:
-            log.info(f"Working on {station}")
+            if cml_args.verbose:
+                log.info(f"Working on {station}")
             remote_files_set = set(remote_files_dict[station])
             local_files = set(os.listdir(os.path.join(FS_ROOT,station,"files")))
             local_data_files = []
