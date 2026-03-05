@@ -323,7 +323,6 @@ if __name__ == '__main__':
                         delay_minutes = delay_seconds / 60
                         restart_time = (datetime.datetime.now() + datetime.timedelta(seconds = delay_seconds)).replace(microsecond=0)
                         log.info(f"Connection refused - waiting {delay_minutes:.1f} minutes - continuing at {restart_time}")
-                        time.sleep(60 * 20)
                         time.sleep(delay_seconds)
 
                 try:
