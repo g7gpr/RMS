@@ -69,28 +69,17 @@ def quotaReport(capt_dir_quota, config, after=False):
     rep += ("-----------------------------------------------\n")
     rep += ("Space used                              \n")
     rep += "\n"
-    rep += ("                          log files : {:7.02f}GB\n".format(usedSpace(log_dir)))
+    rep += ("                                       Used     Quota")
+    rep += ("                          log files : {:7.02f}GB {:7.02f}GB\n".format(usedSpace(log_dir), config.log_files_quota))
     rep += ("                       frames files : {:7.02f}GB\n".format(frames_files_used_space))
     rep += ("                         time files : {:7.02f}GB\n".format(time_files_used_space))
     rep += ("                        video files : {:7.02f}GB\n".format(video_files_used_space))
-    rep += ("       total for continuous capture : {:7.02f}GB\n".format(continuous_capture_used_space))
-
-    rep += ("                          bz2 files : {:7.02f}GB\n".format(sizeBz2Files(config)))
-    rep += ("               archived directories : {:7.02f}GB\n".format(sizeArchivedDirs(config)))
-    rep += ("                 total for archives : {:7.02f}GB\n".format(usedSpace(archived_dir)))
-
-    rep += ("               captured directories : {:7.02f}GB\n".format(usedSpace(captured_dir)))
-    rep += ("                 total for RMS_data : {:7.02f}GB\n".format(usedSpace(config.data_dir)))
-
-    rep += "\n"
-    rep += ("Quotas allowed                                  \n")
-
-    rep += ("           total quota for RMS_data : {:7.02f}GB\n".format(config.rms_data_quota))
-    rep += ("                     bz2 file quota : {:7.02f}GB\n".format(config.bz2_files_quota))
-    rep += ("         archived directories quota : {:7.02f}GB\n".format(config.arch_dir_quota))
-    rep += ("                    log files quota : {:7.02f}GB\n".format(config.log_files_quota))
-    rep += ("           continuous capture quota : {:7.02f}GB\n".format(config.continuous_capture_quota))
-    rep += (" quota remaining for captured files : {:7.02f}GB\n".format(capt_dir_quota))
+    rep += ("       total for continuous capture : {:7.02f}GB {:7.02f}GB\n".format(continuous_capture_used_space), config.continuous_capture_quota)
+    rep += ("                          bz2 files : {:7.02f}GB {:7.02f}GB\n".format(sizeBz2Files(config)), config.bz2_files_quota)
+    rep += ("               archived directories : {:7.02f}GB {:7.02f}GB\n".format(sizeArchivedDirs(config)), config.arch_dir_quota)
+    rep += ("                 total for archives : {:7.02f}GB {:7.02f}GB\n".format(usedSpace(archived_dir), config.arch_dir_quota + config.bz2_files_quota))
+    rep += ("               captured directories : {:7.02f}GB\n".format(usedSpace(captured_dir), capt_dir_quota))
+    rep += ("                 total for RMS_data : {:7.02f}GB {:7.02f}GB\n".format(usedSpace(config.data_dir), config.rms_data_quota))
 
     rep += "\n"
     rep += ("Space on drive                          \n")
