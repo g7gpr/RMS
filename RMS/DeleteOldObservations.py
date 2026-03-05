@@ -11,6 +11,7 @@ import time
 import glob
 import argparse
 import subprocess
+import paramiko
 
 import ephem
 
@@ -761,12 +762,37 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
     log.info('clearing down old data')
     deleteOldDirs(data_dir, config)
 
+    verbose = True
     if True:
-        remote_dict = getRemoteFilesDict([os.path.join("/home/", config.stationID.lower())])
-        for station in remote_dict:
-            remote_files = set(remote_dict[station])
-            for f in remote_files:
-                print(f)
+        username  = config.stationID.lower()
+
+        try:
+            key = paramiko.RSAKey.from_private_key_file(config.rsa_private_key)
+            if verbose:
+                log.info(f"Found key for {username}")
+        except:
+            log.info("No key for {}".format(username))
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        if verbose:
+            log.info(f"Attempting connection to {username}@{config.hostname} using key from {config.rsa_private_key}")
+        ssh.connect(hostname=config.hostname, username=username, pkey=key)
+
+        try:
+            with ssh.open_sftp() as sftp:
+                remote_processed_files = sftp.listdir(os.path.join("files", "processed"))
+                remote_unprocessed_files = sftp.listdir(os.path.join("files"))
+        except:
+            log.info(f"Unable to open sftp connection for {username}")
+
+
+        ssh.close()
+        remote_timelapse_files = []
+        for f in remote_unprocessed_files:
+            if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
+                remote_timelapse_files.append(f)
+        remote_files = remote_processed_files + remote_timelapse_files
+        remote_files.sort()
 
     if config.quota_management_enabled:
         # calculate the captured directory allowance and print to log
