@@ -165,7 +165,11 @@ def uploadFile(station, f, hostname=HOSTNAME, test=False):
         log.info(f"Simulating good upload of {local_file_path} to {remote_file_path} for station {station}")
         return True
     log.info(f"Uploading {local_file_path} to {station}@{hostname}:{remote_file_path}")
-    success = sftp.put(local_file_path, remote_file_path, confirm=True)
+    try:
+        success = sftp.put(local_file_path, remote_file_path, confirm=True)
+    except:
+        success = False
+        log.info(f"Upload of {local_file_path} to {station}@{hostname}:{remote_file_path} failed.")
 
     return success
 
