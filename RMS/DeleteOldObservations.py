@@ -794,6 +794,9 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
         remote_files = remote_processed_files + remote_timelapse_files
         remote_files.sort()
 
+        for f in remote_files:
+            log.info(f"Found {f} on remote")
+
     if config.quota_management_enabled:
         # calculate the captured directory allowance and print to log
         if (config.rms_data_quota is None or
