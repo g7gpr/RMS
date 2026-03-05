@@ -154,10 +154,9 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
     size = os.path.getsize(local_file_path)  / (1000 * 1000)
     data_rate = size / time_elapsed_seconds
     if counter is None:
-        log.info(f"Uploaded {os.path.basename(local_file_path)} to {station}@{hostname}:{remote_file_path} at {data_rate:6.2f}MB/s")
+        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {time_elapsed_seconds:.0f} seconds at {data_rate:3.2f}MB/s")
     else:
-        log.info(
-            f"Uploaded {size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {time_elapsed_seconds:.0f} seconds at {data_rate:3.2f}MB/s ({counter})")
+        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {time_elapsed_seconds:.0f} seconds at {data_rate:3.2f}MB/s ({counter})")
     return success, size
 
 def doMaintenance(stations_paths_list):
