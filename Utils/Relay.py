@@ -294,12 +294,15 @@ if __name__ == '__main__':
                         remote_files_set.add(f)
                         remote_files_dict[station] = list(remote_files_set)
 
-                        with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
-                            json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
-                            file_handle.flush()
+
 
                         time_elapsed_on_this_station_seconds = (datetime.datetime.now() - start_station_time).total_seconds()
                         # If we have been here too long. then break this loop and start on the next station
                         if time_elapsed_on_this_station_seconds > MAX_TIME_PER_STATION:
                             log.info(f"Spent {time_elapsed_on_this_station_seconds:.2f} seconds, moving onto the next station")
                             break
+
+                # Write out the updated json file - do this once per station to reduce the chance of corruption
+                with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
+                    json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
+                    file_handle.flush()
