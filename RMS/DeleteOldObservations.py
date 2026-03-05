@@ -727,6 +727,68 @@ def deleteFiles(dir_path, config, delete_all=False):
 
     return getFiles(dir_path, config.stationID)
 
+def deleteFilesHeldOnServer(config, verbose = False):
+
+
+
+
+    username  = config.stationID.lower()
+    archived_dir = os.path.join(config.data_dir, config.archived_dir)
+
+    try:
+        key = paramiko.RSAKey.from_private_key_file(config.rsa_private_key)
+        if verbose:
+            log.info(f"Found key for {username}")
+    except:
+        log.info("No key for {}".format(username))
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    if verbose:
+        log.info(f"Attempting connection to {username}@{config.hostname} using key from {config.rsa_private_key}")
+    ssh.connect(hostname=config.hostname, username=username, pkey=key)
+
+    try:
+        with ssh.open_sftp() as sftp:
+            remote_processed_files = sftp.listdir(os.path.join(config.remote_dir, "processed"))
+            remote_unprocessed_files = sftp.listdir(os.path.join(config.remote_dir))
+    except:
+        log.info(f"Unable to open sftp connection for {username}")
+
+
+    ssh.close()
+    remote_timelapse_files = []
+    for f in remote_unprocessed_files:
+        if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
+            remote_timelapse_files.append(f)
+
+    # Form the set of files to delete - the files which are found locally and remote
+    files_to_delete_set = set(os.listdir(archived_dir)) & set(remote_processed_files)
+
+    # Make a list of files to delete and a list of directories to delete
+    files_to_delete_list, dirs_to_delete_list = [], []
+    for f in files_to_delete_set:
+        path_to_delete = os.path.expanduser(os.path.join(archived_dir, f))
+        if os.path.exists(path_to_delete):
+            files_to_delete_list.append(path_to_delete)
+        # If both imgdata and metadata are in the sets, then we can delete the directory
+        if len(f.split("_")) >= 4:
+            if f.split("_")[4].startswith("imgdata"):
+                metadata_f_name = f.replace("imgdata", "metadata")
+                if metadata_f_name in files_to_delete_set:
+                    directory = "_".join(f.split("_")[0:3])
+                    directory = os.path.join(archived_dir, directory)
+                    dirs_to_delete_list.append(directory)
+    files_to_delete_list.sort()
+    dirs_to_delete_list.sort()
+
+    for f in files_to_delete_list:
+        log.info(f"Deleting file      : {f}")
+
+    for d in dirs_to_delete_list:
+        log.info(f"Deleting directory : {d}")
+
+
+
 
 
 
@@ -762,53 +824,9 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
     log.info('clearing down old data')
     deleteOldDirs(data_dir, config)
 
-    verbose = True
     if True:
-        username  = config.stationID.lower()
+        deleteFilesHeldOnServer(config, verbose=True)
 
-        try:
-            key = paramiko.RSAKey.from_private_key_file(config.rsa_private_key)
-            if verbose:
-                log.info(f"Found key for {username}")
-        except:
-            log.info("No key for {}".format(username))
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        if verbose:
-            log.info(f"Attempting connection to {username}@{config.hostname} using key from {config.rsa_private_key}")
-        ssh.connect(hostname=config.hostname, username=username, pkey=key)
-
-        try:
-            with ssh.open_sftp() as sftp:
-                remote_processed_files = sftp.listdir(os.path.join("files", "processed"))
-                remote_unprocessed_files = sftp.listdir(os.path.join("files"))
-        except:
-            log.info(f"Unable to open sftp connection for {username}")
-
-
-        ssh.close()
-        remote_timelapse_files = []
-        for f in remote_unprocessed_files:
-            if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
-                remote_timelapse_files.append(f)
-
-        # Form the set of files to delete - the files which are found locally and remote
-        files_to_delete_set = set(os.listdir(archived_dir)) & set(remote_processed_files)
-
-        # Make a list of files to delete and a list of directories to delete
-        files_to_delete_list, dirs_to_delete_list = [], []
-        for f in files_to_delete_set:
-            path_to_delete = os.path.expanduser(os.path.join(archived_dir, f))
-            if os.path.exists(path_to_delete):
-                files_to_delete_list.append(path_to_delete)
-            # If both imgdata and metadata are in the sets, then we can delete the directory
-            if len(f.split("_")) >= 4:
-                if f.split("_")[4].startswith("imgdata"):
-                    metadata_f_name = f.replace("imgdata", "metadata")
-                    if metadata_f_name in files_to_delete_set:
-                        directory = "_".join(f.split("_")[0:3])
-                        directory = os.path.join(archived_dir, directory)
-                        dirs_to_delete_list.append(directory)
 
     if config.quota_management_enabled:
         # calculate the captured directory allowance and print to log
