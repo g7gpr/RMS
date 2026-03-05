@@ -18,6 +18,7 @@ from RMS.CaptureDuration import captureDuration
 from RMS.ConfigReader import loadConfigFromDirectory
 from RMS.Logger import LoggingManager, getLogger
 from RMS.Misc import RmsDateTime, UTCFromTimestamp
+from pathlib import Path
 
 # Get the logger from the main module
 log = getLogger("rmslogger")
@@ -95,7 +96,7 @@ def quotaReport(capt_dir_quota, config, after=False):
     else:
         captured_dir_pc = 0
 
-
+    usage = shutil.disk_usage(config.data_dir)
 
     rep = "\n\n"
     rep += ("--------------------------------------------------------------\n")
@@ -122,7 +123,7 @@ def quotaReport(capt_dir_quota, config, after=False):
     rep += ("    total for archived and captured : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(usedSpace(config.data_dir), config.rms_data_quota, total_rms_data_pc))
     rep += "\n"
     rep += ("Space on drive                          \n")
-    rep += ("           Available space on drive : {:7.02f}GB\n".format(availableSpace(config.data_dir) / (1024 ** 3)))
+    rep += ("                     RMS_data drive : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(usage.used / (1024 ** 3), usage.total / (1024 ** 3) , 100 * usage.used / usage.total))
     rep += ("--------------------------------------------------------------\n")
 
     return rep
