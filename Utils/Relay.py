@@ -101,13 +101,15 @@ def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca"):
         key_path = os.path.join(station_path, ".ssh", "id_rsa")
         try:
             key = paramiko.RSAKey.from_private_key_file(key_path)
-            log.info(f"Found key for {username}")
+            if cml_args.verbose:
+                log.info(f"Found key for {username}")
         except:
             log.info("No key for {}".format(username))
             continue
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        log.info(f"Attempting connection to {username}@{hostname} using key from {key_path}")
+        if cml_args.verbose:
+            log.info(f"Attempting connection to {username}@{hostname} using key from {key_path}")
         ssh.connect(hostname=hostname, username=username, pkey=key)
 
         try:
@@ -149,7 +151,8 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False):
 def doMaintenance(stations_paths_list):
 
     for station_path in stations_paths_list:
-        log.info(f"Performing maintenance of {os.path.basename(station_path)}")
+        if cml_args.verbose:
+            log.info(f"Performing maintenance of {os.path.basename(station_path)}")
         pass
         incoming_directory_path = os.path.join(station_path,"files","incoming")
         files_directory_path = os.path.join(station_path, "files")
@@ -254,7 +257,8 @@ if __name__ == '__main__':
             local_files_set = set(local_data_files)
             files_to_upload = sorted(list(local_files_set - remote_files_set))
             if len(files_to_upload):
-                log.info(f"Files to upload for {station}")
+                if cml_args.versbose:
+                    log.info(f"Files to upload for {station}")
 
                 files_to_upload = sortByPriority(files_to_upload)
                 username = station.lower()
@@ -262,7 +266,8 @@ if __name__ == '__main__':
                 key_path = os.path.join(station_path, ".ssh", "id_rsa")
                 try:
                     key = paramiko.RSAKey.from_private_key_file(key_path)
-                    log.info(f"Found key for {username}")
+                    if cml_args.verbose:
+                        log.info(f"Found key for {username}")
                 except:
                     log.info("No key for {}".format(username))
                     continue
@@ -274,7 +279,8 @@ if __name__ == '__main__':
 
                 try:
                     sftp = ssh.open_sftp()
-                    log.info(f"Opened connection {username}@{HOSTNAME}")
+                    if cml_args.verbose:
+                        log.info(f"Opened connection {username}@{HOSTNAME}")
                 except:
                     log.info(f"Unable to open sftp connection for {username}")
                     continue
@@ -289,7 +295,8 @@ if __name__ == '__main__':
                 for f in files_to_upload:
                     upload_success = uploadFile(station, f, sftp, test=False)
                     if upload_success:
-                        log.info(f"File {f} was uploaded successfully")
+                        if cml_args.verbose:
+                            log.info(f"File {f} was uploaded successfully")
                         remote_files_set = set(remote_files_dict[station])
                         remote_files_set.add(f)
                         remote_files_dict[station] = list(remote_files_set)
