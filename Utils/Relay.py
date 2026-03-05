@@ -257,7 +257,7 @@ if __name__ == '__main__':
             local_files_set = set(local_data_files)
             files_to_upload = sorted(list(local_files_set - remote_files_set))
             if len(files_to_upload):
-                if cml_args.versbose:
+                if cml_args.verbose:
                     log.info(f"Files to upload for {station}")
 
                 files_to_upload = sortByPriority(files_to_upload)
