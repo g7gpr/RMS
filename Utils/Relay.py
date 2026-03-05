@@ -20,7 +20,9 @@
 import os
 import subprocess
 import shutil
+import random
 
+from cv2 import connectedComponentsWithStats
 
 from RMS.Formats.Platepar import stationData
 from RMS.Logger import getLogger
@@ -133,20 +135,28 @@ def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca"):
     return remote_file_dict_of_lists
 
 
-def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False):
+def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
 
     if test:
-        return True
+        return True, 0
 
     local_file_path = os.path.join(FS_ROOT, station.lower(),"files",f)
     remote_file_path = os.path.join("files",f)
     if test:
         log.info(f"Simulating good upload of {local_file_path} to {remote_file_path} for station {station}")
-        return True
-    log.info(f"Uploading {os.path.basename(local_file_path)} to {station}@{hostname}:{remote_file_path}")
+        return True, 0
+    upload_start_time = datetime.datetime.now()
     success = sftp.put(local_file_path, remote_file_path, confirm=True)
-
-    return success
+    upload_end_time = datetime.datetime.now()
+    time_elapsed_seconds = (upload_end_time - upload_start_time).total_seconds()
+    size = os.path.getsize(local_file_path)  / (1000 * 1000)
+    data_rate = size / (time_elapsed_seconds)
+    if counter is None:
+        log.info(f"Uploaded {os.path.basename(local_file_path)} to {station}@{hostname}:{remote_file_path} at {data_rate:6.2f}MB/s")
+    else:
+        log.info(
+            f"Uploaded {size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {time_elapsed_seconds:.0f} seconds at {data_rate:3.2f}MB/s ({counter})")
+    return success, size
 
 def doMaintenance(stations_paths_list):
 
@@ -176,7 +186,7 @@ def doMaintenance(stations_paths_list):
 if __name__ == '__main__':
 
 
-    start_time = datetime.datetime.now()
+    start_time = datetime.datetime.now().replace(microsecond=0)
     # Init the command line arguments parser
     arg_parser = argparse.ArgumentParser(description=""" Upload files using sftp.""")
 
@@ -197,7 +207,7 @@ if __name__ == '__main__':
 
     cycle_time_seconds = cycle_time_minutes * 60
 
-    log.info("Uploader relay starting")
+    log.info(f"Uploader relay starting at {start_time}")
     stations_paths_list = getRemoteStationsPathsList(fs_root=FS_ROOT)
     doMaintenance(stations_paths_list)
 
@@ -222,8 +232,9 @@ if __name__ == '__main__':
             file_handle.flush()
 
 
+    out_of_time = False
     while True:
-
+        
         wait_time = (start_time - datetime.datetime.now())
         # If the uploader is more than one cycle late
         while wait_time.total_seconds() < (0 - cycle_time_seconds):
@@ -232,17 +243,22 @@ if __name__ == '__main__':
             if cml_args.verbose:
                 log.info("Skipping an upload cycle, because more than a whole cycle late")
 
-        if wait_time.total_seconds() > 1:
-            log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time.strftime('%H:%M:%S')}")
-            time.sleep(wait_time.total_seconds())
+        if out_of_time:
+            log.info("Not waiting - some stations did not fully upload on last pass")
+            out_of_time = False
         else:
-            if wait_time.total_seconds() > -3:
-                pass
-
+            if wait_time.total_seconds() > 1:
+                log.info(f"Waiting {str(wait_time).split('.')[0]} before restarting upload process at {start_time.strftime('%H:%M:%S')}")
+                time.sleep(wait_time.total_seconds())
             else:
-                pass
+                if wait_time.total_seconds() > -3:
+                    pass
 
-        start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
+                else:
+                    pass
+
+            start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
+
 
         for station in remote_files_dict:
             if cml_args.verbose:
@@ -257,6 +273,13 @@ if __name__ == '__main__':
                     local_data_files.append(f)
             local_files_set = set(local_data_files)
             files_to_upload = sorted(list(local_files_set - remote_files_set))
+
+            total_data = 0
+            for f in files_to_upload:
+                total_data += os.path.getsize(os.path.join(FS_ROOT, station.lower(), "files", f))  / (1000 * 1000)
+            if total_data > 0 or cml_args.verbose:
+                log.info(f"For station {station} {total_data:.0f}MB to upload")
+
             if len(files_to_upload):
                 if cml_args.verbose:
                     log.info(f"Files to upload for {station}")
@@ -275,9 +298,21 @@ if __name__ == '__main__':
 
                 ssh = paramiko.SSHClient()
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                if cml_args.verbose:
-                    log.info(f"Attempting connection to {username}@{HOSTNAME} using key from {key_path}")
-                ssh.connect(hostname=HOSTNAME, username=username, pkey=key)
+
+                connected = False
+                while not connected:
+                    try:
+                        if cml_args.verbose:
+                            log.info(f"Attempting connection to {username}@{HOSTNAME} using key from {key_path}")
+                        ssh.connect(hostname=HOSTNAME, username=username, pkey=key)
+                        connected = True
+                    except:
+                        delay_seconds = random.randint(1200, 2400)
+                        delay_minutes = delay_seconds / 60
+                        restart_time = (datetime.datetime.now() + datetime.timedelta(seconds = delay_seconds)).replace(microsecond=0)
+                        log.info(f"Connection refused - waiting {delay_minutes:.1f} minutes - continuing at {restart_time}")
+                        time.sleep(60 * 20)
+                        time.sleep(delay_seconds)
 
                 try:
                     sftp = ssh.open_sftp()
@@ -294,23 +329,29 @@ if __name__ == '__main__':
                         log.info(f"For station {station}, 1 file to upload")
                     else:
                         log.info(f"For station {station}, {len(files_to_upload)} files to upload")
+                i, data_sent, time_elapsed_on_this_station_seconds, data_rate = 0, 0, None, 0
                 for f in files_to_upload:
-                    upload_success = uploadFile(station, f, sftp, test=False)
+                    time_elapsed_on_this_station_seconds = (
+                                datetime.datetime.now() - start_station_time).total_seconds()
+                    # If we have been here too long. then break this loop and start on the next station
+                    if time_elapsed_on_this_station_seconds > MAX_TIME_PER_STATION:
+                        log.info(f"Spent {time_elapsed_on_this_station_seconds:.0f} seconds, moving onto the next station")
+                        if not out_of_time:
+                            log.info(f"{station} ran out of time - setting out_of_time to True")
+                            out_of_time = True
+                        break
+                    i += 1
+                    upload_success, mb_sent = uploadFile(station, f, sftp, test=False, counter=f"{i}/{len(files_to_upload)}")
+                    data_sent += mb_sent
                     if upload_success:
                         if cml_args.verbose:
                             log.info(f"File {f} was uploaded successfully")
                         remote_files_set = set(remote_files_dict[station])
                         remote_files_set.add(f)
                         remote_files_dict[station] = list(remote_files_set)
-
-
-
-                        time_elapsed_on_this_station_seconds = (datetime.datetime.now() - start_station_time).total_seconds()
-                        # If we have been here too long. then break this loop and start on the next station
-                        if time_elapsed_on_this_station_seconds > MAX_TIME_PER_STATION:
-                            log.info(f"Spent {time_elapsed_on_this_station_seconds:.2f} seconds, moving onto the next station")
-                            break
-
+                if time_elapsed_on_this_station_seconds is not None:
+                    data_rate = data_sent / time_elapsed_on_this_station_seconds
+                log.info(f"{data_sent:4.0f}MB were uploaded for station {station} at {data_rate:3.2f}MB/s")
                 # Write out the updated json file - do this once per station to reduce the chance of corruption
                 with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
                     json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
