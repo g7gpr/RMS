@@ -91,27 +91,27 @@ def getRemoteStationsPathsList(fs_root="/home/"):
     return station_files_paths_list
 
 
-def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca"):
+def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca", verbose=False):
 
     log.info("Gather remote file information")
 
     remote_file_dict_of_lists = {}
     remote_timelapse_files = []
     for station_path in station_files_paths_list:
-        if cml_args.verbose:
+        if verbose:
             log.info(f"Working on {station_path}")
         username = os.path.basename(station_path)
         key_path = os.path.join(station_path, ".ssh", "id_rsa")
         try:
             key = paramiko.RSAKey.from_private_key_file(key_path)
-            if cml_args.verbose:
+            if verbose:
                 log.info(f"Found key for {username}")
         except:
             log.info("No key for {}".format(username))
             continue
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        if cml_args.verbose:
+        if verbose:
             log.info(f"Attempting connection to {username}@{hostname} using key from {key_path}")
         ssh.connect(hostname=hostname, username=username, pkey=key)
 
