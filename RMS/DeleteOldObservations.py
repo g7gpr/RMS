@@ -791,11 +791,24 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
         for f in remote_unprocessed_files:
             if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
                 remote_timelapse_files.append(f)
-        remote_files = remote_processed_files + remote_timelapse_files
-        remote_files.sort()
 
-        for f in remote_files:
-            log.info(f"Found {f} on remote")
+        # Form the set of files to delete - the files which are found locally and remote
+        files_to_delete_set = set(os.listdir(archived_dir)) & set(remote_processed_files)
+
+        # Make a list of files to delete and a list of directories to delete
+        files_to_delete_list, dirs_to_delete_list = [], []
+        for f in files_to_delete_set:
+            path_to_delete = os.path.expanduser(os.path.join(archived_dir, f))
+            if os.path.exists(path_to_delete):
+                files_to_delete_list.append(path_to_delete)
+            # If both imgdata and metadata are in the sets, then we can delete the directory
+            if len(f.split("_")) >= 4:
+                if f.split("_")[4].startswith("imgdata"):
+                    metadata_f_name = f.replace("imgdata", "metadata")
+                    if metadata_f_name in files_to_delete_set:
+                        directory = "_".join(f.split("_")[0:3])
+                        directory = os.path.join(archived_dir, directory)
+                        dirs_to_delete_list.append(directory)
 
     if config.quota_management_enabled:
         # calculate the captured directory allowance and print to log
