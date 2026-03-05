@@ -122,6 +122,8 @@ def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca"):
 
         remote_processed_files = sftp.listdir(os.path.join("files", "processed"))
         remote_unprocessed_files = sftp.listdir(os.path.join("files"))
+        sftp.close()
+        ssh.close()
         for f in remote_unprocessed_files:
             if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
                 remote_timelapse_files.append(f)
@@ -363,7 +365,11 @@ if __name__ == '__main__':
                 if time_elapsed_on_this_station_seconds is not None:
                     data_rate = data_sent / time_elapsed_on_this_station_seconds
                 log.info(f"{data_sent:4.0f}MB were uploaded for station {station} at {data_rate:3.2f}MB/s")
+                sftp.close()
+                ssh.close()
+
                 # Write out the updated json file - do this once per station to reduce the chance of corruption
                 with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
                     json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
                     file_handle.flush()
+
