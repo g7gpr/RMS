@@ -329,40 +329,40 @@ if __name__ == '__main__':
                     with ssh.open_sftp() as sftp:
                         if cml_args.verbose:
                             log.info(f"Opened connection {username}@{HOSTNAME}")
-                            # Record a start time for this station
-                            start_station_time = datetime.datetime.now()
-                            if len(files_to_upload) > 0 and cml_args.verbose:
-                                if len(files_to_upload) == 1:
-                                    log.info(f"For station {station}, 1 file to upload")
-                                else:
-                                    log.info(f"For station {station}, {len(files_to_upload)} files to upload")
-                            i, data_sent, time_elapsed_on_this_station_seconds, data_rate = 0, 0, None, 0
-                            for f in files_to_upload:
-                                time_elapsed_on_this_station_seconds = (
-                                            datetime.datetime.now() - start_station_time).total_seconds()
-                                # If we have been here too long. then break this loop and start on the next station
-                                if time_elapsed_on_this_station_seconds > MAX_TIME_PER_STATION:
-                                    log.info(
-                                        f"Spent {time_elapsed_on_this_station_seconds:.0f} seconds, moving onto the next station")
-                                    if not out_of_time:
-                                        log.info(f"{station} ran out of time - setting out_of_time to True")
-                                        out_of_time = True
-                                    break
-                                i += 1
-                                upload_success, mb_sent = uploadFile(station, f, sftp, test=False,
-                                                                     counter=f"{i}/{len(files_to_upload)}")
-                                data_sent += mb_sent
-                                if upload_success:
-                                    if cml_args.verbose:
-                                        log.info(f"File {f} was uploaded successfully")
-                                    remote_files_set = set(remote_files_dict[station])
-                                    remote_files_set.add(f)
-                                    remote_files_dict[station] = list(remote_files_set)
-                                time_elapsed_on_this_station_seconds = (
-                                            datetime.datetime.now() - start_station_time).total_seconds()
-                            if time_elapsed_on_this_station_seconds is not None:
-                                data_rate = data_sent / time_elapsed_on_this_station_seconds
-                            log.info(f"{data_sent:4.0f}MB were uploaded for station {station} at {data_rate:3.2f}MB/s")
+                        # Record a start time for this station
+                        start_station_time = datetime.datetime.now()
+                        if len(files_to_upload) > 0 and cml_args.verbose:
+                            if len(files_to_upload) == 1:
+                                log.info(f"For station {station}, 1 file to upload")
+                            else:
+                                log.info(f"For station {station}, {len(files_to_upload)} files to upload")
+                        i, data_sent, time_elapsed_on_this_station_seconds, data_rate = 0, 0, None, 0
+                        for f in files_to_upload:
+                            time_elapsed_on_this_station_seconds = (
+                                        datetime.datetime.now() - start_station_time).total_seconds()
+                            # If we have been here too long. then break this loop and start on the next station
+                            if time_elapsed_on_this_station_seconds > MAX_TIME_PER_STATION:
+                                log.info(
+                                    f"Spent {time_elapsed_on_this_station_seconds:.0f} seconds, moving onto the next station")
+                                if not out_of_time:
+                                    log.info(f"{station} ran out of time - setting out_of_time to True")
+                                    out_of_time = True
+                                break
+                            i += 1
+                            upload_success, mb_sent = uploadFile(station, f, sftp, test=False,
+                                                                 counter=f"{i}/{len(files_to_upload)}")
+                            data_sent += mb_sent
+                            if upload_success:
+                                if cml_args.verbose:
+                                    log.info(f"File {f} was uploaded successfully")
+                                remote_files_set = set(remote_files_dict[station])
+                                remote_files_set.add(f)
+                                remote_files_dict[station] = list(remote_files_set)
+                            time_elapsed_on_this_station_seconds = (
+                                        datetime.datetime.now() - start_station_time).total_seconds()
+                        if time_elapsed_on_this_station_seconds is not None:
+                            data_rate = data_sent / time_elapsed_on_this_station_seconds
+                        log.info(f"{data_sent:4.0f}MB were uploaded for station {station} at {data_rate:3.2f}MB/s")
 
                 except:
                     log.info(f"Unable to open sftp connection for {username}")
