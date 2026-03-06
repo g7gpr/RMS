@@ -734,6 +734,7 @@ def deleteFilesHeldOnServer(config, verbose = False):
 
     username  = config.stationID.lower()
     archived_dir = os.path.join(config.data_dir, config.archived_dir)
+    log.info(f"Looking for files on {config.hostname} which can be deleted from local store")
 
     try:
         key = paramiko.RSAKey.from_private_key_file(config.rsa_private_key)
@@ -768,8 +769,16 @@ def deleteFilesHeldOnServer(config, verbose = False):
     files_to_delete_list, dirs_to_delete_list = [], []
     for f in files_to_delete_set:
         path_to_delete = os.path.expanduser(os.path.join(archived_dir, f))
-        if os.path.exists(path_to_delete):
-            files_to_delete_list.append(path_to_delete)
+        # If we have a detected file then we can delete this file, and the directory
+        if f.split("_")[4].startswith("detected"):
+            if os.path.exists(path_to_delete):
+                files_to_delete_list.append(path_to_delete)
+                directory = "_".join(f.split("_")[0:3])
+                directory = os.path.join(archived_dir, directory)
+                if os.path.exists(directory):
+                    if os.path.isdir(directory):
+                        dirs_to_delete_list.append(directory)
+
         # If both imgdata and metadata are in the sets, then we can delete the directory
         if len(f.split("_")) >= 4:
             if f.split("_")[4].startswith("imgdata"):
@@ -777,16 +786,45 @@ def deleteFilesHeldOnServer(config, verbose = False):
                 if metadata_f_name in files_to_delete_set:
                     directory = "_".join(f.split("_")[0:3])
                     directory = os.path.join(archived_dir, directory)
-                    dirs_to_delete_list.append(directory)
+                    if os.path.exists(directory):
+                        if os.path.isdir(directory):
+                            dirs_to_delete_list.append(directory)
+
     files_to_delete_list.sort()
     dirs_to_delete_list.sort()
 
-    for f in files_to_delete_list:
-        log.info(f"Deleting file      : {f}")
+    log.info(f"Found {len(files_to_delete_list)} files to delete")
+    for full_path_to_file in files_to_delete_list:
+        if os.path.exists(full_path_to_file):
+            if os.path.isfile(full_path_to_file):
+                if len(files_to_delete_list) < 100:
+                    f = os.path.basename(full_path_to_file)
+                    log.info(f"Deleting file        : {f}")
+                try:
+                    os.remove(full_path_to_file)
+                except FileNotFoundError:
+                    log.warning(f"File not found        : {f}")
+                except PermissionError:
+                    log.warning(f"Permission denied     : {f}")
+                except Exception as e:
+                    log.warning(f"Unexpected error      : {f}")
 
-    for d in dirs_to_delete_list:
-        log.info(f"Deleting directory : {d}")
-
+    log.info(f"Found {len(dirs_to_delete_list)} directories to delete")
+    for full_path_to_dir in dirs_to_delete_list:
+        if os.path.exists(full_path_to_dir):
+            if os.path.isdir(full_path_to_dir):
+                if len(dirs_to_delete_list) < 100:
+                    d = os.path.basename(full_path_to_dir)
+                    log.info(f"Deleting directory   : {d}")
+                    try:
+                        shutil.rmtree(full_path_to_dir)
+                        log.info(f"Removed: {full_path_to_dir}")
+                    except FileNotFoundError:
+                        log.warning(f"Directory not found   : {f}")
+                    except PermissionError:
+                        log.warning(f"Permission denied     : {f}")
+                    except Exception as e:
+                        log.warning(f"Unexpected error      : {f}")
 
 
 
