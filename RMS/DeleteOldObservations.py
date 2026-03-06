@@ -764,6 +764,7 @@ def deleteFilesHeldOnServer(config, verbose = False):
 
     # Form the set of files to delete - the files which are found locally and remote
     files_to_delete_set = set(os.listdir(archived_dir)) & set(remote_processed_files)
+    log.info(files_to_delete_set)
 
     # Make a list of files to delete and a list of directories to delete
     files_to_delete_list, dirs_to_delete_list = [], []
