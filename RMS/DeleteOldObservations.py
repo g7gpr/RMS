@@ -817,10 +817,10 @@ def deleteFilesHeldOnServer(config, verbose=False):
                 except Exception as e:
                     log.warning(f"Unexpected error      : {f}")
 
-    for full_path_to_dir in full_path_to_dirs_to_delete_list:
+    for full_path_to_dir in full_paths_to_dirs_to_delete_list:
         if os.path.exists(full_path_to_dir):
             if os.path.isdir(full_path_to_dir):
-                if len(full_path_to_dirs_to_delete_list) < 100:
+                if len(full_paths_to_dirs_to_delete_list) < 100:
                     d = os.path.basename(full_path_to_dir)
                     log.info(f"Deleting directory   : {d}")
                     try:
@@ -831,8 +831,6 @@ def deleteFilesHeldOnServer(config, verbose=False):
                         log.warning(f"Permission denied     : {f}")
                     except Exception as e:
                         log.warning(f"Unexpected error      : {f}")
-
-
     return
 
 
