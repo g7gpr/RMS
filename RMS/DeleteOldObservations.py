@@ -765,6 +765,10 @@ def deleteFilesHeldOnServer(config, verbose=False):
     full_paths_to_files_to_delete_list, full_paths_to_dirs_to_delete_list = [], []
     for f in remote_unprocessed_files:
         if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
+            full_path_to_timelapse = os.path.join(config.data_dir, config.frame_dir, f)
+            if os.path.exists(full_path_to_timelapse):
+                if os.path.isfile(full_path_to_timelapse):
+                    full_paths_to_files_to_delete_list.append(full_path_to_timelapse)
             f = Path(f).with_suffix(".mp4")
             full_path_to_timelapse = os.path.join(config.data_dir, config.frame_dir, f)
             if os.path.exists(full_path_to_timelapse):
@@ -823,7 +827,7 @@ def deleteFilesHeldOnServer(config, verbose=False):
             if os.path.isdir(full_path_to_dir):
                 if len(full_paths_to_dirs_to_delete_list) < 100:
                     d = os.path.basename(full_path_to_dir)
-                    log.info(f"Deleting directory   : {d}")
+                    log.info(f"Deleting archived directory   : {d}")
                     try:
                         shutil.rmtree(full_path_to_dir)
                     except FileNotFoundError:
