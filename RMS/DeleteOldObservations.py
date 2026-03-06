@@ -727,7 +727,7 @@ def deleteFiles(dir_path, config, delete_all=False):
 
     return getFiles(dir_path, config.stationID)
 
-def deleteFilesHeldOnServer(config, verbose = False):
+def deleteFilesHeldOnServer(config, verbose=False):
 
 
 
@@ -746,7 +746,12 @@ def deleteFilesHeldOnServer(config, verbose = False):
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     if verbose:
         log.info(f"Attempting connection to {username}@{config.hostname} using key from {config.rsa_private_key}")
-    ssh.connect(hostname=config.hostname, username=username, pkey=key)
+    try:
+        ssh.connect(hostname=config.hostname, username=username, pkey=key)
+    except:
+        log.info(f"Unable to open a ssh connection for {username}@{config.hostname}")
+        return
+
 
     try:
         with ssh.open_sftp() as sftp:
@@ -762,34 +767,38 @@ def deleteFilesHeldOnServer(config, verbose = False):
         if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
             remote_timelapse_files.append(f)
 
-    # Form the set of files to delete - the files which are found locally and remote
-    files_to_delete_set = set(os.listdir(archived_dir)) & set(remote_processed_files)
+    # Form the set of files to delete - all the files which are found on the remote
+    files_to_delete_set = set(remote_processed_files)
     log.info(files_to_delete_set)
 
     # Make a list of files to delete and a list of directories to delete
     files_to_delete_list, dirs_to_delete_list = [], []
     for f in files_to_delete_set:
         path_to_delete = os.path.expanduser(os.path.join(archived_dir, f))
-        # If we have a detected file then we can delete this file, and the directory
-        if f.split("_")[4].startswith("detected"):
+
+        # Delete detected, metadata and imgdata files
+        if f.split("_")[4].startswith("detected") or f.split("_")[4].startswith("metadata") or f.split("_")[4].startswith("imgdata"):
             if os.path.exists(path_to_delete):
                 files_to_delete_list.append(path_to_delete)
-                directory = "_".join(f.split("_")[0:3])
+                directory = "_".join(f.split("_")[0:4])
                 directory = os.path.join(archived_dir, directory)
-                if os.path.exists(directory):
-                    if os.path.isdir(directory):
-                        dirs_to_delete_list.append(directory)
+                # If it is a detected file, then we can delete the associated archive directory
+                if f.split("_")[4].startswith("detected"):
+                    if os.path.exists(directory):
+                        if os.path.isdir(directory):
+                            dirs_to_delete_list.append(directory)
 
-        # If both imgdata and metadata are in the sets, then we can delete the directory
+        # If an imgdata and metadata file are found, then we can delete the associated archive directory
         if len(f.split("_")) >= 4:
             if f.split("_")[4].startswith("imgdata"):
                 metadata_f_name = f.replace("imgdata", "metadata")
                 if metadata_f_name in files_to_delete_set:
-                    directory = "_".join(f.split("_")[0:3])
+                    directory = "_".join(f.split("_")[0:4])
                     directory = os.path.join(archived_dir, directory)
                     if os.path.exists(directory):
                         if os.path.isdir(directory):
                             dirs_to_delete_list.append(directory)
+
 
     files_to_delete_list.sort()
     dirs_to_delete_list.sort()
