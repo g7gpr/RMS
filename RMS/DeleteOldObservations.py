@@ -762,31 +762,32 @@ def deleteFilesHeldOnServer(config, verbose=False):
 
 
     ssh.close()
-    remote_timelapse_files = []
+    full_paths_to_files_to_delete_list, full_paths_to_dirs_to_delete_list = [], []
     for f in remote_unprocessed_files:
         if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
-            remote_timelapse_files.append(f)
+            full_path_to_timelapse = os.path.join(config.data_dir, config.frame_dir, f)
+            if os.path.exists(full_path_to_timelapse):
+                if os.path.isfile(full_path_to_timelapse):
+                    full_paths_to_files_to_delete_list.append(full_path_to_timelapse)
 
     # Form the set of files to delete - all the files which are found on the remote
     files_to_delete_set = set(remote_processed_files)
-    log.info(files_to_delete_set)
 
-    # Make a list of files to delete and a list of directories to delete
-    files_to_delete_list, dirs_to_delete_list = [], []
+
     for f in files_to_delete_set:
         path_to_delete = os.path.expanduser(os.path.join(archived_dir, f))
 
         # Delete detected, metadata and imgdata files
         if f.split("_")[4].startswith("detected") or f.split("_")[4].startswith("metadata") or f.split("_")[4].startswith("imgdata"):
             if os.path.exists(path_to_delete):
-                files_to_delete_list.append(path_to_delete)
+                full_paths_to_files_to_delete_list.append(path_to_delete)
                 directory = "_".join(f.split("_")[0:4])
                 directory = os.path.join(archived_dir, directory)
                 # If it is a detected file, then we can delete the associated archive directory
                 if f.split("_")[4].startswith("detected"):
                     if os.path.exists(directory):
                         if os.path.isdir(directory):
-                            dirs_to_delete_list.append(directory)
+                            full_paths_to_dirs_to_delete_list.append(directory)
 
         # If an imgdata and metadata file are found, then we can delete the associated archive directory
         if len(f.split("_")) >= 4:
@@ -797,19 +798,16 @@ def deleteFilesHeldOnServer(config, verbose=False):
                     directory = os.path.join(archived_dir, directory)
                     if os.path.exists(directory):
                         if os.path.isdir(directory):
-                            dirs_to_delete_list.append(directory)
+                            full_paths_to_dirs_to_delete_list.append(directory)
 
+    full_paths_to_files_to_delete_list.sort()
+    full_paths_to_dirs_to_delete_list.sort()
 
-    files_to_delete_list.sort()
-    dirs_to_delete_list.sort()
-
-    log.info(f"Found {len(files_to_delete_list)} files to delete")
-    for full_path_to_file in files_to_delete_list:
+    for full_path_to_file in full_paths_to_files_to_delete_list:
         if os.path.exists(full_path_to_file):
             if os.path.isfile(full_path_to_file):
-                if len(files_to_delete_list) < 100:
+                if len(full_paths_to_files_to_delete_list) < 100:
                     f = os.path.basename(full_path_to_file)
-                    log.info(f"Deleting file        : {f}")
                 try:
                     os.remove(full_path_to_file)
                 except FileNotFoundError:
@@ -819,7 +817,6 @@ def deleteFilesHeldOnServer(config, verbose=False):
                 except Exception as e:
                     log.warning(f"Unexpected error      : {f}")
 
-    log.info(f"Found {len(dirs_to_delete_list)} directories to delete")
     for full_path_to_dir in dirs_to_delete_list:
         if os.path.exists(full_path_to_dir):
             if os.path.isdir(full_path_to_dir):
@@ -828,7 +825,6 @@ def deleteFilesHeldOnServer(config, verbose=False):
                     log.info(f"Deleting directory   : {d}")
                     try:
                         shutil.rmtree(full_path_to_dir)
-                        log.info(f"Removed: {full_path_to_dir}")
                     except FileNotFoundError:
                         log.warning(f"Directory not found   : {f}")
                     except PermissionError:
@@ -837,7 +833,7 @@ def deleteFilesHeldOnServer(config, verbose=False):
                         log.warning(f"Unexpected error      : {f}")
 
 
-
+    return
 
 
 def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration=None):
