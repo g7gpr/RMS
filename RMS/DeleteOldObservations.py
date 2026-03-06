@@ -765,8 +765,7 @@ def deleteFilesHeldOnServer(config, verbose=False):
     full_paths_to_files_to_delete_list, full_paths_to_dirs_to_delete_list = [], []
     for f in remote_unprocessed_files:
         if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
-            p = Path(f)
-            f = p.with_suffix("mp4")
+            f = Path(f).with_suffix(".mp4")
             full_path_to_timelapse = os.path.join(config.data_dir, config.frame_dir, f)
             if os.path.exists(full_path_to_timelapse):
                 if os.path.isfile(full_path_to_timelapse):
