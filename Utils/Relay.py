@@ -231,14 +231,17 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
     size = os.path.getsize(local_file_path)  / (1000 * 1000)
     data_rate = size / time_elapsed_seconds
     int_ts = int(time_elapsed_seconds)
-    now_utc = datetime.now(datetime.timezone.utc)
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
     filetime_utc = datetime.datetime.fromtimestamp(os.path.getmtime(local_file_path), tz=datetime.timezone.utc)
     lag_time = now_utc - filetime_utc
+    lag_time_str = (datetime.datetime(1970,1,1, tzinfo=datetime.timezone.utc) + lag_time).strftime("%H:%M:%S")
+    log_line = f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s - transit delay is {lag_time}"
 
-    if counter is None:
-        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s - transit delay is {lag_time}")
-    else:
-        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s ({counter})")
+    if counter is not None:
+        log_line += f" ({counter})"
+
+    log.info(log_line)
+
     return success, size
 
 def doMaintenance(stations_paths_list):
