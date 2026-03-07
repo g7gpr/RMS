@@ -193,7 +193,8 @@ def testArchive(file_path, verbose=False):
         if os.path.exists(file_path):
             if os.path.isfile(file_path):
                 if isValidTar(file_path):
-                    log.info(f"{file_name} is a valid archive")
+                    if verbose:
+                        log.info(f"{file_name} is a valid archive")
                     return True
 
     elif file_type == ".bz2":
@@ -202,7 +203,8 @@ def testArchive(file_path, verbose=False):
         if os.path.exists(file_path):
             if os.path.isfile(file_path):
                 if isValidBz2(file_path):
-                    log.info(f"{file_name} is a valid archive")
+                    if verbose:
+                        log.info(f"{file_name} is a valid archive")
                     return True
 
     # All other cases
@@ -473,7 +475,17 @@ if __name__ == '__main__':
                                 if cml_args.verbose:
                                     log.info(f"File {f} was uploaded successfully")
                                     log.info(f"Adding {local_filenames[f]} to uploaded files dict")
-                                remote_files_dict[station].append(local_filenames[f])
+
+                                remote_file_list = remote_files_dict[station]
+
+
+                                # Remove all entries with this filename
+                                remote_file_list[:] = [d for d in remote_file_list if d["filename"] != f]
+
+                                # Add the new one
+                                remote_file_list.append(local_filenames[f])
+
+
                             time_elapsed_on_this_station_seconds = (
                                         datetime.datetime.now() - start_station_time).total_seconds()
                         if time_elapsed_on_this_station_seconds is not None:
