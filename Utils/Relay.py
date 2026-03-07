@@ -504,7 +504,7 @@ if __name__ == '__main__':
                         ssh.close()
                         if time_elapsed_on_this_station_seconds is not None:
                             data_rate = data_sent / time_elapsed_on_this_station_seconds
-                        log.info(f"For station {station} {data_sent:4.0f}MB were uploaded in {time_elapsed_on_this_station_seconds:.0f} seconds at {data_rate:3.2f}MB/s")
+                        log.info(f"For station {station} {data_sent:.0f}MB were uploaded in {time_elapsed_on_this_station_seconds:.0f} seconds at {data_rate:3.2f}MB/s")
 
                 except:
                     log.info(f"Unable to upload {f}")
