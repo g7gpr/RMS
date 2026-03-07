@@ -96,6 +96,22 @@ def getRemoteStationsPathsList(fs_root="/home/"):
     return station_files_paths_list
 
 
+def attr2Dict(file_attributes_list):
+
+    file_attributes_list_of_dicts = []
+    for attr in file_attributes_list:
+        file_attributes_list_of_dicts.append({
+        "filename": attr.filename,
+        "size": attr.st_size,
+        "mtime": attr.st_mtime,
+        "mode": attr.st_mode,
+        "uid": attr.st_uid,
+        "gid": attr.st_gid,
+        })
+
+    return file_attributes_list_of_dicts
+
+
 def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca", verbose=False):
 
     log.info("Gather remote file information")
@@ -122,18 +138,21 @@ def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca", verbose=
 
         try:
             with ssh.open_sftp() as sftp:
-                remote_processed_files = sftp.listdir(os.path.join("files", "processed"))
-                remote_unprocessed_files = sftp.listdir(os.path.join("files"))
+                remote_processed_files_list = attr2Dict(sftp.listdir_attr(os.path.join("files", "processed")))
+                remote_unprocessed_files_list = attr2Dict(sftp.listdir_attr(os.path.join("files")))
         except:
             log.info(f"Unable to open sftp connection for {username}")
             continue
 
+
+
+
         ssh.close()
-        for f in remote_unprocessed_files:
-            if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
+        for f in remote_unprocessed_files_list:
+            if f['filename'].startswith(username.upper()) and f['filename'].endswith("_frames_timelapse.tar"):
                 remote_timelapse_files.append(f)
-        remote_files = remote_processed_files + remote_timelapse_files
-        remote_files.sort()
+        remote_files = remote_processed_files_list + remote_timelapse_files
+        remote_files.sort(key=lambda remote_files: remote_files['filename'].lower())
 
         log.info(f"Adding {len(remote_files)} files to {username}")
         remote_file_dict_of_lists[username] = remote_files
@@ -174,7 +193,8 @@ def testArchive(file_path, verbose=False):
         if os.path.exists(file_path):
             if os.path.isfile(file_path):
                 if isValidTar(file_path):
-                    log.info(f"{file_name} is a valid archive")
+                    if verbose:
+                        log.info(f"{file_name} is a valid archive")
                     return True
 
     elif file_type == ".bz2":
@@ -183,7 +203,8 @@ def testArchive(file_path, verbose=False):
         if os.path.exists(file_path):
             if os.path.isfile(file_path):
                 if isValidBz2(file_path):
-                    log.info(f"{file_name} is a valid archive")
+                    if verbose:
+                        log.info(f"{file_name} is a valid archive")
                     return True
 
     # All other cases
@@ -264,6 +285,8 @@ if __name__ == '__main__':
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
 
+
+
     if cml_args.time is None:
         cycle_time_minutes = 15
     else:
@@ -338,22 +361,60 @@ if __name__ == '__main__':
         for station in remote_files_dict:
             if cml_args.verbose:
                 log.info(f"Working on {station}")
-            remote_files_set = set(remote_files_dict[station])
-            local_files = set(os.listdir(os.path.join(FS_ROOT,station,"files")))
-            local_data_files = []
-            for f in local_files:
-                if f.startswith(station.upper()) and f.endswith(".tar.bz2"):
-                    local_data_files.append(f)
-                if f.startswith(station.upper()) and f.endswith("_frames_timelapse.tar"):
-                    local_data_files.append(f)
-            local_files_set = set(local_data_files)
-            files_to_upload = sorted(list(local_files_set - remote_files_set))
+            remote_files_list_of_dict = remote_files_dict[station]
+
+
+            local_file_dir = Path(os.path.join(FS_ROOT,station,"files"))
+
+            local_files_list_of_dict = []
+            for p in local_file_dir.iterdir():
+                if p.is_file():
+                    st = p.stat()
+                    local_files_list_of_dict.append({
+                        "filename": p.name,
+                        "size": st.st_size,
+                        "mtime": st.st_mtime,
+                        "mode": st.st_mode,
+                        "uid": st.st_uid,
+                        "gid": st.st_gid,
+                    })
+
+            local_data_files_list_of_dict = []
+            for f in local_files_list_of_dict:
+                if f['filename'].startswith(station.upper()) and f['filename'].endswith(".tar.bz2"):
+                    local_data_files_list_of_dict.append(f)
+                if f['filename'].startswith(station.upper()) and f['filename'].endswith("_frames_timelapse.tar"):
+                    local_data_files_list_of_dict.append(f)
+
+            files_to_upload = []
+            remote_filenames = {f['filename']: f for f in remote_files_list_of_dict}
+            local_filenames = {f['filename']: f for f in local_files_list_of_dict}
+
+            for l in local_data_files_list_of_dict:
+                local_name, local_size = l["filename"],  l["size"]
+
+
+                if local_name not in remote_filenames:
+                    files_to_upload.append(local_name)
+                    continue
+
+                remote_size = remote_filenames[local_name]['size']
+
+                if local_size != remote_size:
+                    local_size_mb, remote_size_mb = local_size / (1024 ** 2), remote_size / (1024 ** 2)
+                    log.warning(f"Adding {local_name} because local size of {local_size} did not match remote size of {remote_size}")
+                    files_to_upload.append(local_name)
+
+
 
             total_data = 0
             for f in files_to_upload:
                 total_data += os.path.getsize(os.path.join(FS_ROOT, station.lower(), "files", f))  / (1000 * 1000)
             if total_data > 0 or cml_args.verbose:
-                log.info(f"For station {station} {total_data:.0f}MB to upload in {len(files_to_upload)} files")
+                if len(files_to_upload) > 1:
+                    log.info(f"For station {station} {total_data:.0f}MB to upload in {len(files_to_upload)} files")
+                else:
+                    log.info(f"For station {station} {total_data:.0f}MB to upload in 1 file")
 
             if len(files_to_upload):
 
@@ -416,17 +477,37 @@ if __name__ == '__main__':
                             if upload_success:
                                 if cml_args.verbose:
                                     log.info(f"File {f} was uploaded successfully")
-                                remote_files_set = set(remote_files_dict[station])
-                                remote_files_set.add(f)
-                                remote_files_dict[station] = list(remote_files_set)
+                                    log.info(f"Adding {local_filenames[f]} to uploaded files dict")
+
+                                remote_file_list = remote_files_dict[station]
+
+                                # Remove all entries with this filename - work in place
+                                initial_length = len(remote_file_list)
+                                if cml_args.verbose:
+                                    log.info(f"Before removal of {f} list length is {initial_length}")
+                                remote_file_list[:] = [d for d in remote_file_list if d["filename"] != f]
+                                subsequent_length = len(remote_file_list)
+                                if cml_args.verbose:
+                                    log.info(f"After removal of {f} list length is {subsequent_length}")
+
+                                if initial_length != subsequent_length:
+                                    log.info(f"{f} had multiple entries")
+
+                                # Add the new one
+                                remote_file_list.append(local_filenames[f])
+                                if cml_args.verbose:
+                                    log.info(f"After append of {f} list length is {len(remote_file_list)}")
+
+
                             time_elapsed_on_this_station_seconds = (
                                         datetime.datetime.now() - start_station_time).total_seconds()
                         if time_elapsed_on_this_station_seconds is not None:
                             data_rate = data_sent / time_elapsed_on_this_station_seconds
                         log.info(f"{data_sent:4.0f}MB were uploaded for station {station} at {data_rate:3.2f}MB/s")
                         ssh.close()
+
                 except:
-                    log.info(f"Unable to open sftp connection for {username}")
+                    log.info(f"Unable to upload {f}")
                     continue
 
                 # Write out the updated json file - do this once per station to reduce the chance of corruption
