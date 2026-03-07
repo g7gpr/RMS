@@ -283,6 +283,8 @@ if __name__ == '__main__':
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
 
+
+
     if cml_args.time is None:
         cycle_time_minutes = 15
     else:
@@ -384,6 +386,7 @@ if __name__ == '__main__':
 
             files_to_upload = []
             remote_filenames = {f['filename']: f for f in remote_files_list_of_dict}
+            local_filenames = {f['filename']: f for f in local_files_list_of_dict}
 
             for l in local_data_files_list_of_dict:
                 local_name, local_size = l["filename"],  l["size"]
@@ -397,7 +400,7 @@ if __name__ == '__main__':
 
                 if local_size != remote_size:
                     local_size_mb, remote_size_mb = local_size / (1024 ** 2), remote_size / (1024 ** 2)
-                    log.warning(f"Adding {name} because local size of {local_size} did not match remote size of {remote_size}")
+                    log.warning(f"Adding {local_name} because local size of {local_size} did not match remote size of {remote_size}")
                     files_to_upload.append(local_name)
 
 
@@ -469,17 +472,17 @@ if __name__ == '__main__':
                             if upload_success:
                                 if cml_args.verbose:
                                     log.info(f"File {f} was uploaded successfully")
-                                remote_files_set = set(remote_files_dict[station])
-                                remote_files_set.add(f)
-                                remote_files_dict[station] = list(remote_files_set)
+                                    log.info(f"Adding {local_filenames[f]} to uploaded files dict")
+                                remote_files_dict[station].append(local_filenames[f])
                             time_elapsed_on_this_station_seconds = (
                                         datetime.datetime.now() - start_station_time).total_seconds()
                         if time_elapsed_on_this_station_seconds is not None:
                             data_rate = data_sent / time_elapsed_on_this_station_seconds
                         log.info(f"{data_sent:4.0f}MB were uploaded for station {station} at {data_rate:3.2f}MB/s")
                         ssh.close()
+
                 except:
-                    log.info(f"Unable to open sftp connection for {username}")
+                    log.info(f"Unable to upload {f}")
                     continue
 
                 # Write out the updated json file - do this once per station to reduce the chance of corruption
