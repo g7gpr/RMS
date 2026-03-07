@@ -507,21 +507,22 @@ if __name__ == '__main__':
                         log.info(f" For station {station} {data_sent:.0f}MB were uploaded in {int_ts:03d} seconds at {data_rate:3.2f}MB/s")
 
                         ssh.close()
-                        log.info(f"Closed connection for {station}")
+                        log.info(f" Closed connection for {station}")
 
 
 
                 except Exception as e:
                     ssh.close()
-                    log.info(f"Unable to upload {f} \n {e}")
+                    log.info(f" Closed connection for {station}")
+                    log.info(f" Unable to upload {f} \n {e}")
                     log.info(traceback.format_exc())
                     continue
 
                 # Write out the updated json file - do this once per station to reduce the chance of corruption
                 with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
-                    log.info("Writing updated files status")
+                    log.info(" Writing updated files status")
                     json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
-                    log.info("File status updated")
+                    log.info(" File status updated")
                     file_handle.flush()
 
 
