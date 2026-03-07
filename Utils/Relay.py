@@ -231,8 +231,12 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
     size = os.path.getsize(local_file_path)  / (1000 * 1000)
     data_rate = size / time_elapsed_seconds
     int_ts = int(time_elapsed_seconds)
+    now_utc = datetime.now(datetime.timezone.utc)
+    filetime_utc = datetime.fromtimestamp(os.path.getmtime(local_file_path), tz=timezone.utc)
+    lag_time = now_utc - filetime_utc
+
     if counter is None:
-        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s")
+        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s - transit delay is {lag_time}")
     else:
         log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s ({counter})")
     return success, size
@@ -504,6 +508,7 @@ if __name__ == '__main__':
 
                         if time_elapsed_on_this_station_seconds is not None:
                             data_rate = data_sent / time_elapsed_on_this_station_seconds
+
                         log.info(f" For station {station} {data_sent:.0f}MB were uploaded in {int_ts:03d} seconds at {data_rate:3.2f}MB/s")
 
                         ssh.close()
