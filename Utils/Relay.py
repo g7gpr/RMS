@@ -501,7 +501,7 @@ if __name__ == '__main__':
                             time_elapsed_on_this_station_seconds = (
                                         datetime.datetime.now() - start_station_time).total_seconds()
 
-                        ssh.close()
+
                         if time_elapsed_on_this_station_seconds is not None:
                             data_rate = data_sent / time_elapsed_on_this_station_seconds
                         log.info(f" For station {station} {data_sent:.0f}MB were uploaded in {time_elapsed_on_this_station_seconds:n:03d} seconds at {data_rate:3.2f}MB/s")
@@ -510,8 +510,9 @@ if __name__ == '__main__':
                     log.info(f"Unable to upload {f}")
                     continue
 
-                # Write out the updated json file - do this once per station to reduce the chance of corruption
-                with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
-                    json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
-                    file_handle.flush()
+            ssh.close()
+            # Write out the updated json file - do this once per station to reduce the chance of corruption
+            with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
+                json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
+                file_handle.flush()
 
