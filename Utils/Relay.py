@@ -240,6 +240,10 @@ def doMaintenance(stations_paths_list):
 
 if __name__ == '__main__':
 
+    archive_to_test = "/home/david/tmp/au001w/AU001W_20260306_112352_036009_metadata.tar.bz2"
+    if os.path.exists(archive_to_test):
+        log.info(f"Testing {os.path.basename(archive_to_test)} - testArchive returns {testArchive(archive_to_test)}")
+
 
     start_time = datetime.datetime.now().replace(microsecond=0)
     # Init the command line arguments parser
