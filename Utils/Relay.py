@@ -479,11 +479,19 @@ if __name__ == '__main__':
                                 remote_file_list = remote_files_dict[station]
 
 
-                                # Remove all entries with this filename
+                                # Remove all entries with this filename - work in place
+                                initial_length = len(remote_file_list)
+                                log.info(f"Before removal of {f} list length is {initial_length}")
                                 remote_file_list[:] = [d for d in remote_file_list if d["filename"] != f]
+                                subsequent_length = len(remote_file_list)
+                                log.info(f"After removal of {f} list length is {subsequent_length}")
+
+                                if initial_length != subsequent_length:
+                                    log.info(f"{f} had multiple entries")
 
                                 # Add the new one
                                 remote_file_list.append(local_filenames[f])
+                                log.info(f"After append of {f} list length is len(remote_file_list))")
 
 
                             time_elapsed_on_this_station_seconds = (
