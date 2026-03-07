@@ -163,13 +163,14 @@ def isValidTar(path):
         return False
 
 
-def testArchive(file_path):
+def testArchive(file_path, verbose=False):
 
     file_name = os.path.basename(file_path)
     file_type = Path(file_name).suffix.lower()
 
     if file_type == ".tar":
-        log.info(f"Testing tar integrity for file {file_name}")
+        if verbose:
+            log.info(f"Testing tar integrity for file {file_name}")
         if os.path.exists(file_path):
             if os.path.isfile(file_path):
                 if isValidTar(file_path):
@@ -177,7 +178,8 @@ def testArchive(file_path):
                     return True
 
     elif file_type == ".bz2":
-        log.info(f"Testing bz2 integrity for file {file_name}")
+        if verbose:
+            log.info(f"Testing bz2 integrity for file {file_name}")
         if os.path.exists(file_path):
             if os.path.isfile(file_path):
                 if isValidBz2(file_path):
@@ -185,7 +187,7 @@ def testArchive(file_path):
                     return True
 
     # All other cases
-    log.warning(f"{file_name} is not a valid archive")
+    log.warning(f"{file_name} is not a path to a valid archive")
     return False
 
 def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
@@ -194,7 +196,7 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
         return True, 0
 
     local_file_path = os.path.join(FS_ROOT, station.lower(),"files",f)
-    if not testArchive(local_file_path):
+    if not testArchive(local_file_path, verbose=False):
         log.info(f"{os.path.basename(local_file_path)} archive is not valid")
         return False, 0
     remote_file_path = os.path.join("files",f)
@@ -240,10 +242,13 @@ def doMaintenance(stations_paths_list):
 
 if __name__ == '__main__':
 
-    archive_to_test = "/home/david/tmp/au001w/AU001W_20260306_112352_036009_metadata.tar.bz2"
+    archive_to_test = "/home/david/tmp/au001w/AU001W_20260306_112352_036009_metadata_invalid.tar.bz2"
     if os.path.exists(archive_to_test):
         log.info(f"Testing {os.path.basename(archive_to_test)} - testArchive returns {testArchive(archive_to_test)}")
 
+    archive_to_test = "/home/david/tmp/au001w/AU001W_20260306_112352_036009_metadata.tar.bz2"
+    if os.path.exists(archive_to_test):
+        log.info(f"Testing {os.path.basename(archive_to_test)} - testArchive returns {testArchive(archive_to_test)}")
 
     start_time = datetime.datetime.now().replace(microsecond=0)
     # Init the command line arguments parser
@@ -348,11 +353,9 @@ if __name__ == '__main__':
             for f in files_to_upload:
                 total_data += os.path.getsize(os.path.join(FS_ROOT, station.lower(), "files", f))  / (1000 * 1000)
             if total_data > 0 or cml_args.verbose:
-                log.info(f"For station {station} {total_data:.0f}MB to upload")
+                log.info(f"For station {station} {total_data:.0f}MB to upload in {len(files_to_upload)} files")
 
             if len(files_to_upload):
-                if cml_args.verbose:
-                    log.info(f"Files to upload for {station}")
 
                 files_to_upload = sortByPriority(files_to_upload)
                 username = station.lower()
