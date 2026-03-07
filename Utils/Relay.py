@@ -506,8 +506,8 @@ if __name__ == '__main__':
                             data_rate = data_sent / time_elapsed_on_this_station_seconds
                         log.info(f" For station {station} {data_sent:.0f}MB were uploaded in {int_ts:03d} seconds at {data_rate:3.2f}MB/s")
 
-                    ssh.close()
-                    log.info(f"Closed connection for {station}")
+                        ssh.close()
+                        log.info(f"Closed connection for {station}")
 
 
 
