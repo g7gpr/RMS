@@ -232,7 +232,7 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
     data_rate = size / time_elapsed_seconds
     int_ts = int(time_elapsed_seconds)
     now_utc = datetime.now(datetime.timezone.utc)
-    filetime_utc = datetime.fromtimestamp(os.path.getmtime(local_file_path), tz=timezone.utc)
+    filetime_utc = datetime.datetime.fromtimestamp(os.path.getmtime(local_file_path), tz=datetime.timezone.utc)
     lag_time = now_utc - filetime_utc
 
     if counter is None:
