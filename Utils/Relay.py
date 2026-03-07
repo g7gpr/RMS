@@ -411,7 +411,10 @@ if __name__ == '__main__':
             for f in files_to_upload:
                 total_data += os.path.getsize(os.path.join(FS_ROOT, station.lower(), "files", f))  / (1000 * 1000)
             if total_data > 0 or cml_args.verbose:
-                log.info(f"For station {station} {total_data:.0f}MB to upload in {len(files_to_upload)} files")
+                if len(files_to_upload) > 1:
+                    log.info(f"For station {station} {total_data:.0f}MB to upload in {len(files_to_upload)} files")
+                else:
+                    log.info(f"For station {station} {total_data:.0f}MB to upload in 1 file")
 
             if len(files_to_upload):
 
@@ -478,20 +481,22 @@ if __name__ == '__main__':
 
                                 remote_file_list = remote_files_dict[station]
 
-
                                 # Remove all entries with this filename - work in place
                                 initial_length = len(remote_file_list)
-                                log.info(f"Before removal of {f} list length is {initial_length}")
+                                if cml_args.verbose:
+                                    log.info(f"Before removal of {f} list length is {initial_length}")
                                 remote_file_list[:] = [d for d in remote_file_list if d["filename"] != f]
                                 subsequent_length = len(remote_file_list)
-                                log.info(f"After removal of {f} list length is {subsequent_length}")
+                                if cml_args.verbose:
+                                    log.info(f"After removal of {f} list length is {subsequent_length}")
 
                                 if initial_length != subsequent_length:
                                     log.info(f"{f} had multiple entries")
 
                                 # Add the new one
                                 remote_file_list.append(local_filenames[f])
-                                log.info(f"After append of {f} list length is len(remote_file_list))")
+                                if cml_args.verbose:
+                                    log.info(f"After append of {f} list length is {len(remote_file_list)}")
 
 
                             time_elapsed_on_this_station_seconds = (
