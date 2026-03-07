@@ -511,6 +511,7 @@ if __name__ == '__main__':
                     continue
 
             ssh.close()
+            log.info(f"Closed connection for {station}")
             # Write out the updated json file - do this once per station to reduce the chance of corruption
             with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
                 json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
