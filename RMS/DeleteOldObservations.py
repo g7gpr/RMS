@@ -826,6 +826,7 @@ def deleteFilesHeldOnServer(config, verbose=False):
             if os.path.isfile(full_path_to_file):
                 if len(full_paths_to_files_to_delete_list) < 100:
                     f = os.path.basename(full_path_to_file)
+                    log.info(f"Deleting archived file   : {f}")
                 try:
                     os.remove(full_path_to_file)
                 except FileNotFoundError:
