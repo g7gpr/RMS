@@ -37,7 +37,7 @@ import datetime
 import paramiko
 import json
 import logging
-
+import traceback
 
 LOG_FILE_PREFIX = "Relay"
 log = getLogger("rmslogger", stdout=False)
@@ -231,9 +231,9 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
     size = os.path.getsize(local_file_path)  / (1000 * 1000)
     data_rate = size / time_elapsed_seconds
     if counter is None:
-        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {time_elapsed_seconds:n:03d} seconds at {data_rate:3.2f}MB/s")
+        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {time_elapsed_seconds:03d} seconds at {data_rate:3.2f}MB/s")
     else:
-        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {time_elapsed_seconds:n:03d} seconds at {data_rate:3.2f}MB/s ({counter})")
+        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {time_elapsed_seconds:03d} seconds at {data_rate:3.2f}MB/s ({counter})")
     return success, size
 
 def doMaintenance(stations_paths_list):
@@ -498,7 +498,7 @@ if __name__ == '__main__':
                                     log.info(f"After append of {f} list length is {len(remote_file_list)}")
 
 
-                            time_elapsed_on_this_station_seconds = (
+                            time_elapsed_on_this_station_seconds = int(
                                         datetime.datetime.now() - start_station_time).total_seconds()
 
 
@@ -506,15 +506,21 @@ if __name__ == '__main__':
                             data_rate = data_sent / time_elapsed_on_this_station_seconds
                         log.info(f" For station {station} {data_sent:.0f}MB were uploaded in {time_elapsed_on_this_station_seconds:n:03d} seconds at {data_rate:3.2f}MB/s")
 
+                    ssh.close()
+                    log.info(f"Closed connection for {station}")
+
+
+
                 except Exception as e:
-                    log.info(f"Unable to upload {f}")
+                    ssh.close()
+                    log.info(f"Unable to upload {f} \n {e}")
+                    log.info(traceback.format_exc())
                     continue
 
-            ssh.close()
-            log.info(f"Closed connection for {station}")
-            # Write out the updated json file - do this once per station to reduce the chance of corruption
-            with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
-                log.info("Writing updated files status")
-                json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
-                file_handle.flush()
+                # Write out the updated json file - do this once per station to reduce the chance of corruption
+                with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
+                    log.info("Writing updated files status")
+                    json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
+                    file_handle.flush()
+
 
