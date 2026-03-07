@@ -122,18 +122,18 @@ def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca", verbose=
 
         try:
             with ssh.open_sftp() as sftp:
-                remote_processed_files = sftp.listdir(os.path.join("files", "processed"))
-                remote_unprocessed_files = sftp.listdir(os.path.join("files"))
+                remote_processed_files = sftp.listdir_attr(os.path.join("files", "processed"))
+                remote_unprocessed_files = sftp.listdir_attr(os.path.join("files"))
         except:
             log.info(f"Unable to open sftp connection for {username}")
             continue
 
         ssh.close()
         for f in remote_unprocessed_files:
-            if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
+            if f.filename.startswith(username.upper()) and f.filename.endswith("_frames_timelapse.tar"):
                 remote_timelapse_files.append(f)
         remote_files = remote_processed_files + remote_timelapse_files
-        remote_files.sort()
+        remote_files.sort(key=lambda remote_files: remote_files.filename.lower())
 
         log.info(f"Adding {len(remote_files)} files to {username}")
         remote_file_dict_of_lists[username] = remote_files
