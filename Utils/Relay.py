@@ -465,7 +465,8 @@ if __name__ == '__main__':
                             # If we have been here too long. then break this loop and start on the next station
                             if time_elapsed_on_this_station_seconds > MAX_TIME_PER_STATION:
                                 if not out_of_time:
-                                    log.info(f" {station} ran out of time - setting out_of_time to True")
+                                    if cml_args.verbose:
+                                        log.info(f" {station} ran out of time - setting out_of_time to True")
                                     out_of_time = True
                                 break
                             i += 1
