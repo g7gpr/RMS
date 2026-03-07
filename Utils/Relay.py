@@ -506,7 +506,7 @@ if __name__ == '__main__':
                             data_rate = data_sent / time_elapsed_on_this_station_seconds
                         log.info(f" For station {station} {data_sent:.0f}MB were uploaded in {time_elapsed_on_this_station_seconds:n:03d} seconds at {data_rate:3.2f}MB/s")
 
-                except:
+                except Exception as e:
                     log.info(f"Unable to upload {f}")
                     continue
 
