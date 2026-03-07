@@ -231,9 +231,9 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
     size = os.path.getsize(local_file_path)  / (1000 * 1000)
     data_rate = size / time_elapsed_seconds
     if counter is None:
-        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {time_elapsed_seconds:.0f} seconds at {data_rate:3.2f}MB/s")
+        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {time_elapsed_seconds:n:03d} seconds at {data_rate:3.2f}MB/s")
     else:
-        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {time_elapsed_seconds:.0f} seconds at {data_rate:3.2f}MB/s ({counter})")
+        log.info(f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {time_elapsed_seconds:n:03d} seconds at {data_rate:3.2f}MB/s ({counter})")
     return success, size
 
 def doMaintenance(stations_paths_list):
@@ -504,7 +504,7 @@ if __name__ == '__main__':
                         ssh.close()
                         if time_elapsed_on_this_station_seconds is not None:
                             data_rate = data_sent / time_elapsed_on_this_station_seconds
-                        log.info(f" For station {station} {data_sent:.0f}MB were uploaded in {time_elapsed_on_this_station_seconds:.0f} seconds at {data_rate:3.2f}MB/s")
+                        log.info(f" For station {station} {data_sent:.0f}MB were uploaded in {time_elapsed_on_this_station_seconds:{n:03d} seconds at {data_rate:3.2f}MB/s")
 
                 except:
                     log.info(f"Unable to upload {f}")
