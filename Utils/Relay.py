@@ -21,11 +21,15 @@ import os
 import subprocess
 import shutil
 import random
+import bz2
+import tarfile
 
 from cv2 import connectedComponentsWithStats
 
 from RMS.Formats.Platepar import stationData
 from RMS.Logger import getLogger
+from pathlib import Path
+
 import argparse
 import RMS.ConfigReader as cr
 import time
@@ -33,6 +37,7 @@ import datetime
 import paramiko
 import json
 import logging
+
 
 LOG_FILE_PREFIX = "Relay"
 log = getLogger("rmslogger", stdout=False)
@@ -136,6 +141,52 @@ def getRemoteFilesDict(station_files_paths_list, hostname="gmn.uwo.ca", verbose=
 
     return remote_file_dict_of_lists
 
+def isValidBz2(path):
+
+    try:
+        with bz2.BZ2File(path, 'rb') as f:
+            for _ in iter(lambda: f.read(1024 * 1024), b''):
+                pass
+        return True
+    except (OSError, EOFError):
+        return False
+
+
+def isValidTar(path):
+
+    try:
+        with tarfile.open(path, 'r:*') as tf:
+            for _ in tf:
+                pass
+        return True
+    except (tarfile.ReadError, OSError, EOFError):
+        return False
+
+
+def testArchive(file_path):
+
+    file_name = os.path.basename(file_path)
+    file_type = Path(file_name).suffix.lower()
+
+    if file_type == ".tar":
+        log.info(f"Testing tar integrity for file {file_name}")
+        if os.path.exists(file_path):
+            if os.path.isfile(file_path):
+                if isValidTar(file_path):
+                    log.info(f"{file_name} is a valid archive")
+                    return True
+
+    elif file_type == ".bz2":
+        log.info(f"Testing bz2 integrity for file {file_name}")
+        if os.path.exists(file_path):
+            if os.path.isfile(file_path):
+                if isValidBz2(file_path):
+                    log.info(f"{file_name} is a valid archive")
+                    return True
+
+    # All other cases
+    log.warning(f"{file_name} is not a valid archive")
+    return False
 
 def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
 
@@ -143,6 +194,9 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
         return True, 0
 
     local_file_path = os.path.join(FS_ROOT, station.lower(),"files",f)
+    if not testArchive(local_file_path):
+        log.info(f"{os.path.basename(local_file_path)} archive is not valid")
+        return False, 0
     remote_file_path = os.path.join("files",f)
     if test:
         log.info(f"Simulating good upload of {local_file_path} to {remote_file_path} for station {station}")
