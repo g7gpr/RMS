@@ -521,6 +521,7 @@ if __name__ == '__main__':
                 with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
                     log.info("Writing updated files status")
                     json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
+                    log.info("File status updated")
                     file_handle.flush()
 
 
