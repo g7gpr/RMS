@@ -402,7 +402,7 @@ if __name__ == '__main__':
 
                 if local_size != remote_size:
                     local_size_mb, remote_size_mb = local_size / (1024 ** 2), remote_size / (1024 ** 2)
-                    log.warning(f"Adding {local_name} because local size of {local_size} did not match remote size of {remote_size}")
+                    log.warning(f"Adding {local_name} because local size of {local_size / (1024 **2)}MB did not match remote size of {remote_size / (1024 ** 2)}MB")
                     files_to_upload.append(local_name)
 
 
