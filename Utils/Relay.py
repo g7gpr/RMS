@@ -464,10 +464,8 @@ if __name__ == '__main__':
                                         datetime.datetime.now() - start_station_time).total_seconds()
                             # If we have been here too long. then break this loop and start on the next station
                             if time_elapsed_on_this_station_seconds > MAX_TIME_PER_STATION:
-                                log.info(
-                                    f"Spent {time_elapsed_on_this_station_seconds:.0f} seconds, moving onto the next station")
                                 if not out_of_time:
-                                    log.info(f"{station} ran out of time - setting out_of_time to True")
+                                    log.info(f" {station} ran out of time - setting out_of_time to True")
                                     out_of_time = True
                                 break
                             i += 1
@@ -501,10 +499,15 @@ if __name__ == '__main__':
 
                             time_elapsed_on_this_station_seconds = (
                                         datetime.datetime.now() - start_station_time).total_seconds()
+
+                        ssh.close()
                         if time_elapsed_on_this_station_seconds is not None:
                             data_rate = data_sent / time_elapsed_on_this_station_seconds
                         log.info(f"{data_sent:4.0f}MB were uploaded for station {station} at {data_rate:3.2f}MB/s")
-                        ssh.close()
+                        if time_elapsed_on_this_station_seconds > MAX_TIME_PER_STATION:
+                            log.info(
+                                f"Spent {time_elapsed_on_this_station_seconds:.0f} seconds, moving onto the next station")
+
 
                 except:
                     log.info(f"Unable to upload {f}")
