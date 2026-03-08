@@ -303,10 +303,13 @@ if __name__ == '__main__':
 
     cycle_time_seconds = cycle_time_minutes * 60
 
+
+    # Log start of process
     log.info(f"Uploader relay starting at {start_time}")
     stations_paths_list = getRemoteStationsPathsList(fs_root=FS_ROOT)
     doMaintenance(stations_paths_list)
 
+    # Try and load the state of the remote file system
     if os.path.exists(REMOTE_FILES_DICT_PATH):
         try:
             with open(REMOTE_FILES_DICT_PATH, "r") as file_handle:
@@ -316,10 +319,12 @@ if __name__ == '__main__':
             log.info("Unable to load remote files dictionary, removing")
             os.unlink(REMOTE_FILES_DICT_PATH)
 
+    # Otherwise pull in the state of the remote file system into a dictionary
     if not os.path.exists(REMOTE_FILES_DICT_PATH):
         remote_files_dict = getRemoteFilesDict(stations_paths_list)
         remote_files_dict_dir = os.path.dirname(REMOTE_FILES_DICT_PATH)
 
+        # Save this state as a json
         if not os.path.exists(remote_files_dict_dir):
             log.info(f"Making directory for {remote_files_dict_dir}")
             os.makedirs(remote_files_dict_dir)
@@ -484,7 +489,7 @@ if __name__ == '__main__':
                                                                  counter=f"{i}/{len(files_to_upload)}")
                             data_sent += mb_sent
                             if lag_time > max_lag_time_across_stations:
-                                log.info(f"Got a new max_lag_time of {max_lag_time_across_stations}")
+                                log.info(f"Got a new max_lag_time of {lag_time}")
                                 max_lag_time_across_stations = lag_time
 
                             if upload_success:
