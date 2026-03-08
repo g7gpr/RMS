@@ -345,7 +345,7 @@ if __name__ == '__main__':
                     file_handle.flush()
 
     out_of_time = False
-    max_lag_time_across_stations = datetime.timedelta(seconds=0)
+
     while True:
 
         wait_time = (start_time - datetime.datetime.now())
@@ -372,8 +372,10 @@ if __name__ == '__main__':
 
             start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
 
-
+        max_lag_time_across_stations = datetime.timedelta(seconds=0)
+        first_iteration = True
         previous_max_lag_time_across_stations = max_lag_time_across_stations
+
         for station in remote_files_dict:
             if cml_args.verbose:
                 log.info(f"Working on {station}")
@@ -545,7 +547,7 @@ if __name__ == '__main__':
 
         lag_time_log_text = f"Maximum lag time is {max_lag_time_across_stations}"
 
-        if max_lag_time_across_stations > LAG_WARNING_THRESHOLD:
+        if max_lag_time_across_stations > LAG_WARNING_THRESHOLD and not first_iteration:
 
             if max_lag_time_across_stations > previous_max_lag_time_across_stations + LAG_WARNING_DEADBAND:
                 lag_increase = (max_lag_time_across_stations - previous_max_lag_time_across_stations).total_seconds()
@@ -559,3 +561,4 @@ if __name__ == '__main__':
 
         log.info(lag_time_log_text)
         previous_max_lag_time_across_stations = max_lag_time_across_stations
+        first_iteration = False
