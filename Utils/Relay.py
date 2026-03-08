@@ -375,7 +375,8 @@ if __name__ == '__main__':
         max_lag_time_across_stations = datetime.timedelta(seconds=0)
         first_iteration = True
         previous_max_lag_time_across_stations = max_lag_time_across_stations
-
+        data_sent_this_iteration = 0
+        total_data_to_be_sent = 0
         for station in remote_files_dict:
             if cml_args.verbose:
                 log.info(f"Working on {station}")
@@ -433,7 +434,7 @@ if __name__ == '__main__':
                     log.info(f"For station {station} {total_data:.0f}MB to upload in {len(files_to_upload)} files")
                 else:
                     log.info(f"For station {station} {total_data:.0f}MB to upload in 1 file")
-
+            total_data_to_be_sent += total_data
             if len(files_to_upload):
 
                 files_to_upload = sortByPriority(files_to_upload)
@@ -527,7 +528,7 @@ if __name__ == '__main__':
                             data_rate = data_sent / time_elapsed_on_this_station_seconds
 
                         log.info(f" For station {station} {data_sent:.0f}MB were uploaded in {int_ts:03d} seconds at {data_rate:3.2f}MB/s")
-
+                        data_sent_this_iteration += data_sent
                         ssh.close()
                         log.info(f" Closed connection for {station}")
 
@@ -562,3 +563,12 @@ if __name__ == '__main__':
         log.info(lag_time_log_text)
         previous_max_lag_time_across_stations = max_lag_time_across_stations
         first_iteration = False
+        log.info(f"Total data sent this iteration {data_sent_this_iteration}")
+        log.info(f"Total data to be sent {total_data_to_be_sent}")
+        time_taken_this_iteration_hours = ((datetime.datetime.now() - start_time).total_seconds()) / 3600
+        log.info(f"Time taken this iteration {time_taken_this_iteration_hours:.2f} hours")
+        data_rate_mb_per_hour = data_sent / time_taken_this_iteration_hours
+        log.info(f"Data rate per hour {data_rate_mb_per_hour}")
+        hours_to_completion = total_data_to_be_sent / data_rate_mb_per_hour
+        estimated_completion_time = datetime.datetime.now() + datetime.timedelta(hours=hours_to_completion)
+        log.info(f"Estimated completion time is {estimated_completion_time}")
