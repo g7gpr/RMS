@@ -487,8 +487,11 @@ if __name__ == '__main__':
                             upload_success, mb_sent, lag_time, lag_time_str, remote_file_path, data_rate, int_ts = uploadFile(station, f, sftp, test=False)
 
                             log_line = f"{mb_sent:6.1f}MB to {station}@{HOSTNAME}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s - delay {lag_time_str}"
-                            log_line += f" ({i}/{len(files_to_upload)}) {int((datetime.datetime.now() - start_station_time).total_seconds())} seconds on this station"
                             data_sent += mb_sent
+                            this_station_seconds = int((datetime.datetime.now() - start_station_time).total_seconds())
+                            data_rate_so_far_this_station = data_sent / this_station_seconds
+                            log_line += f" ({i}/{len(files_to_upload)}) {this_station_seconds} seconds on this station to send {data_sent:.1f}MB at {data_rate_so_far_this_station:.1f}MB/s"
+
                             log.info(log_line)
 
                             if lag_time > max_lag_time_across_stations:
