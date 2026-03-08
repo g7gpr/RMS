@@ -45,8 +45,8 @@ REMOTE_FILES_DICT_PATH = "/home/gmn/relay/remotefiles.json"
 FS_ROOT = "/home/"
 HOSTNAME = "gmn.uwo.ca"
 MAX_TIME_PER_STATION = 120
-
-
+LAG_WARNING_THRESHOLD = datetime.timedelta(hours=4)
+LAG_WARNING_DEADBAND = datetime.timedelta(minutes=15)
 
 for name in ("paramiko", "paramiko.transport", "paramiko.hostkeys"):
     logger = logging.getLogger(name)
@@ -243,7 +243,7 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
 
     log.info(log_line)
 
-    return success, size
+    return success, size, lag_time
 
 def doMaintenance(stations_paths_list):
 
@@ -366,7 +366,8 @@ if __name__ == '__main__':
 
             start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
 
-
+        max_lag_time_across_stations = datetime.timedelta(seconds=0)
+        previous_max_lag_time_across_stations = max_lag_time_across_stations
         for station in remote_files_dict:
             if cml_args.verbose:
                 log.info(f"Working on {station}")
@@ -479,9 +480,13 @@ if __name__ == '__main__':
                                     out_of_time = True
                                 break
                             i += 1
-                            upload_success, mb_sent = uploadFile(station, f, sftp, test=False,
+                            upload_success, mb_sent, lag_time = uploadFile(station, f, sftp, test=False,
                                                                  counter=f"{i}/{len(files_to_upload)}")
                             data_sent += mb_sent
+                            if lag_time > max_lag_time:
+                                log.info(f"Got a new max_lag_time of {max_lag_time}")
+                                max_lag_time_across_stations = lag_time
+
                             if upload_success:
                                 if cml_args.verbose:
                                     log.info(f"File {f} was uploaded successfully")
@@ -532,4 +537,18 @@ if __name__ == '__main__':
                     json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
                     file_handle.flush()
 
+                lag_time_log_text = f"Maximum lag time is {max_lag_time_across_stations}"
 
+                if max_lag_time_across_stations > LAG_WARNING_THRESHOLD:
+
+                    if max_lag_time_across_stations > previous_max_lag_time_across_stations + LAG_WARNING_DEADBAND:
+                        lag_increase = (max_lag_time_across_stations - previous_max_lag_time_across_stations).total_seconds()
+                        lag_increase_minutes = round(lag_increase / 60)
+                        lag_time_log_text += f" and has increased by {lag_increase_minutes} minutes"
+
+                    elif max_lag_time_across_stations < previous_max_lag_time_across_stations - LAG_WARNING_DEADBAND:
+                        lag_reduction = (previous_max_lag_time_across_stations - max_lag_time_across_stations).total_seconds()
+                        lag_reduction_minutes = round(lag_reduction / 60)
+                        lag_time_log_text += f" and has reduced by {lag_reduction_minutes} minutes"
+
+                log.info(lag_time_log_text)
