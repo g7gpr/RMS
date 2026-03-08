@@ -211,7 +211,7 @@ def testArchive(file_path, verbose=False):
     log.warning(f"{file_name} is not a path to a valid archive")
     return False
 
-def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
+def uploadFile(station, f, sftp, test=False):
 
     if test:
         return True, 0
@@ -236,14 +236,9 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
     lag_time = now_utc - filetime_utc
     lag_time_str = f"{lag_time.days}d "
     lag_time_str += (datetime.datetime(1970,1,1, tzinfo=datetime.timezone.utc) + lag_time).strftime("%H:%M:%S")
-    log_line = f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s - delay {lag_time_str}"
 
-    if counter is not None:
-        log_line += f" ({counter})"
 
-    log.info(log_line)
-
-    return success, size, lag_time
+    return success, size, lag_time, lag_time_str, remote_file_path, data_rate, int_ts
 
 def doMaintenance(stations_paths_list):
 
@@ -489,9 +484,13 @@ if __name__ == '__main__':
                                     out_of_time = True
                                 break
                             i += 1
-                            upload_success, mb_sent, lag_time = uploadFile(station, f, sftp, test=False,
-                                counter=f"{i}/{len(files_to_upload)} {int((datetime.datetime.now() - start_station_time).total_seconds())} seconds spent")
+                            upload_success, mb_sent, lag_time, lag_time_str, remote_file_path, data_rate, int_ts = uploadFile(station, f, sftp, test=False)
+
+                            log_line = f"{mb_sent:6.1f}MB to {station}@{HOSTNAME}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s - delay {lag_time_str}"
+                            log_line += f" ({i}/{len(files_to_upload)}) {int((datetime.datetime.now() - start_station_time).total_seconds())} seconds on this station"
                             data_sent += mb_sent
+                            log.info(log_line)
+
                             if lag_time > max_lag_time_across_stations:
                                 log.info(f"   Got a new max_lag_time of {lag_time}")
                                 max_lag_time_across_stations = lag_time
