@@ -489,7 +489,7 @@ if __name__ == '__main__':
                                                                  counter=f"{i}/{len(files_to_upload)}")
                             data_sent += mb_sent
                             if lag_time > max_lag_time_across_stations:
-                                log.info(f"Got a new max_lag_time of {lag_time}")
+                                log.info(f"   Got a new max_lag_time of {lag_time}")
                                 max_lag_time_across_stations = lag_time
 
                             if upload_success:
