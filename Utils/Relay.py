@@ -490,7 +490,7 @@ if __name__ == '__main__':
                                 break
                             i += 1
                             upload_success, mb_sent, lag_time = uploadFile(station, f, sftp, test=False,
-                                                                 counter=f"{i}/{len(files_to_upload)}")
+                                                                 counter=f"{i}/{len(files_to_upload)} {int(time_elapsed_on_this_station_seconds)} seconds spent")
                             data_sent += mb_sent
                             if lag_time > max_lag_time_across_stations:
                                 log.info(f"   Got a new max_lag_time of {lag_time}")
@@ -563,12 +563,14 @@ if __name__ == '__main__':
         log.info(lag_time_log_text)
         previous_max_lag_time_across_stations = max_lag_time_across_stations
         first_iteration = False
-        log.info(f"Total data sent this iteration {data_sent_this_iteration}")
-        log.info(f"Total data to be sent {total_data_to_be_sent}")
-        time_taken_this_iteration_hours = ((datetime.datetime.now() - start_time).total_seconds()) / 3600
-        log.info(f"Time taken this iteration {time_taken_this_iteration_hours:.2f} hours")
-        data_rate_mb_per_hour = data_sent / time_taken_this_iteration_hours
-        log.info(f"Data rate per hour {data_rate_mb_per_hour}")
-        hours_to_completion = total_data_to_be_sent / data_rate_mb_per_hour
-        estimated_completion_time = datetime.datetime.now() + datetime.timedelta(hours=hours_to_completion)
-        log.info(f"Estimated completion time is {estimated_completion_time}")
+        log.info(f"Total data sent this iteration {data_sent_this_iteration} MB")
+        total_data_to_be_sent -= data_sent_this_iteration
+        log.info(f"Total data to be sent {total_data_to_be_sent} MB")
+        time_taken_this_iteration_seconds = ((datetime.datetime.now() - start_time).total_seconds())
+        log.info(f"Time taken this iteration {time_taken_this_iteration_seconds:.2f} seconds")
+        if time_taken_this_iteration_seconds > 0:
+            data_rate_mb_per_second = data_sent / time_taken_this_iteration_seconds
+            log.info(f"Data rate per second {data_rate_mb_per_second} MB/s")
+            seconds_to_completion = total_data_to_be_sent / data_rate_mb_per_second
+            estimated_completion_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds_to_completion)
+            log.info(f"Estimated completion time is {estimated_completion_time}")
