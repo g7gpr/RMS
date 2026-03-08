@@ -542,7 +542,7 @@ if __name__ == '__main__':
                     json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
                     file_handle.flush()
 
-                lag_time_log_text = f"Maximum lag time is {max_lag_time_across_stations}"
+        lag_time_log_text = f"Maximum lag time is {max_lag_time_across_stations}"
 
         if max_lag_time_across_stations > LAG_WARNING_THRESHOLD:
 
