@@ -345,6 +345,7 @@ if __name__ == '__main__':
                     file_handle.flush()
 
     out_of_time = False
+    max_lag_time_across_stations = datetime.timedelta(seconds=0)
     while True:
 
         wait_time = (start_time - datetime.datetime.now())
@@ -371,7 +372,7 @@ if __name__ == '__main__':
 
             start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
 
-        max_lag_time_across_stations = datetime.timedelta(seconds=0)
+
         previous_max_lag_time_across_stations = max_lag_time_across_stations
         for station in remote_files_dict:
             if cml_args.verbose:
