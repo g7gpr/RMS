@@ -343,7 +343,7 @@ if __name__ == '__main__':
 
     while True:
 
-        wait_time = (start_time - datetime.datetime.now())
+        wait_time = (start_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
         # If the uploader is more than one cycle late
         while wait_time.total_seconds() < (0 - cycle_time_seconds):
             # Add a cycle time and check again
@@ -372,6 +372,7 @@ if __name__ == '__main__':
         previous_max_lag_time_across_stations = max_lag_time_across_stations
         data_sent_this_iteration = 0
         total_data_to_be_sent = 0
+        station_loop_start_time = datetime.datetime.now(datetime.timezone.utc)
         for station in remote_files_dict:
             if cml_args.verbose:
                 log.info(f"Working on {station}")
@@ -565,14 +566,14 @@ if __name__ == '__main__':
         log.info(lag_time_log_text)
         previous_max_lag_time_across_stations = max_lag_time_across_stations
         first_iteration = False
-        log.info(f"Total data sent this iteration {data_sent_this_iteration} MB")
+        log.info(f"Total data sent this iteration {data_sent_this_iteration:.1f} MB")
         total_data_to_be_sent -= data_sent_this_iteration
-        log.info(f"Total data to be sent {total_data_to_be_sent} MB")
-        time_taken_this_iteration_seconds = ((datetime.datetime.now() - start_time).total_seconds())
-        log.info(f"Time taken this iteration {time_taken_this_iteration_seconds:.2f} seconds")
+        log.info(f"Total data to be sent {total_data_to_be_sent:.1f} MB")
+        time_taken_this_iteration_seconds = ((datetime.datetime.now() - station_loop_start_time).total_seconds())
+        log.info(f"Time taken this iteration {time_taken_this_iteration_seconds:.0f} seconds")
         if time_taken_this_iteration_seconds > 0:
             data_rate_mb_per_second = data_sent / time_taken_this_iteration_seconds
-            log.info(f"Data rate per second {data_rate_mb_per_second} MB/s")
+            log.info(f"Data rate per second {data_rate_mb_per_second:.2f} MB/s")
             seconds_to_completion = total_data_to_be_sent / data_rate_mb_per_second
             estimated_completion_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds_to_completion)
             log.info(f"Estimated completion time is {estimated_completion_time}")
