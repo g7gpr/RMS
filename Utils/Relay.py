@@ -234,8 +234,9 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     filetime_utc = datetime.datetime.fromtimestamp(os.path.getmtime(local_file_path), tz=datetime.timezone.utc)
     lag_time = now_utc - filetime_utc
-    lag_time_str = (datetime.datetime(1970,1,1, tzinfo=datetime.timezone.utc) + lag_time).strftime("%H:%M:%S")
-    log_line = f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s - transit delay is {lag_time}"
+    lag_time_str = f"{lag_time.days}d "
+    lag_time_str += (datetime.datetime(1970,1,1, tzinfo=datetime.timezone.utc) + lag_time).strftime("%H:%M:%S")
+    log_line = f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s - delay {lag_time_str}"
 
     if counter is not None:
         log_line += f" ({counter})"
