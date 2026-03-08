@@ -557,3 +557,4 @@ if __name__ == '__main__':
                         lag_time_log_text += f" and has reduced by {lag_reduction_minutes} minutes"
 
                 log.info(lag_time_log_text)
+                previous_max_lag_time_across_stations = max_lag_time_across_stations
