@@ -483,8 +483,8 @@ if __name__ == '__main__':
                             upload_success, mb_sent, lag_time = uploadFile(station, f, sftp, test=False,
                                                                  counter=f"{i}/{len(files_to_upload)}")
                             data_sent += mb_sent
-                            if lag_time > max_lag_time:
-                                log.info(f"Got a new max_lag_time of {max_lag_time}")
+                            if lag_time > max_lag_time_across_stations:
+                                log.info(f"Got a new max_lag_time of {max_lag_time_across_stations}")
                                 max_lag_time_across_stations = lag_time
 
                             if upload_success:
