@@ -569,7 +569,7 @@ if __name__ == '__main__':
         log.info(f"Total data sent this iteration {data_sent_this_iteration:.1f} MB")
         total_data_to_be_sent -= data_sent_this_iteration
         log.info(f"Total data to be sent {total_data_to_be_sent:.1f} MB")
-        time_taken_this_iteration_seconds = ((datetime.datetime.now() - station_loop_start_time).total_seconds())
+        time_taken_this_iteration_seconds = ((datetime.datetime.now(datetime.timezone.utc) - station_loop_start_time).total_seconds())
         log.info(f"Time taken this iteration {time_taken_this_iteration_seconds:.0f} seconds")
         if time_taken_this_iteration_seconds > 0:
             data_rate_mb_per_second = data_sent / time_taken_this_iteration_seconds
