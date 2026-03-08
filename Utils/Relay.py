@@ -544,17 +544,17 @@ if __name__ == '__main__':
 
                 lag_time_log_text = f"Maximum lag time is {max_lag_time_across_stations}"
 
-                if max_lag_time_across_stations > LAG_WARNING_THRESHOLD:
+        if max_lag_time_across_stations > LAG_WARNING_THRESHOLD:
 
-                    if max_lag_time_across_stations > previous_max_lag_time_across_stations + LAG_WARNING_DEADBAND:
-                        lag_increase = (max_lag_time_across_stations - previous_max_lag_time_across_stations).total_seconds()
-                        lag_increase_minutes = round(lag_increase / 60)
-                        lag_time_log_text += f" and has increased by {lag_increase_minutes} minutes"
+            if max_lag_time_across_stations > previous_max_lag_time_across_stations + LAG_WARNING_DEADBAND:
+                lag_increase = (max_lag_time_across_stations - previous_max_lag_time_across_stations).total_seconds()
+                lag_increase_minutes = round(lag_increase / 60)
+                lag_time_log_text += f" and has increased by {lag_increase_minutes} minutes"
 
-                    elif max_lag_time_across_stations < previous_max_lag_time_across_stations - LAG_WARNING_DEADBAND:
-                        lag_reduction = (previous_max_lag_time_across_stations - max_lag_time_across_stations).total_seconds()
-                        lag_reduction_minutes = round(lag_reduction / 60)
-                        lag_time_log_text += f" and has reduced by {lag_reduction_minutes} minutes"
+            elif max_lag_time_across_stations < previous_max_lag_time_across_stations - LAG_WARNING_DEADBAND:
+                lag_reduction = (previous_max_lag_time_across_stations - max_lag_time_across_stations).total_seconds()
+                lag_reduction_minutes = round(lag_reduction / 60)
+                lag_time_log_text += f" and has reduced by {lag_reduction_minutes} minutes"
 
-                log.info(lag_time_log_text)
-                previous_max_lag_time_across_stations = max_lag_time_across_stations
+        log.info(lag_time_log_text)
+        previous_max_lag_time_across_stations = max_lag_time_across_stations
