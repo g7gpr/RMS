@@ -275,7 +275,7 @@ if __name__ == '__main__':
     if os.path.exists(archive_to_test):
         log.info(f"Testing {os.path.basename(archive_to_test)} - testArchive returns {testArchive(archive_to_test)}")
 
-    start_time = datetime.datetime.now().replace(microsecond=0)
+    start_time = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
     # Init the command line arguments parser
     arg_parser = argparse.ArgumentParser(description=""" Upload files using sftp.""")
 
@@ -343,7 +343,7 @@ if __name__ == '__main__':
 
     while True:
 
-        wait_time = (start_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+        wait_time = (start_time - datetime.datetime.now(datetime.timezone.utc))
         # If the uploader is more than one cycle late
         while wait_time.total_seconds() < (0 - cycle_time_seconds):
             # Add a cycle time and check again
