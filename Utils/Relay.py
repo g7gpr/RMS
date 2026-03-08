@@ -572,7 +572,7 @@ if __name__ == '__main__':
         time_taken_this_iteration_seconds = ((datetime.datetime.now(datetime.timezone.utc) - station_loop_start_time).total_seconds())
         log.info(f"Time taken this iteration {time_taken_this_iteration_seconds:.0f} seconds")
         if time_taken_this_iteration_seconds > 0:
-            data_rate_mb_per_second = data_sent / time_taken_this_iteration_seconds
+            data_rate_mb_per_second = data_sent_this_iteration / time_taken_this_iteration_seconds
             log.info(f"Data rate per second {data_rate_mb_per_second:.2f} MB/s")
             seconds_to_completion = total_data_to_be_sent / data_rate_mb_per_second
             estimated_completion_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds_to_completion)
