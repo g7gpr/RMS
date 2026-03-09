@@ -553,7 +553,7 @@ if __name__ == '__main__':
 
         log.info(f"Maximum lag time {max_lag_time_across_stations}")
         log.info(f"Previous maximum lag time {previous_max_lag_time_across_stations}")
-        log.info(f"Difference {max_lag_time_across_stations  - previous_lag_time_across_stations}")
+        log.info(f"Difference {max_lag_time_across_stations  - previous_max_lag_time_across_stations}")
         log.info(f"Lag warning threshold {LAG_WARNING_THRESHOLD}")
         log.info(f"Lag warning deadband {LAG_WARNING_DEADBAND}")
 
