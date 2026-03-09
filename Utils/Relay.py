@@ -211,7 +211,7 @@ def testArchive(file_path, verbose=False):
     log.warning(f"{file_name} is not a path to a valid archive")
     return False
 
-def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
+def uploadFile(station, f, sftp, test=False):
 
     if test:
         return True, 0
@@ -236,14 +236,9 @@ def uploadFile(station, f, sftp, hostname=HOSTNAME, test=False, counter=None):
     lag_time = now_utc - filetime_utc
     lag_time_str = f"{lag_time.days}d "
     lag_time_str += (datetime.datetime(1970,1,1, tzinfo=datetime.timezone.utc) + lag_time).strftime("%H:%M:%S")
-    log_line = f"{size:6.1f}MB to {station}@{hostname}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s - delay {lag_time_str}"
 
-    if counter is not None:
-        log_line += f" ({counter})"
 
-    log.info(log_line)
-
-    return success, size, lag_time
+    return success, size, lag_time, lag_time_str, remote_file_path, data_rate, int_ts
 
 def doMaintenance(stations_paths_list):
 
@@ -280,7 +275,7 @@ if __name__ == '__main__':
     if os.path.exists(archive_to_test):
         log.info(f"Testing {os.path.basename(archive_to_test)} - testArchive returns {testArchive(archive_to_test)}")
 
-    start_time = datetime.datetime.now().replace(microsecond=0)
+    start_time = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
     # Init the command line arguments parser
     arg_parser = argparse.ArgumentParser(description=""" Upload files using sftp.""")
 
@@ -348,7 +343,7 @@ if __name__ == '__main__':
 
     while True:
 
-        wait_time = (start_time - datetime.datetime.now())
+        wait_time = (start_time - datetime.datetime.now(datetime.timezone.utc))
         # If the uploader is more than one cycle late
         while wait_time.total_seconds() < (0 - cycle_time_seconds):
             # Add a cycle time and check again
@@ -377,6 +372,7 @@ if __name__ == '__main__':
         previous_max_lag_time_across_stations = max_lag_time_across_stations
         data_sent_this_iteration = 0
         total_data_to_be_sent = 0
+        station_loop_start_time = datetime.datetime.now(datetime.timezone.utc)
         for station in remote_files_dict:
             if cml_args.verbose:
                 log.info(f"Working on {station}")
@@ -489,9 +485,16 @@ if __name__ == '__main__':
                                     out_of_time = True
                                 break
                             i += 1
-                            upload_success, mb_sent, lag_time = uploadFile(station, f, sftp, test=False,
-                                                                 counter=f"{i}/{len(files_to_upload)}")
+                            upload_success, mb_sent, lag_time, lag_time_str, remote_file_path, data_rate, int_ts = uploadFile(station, f, sftp, test=False)
+
+                            log_line = f"{mb_sent:6.1f}MB to {station}@{HOSTNAME}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:3.2f}MB/s - delay {lag_time_str}"
                             data_sent += mb_sent
+                            this_station_seconds = int((datetime.datetime.now() - start_station_time).total_seconds())
+                            data_rate_so_far_this_station = data_sent / this_station_seconds
+                            log_line += f" ({i}/{len(files_to_upload)}) {this_station_seconds} seconds on this station to send {data_sent:.1f}MB at {data_rate_so_far_this_station:.1f}MB/s"
+
+                            log.info(log_line)
+
                             if lag_time > max_lag_time_across_stations:
                                 log.info(f"   Got a new max_lag_time of {lag_time}")
                                 max_lag_time_across_stations = lag_time
@@ -571,12 +574,14 @@ if __name__ == '__main__':
         log.info(lag_time_log_text)
         previous_max_lag_time_across_stations = max_lag_time_across_stations
         first_iteration = False
-        log.info(f"Total data sent this iteration {data_sent_this_iteration}")
-        log.info(f"Total data to be sent {total_data_to_be_sent}")
-        time_taken_this_iteration_hours = ((datetime.datetime.now() - start_time).total_seconds()) / 3600
-        log.info(f"Time taken this iteration {time_taken_this_iteration_hours:.2f} hours")
-        data_rate_mb_per_hour = data_sent / time_taken_this_iteration_hours
-        log.info(f"Data rate per hour {data_rate_mb_per_hour}")
-        hours_to_completion = total_data_to_be_sent / data_rate_mb_per_hour
-        estimated_completion_time = datetime.datetime.now() + datetime.timedelta(hours=hours_to_completion)
-        log.info(f"Estimated completion time is {estimated_completion_time}")
+        log.info(f"Total data sent this iteration {data_sent_this_iteration:.1f} MB")
+        total_data_to_be_sent -= data_sent_this_iteration
+        log.info(f"Total data to be sent {total_data_to_be_sent:.1f} MB")
+        time_taken_this_iteration_seconds = ((datetime.datetime.now(datetime.timezone.utc) - station_loop_start_time).total_seconds())
+        log.info(f"Time taken this iteration {time_taken_this_iteration_seconds:.0f} seconds")
+        if time_taken_this_iteration_seconds > 0:
+            data_rate_mb_per_second = data_sent_this_iteration / time_taken_this_iteration_seconds
+            log.info(f"Data rate per second {data_rate_mb_per_second:.2f} MB/s")
+            seconds_to_completion = total_data_to_be_sent / data_rate_mb_per_second
+            estimated_completion_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds_to_completion)
+            log.info(f"Estimated completion time is {estimated_completion_time}")
