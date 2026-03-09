@@ -341,6 +341,7 @@ if __name__ == '__main__':
 
     out_of_time = False
     first_iteration = True
+    previous_max_lag_time_across_stations = datetime.timedelta(seconds=0)
 
     while True:
 
@@ -370,7 +371,6 @@ if __name__ == '__main__':
 
         max_lag_time_across_stations = datetime.timedelta(seconds=0)
 
-        previous_max_lag_time_across_stations = max_lag_time_across_stations
         data_sent_this_iteration = 0
         total_data_to_be_sent = 0
         station_loop_start_time = datetime.datetime.now(datetime.timezone.utc)
