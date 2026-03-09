@@ -559,7 +559,7 @@ if __name__ == '__main__':
 
         if max_lag_time_across_stations > LAG_WARNING_THRESHOLD and not first_iteration:
 
-            log.info(f"Maximum / difference / previous lag time {max_lag_time_across_stations} / {previous_max_lag_time_across_stations} /  {max_lag_time_across_stations - previous_max_lag_time_across_stations}")
+            #log.info(f"Maximum / difference / previous lag time {max_lag_time_across_stations} / {max_lag_time_across_stations - previous_max_lag_time_across_stations} / {previous_max_lag_time_across_stations}")
 
             if max_lag_time_across_stations > previous_max_lag_time_across_stations + LAG_WARNING_DEADBAND:
                 lag_increase = (max_lag_time_across_stations - previous_max_lag_time_across_stations).total_seconds()
