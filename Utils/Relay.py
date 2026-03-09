@@ -545,7 +545,7 @@ if __name__ == '__main__':
                     log.info(traceback.format_exc())
                     continue
 
-        # Write out the updated json file - do this once per station to reduce the chance of corruption
+        # Write out the updated json file - do this once per iteration to reduce the chance of corruption
         with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
             log.info("Writing remote files status")
             json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
@@ -554,15 +554,12 @@ if __name__ == '__main__':
 
         lag_time_log_text = f"Maximum lag time is {max_lag_time_across_stations}"
 
-        log.info(f"Maximum lag time {max_lag_time_across_stations}")
-        log.info(f"Previous maximum lag time {previous_max_lag_time_across_stations}")
-        log.info(f"Difference {max_lag_time_across_stations  - previous_max_lag_time_across_stations}")
-        log.info(f"Lag warning threshold {LAG_WARNING_THRESHOLD}")
-        log.info(f"Lag warning deadband {LAG_WARNING_DEADBAND}")
 
+        log.info(f"Lag warning threshold  / deadband {LAG_WARNING_THRESHOLD} / {LAG_WARNING_DEADBAND}")
 
         if max_lag_time_across_stations > LAG_WARNING_THRESHOLD and not first_iteration:
-            log.info("Entered lag warning threshold conditional")
+
+            log.info(f"Maximum / difference / previous lag time {max_lag_time_across_stations} / {previous_max_lag_time_across_stations} /  {max_lag_time_across_stations - previous_max_lag_time_across_stations}")
 
             if max_lag_time_across_stations > previous_max_lag_time_across_stations + LAG_WARNING_DEADBAND:
                 lag_increase = (max_lag_time_across_stations - previous_max_lag_time_across_stations).total_seconds()
@@ -581,10 +578,9 @@ if __name__ == '__main__':
         total_data_to_be_sent -= data_sent_this_iteration
         log.info(f"Total data to be sent {total_data_to_be_sent:.1f} MB")
         time_taken_this_iteration_seconds = ((datetime.datetime.now(datetime.timezone.utc) - station_loop_start_time).total_seconds())
-        log.info(f"Time taken this iteration {time_taken_this_iteration_seconds:.0f} seconds")
+
         if time_taken_this_iteration_seconds > 0:
             data_rate_mb_per_second = data_sent_this_iteration / time_taken_this_iteration_seconds
-            log.info(f"Data rate per second {data_rate_mb_per_second:.2f} MB/s")
             seconds_to_completion = total_data_to_be_sent / data_rate_mb_per_second
-            estimated_completion_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds_to_completion)
-            log.info(f"Estimated completion time is {estimated_completion_time}")
+            estimated_completion_time = (datetime.datetime.now() + datetime.timedelta(seconds=seconds_to_completion)).replace(microsecond=0)
+            log.info(f"Time this iteration {time_taken_this_iteration_seconds:.0f} seconds Data rate {data_rate_mb_per_second:.2f} MB/s Completion time {estimated_completion_time}")
