@@ -548,7 +548,15 @@ if __name__ == '__main__':
 
         lag_time_log_text = f"Maximum lag time is {max_lag_time_across_stations}"
 
+        log.info(f"Maximum lag time {max_lag_time_across_stations}")
+        log.info(f"Previous maximum lag time {previous_max_lag_time_across_stations}")
+        log.info(f"Difference {previous_max_lag_time_across_stations - max_lag_time_across_stations}")
+        log.info(f"Lag warning threshold {LAG_WARNING_THRESHOLD}")
+        log.info(f"Lag warning deadband {LAG_WARNING_DEADBAND}")
+
+
         if max_lag_time_across_stations > LAG_WARNING_THRESHOLD and not first_iteration:
+            log.info("Entered lag warning threshold conditional")
 
             if max_lag_time_across_stations > previous_max_lag_time_across_stations + LAG_WARNING_DEADBAND:
                 lag_increase = (max_lag_time_across_stations - previous_max_lag_time_across_stations).total_seconds()
