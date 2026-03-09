@@ -340,6 +340,7 @@ if __name__ == '__main__':
                     file_handle.flush()
 
     out_of_time = False
+    first_iteration = True
 
     while True:
 
@@ -368,7 +369,7 @@ if __name__ == '__main__':
             start_time = start_time + datetime.timedelta(seconds = cycle_time_seconds)
 
         max_lag_time_across_stations = datetime.timedelta(seconds=0)
-        first_iteration = True
+
         previous_max_lag_time_across_stations = max_lag_time_across_stations
         data_sent_this_iteration = 0
         total_data_to_be_sent = 0
