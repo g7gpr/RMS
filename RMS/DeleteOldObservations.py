@@ -792,7 +792,7 @@ def deleteFilesHeldOnServer(config, verbose=False):
     files_to_delete_set = set(remote_processed_files)
 
 
-    for f in files_to_delete_set:
+    for f in sorted(files_to_delete_set):
         path_to_delete = os.path.expanduser(os.path.join(archived_dir, f))
 
         # Delete detected, metadata and imgdata files
@@ -805,11 +805,10 @@ def deleteFilesHeldOnServer(config, verbose=False):
                 log.info(f"Found remote file {f}")
                 directory = "_".join(f.split("_")[0:4])
                 directory = os.path.join(archived_dir, directory)
-                log.info(f"Looking to delete {directory}")
                 if os.path.exists(directory):
-                    log.info(f"Path exists")
+                    log.info(f"{directory} exists")
                     if os.path.isdir(directory):
-                        log.info("And is a directory exists")
+                        log.info(f"{directory} is a directory directory")
                         full_paths_to_dirs_to_delete_list.append(directory)
 
         # If an imgdata and metadata file are found, then we can delete the associated archive directory
