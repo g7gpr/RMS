@@ -66,11 +66,7 @@ def removeLock(config, log):
 
     log.info("Removing reboot lock")
     lockfile = os.path.join(os.path.expanduser(config.data_dir), config.reboot_lock_file)
-    if os.path.exists(lockfile):
-        os.remove(lockfile)
-    else:
-        log.warning("No reboot lock file found at {}".format(lockfile))
-
+    os.remove(lockfile)
 
 def countFiles(p1, p2):
     """ Count the number of files in the directories at two paths p1, and p2

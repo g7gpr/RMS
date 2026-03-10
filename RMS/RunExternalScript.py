@@ -76,8 +76,8 @@ def runExternalScript(captured_night_dir, archived_night_dir, config):
         externalFunction = getattr(module, config.external_function_name)
 
         # Call the external function in a separate process, protecting the main process from potential crashes
-
-        # If logging is disabled, create a wrapper function which removes all log handlers in the external
+        
+        # If logging is disabled, create a wrapper function which removes all log handlers in the external 
         # process
         if not config.external_script_log:
             # Use the wrapper function

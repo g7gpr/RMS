@@ -14,7 +14,7 @@ import os
 
 import cv2
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from PIL import ImageFont
 
@@ -149,23 +149,10 @@ def generateTimelapse(dir_path, keep_images=False, fps=None, output_file=None, h
     
         c = c + 1
 
-        # Print elapsed time and estimated completion time
-        total_ff = len(ff_list)
+        # Print elapsed time
         if c % 30 == 0:
-            elapsed_time = timedelta(seconds=round((RmsDateTime.utcnow() - t1).total_seconds()))
-            if c == 0:
-                seconds_per_frame = 1
-            else:
-                seconds_per_frame = elapsed_time.total_seconds() / c
-            frames_remaining_to_process = total_ff - c
-            remaining_time_seconds = frames_remaining_to_process * seconds_per_frame
-            remaining_time_str = str(timedelta(seconds=round(remaining_time_seconds)))
-            estimated_completion_time_str = ((datetime.now(timezone.utc) +
-                                         timedelta(seconds=remaining_time_seconds))
-                                         .strftime("%H:%M:%S"))
-
-            print("{:>5d}/{:>5d}, Elapsed: {:s}, Remaining: {:s}, Completion Time: {:s}"
-                  .format(c, total_ff, str(elapsed_time), str(remaining_time_str), str(estimated_completion_time_str)), end="\r")
+            print("{:>5d}/{:>5d}, Elapsed: {:s}".format(c, len(ff_list), 
+                str(RmsDateTime.utcnow() - t1)), end="\r")
             sys.stdout.flush()
 
     # now make the timelapse

@@ -46,7 +46,7 @@ from RMS.Compression import Compressor
 from RMS.DeleteOldObservations import deleteOldObservations
 from RMS.DetectStarsAndMeteors import detectStarsAndMeteors
 from RMS.Formats.FFfile import validFFName
-from RMS.Misc import mkdirP, RmsDateTime, UTCFromTimestamp, runningUnderSystemd
+from RMS.Misc import mkdirP, RmsDateTime, UTCFromTimestamp
 from RMS.QueuedPool import QueuedPool
 from RMS.Reprocess import getPlatepar, processNight, processFramesFiles
 from RMS.RunExternalScript import runExternalScript
@@ -67,8 +67,7 @@ def breakHandler(signum, frame):
     # Set the flag to stop capturing video
     STOP_CAPTURE = True
 
-    # This log entry is an adhoc fix to prevents Ctrl+C failure until the root cause is identified
-    log.info("Interrupt received. Setting STOP_CAPTURE to True")
+    log.info("SIGINT received. Setting STOP_CAPTURE to True")
 
 # Save the original event for the Ctrl+C
 ORIGINAL_BREAK_HANDLE = signal.getsignal(signal.SIGINT)
@@ -791,7 +790,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
                 except KeyboardInterrupt:
 
-                    log.info('Interrupt received, exiting...')
+                    log.info('Ctrl + C pressed, exiting...')
 
                     if upload_manager is not None:
 
@@ -1079,19 +1078,6 @@ if __name__ == "__main__":
     log.info("Program start")
     log.info("Station code: {:s}".format(str(config.stationID)))
 
-
-    # Get the process ID on linux
-    if sys.platform == 'linux':
-        pid = os.getpid()
-        log.info(f"Process ID (PID) {pid}")
-    else:
-        pid = None
-
-    running_under_systemd = runningUnderSystemd()
-
-    if runningUnderSystemd():
-        log.info("Running under systemd")
-
     # Get the program version
     try:
         # Get latest version's commit hash and time of commit
@@ -1219,6 +1205,8 @@ if __name__ == "__main__":
     # Automatic running and stopping the capture at sunrise and sunset
     ran_once = False
     slideshow_view = None
+    switcher_stop_event = None
+    capture_switcher = None
     while True:
 
         if config.continuous_capture:
@@ -1236,12 +1224,9 @@ if __name__ == "__main__":
 
 
         # Reboot the computer after processing is done for the previous night
-        if ran_once and (config.reboot_after_processing or runningUnderSystemd()):
+        if ran_once and config.reboot_after_processing:
 
-            if config.reboot_after_processing:
-                log.info("Trying to reboot after processing in 30 seconds...")
-            elif runningUnderSystemd():
-                log.info(f"Trying to terminate after processing in 30 seconds...")
+            log.info("Trying to reboot after processing in 30 seconds...")
             time.sleep(30)
 
             # Try rebooting for 4 hours, stop if capture should run
@@ -1254,39 +1239,28 @@ if __name__ == "__main__":
 
                     # Prevent rebooting if the upload manager is uploading
                     if upload_manager.upload_in_progress.value:
-                        log.info("Reboot / terminate delayed for 1 minute due to upload...")
+                        log.info("Reboot delayed for 1 minute due to upload...")
                         reboot_go = False
 
                 # Check if the reboot lock file exists
                 reboot_lock_file_path = os.path.join(config.data_dir, config.reboot_lock_file)
                 if os.path.exists(reboot_lock_file_path):
-                    log.info("Reboot / terminate delayed for 1 minute because the lock file exists: {:s}".format(reboot_lock_file_path))
+                    log.info("Reboot delayed for 1 minute because the lock file exists: {:s}".format(reboot_lock_file_path))
                     reboot_go = False
 
-                log.info(f"reboot_go is {reboot_go} Running under systemD reports {runningUnderSystemd()}")
+
                 # Reboot the computer
                 if reboot_go:
 
-                    if config.reboot_after_processing:
-                        log.info('Rebooting now!')
-
-                    if runningUnderSystemd():
-                        log.info('Terminating now, for code updates and restart by systemd!')
+                    log.info('Rebooting now!')
 
                     # Reboot the computer (script needs sudo privileges, works only on Linux)
-                    if config.reboot_after_processing:
-                        try:
-                            log.info("Calling for a system shutdown now")
-                            os.system('sudo shutdown -r now')
+                    try:
+                        os.system('sudo shutdown -r now')
 
-                        except Exception as e:
-                            log.debug('Rebooting failed with message:\n' + repr(e))
-                            log.debug(repr(traceback.format_exception(*sys.exc_info())))
-
-                    elif runningUnderSystemd():
-                        log.info("Calling for a program exit now")
-                        STOP_CAPTURE = True
-                        log.info(f"STOP_CAPTURE is {STOP_CAPTURE}")
+                    except Exception as e:
+                        log.debug('Rebooting failed with message:\n' + repr(e))
+                        log.debug(repr(traceback.format_exception(*sys.exc_info())))
 
                 else:
 
@@ -1308,6 +1282,10 @@ if __name__ == "__main__":
 
                 ### ###
 
+            # If reboot didn't happen in continuous capture mode, reset so capture resumes normally
+            if config.continuous_capture:
+                log.warning("Reboot failed after 4 hours of attempts, resuming capture")
+                ran_once = False
 
 
         # Don't start the capture if there's less than 15 minutes left
@@ -1322,7 +1300,7 @@ if __name__ == "__main__":
 
             except KeyboardInterrupt:
 
-                log.info('Interrupt received, exiting...')
+                log.info('Ctrl + C pressed, exiting...')
 
                 if upload_manager is not None:
 
@@ -1427,7 +1405,7 @@ if __name__ == "__main__":
 
                 except KeyboardInterrupt:
 
-                    log.info('Interrupt received, exiting...')
+                    log.info('Ctrl + C pressed, exiting...')
 
                     if upload_manager is not None:
 
@@ -1462,7 +1440,6 @@ if __name__ == "__main__":
 
         # Break the loop if capturing was stopped
         if STOP_CAPTURE:
-            log.info(f"Breaking loop because STOP_CAPTURE was set to {STOP_CAPTURE}")
             break
 
 
@@ -1503,18 +1480,26 @@ if __name__ == "__main__":
 
 
         if config.continuous_capture:
-            
+
+            # Stop the previous capture mode switcher thread if it's still running
+            if switcher_stop_event is not None:
+                log.info('Stopping previous capture mode switcher thread...')
+                switcher_stop_event.set()
+                capture_switcher.join(timeout=10)
+                if capture_switcher.is_alive():
+                    log.warning('Previous capture mode switcher thread did not stop in time')
+
             # Setup shared value to communicate day/night switch between processes.
             daytime_mode = multiprocessing.Value(ctypes.c_bool, False)
             camera_mode_switch_trigger = multiprocessing.Value(ctypes.c_bool, True)
 
             # Setup the capture mode switcher on another thread
-            log.info("Starting captureModeSwitcher on another thread")
-            capture_switcher = threading.Thread(target=captureModeSwitcher, args=(config, daytime_mode, camera_mode_switch_trigger))
-            
+            switcher_stop_event = threading.Event()
+            capture_switcher = threading.Thread(target=captureModeSwitcher, args=(config, daytime_mode, camera_mode_switch_trigger, switcher_stop_event))
+
             # To make sure the capture switcher thread exits automatically at the end
             capture_switcher.daemon = True
-            
+
             capture_switcher.start()
 
             # Wait for the switcher to complete calculation and switch to correct camera mode
@@ -1546,9 +1531,7 @@ if __name__ == "__main__":
         ran_once = True
 
 
-    log.info("Starting shutdown process")
 
-    log.info("Stopping upload manager")
     if upload_manager is not None:
 
         # Stop the upload manager
@@ -1557,28 +1540,12 @@ if __name__ == "__main__":
             upload_manager.stop()
             del upload_manager
 
-    log.info("Stopped event monitor")
     if eventmonitor is not None:
 
-        # Stop the event monitor
+    # Stop the event monitor
         if eventmonitor.is_alive():
              log.debug('Closing eventmonitor...')
              eventmonitor.stop()
 
              del eventmonitor
 
-    log.info("Stopping slideshow_view")
-    if slideshow_view is not None:
-        log.info("Stopping slideshow...")
-        slideshow_view.stop()
-        slideshow_view.join()
-        del slideshow_view
-
-    log.info("Checking platform and killing process")
-    log.info(f"On platform {sys.platform} killing PID {pid}")
-    log.info("Sleeping for 60 seconds to allow logger flush")
-    time.sleep(60)
-    if sys.platform == 'linux' and pid is not None:
-        log.info(f"Send SIGKILL to PID:{pid}")
-        os.kill(pid, signal.SIGKILL)
-    sys.exit(0)
