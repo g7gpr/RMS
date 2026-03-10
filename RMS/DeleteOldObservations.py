@@ -11,7 +11,6 @@ import time
 import glob
 import argparse
 import subprocess
-import paramiko
 
 import ephem
 
@@ -19,7 +18,6 @@ from RMS.CaptureDuration import captureDuration
 from RMS.ConfigReader import loadConfigFromDirectory
 from RMS.Logger import LoggingManager, getLogger
 from RMS.Misc import RmsDateTime, UTCFromTimestamp
-from pathlib import Path
 
 # Get the logger from the main module
 log = getLogger("rmslogger")
@@ -60,86 +58,44 @@ def quotaReport(capt_dir_quota, config, after=False):
     frames_files_used_space = usedSpace(frames_files)
     time_files_used_space = usedSpace(time_files)
     video_files_used_space = usedSpace(video_files)
-    archived_dir_used_space = usedSpace(archived_dir)
-    captured_dir_used_space = usedSpace(captured_dir)
-    log_dir_used_space = usedSpace(log_dir)
-    data_dir_used_space = usedSpace(config.data_dir)
-    size_archived_dirs = sizeArchivedDirs(config)
-    size_bz2_files = sizeBz2Files(config)
-
     continuous_capture_used_space = frames_files_used_space + time_files_used_space + video_files_used_space
 
-    if config.log_files_quota != 0:
-        log_files_pc = 100 * log_dir_used_space / config.log_files_quota
-    else:
-        log_files_pc = 0
-
-    if config.continuous_capture_quota != 0:
-        continuous_capture_pc = 100 * continuous_capture_used_space / config.continuous_capture_quota
-    else:
-        continuous_capture_pc = 0
-
-    if config.bz2_files_quota != 0:
-        bz2_files_pc = 100 * size_bz2_files / config.bz2_files_quota
-    else:
-        bz2_files_pc = 0
-
-    if config.arch_dir_quota != 0:
-        arch_dir_pc = 100 * size_archived_dirs / config.arch_dir_quota
-    else:
-        arch_dir_pc = 0
-
-    if config.arch_dir_quota + config.bz2_files_quota != 0:
-        total_arch_pc = 100 * archived_dir_used_space / (config.arch_dir_quota + config.bz2_files_quota)
-    else:
-        total_arch_pc = 0
-
-    if config.rms_data_quota != 0:
-        total_rms_data_pc = 100 * data_dir_used_space / config.rms_data_quota
-    else:
-        total_rms_data_pc = 0
-
-    if capt_dir_quota != 0:
-        captured_dir_pc = 100 * captured_dir_used_space / capt_dir_quota
-    else:
-        captured_dir_pc = 0
-
-    usage = shutil.disk_usage(config.data_dir)
-
     rep = "\n\n"
-    rep += ("--------------------------------------------------------------\n")
+    rep += ("-----------------------------------------------\n")
     if after:
         rep += ("Directory quotas after management\n")
     else:
         rep += ("Directory quotas before management\n")
-    rep += ("--------------------------------------------------------------\n")
-    rep += ("Usage and quotas\n")
+    rep += ("-----------------------------------------------\n")
+    rep += ("Space used                              \n")
     rep += "\n"
-    rep += ("                                           Used     Quota\n")
-
-
+    rep += ("                          log files : {:7.02f}GB\n".format(usedSpace(log_dir)))
     rep += ("                       frames files : {:7.02f}GB\n".format(frames_files_used_space))
     rep += ("                         time files : {:7.02f}GB\n".format(time_files_used_space))
     rep += ("                        video files : {:7.02f}GB\n".format(video_files_used_space))
-    rep += ("                                        ----------------------\n")
-    rep += ("       total for continuous capture : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(continuous_capture_used_space, config.continuous_capture_quota, continuous_capture_pc))
-    rep += ("\n")
-    rep += ("                          bz2 files : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(size_bz2_files, config.bz2_files_quota, bz2_files_pc))
-    rep += ("               archived directories : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(size_archived_dirs, config.arch_dir_quota, arch_dir_pc))
-    rep += ("                                        ----------------------\n")
-    rep += (" bz2 files and archived directories : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(archived_dir_used_space , config.arch_dir_quota + config.bz2_files_quota, total_arch_pc))
-    rep += ("\n")
-    rep += ("               captured directories : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(captured_dir_used_space, capt_dir_quota, captured_dir_pc))
-    rep += ("                          log files : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(log_dir_used_space,config.log_files_quota, log_files_pc))
-    rep += ("                                        ----------------------\n")
-    rep += ("                 total for RMS_data : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(data_dir_used_space, config.rms_data_quota, total_rms_data_pc))
+    rep += ("       total for continuous capture : {:7.02f}GB\n".format(continuous_capture_used_space))
+
+    rep += ("                          bz2 files : {:7.02f}GB\n".format(sizeBz2Files(config)))
+    rep += ("               archived directories : {:7.02f}GB\n".format(sizeArchivedDirs(config)))
+    rep += ("                 total for archives : {:7.02f}GB\n".format(usedSpace(archived_dir)))
+
+    rep += ("               captured directories : {:7.02f}GB\n".format(usedSpace(captured_dir)))
+    rep += ("                 total for RMS_data : {:7.02f}GB\n".format(usedSpace(config.data_dir)))
+
     rep += "\n"
-    rep += (" logical partition information\n")
-    if usage.total > 0:
-        rep += ("      partition containing RMS_data : {:7.02f}GB {:7.02f}GB {:3.0f}%\n".format(usage.used / (1024 ** 3), usage.total / (1024 ** 3) , 100 * usage.used / usage.total))
-    else:
-        rep += ("      partition containing RMS_data : {:7.02f}GB {:7.02f}GB\n".format(usage.used / (1024 ** 3), usage.total / (1024 ** 3)))
-    rep += ("--------------------------------------------------------------\n")
+    rep += ("Quotas allowed                                  \n")
+
+    rep += ("           total quota for RMS_data : {:7.02f}GB\n".format(config.rms_data_quota))
+    rep += ("                     bz2 file quota : {:7.02f}GB\n".format(config.bz2_files_quota))
+    rep += ("         archived directories quota : {:7.02f}GB\n".format(config.arch_dir_quota))
+    rep += ("                    log files quota : {:7.02f}GB\n".format(config.log_files_quota))
+    rep += ("           continuous capture quota : {:7.02f}GB\n".format(config.continuous_capture_quota))
+    rep += (" quota remaining for captured files : {:7.02f}GB\n".format(capt_dir_quota))
+
+    rep += "\n"
+    rep += ("Space on drive                          \n")
+    rep += ("           Available space on drive : {:7.02f}GB\n".format(availableSpace(config.data_dir) / (1024 ** 3)))
+    rep += ("-----------------------------------------------\n")
 
     return rep
 
@@ -740,118 +696,7 @@ def deleteFiles(dir_path, config, delete_all=False):
 
     return getFiles(dir_path, config.stationID)
 
-def deleteFilesHeldOnServer(config, verbose=False):
 
-
-
-
-    username  = config.stationID.lower()
-    archived_dir = os.path.join(config.data_dir, config.archived_dir)
-    log.info(f"Looking for files on {config.hostname} which can be deleted from local store")
-
-    try:
-        key = paramiko.RSAKey.from_private_key_file(config.rsa_private_key)
-        if verbose:
-            log.info(f"Found key for {username}")
-    except:
-        log.info("No key for {}".format(username))
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    if verbose:
-        log.info(f"Attempting connection to {username}@{config.hostname} using key from {config.rsa_private_key}")
-    try:
-        ssh.connect(hostname=config.hostname, username=username, pkey=key)
-    except:
-        log.info(f"Unable to open a ssh connection for {username}@{config.hostname}")
-        return
-
-
-    try:
-        with ssh.open_sftp() as sftp:
-            remote_processed_files = sftp.listdir(os.path.join(config.remote_dir, "processed"))
-            remote_unprocessed_files = sftp.listdir(os.path.join(config.remote_dir))
-    except:
-        log.info(f"Unable to open sftp connection for {username}")
-
-
-    ssh.close()
-    full_paths_to_files_to_delete_list, full_paths_to_dirs_to_delete_list = [], []
-    for f in remote_unprocessed_files:
-        if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
-            full_path_to_timelapse = os.path.join(config.data_dir, config.frame_dir, f)
-            if os.path.exists(full_path_to_timelapse):
-                if os.path.isfile(full_path_to_timelapse):
-                    full_paths_to_files_to_delete_list.append(full_path_to_timelapse)
-            f = Path(f).with_suffix(".mp4")
-            full_path_to_timelapse = os.path.join(config.data_dir, config.frame_dir, f)
-            if os.path.exists(full_path_to_timelapse):
-                if os.path.isfile(full_path_to_timelapse):
-                    full_paths_to_files_to_delete_list.append(full_path_to_timelapse)
-
-    # Form the set of files to delete - all the files which are found on the remote
-    files_to_delete_set = set(remote_processed_files)
-
-
-    for f in sorted(files_to_delete_set):
-        path_to_delete = os.path.expanduser(os.path.join(archived_dir, f))
-
-        # Delete detected, metadata and imgdata files
-        if f.split("_")[4].startswith("detected") or f.split("_")[4].startswith("metadata") or f.split("_")[4].startswith("imgdata"):
-            if os.path.exists(path_to_delete):
-                full_paths_to_files_to_delete_list.append(path_to_delete)
-
-            # If it is a detected file, then we can delete the associated archive directory
-            if f.split("_")[4].startswith("detected"):
-                directory = "_".join(f.split("_")[0:4])
-                directory = os.path.join(archived_dir, directory)
-                if os.path.exists(directory):
-                    if os.path.isdir(directory):
-                        full_paths_to_dirs_to_delete_list.append(directory)
-
-        # If an imgdata and metadata file are found, then we can delete the associated archive directory
-        if len(f.split("_")) >= 4:
-            if f.split("_")[4].startswith("imgdata"):
-                metadata_f_name = f.replace("imgdata", "metadata")
-                if metadata_f_name in files_to_delete_set:
-                    directory = "_".join(f.split("_")[0:4])
-                    directory = os.path.join(archived_dir, directory)
-                    if os.path.exists(directory):
-                        if os.path.isdir(directory):
-                            full_paths_to_dirs_to_delete_list.append(directory)
-
-    full_paths_to_files_to_delete_list.sort()
-    full_paths_to_dirs_to_delete_list.sort()
-
-    for full_path_to_file in full_paths_to_files_to_delete_list:
-        if os.path.exists(full_path_to_file):
-            if os.path.isfile(full_path_to_file):
-                if len(full_paths_to_files_to_delete_list) < 100:
-                    f = os.path.basename(full_path_to_file)
-                    log.info(f"Deleting archived file   : {f}")
-                try:
-                    os.remove(full_path_to_file)
-                except FileNotFoundError:
-                    log.warning(f"File not found        : {f}")
-                except PermissionError:
-                    log.warning(f"Permission denied     : {f}")
-                except Exception as e:
-                    log.warning(f"Unexpected error      : {f}")
-
-    for full_path_to_dir in full_paths_to_dirs_to_delete_list:
-        if os.path.exists(full_path_to_dir):
-            if os.path.isdir(full_path_to_dir):
-                if len(full_paths_to_dirs_to_delete_list) < 100:
-                    d = os.path.basename(full_path_to_dir)
-                    log.info(f"Deleting archived directory   : {d}")
-                    try:
-                        shutil.rmtree(full_path_to_dir)
-                    except FileNotFoundError:
-                        log.warning(f"Directory not found   : {f}")
-                    except PermissionError:
-                        log.warning(f"Permission denied     : {f}")
-                    except Exception as e:
-                        log.warning(f"Unexpected error      : {f}")
-    return
 
 
 def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration=None):
@@ -885,9 +730,6 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
     # next purge out any old ArchivedFiles folders, compressed files, and video clips
     log.info('clearing down old data')
     deleteOldDirs(data_dir, config)
-
-    if True:
-        deleteFilesHeldOnServer(config, verbose=True)
 
 
     if config.quota_management_enabled:

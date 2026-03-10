@@ -46,7 +46,7 @@ from RMS.Compression import Compressor
 from RMS.DeleteOldObservations import deleteOldObservations
 from RMS.DetectStarsAndMeteors import detectStarsAndMeteors
 from RMS.Formats.FFfile import validFFName
-from RMS.Misc import mkdirP, RmsDateTime, UTCFromTimestamp
+from RMS.Misc import mkdirP, RmsDateTime, UTCFromTimestamp, runningUnderSystemd
 from RMS.QueuedPool import QueuedPool
 from RMS.Reprocess import getPlatepar, processNight, processFramesFiles
 from RMS.RunExternalScript import runExternalScript
@@ -1077,6 +1077,19 @@ if __name__ == "__main__":
 
     log.info("Program start")
     log.info("Station code: {:s}".format(str(config.stationID)))
+
+
+    # Get the process ID on linux
+    if sys.platform == 'linux':
+        pid = os.getpid()
+        log.info(f"Process ID (PID) {pid}")
+    else:
+        pid = None
+
+    running_under_systemd = runningUnderSystemd()
+
+    if runningUnderSystemd():
+        log.info("Running under systemd")
 
     # Get the program version
     try:
