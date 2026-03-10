@@ -554,6 +554,7 @@ if __name__ == '__main__':
                 file_handle.flush()
                 log.info("Writing remote files status - completed")
 
+        lag_time_log_text = f"Maximum lag time is {max_lag_time_across_stations}"
 
         if max_lag_time_across_stations > LAG_WARNING_THRESHOLD and not first_iteration:
 
@@ -568,15 +569,14 @@ if __name__ == '__main__':
                 lag_reduction = (previous_max_lag_time_across_stations - max_lag_time_across_stations).total_seconds()
                 lag_reduction_minutes = round(lag_reduction / 60)
                 lag_time_log_text += f" and has reduced by {lag_reduction_minutes} minutes"
+            log.info(lag_time_log_text)
 
-        log.info(lag_time_log_text)
         previous_max_lag_time_across_stations = max_lag_time_across_stations
         first_iteration = False
         total_data_to_be_sent -= data_sent_this_iteration
         time_taken_this_iteration_seconds = ((datetime.datetime.now(datetime.timezone.utc) - station_loop_start_time).total_seconds())
 
         if time_taken_this_iteration_seconds > 0 and data_sent_this_iteration > 0:
-            lag_time_log_text = f"Maximum lag time is {max_lag_time_across_stations}"
             log.info(f"Lag warning threshold  / deadband {LAG_WARNING_THRESHOLD} / {LAG_WARNING_DEADBAND}")
             log.info(f"Total data sent this iteration {data_sent_this_iteration:.1f} MB")
             log.info(f"Total data to be sent {total_data_to_be_sent:.1f} MB")
