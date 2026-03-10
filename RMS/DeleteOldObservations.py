@@ -802,10 +802,14 @@ def deleteFilesHeldOnServer(config, verbose=False):
 
             # If it is a detected file, then we can delete the associated archive directory
             if f.split("_")[4].startswith("detected"):
+                log.info(f"Found remote file {f}")
                 directory = "_".join(f.split("_")[0:4])
                 directory = os.path.join(archived_dir, directory)
+                log.info(f"Looking to delete {directory}")
                 if os.path.exists(directory):
+                    log.info(f"Path exists")
                     if os.path.isdir(directory):
+                        log.info("And is a directory exists")
                         full_paths_to_dirs_to_delete_list.append(directory)
 
         # If an imgdata and metadata file are found, then we can delete the associated archive directory
