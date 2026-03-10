@@ -545,12 +545,14 @@ if __name__ == '__main__':
                     log.info(traceback.format_exc())
                     continue
 
-        # Write out the updated json file - do this once per iteration to reduce the chance of corruption
-        with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
-            log.info("Writing remote files status")
-            json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
-            file_handle.flush()
-            log.info("Writing remote files status - completed")
+
+        if data_sent_this_iteration > 0:
+            # Write out the updated json file - do this once per iteration to reduce the chance of corruption
+            with open(REMOTE_FILES_DICT_PATH, "w") as file_handle:
+                log.info("Writing remote files status")
+                json.dump(remote_files_dict, file_handle, indent=4, sort_keys=True)
+                file_handle.flush()
+                log.info("Writing remote files status - completed")
 
         lag_time_log_text = f"Maximum lag time is {max_lag_time_across_stations}"
 
