@@ -1380,7 +1380,7 @@ if __name__ == "__main__":
         target_jd = cml_args.julian_date[0]
         single_image = True
 
-    target_image_time = jdToPyTime(target_jd)
+
 
     if cml_args.compensation is None:
         compensation = [80, 95, 50, 99.995]
