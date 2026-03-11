@@ -23,6 +23,7 @@ import argparse
 import subprocess
 from datetime import tzinfo
 import moviepy
+import pwd
 
 import cv2
 import numpy as np
@@ -155,7 +156,7 @@ def getStationsInfoDict(path_list=None, print_activity=False):
 
     # Initialise an empty dict
     stations_info_dict = {}
-
+    user_name = pwd.getpwuid(os.getuid()).pw_name
 
     # If we have been given paths
     if len(path_list):
@@ -774,7 +775,7 @@ def makeUpload(source_path, upload_to, print_activity=True, color=30):
 def plotConstellations(img, target_image_time_jd, cam_coords, minimum_elevation_deg):
 
     size_x, size_y = img.shape[0], img.shape[1]
-
+    color = (45,45,45)
 
     if plot_constellations:
         constellation_coordinates_list = getConstellationsImageCoordinates(target_image_time_jd, cam_coords, size_x,
@@ -1379,6 +1380,7 @@ if __name__ == "__main__":
         target_jd = cml_args.julian_date[0]
         single_image = True
 
+    target_image_time = jdToPyTime(target_jd)
 
     if cml_args.compensation is None:
         compensation = [80, 95, 50, 99.995]
@@ -1392,6 +1394,7 @@ if __name__ == "__main__":
     else:
         output_file_name = os.path.expanduser(cml_args.output_file_name[0])
 
+
     if not run_live:
         if output_file_name is None:
             mkdirP(os.path.expanduser("~/RMS_data/PolarPlot/Projection/"))
@@ -1400,6 +1403,7 @@ if __name__ == "__main__":
                     "~/RMS_data/PolarPlot/Projection/JD_{}_{}_timelapse.mp4".format(timelapse_start, timelapse_end))
 
             else:
+
                 output_path = os.path.expanduser(
                     "~/RMS_data/PolarPlot/Projection/{}.png".format(target_image_time.strftime("%Y%m%d_%H%M%S")))
 
