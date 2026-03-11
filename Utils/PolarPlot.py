@@ -22,7 +22,7 @@ import pickle
 import argparse
 import subprocess
 from datetime import tzinfo
-import moviepy
+
 import pwd
 
 import cv2
