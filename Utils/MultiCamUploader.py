@@ -135,7 +135,7 @@ def makeUpload(config_dict, verbose=False):
                 local_path_modified = os.path.join(local_path, local_path_modifier)
                 # build rsync command
                 command_string = f"rsync --progress -av --itemize-changes --bwlimit=512 --partial-dir=partial/ -e  'ssh  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {key_path}'  {local_path_modified} {user_host}{remote_path}"
-                if cml_args.verbose:
+                if verbose:
                     log.info(f"Running command: {command_string}")
                 result = subprocess.run(command_string, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 # If return after each upload is selected, then return, so that a check is made for all the highest
@@ -196,7 +196,7 @@ if __name__ == '__main__':
             log.info(f"Loaded config file for station {config.stationID}")
         config_dict = {}
         config_dict[config.stationID] = config
-        makeUpload(None, None, config)
+        makeUpload(None, cml_args.verbose, config)
     else:
         config = None
 
