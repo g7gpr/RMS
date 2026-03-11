@@ -803,7 +803,7 @@ def renderAzimuthalProjection(transform_data, annotate=False, target_jd=None, co
 
     # If no compensation values passed use some reasonable values
     if compensation is None:
-        compensation = [50, 80, 80, 99.75]
+        compensation = [0, 100, 80, 100]
 
     # Extract individual variables from transform data
     stations_info_dict, transformation_layer_list, source_coordinates_array, dest_coordinates_array, intensity_scaling_array, cam_coords = transform_data
@@ -849,7 +849,7 @@ def renderAzimuthalProjection(transform_data, annotate=False, target_jd=None, co
     target_image_array = np.clip(255 * (target_image_array - min_threshold) / (max_threshold - min_threshold), 0, 255)
 
     if plot_constellations:
-        target_image_array = plotConstellations(target_image_array, target_jd, cam_coords, minimum_elevation_deg, color=255)
+        target_image_array = plotConstellations(target_image_array, target_jd, cam_coords, minimum_elevation_deg)
 
     if annotate:
         stations_as_text = getCommaSeparatedListofStations(stations_info_dict)
@@ -986,7 +986,6 @@ def singleImage(transform_data, annotate, target_jd, plot_constellations, output
     azimuthal_projection = renderAzimuthalProjection(transform_data, annotate=annotate, target_jd=target_jd,
                                                      plot_constellations=plot_constellations)
     if output_path.endswith(".png") or output_path.endswith(".bmp"):
-        print(f"Writing to {output_path}")
         imageio.imwrite(output_path, azimuthal_projection.astype(np.uint8))
         makeUpload(output_path, upload)
 
