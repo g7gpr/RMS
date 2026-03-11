@@ -11,6 +11,7 @@ import time
 import glob
 import argparse
 import subprocess
+import paramiko
 
 import ephem
 
@@ -18,6 +19,7 @@ from RMS.CaptureDuration import captureDuration
 from RMS.ConfigReader import loadConfigFromDirectory
 from RMS.Logger import LoggingManager, getLogger
 from RMS.Misc import RmsDateTime, UTCFromTimestamp
+from pathlib import Path
 
 # Get the logger from the main module
 log = getLogger("rmslogger")
@@ -738,7 +740,121 @@ def deleteFiles(dir_path, config, delete_all=False):
 
     return getFiles(dir_path, config.stationID)
 
+def deleteFilesHeldOnServer(config, verbose=False):
 
+
+
+
+    username  = config.stationID.lower()
+    archived_dir = os.path.join(config.data_dir, config.archived_dir)
+    log.info(f"Looking for files on {config.hostname} which can be deleted from local store")
+
+    try:
+        key = paramiko.RSAKey.from_private_key_file(config.rsa_private_key)
+        if verbose:
+            log.info(f"Found key for {username}")
+    except:
+        log.info("No key for {}".format(username))
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    if verbose:
+        log.info(f"Attempting connection to {username}@{config.hostname} using key from {config.rsa_private_key}")
+    try:
+        ssh.connect(hostname=config.hostname, username=username, pkey=key)
+    except:
+        log.info(f"Unable to open a ssh connection for {username}@{config.hostname}")
+        return
+
+
+    try:
+        with ssh.open_sftp() as sftp:
+            remote_processed_files = sftp.listdir(os.path.join(config.remote_dir, "processed"))
+            remote_unprocessed_files = sftp.listdir(os.path.join(config.remote_dir))
+    except:
+        log.info(f"Unable to open sftp connection for {username}")
+
+
+    ssh.close()
+    full_paths_to_files_to_delete_list, full_paths_to_dirs_to_delete_list = [], []
+    for f in remote_unprocessed_files:
+        if f.startswith(username.upper()) and f.endswith("_frames_timelapse.tar"):
+            full_path_to_timelapse = os.path.join(config.data_dir, config.frame_dir, f)
+            if os.path.exists(full_path_to_timelapse):
+                if os.path.isfile(full_path_to_timelapse):
+                    full_paths_to_files_to_delete_list.append(full_path_to_timelapse)
+            f = Path(f).with_suffix(".mp4")
+            full_path_to_timelapse = os.path.join(config.data_dir, config.frame_dir, f)
+            if os.path.exists(full_path_to_timelapse):
+                if os.path.isfile(full_path_to_timelapse):
+                    full_paths_to_files_to_delete_list.append(full_path_to_timelapse)
+
+    # Form the set of files to delete - all the files which are found on the remote
+    files_to_delete_set = set(remote_processed_files)
+
+
+    for f in sorted(files_to_delete_set):
+        path_to_delete = os.path.expanduser(os.path.join(archived_dir, f))
+
+        # Delete detected, metadata and imgdata files
+        if f.split("_")[4].startswith("detected") or f.split("_")[4].startswith("metadata") or f.split("_")[4].startswith("imgdata"):
+            if os.path.exists(path_to_delete):
+                full_paths_to_files_to_delete_list.append(path_to_delete)
+
+            # If it is a detected file, then we can delete the associated archive directory
+            if f.split("_")[4].startswith("detected"):
+                log.info(f"Found remote file {f}")
+                directory = "_".join(f.split("_")[0:4])
+                directory = os.path.join(archived_dir, directory)
+                if os.path.exists(directory):
+                    log.info(f"{directory} exists")
+                    if os.path.isdir(directory):
+                        log.info(f"{directory} is a directory directory")
+                        full_paths_to_dirs_to_delete_list.append(directory)
+
+        # If an imgdata and metadata file are found, then we can delete the associated archive directory
+        if len(f.split("_")) >= 4:
+            if f.split("_")[4].startswith("imgdata"):
+                metadata_f_name = f.replace("imgdata", "metadata")
+                if metadata_f_name in files_to_delete_set:
+                    directory = "_".join(f.split("_")[0:4])
+                    directory = os.path.join(archived_dir, directory)
+                    if os.path.exists(directory):
+                        if os.path.isdir(directory):
+                            full_paths_to_dirs_to_delete_list.append(directory)
+
+    full_paths_to_files_to_delete_list.sort()
+    full_paths_to_dirs_to_delete_list.sort()
+
+    for full_path_to_file in full_paths_to_files_to_delete_list:
+        if os.path.exists(full_path_to_file):
+            if os.path.isfile(full_path_to_file):
+                if len(full_paths_to_files_to_delete_list) < 100:
+                    f = os.path.basename(full_path_to_file)
+                    log.info(f"Deleting archived file   : {f}")
+                try:
+                    os.remove(full_path_to_file)
+                except FileNotFoundError:
+                    log.warning(f"File not found        : {f}")
+                except PermissionError:
+                    log.warning(f"Permission denied     : {f}")
+                except Exception as e:
+                    log.warning(f"Unexpected error      : {f}")
+
+    for full_path_to_dir in full_paths_to_dirs_to_delete_list:
+        if os.path.exists(full_path_to_dir):
+            if os.path.isdir(full_path_to_dir):
+                if len(full_paths_to_dirs_to_delete_list) < 100:
+                    d = os.path.basename(full_path_to_dir)
+                    log.info(f"Deleting archived directory   : {d}")
+                    try:
+                        shutil.rmtree(full_path_to_dir)
+                    except FileNotFoundError:
+                        log.warning(f"Directory not found   : {f}")
+                    except PermissionError:
+                        log.warning(f"Permission denied     : {f}")
+                    except Exception as e:
+                        log.warning(f"Unexpected error      : {f}")
+    return
 
 
 def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration=None):
@@ -772,6 +888,9 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
     # next purge out any old ArchivedFiles folders, compressed files, and video clips
     log.info('clearing down old data')
     deleteOldDirs(data_dir, config)
+
+    if True:
+        deleteFilesHeldOnServer(config, verbose=True)
 
 
     if config.quota_management_enabled:
