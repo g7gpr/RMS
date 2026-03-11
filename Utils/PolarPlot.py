@@ -173,8 +173,8 @@ def getStationsInfoDict(path_list=None, print_activity=False):
                 station_full_path = p
                 c = cr.parse(os.path.expanduser(os.path.join(p,".config")))
 
-            platepar_full_path = os.path.join(station_full_path, c.platepar_name)
-            mask_full_path = os.path.join(station_full_path, c.mask_file)
+            platepar_full_path = os.path.join(os.path.expanduser(station_full_path), c.platepar_name)
+            mask_full_path = os.path.join(os.path.expanduser(station_full_path), c.mask_file)
 
             if os.path.exists(platepar_full_path):
                 pp = Platepar()
@@ -188,8 +188,8 @@ def getStationsInfoDict(path_list=None, print_activity=False):
             else:
                 m = None
 
-            data_dir_sections = pathlib.Path(c.data_dir).parts
-            config_path_section = pathlib.Path(p).parts
+            data_dir_sections = pathlib.Path(os.path.expanduser(c.data_dir)).parts
+            config_path_section = pathlib.Path(os.path.expanduser(p)).parts
             if "home" in data_dir_sections:
                 user_name_index = data_dir_sections.index("home") + 1
 
@@ -622,7 +622,7 @@ def makeTransformation(stations_info_dict, size_x, size_y, minimum_elevation_deg
 
 
 
-    # Intialise
+    # Initialise
     origin_x, origin_y = size_x / 2, size_y / 2
     elevation_range = 2 * (90 - minimum_elevation_deg)
     pixel_to_radius_scale_factor_x = elevation_range / size_x
@@ -772,10 +772,11 @@ def makeUpload(source_path, upload_to, print_activity=True, color=30):
 
     return
 
-def plotConstellations(img, target_image_time_jd, cam_coords, minimum_elevation_deg):
+def plotConstellations(img, target_image_time_jd, cam_coords, minimum_elevation_deg, color=None):
 
     size_x, size_y = img.shape[0], img.shape[1]
-    color = (45,45,45)
+    if color is None:
+        color = (45,45,45)
 
     if plot_constellations:
         constellation_coordinates_list = getConstellationsImageCoordinates(target_image_time_jd, cam_coords, size_x,
@@ -985,6 +986,7 @@ def singleImage(transform_data, annotate, target_jd, plot_constellations, output
     azimuthal_projection = renderAzimuthalProjection(transform_data, annotate=annotate, target_jd=target_jd,
                                                      plot_constellations=plot_constellations)
     if output_path.endswith(".png") or output_path.endswith(".bmp"):
+        print(f"Writing to {output_path}")
         imageio.imwrite(output_path, azimuthal_projection.astype(np.uint8))
         makeUpload(output_path, upload)
 
@@ -1306,6 +1308,8 @@ if __name__ == "__main__":
     run_live = cml_args.run_live
 
     period = cml_args.period[0]
+    #todo: work out what this was intended to be
+    target_image_time = datetime.datetime.now(datetime.timezone.utc)
 
     if cml_args.dimension is not None:
         # round to even number
@@ -1319,7 +1323,7 @@ if __name__ == "__main__":
         path_list = None
     else:
         for path_list in cml_args.config:
-            config_paths.append(path_list[0])
+            config_paths.append(os.path.expanduser(path_list[0]))
 
     stack_depth = cml_args.stack[0]
     quiet = cml_args.quiet
