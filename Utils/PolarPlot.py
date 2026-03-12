@@ -1245,7 +1245,7 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str, action="append",
                             help="Optional, paths to the config files. If no paths given then will search for config files"
-                                 "in a multi-cam linux style file arrangement, or a one camera per usename arrangement.")
+                                 "in a multi-cam linux style file arrangement, or a one camera per username arrangement.")
 
 
     arg_parser.add_argument('-r', '--repeat',  dest='repeat', default=False, action="store_true",
