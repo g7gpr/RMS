@@ -1437,10 +1437,10 @@ if __name__ == "__main__":
 
 
     if single_image:
-        singleImage(transform_data, annotate, target_jd, plot_constellations, output_path, upload=upload)
+        singleImage(transform_data, annotate, timelapse_start, timelapse_end, plot_constellations, output_path, upload=upload)
 
     elif make_timelapse:
-        makeTimelapse(transform_data, annotate, target_jd, plot_constellations, output_path, upload=upload)
+        makeTimelapse(transform_data, annotate, timelapse_start, timelapse_end, plot_constellations, output_path, upload=upload)
 
 
     elif run_live:
