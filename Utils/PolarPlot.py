@@ -1343,6 +1343,7 @@ if __name__ == "__main__":
     timelapse_start, timelapse_end, seconds_per_frame = None, None, None
     make_timelapse = False
 
+    print(cml_args.timelapse)
 
     if cml_args.timelapse is None:
         timelapse_start = None
