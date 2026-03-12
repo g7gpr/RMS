@@ -1437,7 +1437,7 @@ if __name__ == "__main__":
 
 
     if single_image:
-        singleImage(transform_data, annotate, timelapse_start, timelapse_end, plot_constellations, output_path, upload=upload)
+        singleImage(transform_data, annotate, timelapse_start, plot_constellations, output_path, upload=upload)
 
     elif make_timelapse:
         makeTimelapse(transform_data, annotate, timelapse_start, timelapse_end, plot_constellations, output_path, upload=upload)
