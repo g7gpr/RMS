@@ -1655,7 +1655,7 @@ def parseMeteorDetection(config, parser):
                 print(e)
                 print(traceback.format_exc())
 
-    config.kht_lib_path = kht_lib_path
+
 
     try:
         kht = ctypes.cdll.LoadLibrary(kht_lib_path)
@@ -1687,6 +1687,7 @@ def parseMeteorDetection(config, parser):
     line_results = []
 
 
+    config.kht_lib_path = kht_lib_path
 
     if parser.has_option(section, "vect_angle_thresh"):
         config.vect_angle_thresh = parser.getint(section, "vect_angle_thresh")
