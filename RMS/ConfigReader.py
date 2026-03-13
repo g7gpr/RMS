@@ -1657,6 +1657,7 @@ def parseMeteorDetection(config, parser):
                 print(traceback.format_exc())
 
         try:
+            print(f"Attempting test load of {kht_lib_path}")
             kht = ctypes.cdll.LoadLibrary(kht_lib_path)
             kht.kht_wrapper.argtypes = [npct.ndpointer(dtype=np.double, ndim=2),
                                         npct.ndpointer(dtype=np.byte, ndim=1),
