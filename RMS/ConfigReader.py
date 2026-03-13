@@ -1689,7 +1689,7 @@ def parseMeteorDetection(config, parser):
         print(e_ascii)
         print(traceback_ascii)
         print("Rebuilding kht")
-        pythonSetup(config)
+        pythonSetup()
         kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name,
                                       config.kht_binary_extension)
         # This thread can never reload the library correctly because of namespace contamination
