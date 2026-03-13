@@ -23,6 +23,7 @@ from RMS.Misc import getRmsRootDir, runRmsUpdate
 from Utils.GenerateTimelapse import isFfmpegWorking
 import matplotlib.colors as mcolors
 import traceback
+import ctypes
 
 # Consolidated version-specific imports and definitions
 if sys.version_info[0] == 3:
@@ -1651,6 +1652,36 @@ def parseMeteorDetection(config, parser):
                 print(traceback.format_exc())
 
     config.kht_lib_path = kht_lib_path
+
+    try:
+        kht = ctypes.cdll.LoadLibrary(kht_lib_path)
+        kht.kht_wrapper.argtypes = [npct.ndpointer(dtype=np.double, ndim=2),
+                                    npct.ndpointer(dtype=np.byte, ndim=1),
+                                    ctypes.c_size_t,
+                                    ctypes.c_size_t,
+                                    ctypes.c_size_t,
+                                    ctypes.c_size_t,
+                                    ctypes.c_double,
+                                    ctypes.c_double,
+                                    ctypes.c_double,
+                                    ctypes.c_double]
+        kht.kht_wrapper.restype = ctypes.c_size_t
+
+    # If loading KHT library fails get the OSError subclass
+    except OSError as e:
+
+        # Convert traceback into ASCII for logger safety
+        traceback_ascii = traceback.format_exc().encode("ascii", "replace").decode("ascii")
+        # Convert e into ASCII for logger safety
+        e_ascii = str(e).encode("ascii", "replace").decode("ascii")
+        print("Unable to load KHT library")
+        print(e_ascii)
+        print(traceback_ascii)
+        log.info("Rebuilding kht")
+        runRmsUpdate()
+
+    line_results = []
+
 
 
     if parser.has_option(section, "vect_angle_thresh"):
