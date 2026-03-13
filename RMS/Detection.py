@@ -45,7 +45,7 @@ from RMS.Formats import FTPdetectinfo
 from RMS.Formats.FrameInterface import detectInputType
 from RMS.Formats.AST import loadAST
 from RMS.Logger import LoggingManager, getLogger
-from RMS.Misc import mkdirP, runRmsUpdate
+from RMS.Misc import mkdirP, pythonSetup
 from RMS.Routines.Grouping3D import find3DLines, getAllPoints
 from RMS.Routines.CompareLines import compareLines
 from RMS.Routines import MaskImage
@@ -414,11 +414,11 @@ def getLines(img_handle, k1, j1, time_slide, time_window_size, max_lines, max_wh
 
     if not os.path.exists(kht_lib_path):
         log.info(f"kht library not found at {kht_lib_path}")
-        runRmsUpdate(force=True)
+        pythonSetup(force=True)
 
     if not os.path.isfile(kht_lib_path):
         log.info(f"kht library not found at {kht_lib_path} - it is not a file")
-        runRmsUpdate(force=True)
+        pythonSetup(force=True)
 
     kht, tries = None, 1
     while kht is None and tries:
@@ -453,7 +453,7 @@ def getLines(img_handle, k1, j1, time_slide, time_window_size, max_lines, max_wh
             log.error(e_ascii)
             log.error(traceback_ascii)
             log.info("Rebuilding kht")
-            runRmsUpdate()
+            pythonSetup()
 
         line_results = []
 

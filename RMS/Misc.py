@@ -1196,21 +1196,21 @@ def runningUnderSystemd():
 
     return False
 
-def runRmsUpdate(force=True):
+def pythonSetup():
     """
     Attempts to run RMS_Update - generally to fix kht_wrapper errors.
     Only one thread will execute RMS_Update; all others block until it finishes,
     then return to complete its work.
     """
 
-    update_lock = os.open("/var/lock/RMS_Update.lock", os.O_CREAT | os.O_RDWR)
+    update_lock = os.open("/var/lock/pythonSetup.lock", os.O_CREAT | os.O_RDWR)
 
     try:
         # Try non-blocking lock
         fcntl.flock(update_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
     except BlockingIOError:
-        log.info("RMS_Update already running - this thread now waiting for lock release")
+        log.info("python setup.py already running - this thread now waiting for lock release")
         # Block until the first caller finishes
         fcntl.flock(update_lock, fcntl.LOCK_EX)
         log.info("Process released")
@@ -1219,9 +1219,8 @@ def runRmsUpdate(force=True):
 
     try:
         # We hold the lock here
-        log_text = "Executing RMS_Update"
-        if force:
-            log_text += " --force"
+        log_text = "Executing python setup.py"
+
         log.info(log_text)
 
         current_working_directory = os.path.normpath(os.path.expanduser(getRmsRootDir()))
@@ -1231,12 +1230,10 @@ def runRmsUpdate(force=True):
             log.info(f"Working directory {current_working_directory} does not match {source_rms} - aborting")
             return
 
-        path_to_rms_update = os.path.expanduser(os.path.join(current_working_directory, "Scripts/RMS_Update.sh"))
+        path_to_setup = os.path.expanduser(os.path.join(current_working_directory, "setup.py"))
 
-        if os.path.isfile(path_to_rms_update):
-            command_list = [path_to_rms_update]
-            if force:
-                command_list.append("--force")
+        if os.path.isfile(path_to_setup):
+            command_list = ["python", path_to_setup, "install"]
 
             log.info(f"Command list is {command_list}")
 
@@ -1247,19 +1244,19 @@ def runRmsUpdate(force=True):
                     capture_output=True,
                     text=True
                 )
-                log.info("RMS_Update completed")
+                log.info("python setup.py install completed")
                 #log.info(result.stdout)
                 #log.info(result.stderr)
                 return
 
             except Exception as e:
                 e_ascii = str(e).encode("ascii", "replace").decode("ascii")
-                log.warning(f"RMS_Update failed: {e_ascii}")
+                log.warning(f"python setup.py failed: {e_ascii}")
                 tb_ascii = traceback.format_exc().encode("ascii", "replace").decode("ascii")
                 log.warning(tb_ascii)
                 return
 
-        log.info(f"Could not find RMS_Update in {path_to_rms_update}")
+        log.info(f"Could not find setup.py in {path_to_setup}")
 
     finally:
         # Release the lock

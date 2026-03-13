@@ -19,7 +19,7 @@ from __future__ import absolute_import, division, print_function
 import math
 import os
 import sys
-from RMS.Misc import getRmsRootDir, runRmsUpdate
+from RMS.Misc import getRmsRootDir, pythonSetup
 from Utils.GenerateTimelapse import isFfmpegWorking
 import matplotlib.colors as mcolors
 import traceback
@@ -1651,7 +1651,7 @@ def parseMeteorDetection(config, parser):
             config.kht_binary_extension)
         if kht_lib_path is None:
             try:
-                runRmsUpdate(force=True)
+                pythonSetup()
             except Exception as e:
                 print(e)
                 print(traceback.format_exc())
@@ -1687,7 +1687,7 @@ def parseMeteorDetection(config, parser):
             print(e_ascii)
             print(traceback_ascii)
             print("Rebuilding kht")
-            runRmsUpdate()
+            pythonSetup()
             kht_lib_path = None
 
     line_results = []
