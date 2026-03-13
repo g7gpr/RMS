@@ -453,7 +453,7 @@ def getLines(img_handle, k1, j1, time_slide, time_window_size, max_lines, max_wh
             log.error(e_ascii)
             log.error(traceback_ascii)
             log.info("Rebuilding kht")
-            pythonSetup(config)
+            pythonSetup()
 
             # This thread is now contaminated
 
