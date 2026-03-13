@@ -1233,7 +1233,7 @@ def pythonSetup():
         path_to_setup = os.path.expanduser(os.path.join(current_working_directory, "setup.py"))
 
         if os.path.isfile(path_to_setup):
-            command_list = ["python", path_to_setup, "install"]
+            command_list = ["python", path_to_setup, "install", "--build", "build"]
 
             log.info(f"Command list is {command_list}")
 

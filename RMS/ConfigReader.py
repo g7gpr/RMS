@@ -1658,6 +1658,8 @@ def parseMeteorDetection(config, parser):
 
     try:
         print(f"Attempting test load of {kht_lib_path}")
+        kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name,
+                                      config.kht_binary_extension)
         kht = ctypes.cdll.LoadLibrary(kht_lib_path)
         kht.kht_wrapper.argtypes = [npct.ndpointer(dtype=np.double, ndim=2),
                                     npct.ndpointer(dtype=np.byte, ndim=1),
@@ -1687,7 +1689,7 @@ def parseMeteorDetection(config, parser):
         print(e_ascii)
         print(traceback_ascii)
         print("Rebuilding kht")
-        pythonSetup()
+        pythonSetup(config)
         kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name,
                                       config.kht_binary_extension)
         # This thread can never reload the library correctly because of namespace contamination

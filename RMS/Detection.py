@@ -414,11 +414,11 @@ def getLines(img_handle, k1, j1, time_slide, time_window_size, max_lines, max_wh
 
     if not os.path.exists(kht_lib_path):
         log.info(f"kht library not found at {kht_lib_path}")
-        pythonSetup(force=True)
+        pythonSetup()
 
     if not os.path.isfile(kht_lib_path):
         log.info(f"kht library not found at {kht_lib_path} - it is not a file")
-        pythonSetup(force=True)
+        pythonSetup()
 
     kht, tries = None, 1
     while kht is None and tries:
@@ -453,7 +453,7 @@ def getLines(img_handle, k1, j1, time_slide, time_window_size, max_lines, max_wh
             log.error(e_ascii)
             log.error(traceback_ascii)
             log.info("Rebuilding kht")
-            pythonSetup()
+            pythonSetup(config)
 
             # This thread is now contaminated
 
