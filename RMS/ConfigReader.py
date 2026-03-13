@@ -23,7 +23,11 @@ from RMS.Misc import getRmsRootDir, runRmsUpdate
 from Utils.GenerateTimelapse import isFfmpegWorking
 import matplotlib.colors as mcolors
 import traceback
+
 import ctypes
+import numpy as np
+import numpy.ctypeslib as npct
+
 
 # Consolidated version-specific imports and definitions
 if sys.version_info[0] == 3:
