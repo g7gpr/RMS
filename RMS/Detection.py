@@ -456,6 +456,7 @@ def getLines(img_handle, k1, j1, time_slide, time_window_size, max_lines, max_wh
             pythonSetup()
 
             # This thread is now contaminated, so restart
+            log.info(f"Restarting {sys.executable} {sys.argv} ")
             os.execv(sys.executable, [sys.executable] + sys.argv)
 
         line_results = []
