@@ -440,6 +440,11 @@ def getLines(img_handle, k1, j1, time_slide, time_window_size, max_lines, max_wh
         # If loading KHT library fails get the OSError subclass
         except Exception as e:
 
+            # If the file exists remove it
+            if os.path.exists(kht_lib_path):
+                if os.path.isfile(kht_lib_path):
+                    os.unlink(kht_lib_path)
+
             # Convert traceback into ASCII for logger safety
             traceback_ascii = traceback.format_exc().encode("ascii", "replace").decode("ascii")
             # Convert e into ASCII for logger safety
