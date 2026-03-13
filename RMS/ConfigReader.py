@@ -1652,14 +1652,14 @@ def parseMeteorDetection(config, parser):
     if kht_lib_path is None:
         try:
             pythonSetup()
+            kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name,
+                                          config.kht_binary_extension)
         except Exception as e:
             print(e)
             print(traceback.format_exc())
 
     try:
         print(f"Attempting test load of {kht_lib_path}")
-        kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name,
-                                      config.kht_binary_extension)
         kht = ctypes.cdll.LoadLibrary(kht_lib_path)
         kht.kht_wrapper.argtypes = [npct.ndpointer(dtype=np.double, ndim=2),
                                     npct.ndpointer(dtype=np.byte, ndim=1),
