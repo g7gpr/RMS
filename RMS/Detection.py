@@ -21,11 +21,12 @@ from time import time
 import datetime
 import sys, os
 import ctypes
-import traceback
+import subprocess
 
 import numpy as np
 import numpy.ctypeslib as npct
 import cv2
+import traceback
 
 # Plotting
 import matplotlib.pyplot as plt
@@ -44,7 +45,7 @@ from RMS.Formats import FTPdetectinfo
 from RMS.Formats.FrameInterface import detectInputType
 from RMS.Formats.AST import loadAST
 from RMS.Logger import LoggingManager, getLogger
-from RMS.Misc import mkdirP
+from RMS.Misc import mkdirP, runRmsUpdate
 from RMS.Routines.Grouping3D import find3DLines, getAllPoints
 from RMS.Routines.CompareLines import compareLines
 from RMS.Routines import MaskImage
@@ -409,21 +410,47 @@ def getLines(img_handle, k1, j1, time_slide, time_window_size, max_lines, max_wh
         [list] a list of all found lines
     """
 
-    # Load the KHT library
-    kht = ctypes.cdll.LoadLibrary(kht_lib_path)
-    kht.kht_wrapper.argtypes = [npct.ndpointer(dtype=np.double, ndim=2),
-                                npct.ndpointer(dtype=np.byte, ndim=1),
-                                ctypes.c_size_t,
-                                ctypes.c_size_t,
-                                ctypes.c_size_t,
-                                ctypes.c_size_t,
-                                ctypes.c_double,
-                                ctypes.c_double,
-                                ctypes.c_double,
-                                ctypes.c_double]
-    kht.kht_wrapper.restype = ctypes.c_size_t
+    # Try to load the KHT library
 
-    line_results = []
+    if not os.path.exists(kht_lib_path):
+        log.info(f"kht library not found at {kht_lib_path}")
+        runRmsUpdate(force=True)
+
+    if not os.path.isfile(kht_lib_path):
+        log.info(f"kht library not found at {kht_lib_path} - it is not a file")
+        runRmsUpdate(force=True)
+
+    kht, tries = None, 1
+    while kht is None and tries:
+        tries -= 1
+        try:
+            kht = ctypes.cdll.LoadLibrary(kht_lib_path)
+            kht.kht_wrapper.argtypes = [npct.ndpointer(dtype=np.double, ndim=2),
+                                    npct.ndpointer(dtype=np.byte, ndim=1),
+                                    ctypes.c_size_t,
+                                    ctypes.c_size_t,
+                                    ctypes.c_size_t,
+                                    ctypes.c_size_t,
+                                    ctypes.c_double,
+                                    ctypes.c_double,
+                                    ctypes.c_double,
+                                    ctypes.c_double]
+            kht.kht_wrapper.restype = ctypes.c_size_t
+
+        # If loading KHT library fails get the OSError subclass
+        except OSError as e:
+
+            # Convert traceback into ASCII for logger safety
+            traceback_ascii = traceback.format_exc().encode("ascii", "replace").decode("ascii")
+            # Convert e into ASCII for logger safety
+            e_ascii = str(e).encode("ascii", "replace").decode("ascii")
+            log.warning("Unable to load KHT library")
+            log.error(e_ascii)
+            log.error(traceback_ascii)
+            log.info("Rebuilding kht")
+            runRmsUpdate()
+
+        line_results = []
 
 
     # If the input is a single FF file, threshold the image right away

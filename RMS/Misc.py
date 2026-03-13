@@ -30,6 +30,7 @@ else:
 
 import numpy as np
 import itertools
+import fcntl
 
 from matplotlib import scale as mscale
 from matplotlib import transforms as mtransforms
@@ -1194,3 +1195,5 @@ def runningUnderSystemd():
         log.info(f"systemd Detection error: {e}")
 
     return False
+
+

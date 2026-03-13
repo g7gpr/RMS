@@ -19,9 +19,10 @@ from __future__ import absolute_import, division, print_function
 import math
 import os
 import sys
-from RMS.Misc import getRmsRootDir
+from RMS.Misc import getRmsRootDir, runRmsUpdate
 from Utils.GenerateTimelapse import isFfmpegWorking
 import matplotlib.colors as mcolors
+import traceback
 
 # Consolidated version-specific imports and definitions
 if sys.version_info[0] == 3:
@@ -1637,8 +1638,19 @@ def parseMeteorDetection(config, parser):
     if parser.has_option(section, "kht_binary_extension"):
         config.kht_binary_extension = parser.get(section, "kht_binary_extension")
 
-    config.kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name, 
-        config.kht_binary_extension)
+    kht_lib_path, tries_remaining = None, 2
+
+    while kht_lib_path is None and tries_remaining:
+        kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name,
+            config.kht_binary_extension)
+        if kht_lib_path is None:
+            try:
+                runRmsUpdate(force=True)
+            except Exception as e:
+                print(e)
+                print(traceback.format_exc())
+
+    config.kht_lib_path = kht_lib_path
 
 
     if parser.has_option(section, "vect_angle_thresh"):
