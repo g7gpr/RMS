@@ -1692,7 +1692,8 @@ def parseMeteorDetection(config, parser):
         pythonSetup()
         kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name,
                                       config.kht_binary_extension)
-        # This thread can never reload the library correctly because of namespace contamination
+        # This thread can never reload the library correctly because of namespace contamination - so restart
+        os.execv(sys.executable, [sys.executable] + sys.argv)
 
 
 
