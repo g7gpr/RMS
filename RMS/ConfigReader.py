@@ -1694,7 +1694,7 @@ def parseMeteorDetection(config, parser):
                                       config.kht_binary_extension)
         # This thread can never reload the library correctly because of namespace contamination
 
-    line_results = []
+
 
 
     config.kht_lib_path = kht_lib_path
