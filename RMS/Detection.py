@@ -458,7 +458,7 @@ def getLines(img_handle, k1, j1, time_slide, time_window_size, max_lines, max_wh
             # This thread is now contaminated, so restart
             log.info(f"Restarting {sys.executable} {sys.argv} ")
             os.execv(sys.executable, [sys.executable] + sys.argv)
-
+            # Do not call sys.exit() - os execv will never return
         line_results = []
 
 
