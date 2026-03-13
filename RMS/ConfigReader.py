@@ -1681,7 +1681,7 @@ def parseMeteorDetection(config, parser):
         print("Unable to load KHT library")
         print(e_ascii)
         print(traceback_ascii)
-        log.info("Rebuilding kht")
+        print("Rebuilding kht")
         runRmsUpdate()
 
     line_results = []
