@@ -1678,16 +1678,16 @@ def parseMeteorDetection(config, parser):
                 if os.path.isfile(kht_lib_path):
                     os.unlink(kht_lib_path)
 
-        # Convert traceback into ASCII for logger safety
-        traceback_ascii = traceback.format_exc().encode("ascii", "replace").decode("ascii")
-        # Convert e into ASCII for logger safety
-        e_ascii = str(e).encode("ascii", "replace").decode("ascii")
-        print("Unable to load KHT library")
-        print(e_ascii)
-        print(traceback_ascii)
-        print("Rebuilding kht")
-        runRmsUpdate()
-        kht_lib_path = None
+            # Convert traceback into ASCII for logger safety
+            traceback_ascii = traceback.format_exc().encode("ascii", "replace").decode("ascii")
+            # Convert e into ASCII for logger safety
+            e_ascii = str(e).encode("ascii", "replace").decode("ascii")
+            print("Unable to load KHT library")
+            print(e_ascii)
+            print(traceback_ascii)
+            print("Rebuilding kht")
+            runRmsUpdate()
+            kht_lib_path = None
 
     line_results = []
 
