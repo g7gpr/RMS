@@ -1646,7 +1646,7 @@ def parseMeteorDetection(config, parser):
     kht_lib_path, tries_remaining = None, 2
 
 
-    while kht_lib_path is None and tries_remaining:
+
         kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name,
             config.kht_binary_extension)
         if kht_lib_path is None:
@@ -1689,6 +1689,7 @@ def parseMeteorDetection(config, parser):
             print("Rebuilding kht")
             pythonSetup()
             kht_lib_path = None
+            # This thread can never reload the library correctly - don't even try
 
     line_results = []
 
