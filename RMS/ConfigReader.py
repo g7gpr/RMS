@@ -1683,8 +1683,11 @@ def parseMeteorDetection(config, parser):
         traceback_ascii = traceback.format_exc().encode("ascii", "replace").decode("ascii")
         # Convert e into ASCII for logger safety
         e_ascii = str(e).encode("ascii", "replace").decode("ascii")
-        print("Unable to load KHT library - running RMS_Update.sh")
-        runRmsUpdate(force=True)
+        print("Unable to load KHT library")
+        print(e_ascii)
+        print(traceback_ascii)
+        print("Rebuilding kht")
+        runRmsUpdate()
 
     line_results = []
 

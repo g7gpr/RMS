@@ -1248,8 +1248,8 @@ def runRmsUpdate(force=True):
                     text=True
                 )
                 log.info("RMS_Update completed")
-                log.info(result.stdout)
-                log.info(result.stderr)
+                #log.info(result.stdout)
+                #log.info(result.stderr)
                 return
 
             except Exception as e:
