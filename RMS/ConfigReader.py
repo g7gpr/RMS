@@ -1645,6 +1645,7 @@ def parseMeteorDetection(config, parser):
 
     kht_lib_path, tries_remaining = None, 2
 
+
     while kht_lib_path is None and tries_remaining:
         kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name,
             config.kht_binary_extension)
@@ -1655,29 +1656,27 @@ def parseMeteorDetection(config, parser):
                 print(e)
                 print(traceback.format_exc())
 
+        try:
+            kht = ctypes.cdll.LoadLibrary(kht_lib_path)
+            kht.kht_wrapper.argtypes = [npct.ndpointer(dtype=np.double, ndim=2),
+                                        npct.ndpointer(dtype=np.byte, ndim=1),
+                                        ctypes.c_size_t,
+                                        ctypes.c_size_t,
+                                        ctypes.c_size_t,
+                                        ctypes.c_size_t,
+                                        ctypes.c_double,
+                                        ctypes.c_double,
+                                        ctypes.c_double,
+                                        ctypes.c_double]
+            kht.kht_wrapper.restype = ctypes.c_size_t
+            print("KHT loaded successfully")
 
-
-    try:
-        kht = ctypes.cdll.LoadLibrary(kht_lib_path)
-        kht.kht_wrapper.argtypes = [npct.ndpointer(dtype=np.double, ndim=2),
-                                    npct.ndpointer(dtype=np.byte, ndim=1),
-                                    ctypes.c_size_t,
-                                    ctypes.c_size_t,
-                                    ctypes.c_size_t,
-                                    ctypes.c_size_t,
-                                    ctypes.c_double,
-                                    ctypes.c_double,
-                                    ctypes.c_double,
-                                    ctypes.c_double]
-        kht.kht_wrapper.restype = ctypes.c_size_t
-        print("KHT rebuilt and loaded successfully")
-
-    # If loading KHT library fails get the OSError subclass
-    except Exception as e:
-        # If the file exists remove it
-        if os.path.exists(kht_lib_path):
-            if os.path.isfile(kht_lib_path):
-                os.unlink(kht_lib_path)
+        # If loading KHT library fails get the OSError subclass
+        except Exception as e:
+            # If the file exists remove it
+            if os.path.exists(kht_lib_path):
+                if os.path.isfile(kht_lib_path):
+                    os.unlink(kht_lib_path)
 
         # Convert traceback into ASCII for logger safety
         traceback_ascii = traceback.format_exc().encode("ascii", "replace").decode("ascii")
@@ -1688,6 +1687,7 @@ def parseMeteorDetection(config, parser):
         print(traceback_ascii)
         print("Rebuilding kht")
         runRmsUpdate()
+        kht_lib_path = None
 
     line_results = []
 
