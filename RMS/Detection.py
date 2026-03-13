@@ -438,7 +438,7 @@ def getLines(img_handle, k1, j1, time_slide, time_window_size, max_lines, max_wh
             kht.kht_wrapper.restype = ctypes.c_size_t
 
         # If loading KHT library fails get the OSError subclass
-        except OSError as e:
+        except Exception as e:
 
             # Convert traceback into ASCII for logger safety
             traceback_ascii = traceback.format_exc().encode("ascii", "replace").decode("ascii")
