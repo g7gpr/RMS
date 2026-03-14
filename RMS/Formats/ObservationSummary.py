@@ -213,11 +213,11 @@ def getObservationDurationNightTime(config, start_time):
         duration: [float] duration of observation in seconds.
     """
 
-    _, duration = captureDuration(config.latitude, config.longitude, config.elevation,start_time)
+    ephemeris_start_time, duration = captureDuration(config.latitude, config.longitude, config.elevation,start_time)
 
-    end_time = start_time + datetime.timedelta(seconds=duration)
+    end_time = ephemeris_start_time + datetime.timedelta(seconds=duration)
 
-    return start_time, duration, end_time
+    return ephemeris_start_time, duration, end_time
 
 def getObservationDurationContinuous(config, start_time):
     """Get the duration of an observation session in continuous capture mode.
