@@ -497,10 +497,10 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
         # Add the timelapse to the extra files
         if intervals_path is not None:
             extra_files.append(intervals_path)
-        obs_dict = getObsDBConn(config)
+        obs_dict = getObservationSummaryDict(night_data_dir)
         addObsParam(obs_dict,"jitter_quality",jitter_quality)
         addObsParam(obs_dict,"dropped_frame_rate",dropped_frame_rate)
-        obs_dict.close()
+
 
     except Exception as e:
         log.debug('Plotting timestamp interval failed with message:\n' + repr(e))
@@ -651,13 +651,13 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
         extra_files.append(observation_summary_path_file_name)
         extra_files.append(observation_summary_json_path_file_name)
         
-        log.info("\n\nObservation Summary\n===================\n\n" + serialize(config, night_directory=night_data_dir) + "\n\n")
 
     except Exception as e:
         log.debug('Generating Observation Summary failed with message:\n' + repr(e))
         log.debug(repr(traceback.format_exception(*sys.exc_info())))
 
-
+    obs_summary_to_log = serialize(config, night_directory=night_data_dir)
+    log.info("\n\nObservation Summary\n===================\n\n" + obs_summary_to_log + "\n\n")
 
     night_archive_dir = os.path.join(os.path.abspath(config.data_dir), config.archived_dir,
         night_data_dir_name)
