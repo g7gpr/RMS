@@ -378,7 +378,14 @@ def timeSyncStatus(config, d, force_client=None):
 
     return ahead_ms
 
-def getDaysSinceLastDetection(config):
+def getDaysSinceLastDetection(config, d=None):
+
+
+    if d is not None:
+        detections_key = 'detections_after_ml'
+        if detections_key in d:
+            if d[detections_key] > 0:
+                return 0
 
     sql_command = ""
     sql_command += "SELECT(strftime('%s', 'now') - strftime('%s', start_time)) / (60 * 60 * 23.934)\n"
@@ -389,11 +396,14 @@ def getDaysSinceLastDetection(config):
     sql_command += "    ORDER BY start_time DESC LIMIT 1; "
 
     conn = getObsDBConn(config)
-    print(sql_command)
     cursor = conn.execute(sql_command)
     results = cursor.fetchone()
-    print(results)
+
     conn.close()
+    if results is None:
+        return 0
+    else:
+        return results[0]
 
 def getNTPStatistics():
     """Acquire the statistics of the ntp client.
@@ -1328,8 +1338,12 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
             os.unlink(working_json_path)
 
     conn = getObsDBConn(config, force_delete=False)
+
+    addObsParam(d, 'days_since_last_detection', getDaysSinceLastDetection(config,d=d))
     storeDictInDB(conn, d, debug=True)
     conn.close()
+
+
 
     return getRMSStyleFileName(night_data_dir, "observation_summary.txt"), \
                 getRMSStyleFileName(night_data_dir, "observation_summary.json")
@@ -1350,7 +1364,7 @@ if __name__ == "__main__":
     print("Start time was {}".format(start_time))
     print("Duration time was {:.2f} hours".format(duration/3600))
     print("End time was {}".format(end_time))
-
+    print(getDaysSinceLastDetection(config))
 
 
     startObservationSummaryReport(config, latest_dir, duration, force_delete=False)
