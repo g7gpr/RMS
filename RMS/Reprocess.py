@@ -656,7 +656,7 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
         log.debug('Generating Observation Summary failed with message:\n' + repr(e))
         log.debug(repr(traceback.format_exception(*sys.exc_info())))
 
-    obs_summary_to_log = serialize(config, night_directory=night_data_dir)
+    obs_summary_to_log = serialize(config, night_directory=night_data_dir, final=True)
     log.info("\n\nObservation Summary\n===================\n\n" + obs_summary_to_log + "\n\n")
 
     night_archive_dir = os.path.join(os.path.abspath(config.data_dir), config.archived_dir,

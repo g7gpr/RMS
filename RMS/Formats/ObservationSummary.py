@@ -981,7 +981,7 @@ def daysBehind():
         target_directory_obj.cleanup()
         return "Unable to determine"
 
-def serialize(config, format_nicely=True, as_json=False, night_directory = None, drop_keys_list = None, ordering=None):
+def serialize(config, format_nicely=True, as_json=False, night_directory=None, drop_keys_list=None, ordering=None, final=False):
     """ Returns the data from the most recent observation session as either colon
         delimited text file, ar as a json.
 
@@ -999,7 +999,9 @@ def serialize(config, format_nicely=True, as_json=False, night_directory = None,
         string of key value pairs committed to the database since the start of the previous observation session.
     """
 
-    d = getObservationSummaryDict(night_directory)
+    d = getObservationSummaryDict(night_directory, final=final)
+
+
 
     if ordering is None:
         ordering = ['stationID',
@@ -1116,7 +1118,7 @@ def writeToJSON(config, file_path_and_name, night_dir):
         as_ascii = serialize(config, as_json=True, night_directory=night_dir, drop_keys_list=["night_data_dir"]).encode("ascii", errors="ignore").decode("ascii")
         summary_file_handle.write(as_ascii)
 
-def getObservationSummaryDict(data_dir):
+def getObservationSummaryDict(data_dir, final=False):
     """
 
     Arguments:
@@ -1126,7 +1128,9 @@ def getObservationSummaryDict(data_dir):
         [dict]: Observation summary dict.
     """
 
-    observation_summary_json_path = os.path.join(data_dir, getRMSStyleFileName(data_dir, OBSERVATION_SUMMARY_WORKING_NAME_JSON))
+    path_to_json = OBSERVATION_SUMMARY_NAME_JSON if final else OBSERVATION_SUMMARY_WORKING_NAME_JSON
+
+    observation_summary_json_path = os.path.join(data_dir, getRMSStyleFileName(data_dir, path_to_json))
     if os.path.exists(observation_summary_json_path):
         if os.path.isfile(observation_summary_json_path):
             with open(observation_summary_json_path, "r") as f:
