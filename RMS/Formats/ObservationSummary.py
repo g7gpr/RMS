@@ -1120,6 +1120,7 @@ def writeToFile(config, file_path_and_name, night_dir):
     with open(file_path_and_name, "w") as summary_file_handle:
         as_ascii = serialize(config, night_directory=night_dir, drop_keys_list="night_data_dir").encode("ascii", errors="ignore").decode("ascii")
         summary_file_handle.write(as_ascii)
+        summary_file_handle.flush()
 
 def writeToJSON(config, file_path_and_name, night_dir):
 
@@ -1135,6 +1136,7 @@ def writeToJSON(config, file_path_and_name, night_dir):
     with open(file_path_and_name, "w") as summary_file_handle:
         as_ascii = serialize(config, as_json=True, night_directory=night_dir, drop_keys_list=["night_data_dir"]).encode("ascii", errors="ignore").decode("ascii")
         summary_file_handle.write(as_ascii)
+        summary_file_handle.flush()
 
 def getObservationSummaryDict(data_dir, final=False):
     """
