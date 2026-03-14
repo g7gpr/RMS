@@ -24,12 +24,7 @@
 """
 OBSERVATION_SUMMARY_WORKING_NAME_JSON = "observation_summary_working.json"
 OBSERVATION_SUMMARY_NAME_JSON = "observation_summary.json"
-OBSERVATION_SUMMARY_NAME_TXT = "observation_summary.json"
-
-
-
-
-
+OBSERVATION_SUMMARY_NAME_TXT = "observation_summary.txt"
 
 import os
 import sys
