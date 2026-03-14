@@ -1319,7 +1319,7 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
     writeToJSON(config, getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_NAME_JSON), night_data_dir)
 
     conn = getObsDBConn(config, force_delete=False)
-    storeDictInDB(conn, d, debug=True)
+    storeDictInDB(conn, d, debug=False)
     conn.close()
 
     return getRMSStyleFileName(night_data_dir, "observation_summary.txt"), \
@@ -1351,7 +1351,4 @@ if __name__ == "__main__":
     print("Summary as json")
     obs_sum_json = serialize(config, as_json=True, night_directory=latest_dir)
     print(obs_sum_json)
-    d = getObservationSummaryDict(latest_dir)
-    db_cols = getColumns(conn)
-    print(db_cols)
-    storeDictInDB(conn, d, debug=True)
+
