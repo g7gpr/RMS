@@ -187,8 +187,6 @@ def storeDictInDB(conn, d, debug=False):
     conn.execute(sql_command, values)
     conn.commit()
 
-
-
 def roundWithoutTrailingZero(value, no):
     """Given a float, round to specified number of decimal places, then remove trailing zeroes.
 
@@ -800,7 +798,6 @@ def nightSummaryData(config, night_data_dir):
             fits_file_shortfall_as_time, fits_file_shortfall_as_time_ephemeris, \
             time_first_fits_file, time_last_fits_file, total_expected_fits, total_expected_fits_ephemeris
 
-
 def updateCommitHistoryDirectory(remote_urls, target_directory):
 
     """ Clone only the commit history of a remote repository.
@@ -1111,7 +1108,6 @@ def writeToFile(config, file_path_and_name, night_dir):
         as_ascii = serialize(config, night_directory=night_dir, drop_keys_list="night_data_dir").encode("ascii", errors="ignore").decode("ascii")
         summary_file_handle.write(as_ascii)
 
-
 def writeToJSON(config, file_path_and_name, night_dir):
 
     """Write as a json.
@@ -1174,7 +1170,6 @@ def saveObservationSummaryDict(d, night_dir=None):
     with open(observation_summary_json_path, "w") as f:
         json.dump(d, f, default=lambda o: o.__dict__, indent=4, sort_keys=True)
         f.flush()
-
 
 def startObservationSummaryReport(config, night_data_dir, duration, force_delete=False):
     """ Enters the parameters known at the start of observation into the database.
@@ -1322,6 +1317,10 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
 
     writeToFile(config, getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_NAME_TXT), night_data_dir)
     writeToJSON(config, getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_NAME_JSON), night_data_dir)
+
+    conn = getObsDBConn(config, force_delete=False)
+    storeDictInDB(conn, d, debug=True)
+    conn.close()
 
     return getRMSStyleFileName(night_data_dir, "observation_summary.txt"), \
                 getRMSStyleFileName(night_data_dir, "observation_summary.json")
