@@ -111,7 +111,7 @@ def getObsDBConn(config, force_delete=False):
         if len(tables) > 0:
             return conn
     except:
-        log.warning(f"{OBSERVATIONS_TABLE_NAME} does not exist")
+        print(f"{OBSERVATIONS_TABLE_NAME} does not exist")
 
 
     sql_command = ""
