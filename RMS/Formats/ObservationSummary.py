@@ -25,6 +25,7 @@
 OBSERVATION_SUMMARY_WORKING_NAME_JSON = "observation_summary_working.json"
 OBSERVATION_SUMMARY_NAME_JSON = "observation_summary.json"
 OBSERVATION_SUMMARY_NAME_TXT = "observation_summary.txt"
+OBSERVATIONS_TABLE_NAME = "observations"
 
 import os
 import sys
@@ -62,6 +63,66 @@ else:
 EM_RAISE = True
 DEBUG_PRINT = False
 
+
+def getObsDBConn(config, force_delete=False):
+    """Creates the Observation Summary database. Tries only once.
+
+    Arguments:
+        config: [config] config instance.
+
+    Keyword arguments:
+        force_delete: [bool] default false, if set then deletes the database before recreating.
+
+    Return:
+        conn: [connection] connection to database if success else None.
+
+    """
+
+    # Create the Observation Summary database
+    observation_records_db_path = os.path.join(config.data_dir,"observation.db")
+
+    if force_delete:
+        os.unlink(observation_records_db_path)
+
+    if not os.path.exists(os.path.dirname(observation_records_db_path)):
+        # Handle the very rare case where this could run before any observation sessions
+        # and RMS_data does not exist
+        try:
+            # Create the required directory
+            os.makedirs(os.path.dirname(observation_records_db_path))
+        except:
+            return None
+
+    try:
+        conn = sqlite3.connect(observation_records_db_path)
+
+    except:
+        return None
+
+    # Returns true if the table observations exists in the database
+    try:
+        tables = conn.cursor().execute(
+            f"SELECT name FROM sqlite_master WHERE type = 'table' and name = {OBSERVATIONS_TABLE_NAME};").fetchall()
+
+        if len(tables) > 0:
+            return conn
+    except:
+
+        return None
+
+
+    sql_command = ""
+    sql_command += f"CREATE TABLE {OBSERVATIONS_TABLE_NAME} \n"
+    sql_command += "( \n"
+    sql_command += "id INTEGER PRIMARY KEY AUTOINCREMENT, \n"
+    sql_command += ") \n"
+    conn.execute(sql_command)
+
+    return conn
+
+def checkColumns(conn, d):
+
+    rows = conn.execute(f"PRAGMA table_info({OBSERVATIONS_TABLE_NAME})")
 
 def roundWithoutTrailingZero(value, no):
     """Given a float, round to specified number of decimal places, then remove trailing zeroes.
@@ -866,93 +927,6 @@ def daysBehind():
         target_directory_obj.cleanup()
         return "Unable to determine"
 
-def retrieveObservationData(conn, config, night_directory=None, ordering=None):
-    """ Query the database to get the data more recent than the time passed in.
-
-        Usually this will be the start of the most recent observation session.
-        If no ordering is passed, then a default ordering is returned.
-
-    Arguments:
-            conn:  [object] connection to database.
-
-    Keyword arguments:
-            night_directory: [str] optional, directory of night directory if none, assume most recent
-            ordering: [list] optional, default None, sequence to order the keys.
-
-    return:
-            key value pairs committed to the database since the obs_start_time.
-    """
-
-    if night_directory is None:
-        captured_data_dir = os.path.join(config.data_dir, config.captured_dir)
-        night_dir_list = os.listdir(captured_data_dir)
-        night_dir_list.sort(reverse=True)
-
-        for night_directory in night_dir_list:
-            if night_directory.startswith(config.stationID) and os.path.isdir(os.path.join(captured_data_dir, night_directory)):
-                break
-
-    obs_start_time, obs_duration, obs_end_time = getEphemTimesFromCaptureDirectory(config, night_directory)
-
-    # print("Night directory was {}".format(night_directory))
-    # print("Observation start time was {}".format(obs_start_time))
-    # print("Observation duration was {}".format(obs_duration))
-    # print("Observation end time was {}".format(obs_end_time))
-
-    if ordering is None:
-        # Be sure to add a comma after each list entry, IDE will not pick up this error as Python will concatenate
-        # the two items into one.
-
-        ordering = ['stationID',
-                    'commit_date', 'commit_hash', 'remote_branch', 'repository_lag_remote_days',
-                    'media_backend','star_catalog_file',
-                    'hardware_version',
-                    'captured_directories',
-                    'storage_used_gb', 'storage_free_gb', 'storage_total_gb',
-                    'camera_lens','camera_fov_h','camera_fov_v',
-                    'camera_pointing_alt','camera_pointing_az',
-                    'camera_information',
-                    'clock_measurement_source', 'clock_synchronized', 'clock_ahead_ms', 'clock_error_uncertainty_ms',
-                    'start_time', 'duration_from_start_of_observation', 'continuous_capture',
-                    'photometry_good', 'star_catalog_file',
-                    'time_start_ephem', 'time_first_fits_file',
-                    'time_end_ephem', 'time_last_fits_file',
-                    'total_expected_fits','total_fits',
-                    'fits_files_from_duration','fits_file_shortfall', 'fits_file_shortfall_as_time',
-                    'capture_duration_from_fits',
-                    'capture_duration_from_ephemeris', 'total_expected_fits_ephemeris', 'fits_file_shortfall_ephemeris',
-                    'fits_file_shortfall_as_time_ephemeris',
-                    'detections_after_ml',
-                    'media_backend','protocol_in_use','jitter_quality','dropped_frame_rate']
-
-    # Use this print call to check the ordering
-    # print("Ordering {}".format(ordering))
-
-    next_start_time = getNextStartTime(conn, obs_end_time)
-    # print("Observation start time was {}".format(obs_start_time))
-    # print("Next start time was {}".format(next_start_time))
-
-    sql_statement = ""
-    sql_statement += "SELECT Key, Value from records \n"
-    sql_statement += "           WHERE TimeStamp >= '{}' \n".format(obs_start_time)
-    sql_statement += "           AND   TimeStamp <= '{}' \n".format(next_start_time)
-    sql_statement += "           GROUP BY KEY \n"
-    sql_statement += "           ORDER BY \n"
-    sql_statement += "              CASE Key \n"
-
-    # This SQL applies an ordering to all the keys in the ordering list. Any extra keys will be at the end.
-    count = 1
-    for ordering_key in ordering:
-        sql_statement += "                  WHEN '{:s}' THEN {:03d} \n".format(ordering_key,count)
-        count += 1
-
-    sql_statement += "                  ELSE {:03d} \n".format(count)
-    sql_statement += "              END"
-
-    # print(sql_statement)
-
-    return conn.cursor().execute(sql_statement).fetchall()
-
 def serialize(config, format_nicely=True, as_json=False, night_directory = None, drop_keys_list = None, ordering=None):
     """ Returns the data from the most recent observation session as either colon
         delimited text file, ar as a json.
@@ -1291,7 +1265,7 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
 if __name__ == "__main__":
 
     config = parse(os.path.expanduser("/home/rms/source/Stations/AU0004/.config"))
-
+    getObsDBConn(config, force_delete=False)
 
 
     capture_directory = os.path.join(config.data_dir, config.captured_dir)
