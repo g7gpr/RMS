@@ -26,6 +26,8 @@ OBSERVATION_SUMMARY_WORKING_NAME_JSON = "observation_summary_working.json"
 OBSERVATION_SUMMARY_NAME_JSON = "observation_summary.json"
 OBSERVATION_SUMMARY_NAME_TXT = "observation_summary.txt"
 OBSERVATIONS_TABLE_NAME = "observations"
+OBSERVATION_DB_FILE_NAME = "observation.db"
+NIGHT_DATA_DIR_COL = "night_data_dir"
 
 import os
 import sys
@@ -79,7 +81,7 @@ def getObsDBConn(config, force_delete=False):
     """
 
     # Create the Observation Summary database
-    observation_records_db_path = os.path.join(config.data_dir,"observation.db")
+    observation_records_db_path = os.path.join(config.data_dir,OBSERVATION_DB_FILE_NAME)
 
     if force_delete:
         os.unlink(observation_records_db_path)
@@ -101,28 +103,69 @@ def getObsDBConn(config, force_delete=False):
 
     # Returns true if the table observations exists in the database
     try:
-        tables = conn.cursor().execute(
-            f"SELECT name FROM sqlite_master WHERE type = 'table' and name = {OBSERVATIONS_TABLE_NAME};").fetchall()
+        sql_command = f"SELECT name FROM sqlite_master WHERE type='table' and name='{OBSERVATIONS_TABLE_NAME}';"
+        print(sql_command)
+        tables = conn.cursor().execute(sql_command).fetchall()
 
         if len(tables) > 0:
             return conn
     except:
-
-        return None
+        print(f"{OBSERVATIONS_TABLE_NAME} does not exist")
 
 
     sql_command = ""
     sql_command += f"CREATE TABLE {OBSERVATIONS_TABLE_NAME} \n"
-    sql_command += "( \n"
-    sql_command += "id INTEGER PRIMARY KEY AUTOINCREMENT, \n"
-    sql_command += ") \n"
+    sql_command += f"( \n"
+    sql_command += f"{NIGHT_DATA_DIR_COL} TEXT PRIMARY KEY \n"
+    sql_command += f") \n"
+    print(sql_command)
     conn.execute(sql_command)
 
     return conn
 
-def checkColumns(conn, d):
+def getColumns(conn):
 
-    rows = conn.execute(f"PRAGMA table_info({OBSERVATIONS_TABLE_NAME})")
+    cursor = conn.execute(f"PRAGMA table_info({OBSERVATIONS_TABLE_NAME})")
+    return {row[1] for row in cursor.fetchall()}
+
+def addRequiredColumns(conn, d):
+
+    existing = getColumns(conn)
+    for key in d:
+        if key.lower() not in existing:
+            sql_command = f"ALTER TABLE {OBSERVATIONS_TABLE_NAME} ADD COLUMN {key.lower()} TEXT"
+            print(sql_command)
+            conn.execute(sql_command)
+
+
+def storeDictInDB(conn, d, data_dir):
+
+
+    addRequiredColumns(conn, d)
+    columns = list(d.keys())
+    values = ""
+    for c in columns:
+        if isinstance(d[c], bool):
+            d[c] = "True" if d[c] else "False"
+
+        values += f"'{d[c]}',"
+    # Trim off final comma
+    values = values[:-1]
+
+    for c, v in zip(columns, values.split(",")):
+        print(f"'{c}' {v}")
+
+    sql_command = ""
+    sql_command += f'INSERT INTO {OBSERVATIONS_TABLE_NAME} ({", ".join(columns)})\n'
+    sql_command += f'        VALUES ({values})\n'
+
+
+
+    print(sql_command)
+
+    conn.execute(sql_command)
+    conn.commit()
+
 
 def roundWithoutTrailingZero(value, no):
     """Given a float, round to specified number of decimal places, then remove trailing zeroes.
@@ -140,7 +183,6 @@ def roundWithoutTrailingZero(value, no):
 
 def getObservationDurationNightTime(config, start_time):
     """Get the duration of an observation session not in continuous capture mode.
-
 
     Arguments:
         conn: [object] database connection instance.
@@ -1265,9 +1307,7 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
 if __name__ == "__main__":
 
     config = parse(os.path.expanduser("/home/rms/source/Stations/AU0004/.config"))
-    getObsDBConn(config, force_delete=False)
-
-
+    conn = getObsDBConn(config, force_delete=False)
     capture_directory = os.path.join(config.data_dir, config.captured_dir)
     start_time = datetime.datetime.strptime("2025-06-25 08:03:37", "%Y-%m-%d %H:%M:%S")
 
@@ -1288,4 +1328,9 @@ if __name__ == "__main__":
     print("Summary as colon delimited text")
     print(serialize(config, as_json=False, night_directory=latest_dir))
     print("Summary as json")
-    print(serialize(config, as_json=True, night_directory=latest_dir))
+    obs_sum_json = serialize(config, as_json=True, night_directory=latest_dir)
+    print(obs_sum_json)
+    d = getObservationSummaryDict(latest_dir)
+    db_cols = getColumns(conn)
+    print(db_cols)
+    storeDictInDB(conn, d, latest_dir)
