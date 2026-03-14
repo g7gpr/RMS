@@ -105,13 +105,13 @@ def getObsDBConn(config, force_delete=False):
     # Returns true if the table observations exists in the database
     try:
         sql_command = f"SELECT name FROM sqlite_master WHERE type='table' and name='{OBSERVATIONS_TABLE_NAME}';"
-        print(sql_command)
+
         tables = conn.cursor().execute(sql_command).fetchall()
 
         if len(tables) > 0:
             return conn
     except:
-        print(f"{OBSERVATIONS_TABLE_NAME} does not exist")
+        log.warning(f"{OBSERVATIONS_TABLE_NAME} does not exist")
 
 
     sql_command = ""
@@ -119,7 +119,7 @@ def getObsDBConn(config, force_delete=False):
     sql_command += f"( \n"
     sql_command += f"{NIGHT_DATA_DIR_COL} TEXT PRIMARY KEY \n"
     sql_command += f") \n"
-    print(sql_command)
+
     conn.execute(sql_command)
 
     return conn
