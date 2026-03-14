@@ -160,30 +160,21 @@ def storeDictInDB(conn, d, debug=False):
 
     assignments = ", ".join(f"{col}=excluded.{col}" for col in columns if col != "night_data_dir")
 
-    # --- DEBUG OUTPUT ---
+
     if debug:
-        print("\n=== DEBUG: Columns and Values ===")
         for c, v in zip(columns, values):
             print(f"{c:40} -> {repr(v)}")
-        print("=================================\n")
 
-    sql_command = f"""
-        INSERT INTO {OBSERVATIONS_TABLE_NAME} ({", ".join(columns)})
-        VALUES ({placeholders})
-        ON CONFLICT(night_data_dir) DO UPDATE SET {assignments}
-    """
 
+    sql_command = ""
+    sql_command += f"INSERT INTO {OBSERVATIONS_TABLE_NAME} ({', '.join(columns)})\n"
+    sql_command += f"VALUES ({placeholders})\n"
+    sql_command += f"ON CONFLICT(night_data_dir) DO UPDATE SET {assignments}\n"
 
     # Show the SQL with placeholders (safe)
     if debug:
-        print("=== DEBUG: SQL Command ===")
         print(sql_command)
-        print("==========================\n")
-
-        # Show the actual values being bound
-        print("=== DEBUG: Bound Values ===")
         print(values)
-        print("===========================\n")
 
     conn.execute(sql_command, values)
     conn.commit()
@@ -386,6 +377,23 @@ def timeSyncStatus(config, d, force_client=None):
                     addObsParam(d, "clock_synchronized", True)
 
     return ahead_ms
+
+def getDaysSinceLastDetection(config):
+
+    sql_command = ""
+    sql_command += "SELECT(strftime('%s', 'now') - strftime('%s', start_time)) / (60 * 60 * 23.934)\n"
+    sql_command += "AS days_since_last_detection\n"
+    sql_command += "FROM observations\n"
+    sql_command += "    WHERE detections_after_ml != 0\n"
+    sql_command += "    AND detections_after_ml IS NOT NULL\n"
+    sql_command += "    ORDER BY start_time DESC LIMIT 1; "
+
+    conn = getObsDBConn(config)
+    print(sql_command)
+    cursor = conn.execute(sql_command)
+    results = cursor.fetchone()
+    print(results)
+    conn.close()
 
 def getNTPStatistics():
     """Acquire the statistics of the ntp client.
@@ -1320,7 +1328,7 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
             os.unlink(working_json_path)
 
     conn = getObsDBConn(config, force_delete=False)
-    storeDictInDB(conn, d, debug=False)
+    storeDictInDB(conn, d, debug=True)
     conn.close()
 
     return getRMSStyleFileName(night_data_dir, "observation_summary.txt"), \
@@ -1333,6 +1341,7 @@ if __name__ == "__main__":
     capture_directory = os.path.join(config.data_dir, config.captured_dir)
     start_time = datetime.datetime.strptime("2025-06-25 08:03:37", "%Y-%m-%d %H:%M:%S")
 
+    print(getDaysSinceLastDetection(config))
     dir_list = os.listdir(capture_directory)
     dir_list.sort(reverse=True)
     latest_dir = os.path.join(capture_directory, dir_list[0])
@@ -1350,6 +1359,6 @@ if __name__ == "__main__":
     print("Summary as colon delimited text")
     print(serialize(config, as_json=False, night_directory=latest_dir))
     print("Summary as json")
-    obs_sum_json = serialize(config, as_json=True, night_directory=latest_dir)
+    obs_sum_json = serialize(config, as_json=True, night_directory=latest_dir, final=True)
     print(obs_sum_json)
 
