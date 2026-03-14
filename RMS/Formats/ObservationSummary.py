@@ -137,34 +137,56 @@ def addRequiredColumns(conn, d):
             print(sql_command)
             conn.execute(sql_command)
 
-
-def storeDictInDB(conn, d, data_dir):
-
-
+def storeDictInDB(conn, d, debug=False):
+    # Ensure schema is up to date
     addRequiredColumns(conn, d)
-    columns = list(d.keys())
-    values = ""
-    for c in columns:
-        if isinstance(d[c], bool):
-            d[c] = "True" if d[c] else "False"
 
-        values += f"'{d[c]}',"
-    # Trim off final comma
-    values = values[:-1]
+    # Normalise booleans safely (TEXT columns expect strings)
+    clean = {
+        k: ("True" if v is True else "False" if v is False else v)
+        for k, v in d.items()
+    }
 
-    for c, v in zip(columns, values.split(",")):
-        print(f"'{c}' {v}")
-
-    sql_command = ""
-    sql_command += f'INSERT INTO {OBSERVATIONS_TABLE_NAME} ({", ".join(columns)})\n'
-    sql_command += f'        VALUES ({values})\n'
+    columns = list(clean.keys())
+    placeholders = ", ".join("?" for _ in columns)
+    values = [clean[col] for col in columns]
 
 
+    assignments = ", ".join(
+        f"{col}=excluded.{col}"
+        for col in columns
+        if col != "night_data_dir"
+    )
 
-    print(sql_command)
+    # --- DEBUG OUTPUT ---
+    if debug:
+        print("\n=== DEBUG: Columns and Values ===")
+        for c, v in zip(columns, values):
+            print(f"{c:40} -> {repr(v)}")
+        print("=================================\n")
 
-    conn.execute(sql_command)
+    sql_command = f"""
+        INSERT INTO {OBSERVATIONS_TABLE_NAME} ({", ".join(columns)})
+        VALUES ({placeholders})
+        ON CONFLICT(night_data_dir) DO UPDATE SET
+        {assignments}
+    """
+
+
+    # Show the SQL with placeholders (safe)
+    if debug:
+        print("=== DEBUG: SQL Command ===")
+        print(sql_command)
+        print("==========================\n")
+
+        # Show the actual values being bound
+        print("=== DEBUG: Bound Values ===")
+        print(values)
+        print("===========================\n")
+
+    conn.execute(sql_command, values)
     conn.commit()
+
 
 
 def roundWithoutTrailingZero(value, no):
@@ -1129,7 +1151,7 @@ def getObservationSummaryDict(data_dir):
 
             return d
 
-    d = {'night_data_dir': data_dir}
+    d = {'night_data_dir': os.path.basename(data_dir)}
     saveObservationSummaryDict(d, data_dir)
 
     return d
@@ -1333,4 +1355,4 @@ if __name__ == "__main__":
     d = getObservationSummaryDict(latest_dir)
     db_cols = getColumns(conn)
     print(db_cols)
-    storeDictInDB(conn, d, latest_dir)
+    storeDictInDB(conn, d, debug=True)
