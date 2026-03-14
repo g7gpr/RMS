@@ -147,16 +147,17 @@ def storeDictInDB(conn, d, debug=False):
         for k, v in d.items()
     }
 
+    # Only store the basename for night_data_dir
+    if "night_data_dir" in clean:
+        clean["night_data_dir"] = os.path.basename(clean["night_data_dir"])
+
+
     columns = list(clean.keys())
     placeholders = ", ".join("?" for _ in columns)
     values = [clean[col] for col in columns]
 
 
-    assignments = ", ".join(
-        f"{col}=excluded.{col}"
-        for col in columns
-        if col != "night_data_dir"
-    )
+    assignments = ", ".join(f"{col}=excluded.{col}" for col in columns if col != "night_data_dir")
 
     # --- DEBUG OUTPUT ---
     if debug:
@@ -168,8 +169,7 @@ def storeDictInDB(conn, d, debug=False):
     sql_command = f"""
         INSERT INTO {OBSERVATIONS_TABLE_NAME} ({", ".join(columns)})
         VALUES ({placeholders})
-        ON CONFLICT(night_data_dir) DO UPDATE SET
-        {assignments}
+        ON CONFLICT(night_data_dir) DO UPDATE SET {assignments}
     """
 
 
@@ -1151,7 +1151,7 @@ def getObservationSummaryDict(data_dir):
 
             return d
 
-    d = {'night_data_dir': os.path.basename(data_dir)}
+    d = {'night_data_dir': data_dir}
     saveObservationSummaryDict(d, data_dir)
 
     return d
