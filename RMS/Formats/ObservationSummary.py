@@ -1339,8 +1339,6 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
             os.unlink(working_json_path)
 
     conn = getObsDBConn(config, force_delete=False)
-
-
     storeDictInDB(conn, d, debug=True)
     conn.close()
 
