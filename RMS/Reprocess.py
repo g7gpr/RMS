@@ -651,7 +651,7 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
         extra_files.append(observation_summary_path_file_name)
         extra_files.append(observation_summary_json_path_file_name)
         
-        log.info("\n\nObservation Summary\n===================\n\n" + serialize(config) + "\n\n")
+        log.info("\n\nObservation Summary\n===================\n\n" + serialize(config, night_directory=night_data_dir) + "\n\n")
 
     except Exception as e:
         log.debug('Generating Observation Summary failed with message:\n' + repr(e))

@@ -22,12 +22,6 @@
 
 """ Summary text and json files for station and observation session
 """
-OBSERVATION_SUMMARY_WORKING_NAME_JSON = "observation_summary_working.json"
-OBSERVATION_SUMMARY_NAME_JSON = "observation_summary.json"
-OBSERVATION_SUMMARY_NAME_TXT = "observation_summary.txt"
-OBSERVATIONS_TABLE_NAME = "observations"
-OBSERVATION_DB_FILE_NAME = "observation.db"
-NIGHT_DATA_DIR_COL = "night_data_dir"
 
 import os
 import sys
@@ -56,14 +50,21 @@ from RMS.CaptureDuration import captureDuration
 from RMS.CaptureModeSwitcher import SWITCH_HORIZON_DEG
 
 
+
 if sys.version_info.major > 2:
     import dvrip as dvr
 else:
     # Python2 compatible version
     import Utils.CameraControl27 as dvr
 
-EM_RAISE = True
 DEBUG_PRINT = False
+
+OBSERVATION_SUMMARY_WORKING_NAME_JSON = "observation_summary_working.json"
+OBSERVATION_SUMMARY_NAME_JSON = "observation_summary.json"
+OBSERVATION_SUMMARY_NAME_TXT = "observation_summary.txt"
+OBSERVATIONS_TABLE_NAME = "observations"
+OBSERVATION_DB_FILE_NAME = "observation.db"
+NIGHT_DATA_DIR_COL = "night_data_dir"
 
 
 def getObsDBConn(config, force_delete=False):
@@ -574,15 +575,7 @@ def addObsParam(d, key, value):
 
     """
 
-
-    try:
-        d[key] = str(value)
-
-    except:
-
-        if EM_RAISE:
-            raise
-
+    d[key] = str(value)
     saveObservationSummaryDict(d)
 
 def estimateLens(fov_h):
@@ -1317,6 +1310,10 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
 
     writeToFile(config, getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_NAME_TXT), night_data_dir)
     writeToJSON(config, getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_NAME_JSON), night_data_dir)
+    working_json_path = getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_WORKING_NAME_JSON)
+    if os.path.exists(working_json_path):
+        if os.path.isfile(working_json_path):
+            os.unlink(working_json_path)
 
     conn = getObsDBConn(config, force_delete=False)
     storeDictInDB(conn, d, debug=False)
