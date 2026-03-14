@@ -1328,6 +1328,7 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
     except:
         addObsParam(d, "repository_lag_remote_days", "Not determined")
 
+    addObsParam(d, 'days_since_last_detection', getDaysSinceLastDetection(config, d=d))
     saveObservationSummaryDict(d)
 
     writeToFile(config, getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_NAME_TXT), night_data_dir)
@@ -1339,7 +1340,7 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
 
     conn = getObsDBConn(config, force_delete=False)
 
-    addObsParam(d, 'days_since_last_detection', getDaysSinceLastDetection(config,d=d))
+
     storeDictInDB(conn, d, debug=True)
     conn.close()
 
