@@ -42,7 +42,7 @@ import json
 
 from RMS.Misc import obfuscatePassword
 from RMS.Routines.GstreamerCapture import GstVideoFile, getStructureValue
-from RMS.Formats.ObservationSummary import getObsDBConn, addObsParam
+from RMS.Formats.ObservationSummary import addObsParam, getObservationSummaryDict, saveObservationSummaryDict
 from RMS.RawFrameSave import RawFrameSaver
 from RMS.Misc import RmsDateTime, mkdirP, UTCFromTimestamp
 from RMS.Formats import FTfile, FTStruct
@@ -1413,11 +1413,6 @@ class BufferedCapture(Process):
                     # Set the video device type
                     self.video_device_type = "gst"
 
-                    conn = getObsDBConn(self.config)
-                    try:
-                        addObsParam(conn, "media_backend", self.video_device_type)
-                    finally:
-                        conn.close()
 
                     return True
 
@@ -1426,11 +1421,11 @@ class BufferedCapture(Process):
                     self.media_backend_override = True
                     self.releaseResources()
 
-                    conn = getObsDBConn(self.config)
+                    d = getObservationSummaryDict(d)
                     try:
-                        addObsParam(conn, "media_backend", self.video_device_type)
+                        addObsParam(d, "media_backend", self.video_device_type)
                     finally:
-                        conn.close()
+                        saveObservationSummaryDict(d)
 
             if self.config.media_backend == 'v4l2':
                 try:
@@ -2388,7 +2383,7 @@ if __name__ == "__main__":
                              video_file=cml_args.video_file)
         
         bc.initVideoDevice()
-        
+
 
         # Read at least 256 frames from the video file
         for i in range(256):

@@ -39,7 +39,7 @@ from Utils.PlotFieldsums import plotFieldsums
 from Utils.RMS2UFO import FTPdetectinfo2UFOOrbitInput
 from Utils.ShowerAssociation import showerAssociation
 from Utils.PlotTimeIntervals import plotFFTimeIntervals
-from RMS.Formats.ObservationSummary import addObsParam, getObsDBConn
+from RMS.Formats.ObservationSummary import addObsParam, getObservationSummaryDict, saveObservationSummaryDict
 from RMS.Formats.ObservationSummary import serialize, finalizeObservationSummary
 from Utils.AuditConfig import compareConfigs
 from RMS.Misc import RmsDateTime, tarWithProgress
@@ -204,7 +204,7 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
 
 
 
-        obs_db_conn = getObsDBConn(config)
+        obs_dict = getObservationSummaryDict(night_data_dir)
         # Filter out detections using machine learning
         if config.ml_filter > 0:
 
@@ -212,10 +212,10 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
 
             ff_detected = filterFTPdetectinfoML(config, os.path.join(night_data_dir, ftpdetectinfo_name), 
                 threshold=config.ml_filter, keep_pngs=False, clear_prev_run=True)
-            addObsParam(obs_db_conn, "detections_after_ml", len(ff_detected))
+            addObsParam(obs_dict, "detections_after_ml", len(ff_detected))
 
-        addObsParam(obs_db_conn,"detections_after_ml", len(readFTPdetectinfo(night_data_dir,ftpdetectinfo_name)))
-        obs_db_conn.close()
+        addObsParam(obs_dict,"detections_after_ml", len(readFTPdetectinfo(night_data_dir,ftpdetectinfo_name)))
+        saveObservationSummaryDict(obs_dict, night_data_dir)
 
         # Get the platepar file
         platepar, platepar_path, platepar_fmt = getPlatepar(config, night_data_dir)
@@ -231,21 +231,21 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
             # Run astrometry check and refinement
             platepar, fit_status = autoCheckFit(config, platepar, calstars_data)
 
-            obs_db_conn = getObsDBConn(config)
+            obs_dict = getObservationSummaryDict(night_data_dir)
             # If the fit was successful, apply the astrometry to detected meteors
             if fit_status:
 
                 log.info('Astrometric calibration SUCCESSFUL!')
-                addObsParam(obs_db_conn, "photometry_good", "True")
+                addObsParam(obs_dict, "photometry_good", "True")
                 # Save the refined platepar to the night directory and as default
                 platepar.write(os.path.join(night_data_dir, config.platepar_name), fmt=platepar_fmt)
                 platepar.write(platepar_path, fmt=platepar_fmt)
 
             else:
                 log.info('Astrometric calibration FAILED!, Using old platepar for calibration...')
-                addObsParam(obs_db_conn, "photometry_good", "False")
+                addObsParam(obs_dict, "photometry_good", "False")
 
-            obs_db_conn.close()
+            saveObservationSummaryDict(obs_dict)
             # If a flat is used, disable vignetting correction
             if config.use_flat:
                 platepar.vignetting_coeff = 0.0
@@ -497,10 +497,10 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
         # Add the timelapse to the extra files
         if intervals_path is not None:
             extra_files.append(intervals_path)
-        obs_db_conn = getObsDBConn(config)
-        addObsParam(obs_db_conn,"jitter_quality",jitter_quality)
-        addObsParam(obs_db_conn,"dropped_frame_rate",dropped_frame_rate)
-        obs_db_conn.close()
+        obs_dict = getObsDBConn(config)
+        addObsParam(obs_dict,"jitter_quality",jitter_quality)
+        addObsParam(obs_dict,"dropped_frame_rate",dropped_frame_rate)
+        obs_dict.close()
 
     except Exception as e:
         log.debug('Plotting timestamp interval failed with message:\n' + repr(e))

@@ -1,6 +1,6 @@
 # The MIT License
 
-# Copyright (c) 2025
+# Copyright (c) 2026
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -199,14 +199,14 @@ def getTimeClient():
             pass
     return "Not recognized"
 
-def timeSyncStatus(config, conn, force_client=None):
+def timeSyncStatus(config, d, force_client=None):
 
     """
     Add time sync information to the observation summary.
 
     Arguments:
         config: [Config] Configuration object.
-        conn: [Connection] database connection.
+        d: [Connection] Observation summary dictionary
 
     Keyword arguments:
         force_client: [string] optional, string to force resolution by ntpd, chrony, or a query on a remote server.
@@ -224,43 +224,43 @@ def timeSyncStatus(config, conn, force_client=None):
 
     if time_client =="ntpd":
         synchronized, uncertainty, ahead_ms = getNTPStatistics()
-        addObsParam(conn, "clock_measurement_source", "ntp")
-        addObsParam(conn, "clock_synchronized", synchronized)
-        addObsParam(conn, "clock_ahead_ms", ahead_ms)
-        addObsParam(conn, "clock_error_uncertainty_ms", uncertainty)
+        addObsParam(d, "clock_measurement_source", "ntp")
+        addObsParam(d, "clock_synchronized", synchronized)
+        addObsParam(d, "clock_ahead_ms", ahead_ms)
+        addObsParam(d, "clock_error_uncertainty_ms", uncertainty)
 
     elif time_client == "chronyd":
         synchronized, ahead_ms, uncertainty_ms = getChronyUncertainty()
-        addObsParam(conn, "clock_measurement_source", "chrony")
-        addObsParam(conn, "clock_synchronized", synchronized)
-        addObsParam(conn, "clock_ahead_ms", ahead_ms)
-        addObsParam(conn, "clock_error_uncertainty_ms", uncertainty_ms)
+        addObsParam(d, "clock_measurement_source", "chrony")
+        addObsParam(d, "clock_synchronized", synchronized)
+        addObsParam(d, "clock_ahead_ms", ahead_ms)
+        addObsParam(d, "clock_error_uncertainty_ms", uncertainty_ms)
 
     else:
-        addObsParam(conn, "clock_measurement_source", "Not detected")
+        addObsParam(d, "clock_measurement_source", "Not detected")
         remote_time_query, uncertainty = timestampFromNTP()
         if remote_time_query is not None:
             local_time_query = (datetime.datetime.now(datetime.timezone.utc)
                                 - datetime.datetime(1970, 1, 1)
                                         .replace(tzinfo=datetime.timezone.utc)).total_seconds()
             ahead_ms = (local_time_query - remote_time_query) * 1000
-            addObsParam(conn, "clock_error_uncertainty_ms", uncertainty * 1000)
+            addObsParam(d, "clock_error_uncertainty_ms", uncertainty * 1000)
 
         else:
             ahead_ms, uncertainty = "Unknown", "Unknown"
-            addObsParam(conn, "clock_error_uncertainty_ms", uncertainty)
-        addObsParam(conn, "clock_ahead_ms", ahead_ms)
+            addObsParam(d, "clock_error_uncertainty_ms", uncertainty)
+        addObsParam(d, "clock_ahead_ms", ahead_ms)
 
         result_list = subprocess.run(['timedatectl','status'], capture_output = True).stdout.splitlines()
 
         for raw_result in result_list:
             result = raw_result.decode('ascii')
             if "synchronized" in result:
-                conn = getObsDBConn(config)
+
                 if result.split(":")[1].strip() == "no":
-                    addObsParam(conn, "clock_synchronized", False)
+                    addObsParam(d, "clock_synchronized", False)
                 else:
-                    addObsParam(conn, "clock_synchronized", True)
+                    addObsParam(d, "clock_synchronized", True)
 
     return ahead_ms
 
@@ -439,70 +439,11 @@ def timestampFromNTP(addr='time.cloudflare.com'):
     else:
         return None, None
 
-def getObsDBConn(config, force_delete=False):
-    """Creates the Observation Summary database. Tries only once.
+def addObsParam(observation_summary_dict, key, value):
+    """Add a single key value pair into the observation summary dictionary
 
     Arguments:
-        config: [config] config instance.
-
-    Keyword arguments:
-        force_delete: [bool] default false, if set then deletes the database before recreating.
-
-    Return:
-        conn: [connection] connection to database if success else None.
-
-    """
-
-    # Create the Observation Summary database
-    observation_records_db_path = os.path.join(config.data_dir,"observation.db")
-
-    if force_delete:
-        os.unlink(observation_records_db_path)
-
-    if not os.path.exists(os.path.dirname(observation_records_db_path)):
-        # Handle the very rare case where this could run before any observation sessions
-        # and RMS_data does not exist
-        try:
-            # Create the required directory
-            os.makedirs(os.path.dirname(observation_records_db_path))
-        except:
-            return None
-
-    try:
-        conn = sqlite3.connect(observation_records_db_path)
-
-    except:
-        return None
-
-    # Returns true if the table observation_records exists in the database
-    try:
-        tables = conn.cursor().execute(
-            """SELECT name FROM sqlite_master WHERE type = 'table' and name = 'records';""").fetchall()
-
-        if len(tables) > 0:
-            return conn
-    except:
-        if EM_RAISE:
-            raise
-        return None
-
-    sql_command = ""
-    sql_command += "CREATE TABLE records \n"
-    sql_command += "( \n"
-    sql_command += "id INTEGER PRIMARY KEY AUTOINCREMENT, \n"
-    sql_command += "TimeStamp TEXT NOT NULL, \n"
-    sql_command += "Key TEXT NOT NULL, \n"
-    sql_command += "Value TEXT NOT NULL \n"
-    sql_command += ") \n"
-    conn.execute(sql_command)
-
-    return conn
-
-def addObsParam(conn, key, value):
-    """Add a single key value pair into the database.
-
-    Arguments:
-        conn [connection]: the connection to the database
+        observation_summary_dict [c]: the dict holding the information
         key [str]: the key for the value to be added
         value [str]: the value to be added
 
@@ -511,29 +452,14 @@ def addObsParam(conn, key, value):
 
     """
 
-    sql_statement = ""
-    sql_statement += "INSERT INTO records \n"
-    sql_statement += "(\n"
-    sql_statement += "      TimeStamp, Key, Value \n"
-    sql_statement += ")\n\n"
 
-    sql_statement += "      VALUES "
-    sql_statement += "      (                            \n"
-    sql_statement += "      CURRENT_TIMESTAMP,'{}','{}'   \n".format(key, value)
-    sql_statement += "      )"
+    try:
+        observation_summary_dict[key] = str(value)
 
-    if conn is None:
-        return
-    else:
-        try:
-            cursor = conn.cursor()
-            cursor.execute(sql_statement)
-            conn.commit()
+    except:
 
-        except:
-
-            if EM_RAISE:
-                raise
+        if EM_RAISE:
+            raise
 
 def estimateLens(fov_h):
     """Estimate the focal length of the lens in use.
@@ -1039,15 +965,14 @@ def serialize(config, format_nicely=True, as_json=False, night_directory = None)
         string of key value pairs committed to the database since the start of the previous observation session.
     """
 
-    conn = getObsDBConn(config)
-    data = retrieveObservationData(conn, config, night_directory)
-    conn.close()
+    d = getObservationSummaryDict(night_directory)
 
     if as_json:
-        return json.dumps(dict(data), default=lambda o: o.__dict__, indent=4, sort_keys=True)
+        return json.dumps(d, default=lambda o: o.__dict__, indent=4, sort_keys=True)
 
     output = ""
-    for key,value in data:
+    for key,value in d.items():
+        print(key, value)
         # Does this look like a float
         if not re.match(r'^-?\d+(?:\.\d+)$', value) is None:
             # Handle as float
@@ -1116,7 +1041,56 @@ def writeToJSON(config, file_path_and_name, night_dir):
         as_ascii = serialize(config, as_json=True, night_directory=night_dir).encode("ascii", errors="ignore").decode("ascii")
         summary_file_handle.write(as_ascii)
 
-def startObservationSummaryReport(config, duration, force_delete=False):
+def getObservationSummaryDict(data_dir):
+    """
+
+    Arguments:
+        data_dir: [path] to the data directory.
+
+    Return:
+        [dict]: Observation summary dict.
+    """
+
+    observation_summary_json_path = os.path.join(data_dir, getRMSStyleFileName(data_dir, "observation_summary.json"))
+    if os.path.exists(observation_summary_json_path):
+        if os.path.isfile(observation_summary_json_path):
+            with open(observation_summary_json_path, "r") as f:
+                try:
+                    d = json.load(f)
+
+                except:
+                    os.remove(observation_summary_json_path)
+                    d = {'night_data_dir': data_dir}
+                    saveObservationSummaryDict(d, data_dir)
+
+            return d
+
+    d = {'night_data_dir': data_dir}
+    saveObservationSummaryDict(d, data_dir)
+
+    return d
+
+def saveObservationSummaryDict(d, night_dir=None):
+
+    """
+
+    Arguments:
+        d: Observation summary dict.
+
+    Return:
+        Nothing
+    """
+    if night_dir is None:
+        if "night_data_dir" in d:
+            night_dir = d["night_data_dir"]
+
+    observation_summary_json_path = os.path.join(night_dir, getRMSStyleFileName(night_dir, "observation_summary.json"))
+    with open(observation_summary_json_path, "w") as f:
+        json.dump(d, f, default=lambda o: o.__dict__, indent=4, sort_keys=True)
+        f.flush()
+
+
+def startObservationSummaryReport(config, night_data_dir, duration, force_delete=False):
     """ Enters the parameters known at the start of observation into the database.
 
     Arguments:
@@ -1132,13 +1106,14 @@ def startObservationSummaryReport(config, duration, force_delete=False):
     """
 
 
-    conn = getObsDBConn(config, force_delete=force_delete)
+    d = getObservationSummaryDict(night_data_dir)
+
     start_time_object = (datetime.datetime.now(datetime.timezone.utc) -
                          datetime.timedelta(seconds=1)).replace(tzinfo=datetime.timezone.utc)
     start_time_object_rounded = start_time_object.replace(microsecond=0)
-    addObsParam(conn, "start_time", start_time_object_rounded)
-    addObsParam(conn, "duration_from_start_of_observation", duration)
-    addObsParam(conn, "stationID", sanitise(config.stationID, space_substitution=""))
+    addObsParam(d, "start_time", start_time_object_rounded.isoformat())
+    addObsParam(d, "duration_from_start_of_observation", duration)
+    addObsParam(d, "stationID", sanitise(config.stationID, space_substitution=""))
 
     if isRaspberryPi():
         with open('/sys/firmware/devicetree/base/model', 'r') as m:
@@ -1146,15 +1121,15 @@ def startObservationSummaryReport(config, duration, force_delete=False):
     else:
         hardware_version = sanitise(platform.machine(), space_substitution=" ")
 
-    addObsParam(conn, "hardware_version", hardware_version)
+    addObsParam(d, "hardware_version", hardware_version)
 
     try:
         repo_path = getRmsRootDir()
         repo = git.Repo(repo_path)
         if repo:
-            addObsParam(conn, "commit_date",
+            addObsParam(d, "commit_date",
                         UTCFromTimestamp.utcfromtimestamp(repo.head.object.committed_date).strftime('%Y%m%d_%H%M%S'))
-            addObsParam(conn, "commit_hash", repo.head.object.hexsha)
+            addObsParam(d, "commit_hash", repo.head.object.hexsha)
         else:
             print("RMS Git repository not found. Skipping Git-related information.")
     except:
@@ -1165,40 +1140,28 @@ def startObservationSummaryReport(config, duration, force_delete=False):
 
         try:
             storage_total, storage_used, storage_free = shutil.disk_usage(config.data_dir)
-            addObsParam(conn, "storage_total_gb", round(storage_total/(1024**3), 2))
-            addObsParam(conn, "storage_used_gb", round(storage_used/(1024**3), 2))
-            addObsParam(conn, "storage_free_gb", round(storage_free/(1024**3), 2))
+            addObsParam(d, "storage_total_gb", round(storage_total/(1024**3), 2))
+            addObsParam(d, "storage_used_gb", round(storage_used/(1024**3), 2))
+            addObsParam(d, "storage_free_gb", round(storage_free/(1024**3), 2))
         except:
-            addObsParam(conn, "storage_total_gb", "Not available")
-            addObsParam(conn, "storage_used_gb", "Not available")
-            addObsParam(conn, "storage_free_gb", "Not available")
+            addObsParam(d, "storage_total_gb", "Not available")
+            addObsParam(d, "storage_used_gb", "Not available")
+            addObsParam(d, "storage_free_gb", "Not available")
 
     captured_directories = captureDirectories(os.path.join(config.data_dir, config.captured_dir), config.stationID)
-    addObsParam(conn, "captured_directories", captured_directories)
+    addObsParam(d, "captured_directories", captured_directories)
     try:
-        addObsParam(conn, "camera_information", gatherCameraInformation(config))
+        addObsParam(d, "camera_information", gatherCameraInformation(config))
     except:
-        addObsParam(conn, "camera_information", "Unavailable")
+        addObsParam(d, "camera_information", "Unavailable")
 
     # Hardcoded for now, but should be calculated based on the config value
     no_of_frames_per_fits_file = 256
 
     # Calculate the number of fits files expected for the duration
     fps = config.fps
+    saveObservationSummaryDict(d)
 
-
-    # Testing running without this code
-    """
-    if duration is None:
-        fits_files_from_duration = "None (Continuous Capture)"
-    else:
-        fits_files_from_duration = duration*fps/no_of_frames_per_fits_file
-    
-    addObsParam(conn, "fits_files_from_duration", fits_files_from_duration)
-    """
-
-    if not conn is None:
-        conn.close()
 
     return "Opening a new observations summary"
 
@@ -1219,6 +1182,7 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
 
             """
 
+    d = getObservationSummaryDict(night_data_dir)
     capture_duration_from_fits, start_ephem, capture_duration_from_ephemeris, end_ephem, \
     fits_count, \
     fits_file_shortfall, fits_file_shortfall_ephemeris, \
@@ -1226,10 +1190,10 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
     time_first_fits_file, time_last_fits_file, \
     total_expected_fits, total_expected_fits_ephemeris = nightSummaryData(config, night_data_dir)
 
-    obs_db_conn = getObsDBConn(config)
+
 
     try:
-        timeSyncStatus(config, obs_db_conn)
+        timeSyncStatus(config, d)
     except Exception as e:
         print(repr(e))
 
@@ -1238,39 +1202,40 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
     if os.path.exists(platepar_path):
         platepar = Platepar()
         platepar.read(platepar_path, use_flat=config.use_flat)
-        addObsParam(obs_db_conn, "camera_pointing_az", format("{:.2f} degrees".format(platepar.az_centre)))
-        addObsParam(obs_db_conn, "camera_pointing_alt", format("{:.2f} degrees".format(platepar.alt_centre)))
-        addObsParam(obs_db_conn, "camera_fov_h","{:.2f}".format(platepar.fov_h))
-        addObsParam(obs_db_conn, "camera_fov_v","{:.2f}".format(platepar.fov_v))
-        addObsParam(obs_db_conn, "camera_lens", estimateLens(platepar.fov_h))
+        addObsParam(d, "camera_pointing_az", format("{:.2f} degrees".format(platepar.az_centre)))
+        addObsParam(d, "camera_pointing_alt", format("{:.2f} degrees".format(platepar.alt_centre)))
+        addObsParam(d, "camera_fov_h", "{:.2f}".format(platepar.fov_h))
+        addObsParam(d, "camera_fov_v", "{:.2f}".format(platepar.fov_v))
+        addObsParam(d, "camera_lens", estimateLens(platepar.fov_h))
 
-    addObsParam(obs_db_conn, "continuous_capture", config.continuous_capture)
-    addObsParam(obs_db_conn, "time_start_ephem", start_ephem)
-    addObsParam(obs_db_conn, "time_first_fits_file", time_first_fits_file)
-    addObsParam(obs_db_conn, "time_end_ephem", end_ephem)
-    addObsParam(obs_db_conn, "time_last_fits_file", time_last_fits_file)
-    addObsParam(obs_db_conn, "capture_duration_from_fits", capture_duration_from_fits)
-    addObsParam(obs_db_conn, "capture_duration_from_ephemeris", capture_duration_from_ephemeris)
-    addObsParam(obs_db_conn, "total_expected_fits", round(total_expected_fits))
-    addObsParam(obs_db_conn, "total_expected_fits_ephemeris", round(total_expected_fits_ephemeris))
-    addObsParam(obs_db_conn, "total_fits", fits_count)
-    addObsParam(obs_db_conn, "fits_file_shortfall", fits_file_shortfall)
-    addObsParam(obs_db_conn, "fits_file_shortfall_ephemeris", fits_file_shortfall_ephemeris)
-    addObsParam(obs_db_conn, "fits_file_shortfall_as_time", fits_file_shortfall_as_time)
-    addObsParam(obs_db_conn, "fits_file_shortfall_as_time_ephemeris", fits_file_shortfall_as_time_ephemeris)
-    addObsParam(obs_db_conn, "protocol_in_use", config.protocol)
-    addObsParam(obs_db_conn, "star_catalog_file", config.star_catalog_file)
+    addObsParam(d, "continuous_capture", config.continuous_capture)
+    addObsParam(d, "time_start_ephem", start_ephem)
+    addObsParam(d, "time_first_fits_file", time_first_fits_file)
+    addObsParam(d, "time_end_ephem", end_ephem)
+    addObsParam(d, "time_last_fits_file", time_last_fits_file)
+    addObsParam(d, "capture_duration_from_fits", capture_duration_from_fits)
+    addObsParam(d, "capture_duration_from_ephemeris", capture_duration_from_ephemeris)
+    addObsParam(d, "total_expected_fits", round(total_expected_fits))
+    addObsParam(d, "total_expected_fits_ephemeris", round(total_expected_fits_ephemeris))
+    addObsParam(d, "total_fits", fits_count)
+    addObsParam(d, "fits_file_shortfall", fits_file_shortfall)
+    addObsParam(d, "fits_file_shortfall_ephemeris", fits_file_shortfall_ephemeris)
+    addObsParam(d, "fits_file_shortfall_as_time", fits_file_shortfall_as_time)
+    addObsParam(d, "fits_file_shortfall_as_time_ephemeris", fits_file_shortfall_as_time_ephemeris)
+    addObsParam(d, "protocol_in_use", config.protocol)
+    addObsParam(d, "star_catalog_file", config.star_catalog_file)
 
     try:
         days_behind, remote_branch = daysBehind()
-        addObsParam(obs_db_conn, "repository_lag_remote_days", days_behind)
-        addObsParam(obs_db_conn, "remote_branch", os.path.basename(remote_branch))
+        addObsParam(d, "repository_lag_remote_days", days_behind)
+        addObsParam(d, "remote_branch", os.path.basename(remote_branch))
     except:
-        addObsParam(obs_db_conn, "repository_lag_remote_days", "Not determined")
-    obs_db_conn.close()
+        addObsParam(d, "repository_lag_remote_days", "Not determined")
+
+    saveObservationSummaryDict(d)
 
     writeToFile(config, getRMSStyleFileName(night_data_dir, "observation_summary.txt"), night_data_dir)
-    writeToJSON(config, getRMSStyleFileName(night_data_dir, "observation_summary.json"), night_data_dir)
+    #writeToJSON(config, getRMSStyleFileName(night_data_dir, "observation_summary.json"), night_data_dir)
 
     return getRMSStyleFileName(night_data_dir, "observation_summary.txt"), \
                 getRMSStyleFileName(night_data_dir, "observation_summary.json")
@@ -1279,7 +1244,7 @@ if __name__ == "__main__":
 
     config = parse(os.path.expanduser("~/source/RMS/.config"))
 
-    obs_db_conn = getObsDBConn(config)
+
 
     capture_directory = os.path.join(config.data_dir, config.captured_dir)
     start_time = datetime.datetime.strptime("2025-06-25 08:03:37", "%Y-%m-%d %H:%M:%S")
@@ -1295,7 +1260,7 @@ if __name__ == "__main__":
 
 
 
-    startObservationSummaryReport(config, 100, force_delete=False)
+    startObservationSummaryReport(config, latest_dir, duration, force_delete=False)
     pp = Platepar()
     finalizeObservationSummary(config, latest_dir , pp)
     print("Summary as colon delimited text")
