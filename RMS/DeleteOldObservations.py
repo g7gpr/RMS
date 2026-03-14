@@ -717,6 +717,10 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
 
     """
 
+    # todo: remove this return for testing purposes
+
+    return True
+
     captured_dir = os.path.join(data_dir, captured_dir)
     archived_dir = os.path.join(data_dir, archived_dir)
     frame_dir = os.path.join(data_dir, config.frame_dir)

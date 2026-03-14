@@ -22,8 +22,12 @@
 
 """ Summary text and json files for station and observation session
 """
+OBSERVATION_SUMMARY_WORKING_NAME_JSON = "observation_summary_working.json"
+OBSERVATION_SUMMARY_NAME_JSON = "observation_summary.json"
+OBSERVATION_SUMMARY_NAME_TXT = "observation_summary.json"
 
-from __future__ import print_function, division, absolute_import
+
+
 
 
 
@@ -439,7 +443,7 @@ def timestampFromNTP(addr='time.cloudflare.com'):
     else:
         return None, None
 
-def addObsParam(observation_summary_dict, key, value):
+def addObsParam(d, key, value):
     """Add a single key value pair into the observation summary dictionary
 
     Arguments:
@@ -454,12 +458,14 @@ def addObsParam(observation_summary_dict, key, value):
 
 
     try:
-        observation_summary_dict[key] = str(value)
+        d[key] = str(value)
 
     except:
 
         if EM_RAISE:
             raise
+
+    saveObservationSummaryDict(d)
 
 def estimateLens(fov_h):
     """Estimate the focal length of the lens in use.
@@ -952,14 +958,19 @@ def retrieveObservationData(conn, config, night_directory=None, ordering=None):
 
     return conn.cursor().execute(sql_statement).fetchall()
 
-def serialize(config, format_nicely=True, as_json=False, night_directory = None):
+def serialize(config, format_nicely=True, as_json=False, night_directory = None, drop_keys_list = None, ordering=None):
     """ Returns the data from the most recent observation session as either colon
         delimited text file, ar as a json.
 
     Arguments:
         config: [config] station config file.
+
+    Keyword Arguments:
         format_nicely: [bool] optional, default true, present the data with delimiter characters aligned.
         as_json: [bool] optional, default false, return the data as a json.
+        night_directory: [string] optional, default None, the night directory to use
+        drop_keys_list: [string] any keys to exclude
+        ordering: [list] List of keys showing the order they should be written for text files
 
     Return:
         string of key value pairs committed to the database since the start of the previous observation session.
@@ -967,12 +978,54 @@ def serialize(config, format_nicely=True, as_json=False, night_directory = None)
 
     d = getObservationSummaryDict(night_directory)
 
+    if ordering is None:
+        ordering = ['stationID',
+                    'commit_date', 'commit_hash', 'remote_branch', 'repository_lag_remote_days',
+                    'media_backend','star_catalog_file',
+                    'hardware_version',
+                    'captured_directories',
+                    'storage_used_gb', 'storage_free_gb', 'storage_total_gb',
+                    'camera_lens','camera_fov_h','camera_fov_v',
+                    'camera_pointing_alt','camera_pointing_az',
+                    'camera_information',
+                    'clock_measurement_source', 'clock_synchronized', 'clock_ahead_ms', 'clock_error_uncertainty_ms',
+                    'start_time', 'duration_from_start_of_observation', 'continuous_capture',
+                    'photometry_good', 'star_catalog_file',
+                    'time_start_ephem', 'time_first_fits_file',
+                    'time_end_ephem', 'time_last_fits_file',
+                    'total_expected_fits','total_fits',
+                    'fits_files_from_duration','fits_file_shortfall', 'fits_file_shortfall_as_time',
+                    'capture_duration_from_fits',
+                    'capture_duration_from_ephemeris', 'total_expected_fits_ephemeris', 'fits_file_shortfall_ephemeris',
+                    'fits_file_shortfall_as_time_ephemeris',
+                    'detections_after_ml',
+                    'media_backend','protocol_in_use','jitter_quality','dropped_frame_rate']
+
+    if drop_keys_list:
+        if isinstance(drop_keys_list, str):
+            drop_keys_list = [drop_keys_list]
+
+        for key in drop_keys_list:
+            d.pop(key, None)
+
     if as_json:
         return json.dumps(d, default=lambda o: o.__dict__, indent=4, sort_keys=True)
 
     output = ""
-    for key,value in d.items():
-        print(key, value)
+
+    # Use list to make a copy - rather than iterating over the list we are modifying
+    output_ordering = list(ordering)
+    seen = set(ordering)
+
+    for key in d:
+        if key not in seen:
+            output_ordering.append(key)
+            seen.add(key)
+
+    for key in output_ordering:
+        if key not in d:
+            continue
+        value = d[key]
         # Does this look like a float
         if not re.match(r'^-?\d+(?:\.\d+)$', value) is None:
             # Handle as float
@@ -1022,7 +1075,7 @@ def writeToFile(config, file_path_and_name, night_dir):
 
 
     with open(file_path_and_name, "w") as summary_file_handle:
-        as_ascii = serialize(config, night_directory=night_dir).encode("ascii", errors="ignore").decode("ascii")
+        as_ascii = serialize(config, night_directory=night_dir, drop_keys_list="night_data_dir").encode("ascii", errors="ignore").decode("ascii")
         summary_file_handle.write(as_ascii)
 
 
@@ -1038,7 +1091,7 @@ def writeToJSON(config, file_path_and_name, night_dir):
     """
 
     with open(file_path_and_name, "w") as summary_file_handle:
-        as_ascii = serialize(config, as_json=True, night_directory=night_dir).encode("ascii", errors="ignore").decode("ascii")
+        as_ascii = serialize(config, as_json=True, night_directory=night_dir, drop_keys_list=["night_data_dir"]).encode("ascii", errors="ignore").decode("ascii")
         summary_file_handle.write(as_ascii)
 
 def getObservationSummaryDict(data_dir):
@@ -1051,7 +1104,7 @@ def getObservationSummaryDict(data_dir):
         [dict]: Observation summary dict.
     """
 
-    observation_summary_json_path = os.path.join(data_dir, getRMSStyleFileName(data_dir, "observation_summary.json"))
+    observation_summary_json_path = os.path.join(data_dir, getRMSStyleFileName(data_dir, OBSERVATION_SUMMARY_WORKING_NAME_JSON))
     if os.path.exists(observation_summary_json_path):
         if os.path.isfile(observation_summary_json_path):
             with open(observation_summary_json_path, "r") as f:
@@ -1084,7 +1137,7 @@ def saveObservationSummaryDict(d, night_dir=None):
         if "night_data_dir" in d:
             night_dir = d["night_data_dir"]
 
-    observation_summary_json_path = os.path.join(night_dir, getRMSStyleFileName(night_dir, "observation_summary.json"))
+    observation_summary_json_path = os.path.join(night_dir, getRMSStyleFileName(night_dir, OBSERVATION_SUMMARY_WORKING_NAME_JSON))
     with open(observation_summary_json_path, "w") as f:
         json.dump(d, f, default=lambda o: o.__dict__, indent=4, sort_keys=True)
         f.flush()
@@ -1234,15 +1287,15 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
 
     saveObservationSummaryDict(d)
 
-    writeToFile(config, getRMSStyleFileName(night_data_dir, "observation_summary.txt"), night_data_dir)
-    #writeToJSON(config, getRMSStyleFileName(night_data_dir, "observation_summary.json"), night_data_dir)
+    writeToFile(config, getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_NAME_TXT), night_data_dir)
+    writeToJSON(config, getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_NAME_JSON), night_data_dir)
 
     return getRMSStyleFileName(night_data_dir, "observation_summary.txt"), \
                 getRMSStyleFileName(night_data_dir, "observation_summary.json")
 
 if __name__ == "__main__":
 
-    config = parse(os.path.expanduser("~/source/RMS/.config"))
+    config = parse(os.path.expanduser("/home/rms/source/Stations/AU0004/.config"))
 
 
 

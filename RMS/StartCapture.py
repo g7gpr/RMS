@@ -30,7 +30,7 @@ import threading
 import multiprocessing
 import traceback
 import git
-from RMS.Formats.ObservationSummary import addObsParam, getObservationSummaryDict, saveObservationSummaryDict
+from RMS.Formats.ObservationSummary import addObsParam, getObservationSummaryDict
 
 import numpy as np
 
@@ -721,11 +721,6 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
             obs_dict = getObservationSummaryDict(night_data_dir)
             addObsParam(obs_dict, "dropped_frames", dropped_frames)
 
-
-            try:
-                addObsParam(obs_dict, "media_backend", bc.video_device_type)
-            finally:
-                saveObservationSummaryDict(obs_dict)
 
             # Free shared memory after the compressor is done
             try:

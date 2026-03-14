@@ -1421,11 +1421,8 @@ class BufferedCapture(Process):
                     self.media_backend_override = True
                     self.releaseResources()
 
-                    d = getObservationSummaryDict(d)
-                    try:
-                        addObsParam(d, "media_backend", self.video_device_type)
-                    finally:
-                        saveObservationSummaryDict(d)
+
+
 
             if self.config.media_backend == 'v4l2':
                 try:
