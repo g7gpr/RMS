@@ -654,7 +654,7 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
         
 
     except Exception as e:
-        log.debug('Generating Observation Summary failed with message:\n' + repr(e))
+        log.debug('Finalizing Observation Summary failed with message:\n' + repr(e))
         log.debug(repr(traceback.format_exception(*sys.exc_info())))
 
     obs_summary_to_log = serialize(config, night_directory=night_data_dir, final=True)
