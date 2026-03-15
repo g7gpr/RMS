@@ -1271,7 +1271,7 @@ def startObservationSummaryReport(config, night_data_dir, duration, force_delete
     # Calculate the number of fits files expected for the duration
     fps = config.fps
     saveObservationSummaryDict(d)
-    conn = getObsDBConn()
+    conn = getObsDBConn(config)
     storeDictInDB(conn, d, debug=False)
     conn.close()
 
