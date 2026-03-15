@@ -445,13 +445,19 @@ def getDaysSinceLastDetection(config, d=None, debug=False):
     if debug:
         log.info(sql_command)
 
-    conn = getObsDBConn(config)
-    cursor = conn.execute(sql_command)
-    results = cursor.fetchone()
+    try:
+        conn = getObsDBConn(config)
+        cursor = conn.execute(sql_command)
+        results = cursor.fetchone()
+
+    except Exception as e:
+        log.error('Failed to caluculate time since last detection:' + repr(e))
+        log.error("".join(traceback.format_exception(*sys.exc_info())))
+        return "Error"
 
     conn.close()
     if results is None:
-        return 0
+        return "Unknown"
     else:
         return results[0]
 
