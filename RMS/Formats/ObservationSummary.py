@@ -49,7 +49,8 @@ from RMS.Formats.FFfits import filenameToDatetimeStr
 from RMS.Formats.Platepar import Platepar
 from RMS.CaptureDuration import captureDuration
 from RMS.CaptureModeSwitcher import SWITCH_HORIZON_DEG
-
+from RMS.Formats.FTPdetectinfo import findFTPdetectinfoFile, readFTPdetectinfo
+from RMS.Logger import getLogger
 
 # Get the logger from the main module
 log = getLogger("rmslogger")
@@ -1164,6 +1165,28 @@ def writeToJSON(config, file_path_and_name, night_dir):
         summary_file_handle.write(as_ascii)
         summary_file_handle.flush()
 
+
+def getTimeOfFirstAndLastDetectionInDir(data_dir):
+
+
+    first_detection, last_detection = "0", "0"
+    log.info(f"Looking for FTP file in {data_dir}")
+    ftp_file = findFTPdetectinfoFile(data_dir)
+    log.info(f"Found FTP file {ftp_file}")
+    ftp_detect_info = readFTPdetectinfo(data_dir, ftp_file)
+    if len(ftp_detect_info):
+        first_detection, last_detection = ftp_detect_info[0][0], ftp_detect_info[-1][0]
+        log.info("First detection info: {}".format(first_detection))
+        log.info("Last detection info: {}".format(last_detection))
+
+        first_detection = filenameToDatetimeStr(first_detection, iso8601=True)
+        last_detection = filenameToDatetimeStr(last_detection, iso8601=True)
+
+        log.info("First detection info: {}".format(first_detection))
+        log.info("Last detection info: {}".format(last_detection))
+
+    return first_detection, last_detection
+
 def getObservationSummaryDict(data_dir, final=False):
     """
 
@@ -1357,6 +1380,14 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
     addObsParam(d, "star_catalog_file", config.star_catalog_file)
 
     try:
+        first_detection, last_detection = getTimeOfFirstAndLastDetectionInDir(night_data_dir)
+        addObsParam(d, "first_detection", first_detection)
+        addObsParam(d, "last_detection", last_detection)
+    except Exception as e:
+        log.error('Storing first and last detections failed with error:' + repr(e))
+        log.error("".join(traceback.format_exception(*sys.exc_info())))
+
+    try:
         days_behind, remote_branch = daysBehind()
         addObsParam(d, "repository_lag_remote_days", days_behind)
         addObsParam(d, "remote_branch", os.path.basename(remote_branch))
@@ -1403,7 +1434,7 @@ if __name__ == "__main__":
     print("Duration time was {:.2f} hours".format(duration/3600))
     print("End time was {}".format(end_time))
     print(getDaysSinceLastDetection(config))
-
+    print(getTimeOfFirstAndLastDetectionInDir(latest_dir))
 
     startObservationSummaryReport(config, latest_dir, duration, force_delete=False)
     pp = Platepar()
