@@ -1433,6 +1433,16 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
     except:
         addObsParam(d, "repository_lag_remote_days", "Not determined")
 
+    try:
+        conn = getObsDBConn(config, force_delete=False)
+        storeDictInDB(conn, d, debug=True)
+        conn.close()
+
+    except Exception as e:
+        log.error('Storing final observation summary into database failed with error:' + repr(e))
+        log.error("".join(traceback.format_exception(*sys.exc_info())))
+
+
     addObsParam(d, 'days_since_last_detection', getDaysSinceLastDetection(config, night_data_dir, d=d))
     saveObservationSummaryDict(d)
 
