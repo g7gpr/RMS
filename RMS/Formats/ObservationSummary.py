@@ -399,33 +399,7 @@ def timeSyncStatus(config, d, force_client=None):
 def getDaysSinceLastDetection(config, d=None, debug=False):
 
 
-
-    if d is not None:
-        detections_key = 'detections_after_ml'
-        if detections_key in d:
-            try:
-                if d[detections_key] != '0':
-                    # Return 0 days since last detection
-                    return 0
-            except:
-                pass
-
-    # Otherwise do the sql to discover days since last detection, not observation sessions
-    # Could improve this if we stored the time of the last detection - but that's going beyond the use case for t
-    # this function
-
-    # Old sql_command
-    sql_command = ""
-    sql_command += "SELECT(strftime('%s', 'now') - strftime('%s', start_time)) / (60 * 60 * 23.934)\n"
-    sql_command += "AS days_since_last_detection\n"
-    sql_command += "FROM observations\n"
-    sql_command += "    WHERE COALESCE(detections_after_ml, '0') != '0'\n"
-    sql_command += "    AND detections_after_ml IS NOT NULL\n"
-    sql_command += "    ORDER BY time_last_detection DESC LIMIT 1; "
-
     # New sql_command
-
-
     sql_command = ""
     sql_command += "SELECT\n"
     sql_command += "    CASE\n"
