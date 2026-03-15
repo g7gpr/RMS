@@ -1222,7 +1222,8 @@ def getTimeOfFirstAndLastDetectionInDir(data_dir):
         log.info("First detection info: {}".format(first_detection))
         log.info("Last detection info: {}".format(last_detection))
 
-    return str(first_detection.replace(microsecond=0)), str(last_detection.replace(microsecond=0))
+        return str(first_detection.replace(microsecond=0)), str(last_detection.replace(microsecond=0))
+    return '0', '0'
 
 def getObservationSummaryDict(data_dir, final=False):
     """
