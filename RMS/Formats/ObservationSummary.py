@@ -396,7 +396,7 @@ def timeSyncStatus(config, d, force_client=None):
 
     return ahead_ms
 
-def getDaysSinceLastDetection(config, d=None):
+def getDaysSinceLastDetection(config, d=None, debug=False):
 
 
 
@@ -425,11 +425,12 @@ def getDaysSinceLastDetection(config, d=None):
 
     # New sql_command
 
+
     sql_command = ""
     sql_command += "SELECT\n"
     sql_command += "    CASE\n"
     sql_command += "        WHEN time_last_detection IS NULL THEN NULL\n"
-    sql_command += "        ELSE (strftime('%s', 'now') - strftime('%s', last_detection_time)) / (60 * 60 * 23.934)\n"
+    sql_command += "        ELSE (strftime('%s', 'now') - strftime('%s', time_last_detection)) / (60 * 60 * 23.934)\n"
     sql_command += "    END AS days_since_last_detection\n"
 
     sql_command += "FROM (\n"
@@ -437,7 +438,12 @@ def getDaysSinceLastDetection(config, d=None):
     sql_command += f"    FROM {OBSERVATIONS_TABLE_NAME}\n"
     sql_command += "    WHERE COALESCE(detections_after_ml, '0') != '0'\n"
     sql_command += "    AND detections_after_ml IS NOT NULL\n"
-    sql_command += "    ORDER BY time_last_detection DESC LIMIT 1; "
+    sql_command += "    ORDER BY time_last_detection DESC LIMIT 1\n"
+    sql_command += ")"
+
+
+    if debug:
+        log.info(sql_command)
 
     conn = getObsDBConn(config)
     cursor = conn.execute(sql_command)
@@ -1441,7 +1447,7 @@ if __name__ == "__main__":
     capture_directory = os.path.join(config.data_dir, config.captured_dir)
     start_time = datetime.datetime.strptime("2025-06-25 08:03:37", "%Y-%m-%d %H:%M:%S")
 
-    print(getDaysSinceLastDetection(config))
+    print(f"Days since last detection {getDaysSinceLastDetection(config, debug=True)}")
     dir_list = os.listdir(capture_directory)
     dir_list.sort(reverse=True)
     latest_dir = os.path.join(capture_directory, dir_list[0])
@@ -1450,7 +1456,7 @@ if __name__ == "__main__":
     print("Start time was {}".format(start_time))
     print("Duration time was {:.2f} hours".format(duration/3600))
     print("End time was {}".format(end_time))
-    print(getDaysSinceLastDetection(config))
+    print(f"Days since last detection {getDaysSinceLastDetection(config, debug=True)}")
     print(getTimeOfFirstAndLastDetectionInDir(latest_dir))
 
     startObservationSummaryReport(config, latest_dir, duration, force_delete=False)
