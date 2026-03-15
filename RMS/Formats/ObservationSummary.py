@@ -408,7 +408,7 @@ def getDaysSinceLastDetection(config, data_dir, d=None, debug=False):
     last_fits_file_for_session_sql = ""
     last_fits_file_for_session_sql += f"SELECT time_last_fits_file\n"
     last_fits_file_for_session_sql += f"        FROM {OBSERVATIONS_TABLE_NAME}\n"
-    last_fits_file_for_session_sql += f"        WHERE night_data_dir = '{os.path.basename(data_dir)}1'\n"
+    last_fits_file_for_session_sql += f"        WHERE night_data_dir = '{os.path.basename(data_dir)}'\n"
     last_fits_file_for_session_sql += f"        LIMIT 1; "
 
 
@@ -1494,7 +1494,7 @@ if __name__ == "__main__":
 
     capture_directory = directory_to_search
 
-    latest_dir = os.path.join(capture_directory, dir_list[0])
+    latest_dir = os.path.join(full_path_capture_directory, capture_directory)
     print(f"Days since last detection {getDaysSinceLastDetection(config, latest_dir, debug=True)}")
     start_time, duration, end_time = getEphemTimesFromCaptureDirectory(config, latest_dir)
     print("For directory {}".format(latest_dir))
