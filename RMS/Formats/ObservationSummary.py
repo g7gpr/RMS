@@ -57,6 +57,9 @@ else:
     # Python2 compatible version
     import Utils.CameraControl27 as dvr
 
+
+
+
 DEBUG_PRINT = False
 
 OBSERVATION_SUMMARY_WORKING_NAME_JSON = "observation_summary_working.json"
@@ -381,17 +384,26 @@ def timeSyncStatus(config, d, force_client=None):
 def getDaysSinceLastDetection(config, d=None):
 
 
+
     if d is not None:
         detections_key = 'detections_after_ml'
         if detections_key in d:
-            if d[detections_key] > 0:
-                return 0
+            try:
+                if d[detections_key] != '0':
+                    # Return 0 days since last detection
+                    return 0
+            except:
+                pass
+
+    # Otherwise do the sql to discover days since last detection, not observation sessions
+    # Could improve this if we stored the time of the last detection - but that's going beyond the use case for t
+    # this function
 
     sql_command = ""
     sql_command += "SELECT(strftime('%s', 'now') - strftime('%s', start_time)) / (60 * 60 * 23.934)\n"
     sql_command += "AS days_since_last_detection\n"
     sql_command += "FROM observations\n"
-    sql_command += "    WHERE detections_after_ml != 0\n"
+    sql_command += "    WHERE COALESCE(detections_after_ml, '0') != '0'\n"
     sql_command += "    AND detections_after_ml IS NOT NULL\n"
     sql_command += "    ORDER BY start_time DESC LIMIT 1; "
 
@@ -1343,8 +1355,6 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
     conn = getObsDBConn(config, force_delete=False)
     storeDictInDB(conn, d, debug=True)
     conn.close()
-
-
 
     return getRMSStyleFileName(night_data_dir, "observation_summary.txt"), \
                 getRMSStyleFileName(night_data_dir, "observation_summary.json")

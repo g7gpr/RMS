@@ -645,9 +645,10 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
                     celestial_coords_given=(platepar is not None))
 
     try:
+        log.info("Calling finalize observation summary")
         observation_summary_path_file_name, observation_summary_json_path_file_name = (
             finalizeObservationSummary(config, night_data_dir))
-        
+        log.info("Returned from finalize observation summary")
         extra_files.append(observation_summary_path_file_name)
         extra_files.append(observation_summary_json_path_file_name)
         
