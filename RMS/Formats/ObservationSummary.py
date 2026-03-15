@@ -42,6 +42,7 @@ import time
 import tempfile
 import ephem
 import traceback
+import argparse
 
 from RMS.ConfigReader import parse
 from RMS.Misc import niceFormat, isRaspberryPi, sanitise, getRMSStyleFileName, getRmsRootDir, UTCFromTimestamp
@@ -51,6 +52,8 @@ from RMS.CaptureDuration import captureDuration
 from RMS.CaptureModeSwitcher import SWITCH_HORIZON_DEG
 from RMS.Formats.FTPdetectinfo import findFTPdetectinfoFile, readFTPdetectinfo
 from RMS.Logger import getLogger
+
+import RMS.ConfigReader as cr
 
 # Get the logger from the main module
 log = getLogger("rmslogger")
@@ -1451,7 +1454,23 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
 
 if __name__ == "__main__":
 
-    config = parse(os.path.expanduser("/home/rms/source/Stations/AU0004/.config"))
+    ### COMMAND LINE ARGUMENTS
+
+    # Init the command line arguments parser
+    arg_parser = argparse.ArgumentParser(description="Test run observation summary.")
+
+    arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str,
+        help="Path to a config file which will be used instead of the default one.")
+
+    # Parse the command line arguments
+    cml_args = arg_parser.parse_args()
+
+    #########################
+
+    # Load the config file
+    config = cr.loadConfigFromDirectory(cml_args.config, cml_args.config_path)
+
+
     conn = getObsDBConn(config, force_delete=False)
     capture_directory = os.path.join(config.data_dir, config.captured_dir)
     start_time = datetime.datetime.strptime("2025-06-25 08:03:37", "%Y-%m-%d %H:%M:%S")
