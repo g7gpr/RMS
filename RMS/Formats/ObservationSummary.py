@@ -41,6 +41,7 @@ import struct
 import time
 import tempfile
 import ephem
+import traceback
 
 from RMS.ConfigReader import parse
 from RMS.Misc import niceFormat, isRaspberryPi, sanitise, getRMSStyleFileName, getRmsRootDir, UTCFromTimestamp
@@ -50,6 +51,8 @@ from RMS.CaptureDuration import captureDuration
 from RMS.CaptureModeSwitcher import SWITCH_HORIZON_DEG
 
 
+# Get the logger from the main module
+log = getLogger("rmslogger")
 
 if sys.version_info.major > 2:
     import dvrip as dvr
@@ -96,13 +99,19 @@ def getObsDBConn(config, force_delete=False):
         try:
             # Create the required directory
             os.makedirs(os.path.dirname(observation_records_db_path))
-        except:
+
+        except Exception as e:
+            log.error(f'Unable to create {observation_records_db_path}:' + repr(e))
+            log.error("".join(traceback.format_exception(*sys.exc_info())))
             return None
 
     try:
         conn = sqlite3.connect(observation_records_db_path)
 
-    except:
+    except Exception as e:
+        log.error('Unable to get database connection:' + repr(e))
+        log.error("".join(traceback.format_exception(*sys.exc_info())))
+
         return None
 
     # Returns true if the table observations exists in the database
@@ -179,8 +188,13 @@ def storeDictInDB(conn, d, debug=False):
         print(sql_command)
         print(values)
 
-    conn.execute(sql_command, values)
-    conn.commit()
+    try:
+        conn.execute(sql_command, values)
+        conn.commit()
+
+    except Exception as e:
+        log.error('Storing observation summary into database failed with error:' + repr(e))
+        log.error("".join(traceback.format_exception(*sys.exc_info())))
 
 def roundWithoutTrailingZero(value, no):
     """Given a float, round to specified number of decimal places, then remove trailing zeroes.
@@ -1275,8 +1289,10 @@ def startObservationSummaryReport(config, night_data_dir, duration, force_delete
         conn = getObsDBConn(config)
         storeDictInDB(conn, d, debug=False)
         conn.close()
-    except:
-        pass
+
+    except Exception as e:
+        log.error('Storing initial observation summary into database failed with error:' + repr(e))
+        log.error("".join(traceback.format_exception(*sys.exc_info())))
 
     return "Opening a new observations summary"
 
@@ -1357,9 +1373,15 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
         if os.path.isfile(working_json_path):
             os.unlink(working_json_path)
 
-    conn = getObsDBConn(config, force_delete=False)
-    storeDictInDB(conn, d, debug=True)
-    conn.close()
+    try:
+        conn = getObsDBConn(config, force_delete=False)
+        storeDictInDB(conn, d, debug=True)
+        conn.close()
+
+    except Exception as e:
+        log.error('Storing final observation summary into database failed with error:' + repr(e))
+        log.error("".join(traceback.format_exception(*sys.exc_info())))
+
 
     return getRMSStyleFileName(night_data_dir, "observation_summary.txt"), \
                 getRMSStyleFileName(night_data_dir, "observation_summary.json")
