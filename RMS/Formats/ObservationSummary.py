@@ -44,6 +44,8 @@ import ephem
 import traceback
 import argparse
 
+from astropy.modeling.fitting import fitter_to_model_params_array
+
 from RMS.ConfigReader import parse
 from RMS.Misc import niceFormat, isRaspberryPi, sanitise, getRMSStyleFileName, getRmsRootDir, UTCFromTimestamp
 from RMS.Formats.FFfits import filenameToDatetimeStr
@@ -1459,8 +1461,8 @@ if __name__ == "__main__":
     # Init the command line arguments parser
     arg_parser = argparse.ArgumentParser(description="Test run observation summary.")
 
-    arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str,
-        help="Path to a config file which will be used instead of the default one.")
+    arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str, \
+                            help="Path to a config file which will be used instead of the default one.")
 
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
@@ -1468,16 +1470,30 @@ if __name__ == "__main__":
     #########################
 
     # Load the config file
-    config = cr.loadConfigFromDirectory(cml_args.config, cml_args.config_path)
 
+    config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
 
     conn = getObsDBConn(config, force_delete=False)
-    capture_directory = os.path.join(config.data_dir, config.captured_dir)
+    full_path_capture_directory = os.path.join(config.data_dir, config.captured_dir)
     start_time = datetime.datetime.strptime("2025-06-25 08:03:37", "%Y-%m-%d %H:%M:%S")
 
-
-    dir_list = os.listdir(capture_directory)
+    ftp_detect_info_file = None
+    dir_list = os.listdir(full_path_capture_directory)
     dir_list.sort(reverse=True)
+    for directory_to_search in dir_list:
+        try:
+            ftp_detect_info_file = findFTPdetectinfoFile(os.path.join(full_path_capture_directory, directory_to_search))
+            break
+        except:
+            pass
+
+    if ftp_detect_info_file is None:
+        log.info("Unable to find a directory with a FTP file")
+    else:
+        log.info(f"Directory {directory_to_search} has a FTP file {ftp_detect_info_file}")
+
+    capture_directory = directory_to_search
+
     latest_dir = os.path.join(capture_directory, dir_list[0])
     print(f"Days since last detection {getDaysSinceLastDetection(config, latest_dir, debug=True)}")
     start_time, duration, end_time = getEphemTimesFromCaptureDirectory(config, latest_dir)
