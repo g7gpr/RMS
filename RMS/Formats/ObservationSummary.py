@@ -414,13 +414,30 @@ def getDaysSinceLastDetection(config, d=None):
     # Could improve this if we stored the time of the last detection - but that's going beyond the use case for t
     # this function
 
+    # Old sql_command
     sql_command = ""
     sql_command += "SELECT(strftime('%s', 'now') - strftime('%s', start_time)) / (60 * 60 * 23.934)\n"
     sql_command += "AS days_since_last_detection\n"
     sql_command += "FROM observations\n"
     sql_command += "    WHERE COALESCE(detections_after_ml, '0') != '0'\n"
     sql_command += "    AND detections_after_ml IS NOT NULL\n"
-    sql_command += "    ORDER BY start_time DESC LIMIT 1; "
+    sql_command += "    ORDER BY time_last_detection DESC LIMIT 1; "
+
+    # New sql_command
+
+    sql_command = ""
+    sql_command += "SELECT\n"
+    sql_command += "    CASE\n"
+    sql_command += "        WHEN time_last_detection IS NULL THEN NULL\n"
+    sql_command += "        ELSE (strftime('%s', 'now') - strftime('%s', last_detection_time)) / (60 * 60 * 23.934)\n"
+    sql_command += "    END AS days_since_last_detection\n"
+
+    sql_command += "FROM (\n"
+    sql_command += "    SELECT time_last_detection\n"
+    sql_command += f"    FROM {OBSERVATIONS_TABLE_NAME}\n"
+    sql_command += "    WHERE COALESCE(detections_after_ml, '0') != '0'\n"
+    sql_command += "    AND detections_after_ml IS NOT NULL\n"
+    sql_command += "    ORDER BY time_last_detection DESC LIMIT 1; "
 
     conn = getObsDBConn(config)
     cursor = conn.execute(sql_command)
