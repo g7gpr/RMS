@@ -1061,8 +1061,8 @@ def serialize(config, format_nicely=True, as_json=False, night_directory=None, d
                     'clock_measurement_source', 'clock_synchronized', 'clock_ahead_ms', 'clock_error_uncertainty_ms',
                     'start_time', 'duration_from_start_of_observation', 'continuous_capture',
                     'photometry_good', 'star_catalog_file',
-                    'time_start_ephem', 'time_first_fits_file',
-                    'time_end_ephem', 'time_last_fits_file',
+                    'time_start_ephem', 'time_first_fits_file', 'time_first_detection',
+                    'time_end_ephem', 'time_last_fits_file', 'time_last_detection', 'days_since_last_detection'
                     'total_expected_fits','total_fits',
                     'fits_files_from_duration','fits_file_shortfall', 'fits_file_shortfall_as_time',
                     'capture_duration_from_fits',
@@ -1381,8 +1381,8 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
 
     try:
         first_detection, last_detection = getTimeOfFirstAndLastDetectionInDir(night_data_dir)
-        addObsParam(d, "first_detection", first_detection)
-        addObsParam(d, "last_detection", last_detection)
+        addObsParam(d, "time_first_detection", first_detection)
+        addObsParam(d, "time_last_detection", last_detection)
     except Exception as e:
         log.error('Storing first and last detections failed with error:' + repr(e))
         log.error("".join(traceback.format_exception(*sys.exc_info())))
