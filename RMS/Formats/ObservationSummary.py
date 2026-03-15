@@ -1099,7 +1099,7 @@ def serialize(config, format_nicely=True, as_json=False, night_directory=None, d
                     'start_time', 'duration_from_start_of_observation', 'continuous_capture',
                     'photometry_good', 'star_catalog_file',
                     'time_start_ephem', 'time_first_fits_file', 'time_first_detection',
-                    'time_end_ephem', 'time_last_fits_file', 'time_last_detection', 'days_since_last_detection'
+                    'time_end_ephem', 'time_last_fits_file', 'time_last_detection', 'days_since_last_detection',
                     'total_expected_fits','total_fits',
                     'fits_files_from_duration','fits_file_shortfall', 'fits_file_shortfall_as_time',
                     'capture_duration_from_fits',
