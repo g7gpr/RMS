@@ -829,6 +829,7 @@ if __name__ == "__main__":
 
             log.info("Using all available cores for detection.")
 
+    log.info(f"Starting Observation summary report for {cml_args.dir_path[0]}")
     startObservationSummaryReport(config, cml_args.dir_path[0], None)
 
     # Process the night
