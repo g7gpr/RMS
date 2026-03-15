@@ -90,7 +90,7 @@ def getObsDBConn(config, force_delete=False):
 
     # Create the Observation Summary database
     observation_records_db_path = os.path.join(config.data_dir,OBSERVATION_DB_FILE_NAME)
-
+    log.info(f"Opening database at {observation_records_db_path}")
     if force_delete:
         os.unlink(observation_records_db_path)
 
@@ -396,44 +396,73 @@ def timeSyncStatus(config, d, force_client=None):
 
     return ahead_ms
 
-def getDaysSinceLastDetection(config, d=None, debug=False):
+def getDaysSinceLastDetection(config, data_dir, d=None, debug=False):
 
 
-    # New sql_command
-    sql_command = ""
-    sql_command += "SELECT\n"
-    sql_command += "    CASE\n"
-    sql_command += "        WHEN time_last_detection IS NULL THEN NULL\n"
-    sql_command += "        ELSE (strftime('%s', 'now') - strftime('%s', time_last_detection)) / (60 * 60 * 23.934)\n"
-    sql_command += "    END AS days_since_last_detection\n"
 
-    sql_command += "FROM (\n"
-    sql_command += "    SELECT time_last_detection\n"
-    sql_command += f"    FROM {OBSERVATIONS_TABLE_NAME}\n"
-    sql_command += "    WHERE COALESCE(detections_after_ml, '0') != '0'\n"
-    sql_command += "    AND detections_after_ml IS NOT NULL\n"
-    sql_command += "    ORDER BY time_last_detection DESC LIMIT 1\n"
-    sql_command += ")"
+    last_fits_file_for_session_sql = ""
+    last_fits_file_for_session_sql += f"SELECT time_last_fits_file\n"
+    last_fits_file_for_session_sql += f"        FROM {OBSERVATIONS_TABLE_NAME}\n"
+    last_fits_file_for_session_sql += f"        WHERE night_data_dir = '{os.path.basename(data_dir)}1'\n"
+    last_fits_file_for_session_sql += f"        LIMIT 1; "
 
 
     if debug:
-        log.info(sql_command)
+        log.info("Last fits file for session SQL")
+        log.info(last_fits_file_for_session_sql)
 
     try:
         conn = getObsDBConn(config)
-        cursor = conn.execute(sql_command)
-        results = cursor.fetchone()
+        result = conn.execute(last_fits_file_for_session_sql).fetchone()
+        if result is None:
+            return "Unknown"
+        else:
+            result = str(result[0])
+
+        # Keep microseconds
+        if '.' in result:
+            time_last_fits_file_for_session = datetime.datetime.strptime(result,  "%Y-%m-%d %H:%M:%S.%f")
+        else:
+            time_last_fits_file_for_session = datetime.datetime.strptime(result, "%Y-%m-%d %H:%M:%S")
+        conn.close()
 
     except Exception as e:
-        log.error('Failed to caluculate time since last detection:' + repr(e))
+        log.error('Failed to calculate time since last detection:' + repr(e))
         log.error("".join(traceback.format_exception(*sys.exc_info())))
         return "Error"
 
-    conn.close()
-    if results is None:
-        return "Unknown"
-    else:
-        return results[0]
+
+    last_detection_time_for_session_sql = ""
+    last_detection_time_for_session_sql += "SELECT time_last_detection\n"
+    last_detection_time_for_session_sql += f"   FROM {OBSERVATIONS_TABLE_NAME}\n"
+    last_detection_time_for_session_sql += f"   WHERE COALESCE(detections_after_ml, '0') != '0'\n"
+    last_detection_time_for_session_sql += f"   AND detections_after_ml IS NOT NULL\n"
+    last_detection_time_for_session_sql += f"   AND time_last_fits_file <= '{time_last_fits_file_for_session}'\n"
+    last_detection_time_for_session_sql += f"   ORDER BY time_last_detection DESC LIMIT 1;\n"
+
+    if debug:
+        log.info("Last detection time for session SQL")
+        log.info(last_detection_time_for_session_sql)
+
+
+    try:
+        conn = getObsDBConn(config)
+        cursor = conn.execute(last_detection_time_for_session_sql)
+        result =  cursor.fetchone()[0]
+        last_detection_time_for_session = datetime.datetime.strptime(result, "%Y-%m-%d %H:%M:%S")
+        seconds_since_last_detection = (time_last_fits_file_for_session - last_detection_time_for_session).total_seconds()
+        days_since_last_detection = seconds_since_last_detection / (60 * 60 * 23.934)
+        conn.close()
+
+    except Exception as e:
+        log.error('Failed to calculate time since last detection:' + repr(e))
+        log.error("".join(traceback.format_exception(*sys.exc_info())))
+        return "Error"
+
+    log.info(f"Time since last detection is {days_since_last_detection} days")
+
+
+    return days_since_last_detection
 
 def getNTPStatistics():
     """Acquire the statistics of the ntp client.
@@ -1397,7 +1426,7 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
     except:
         addObsParam(d, "repository_lag_remote_days", "Not determined")
 
-    addObsParam(d, 'days_since_last_detection', getDaysSinceLastDetection(config, d=d))
+    addObsParam(d, 'days_since_last_detection', getDaysSinceLastDetection(config, night_data_dir, d=d))
     saveObservationSummaryDict(d)
 
     writeToFile(config, getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_NAME_TXT), night_data_dir)
@@ -1427,16 +1456,17 @@ if __name__ == "__main__":
     capture_directory = os.path.join(config.data_dir, config.captured_dir)
     start_time = datetime.datetime.strptime("2025-06-25 08:03:37", "%Y-%m-%d %H:%M:%S")
 
-    print(f"Days since last detection {getDaysSinceLastDetection(config, debug=True)}")
+
     dir_list = os.listdir(capture_directory)
     dir_list.sort(reverse=True)
     latest_dir = os.path.join(capture_directory, dir_list[0])
+    print(f"Days since last detection {getDaysSinceLastDetection(config, latest_dir, debug=True)}")
     start_time, duration, end_time = getEphemTimesFromCaptureDirectory(config, latest_dir)
     print("For directory {}".format(latest_dir))
     print("Start time was {}".format(start_time))
     print("Duration time was {:.2f} hours".format(duration/3600))
     print("End time was {}".format(end_time))
-    print(f"Days since last detection {getDaysSinceLastDetection(config, debug=True)}")
+    print(f"Days since last detection {getDaysSinceLastDetection(config, latest_dir, debug=True)}")
     print(getTimeOfFirstAndLastDetectionInDir(latest_dir))
 
     startObservationSummaryReport(config, latest_dir, duration, force_delete=False)
