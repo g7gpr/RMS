@@ -42,7 +42,7 @@ import json
 
 from RMS.Misc import obfuscatePassword
 from RMS.Routines.GstreamerCapture import GstVideoFile, getStructureValue
-from RMS.Formats.ObservationSummary import addObsParam, getObservationSummaryDict, saveObservationSummaryDict
+from RMS.Formats.ObservationSummary import addObsParam, getObservationSummaryDict
 from RMS.RawFrameSave import RawFrameSaver
 from RMS.Misc import RmsDateTime, mkdirP, UTCFromTimestamp
 from RMS.Formats import FTfile, FTStruct
@@ -1413,6 +1413,12 @@ class BufferedCapture(Process):
                     # Set the video device type
                     self.video_device_type = "gst"
 
+                    try:
+                        log.info("Getting observation summary dict")
+                        addObsParam(getObservationSummaryDict(None, config=self.config), "media_backend", self.video_device_type)
+                        log.info("Got observation summary dict")
+                    finally:
+                        pass
 
                     return True
 

@@ -54,6 +54,7 @@ from RMS.CaptureDuration import captureDuration
 from RMS.CaptureModeSwitcher import SWITCH_HORIZON_DEG
 from RMS.Formats.FTPdetectinfo import findFTPdetectinfoFile, readFTPdetectinfo
 from RMS.Logger import getLogger
+from pathlib import Path
 
 import RMS.ConfigReader as cr
 
@@ -228,6 +229,11 @@ def getObservationDurationNightTime(config, start_time):
     """
 
     ephemeris_start_time, duration = captureDuration(config.latitude, config.longitude, config.elevation,start_time)
+
+    while isinstance(ephemeris_start_time, bool):
+        start_time -= datetime.timedelta(minutes=1)
+        # Go backwards through time until we are before the start time
+        ephemeris_start_time, duration = captureDuration(config.latitude, config.longitude, config.elevation, start_time)
 
     end_time = ephemeris_start_time + datetime.timedelta(seconds=duration)
 
@@ -660,6 +666,11 @@ def addObsParam(d, key, value):
         Nothing
 
     """
+
+    if 'night_data_dir' in d and key == 'night_data_dir':
+        if d['night_data_dir'] != value:
+            log.warning("Observation summary night_data_dir is changing - this is unexpected")
+
 
     d[key] = str(value)
     saveObservationSummaryDict(d)
@@ -1229,24 +1240,52 @@ def getTimeOfFirstAndLastDetectionInDir(data_dir):
         return str(first_detection.replace(microsecond=0)), str(last_detection.replace(microsecond=0))
     return '0', '0'
 
-def getObservationSummaryDict(data_dir, final=False):
+def getObservationSummaryDict(data_dir, final=False, config=None):
     """
 
     Arguments:
-        data_dir: [path] to the data directory.
+        data_dir: [path] to the data directory, if none, then the latest confirming directory in
+        captured files is used.
+
+    Keyword Arguments:
+        final: [bool] Optional, default false, if true write to the final filename, rather than working, and delete
+            working.
+        config: [config] Optional, default None. If a config is passed, and data_dir is None, then attempt to guess
+            the appropriate data_dir to use.
 
     Return:
         [dict]: Observation summary dict.
     """
 
-    path_to_json = OBSERVATION_SUMMARY_NAME_JSON if final else OBSERVATION_SUMMARY_WORKING_NAME_JSON
+    log.info("Entered getObservationSummaryDict")
+    if data_dir is None and config is not None:
+        log.info("Attempting to guess captured files directory")
+        p = Path(os.path.join(config.data_dir, config.captured_dir))
+        regex = re.compile(rf"^{config.stationID}_[0-9]{{8}}_[0-9]{{6}}_[0-9]{{6}}$")
 
-    observation_summary_json_path = os.path.join(data_dir, getRMSStyleFileName(data_dir, path_to_json))
+        if p.exists() and p.is_dir():
+
+            candidate_dirs = [cd for cd in p.iterdir() if cd.is_dir() and regex.match(cd.name)]
+            candidate_dirs.sort(key=lambda d: d.stat().st_ctime, reverse=True)
+            if len(candidate_dirs):
+                data_dir = str(candidate_dirs[0].resolve())
+                log.info(f"Guessed directory {data_dir}")
+            else:
+                log.warning("Found no matching captured dirs, unable to guess")
+                return {}
+        else:
+            return {}
+
+    json_name = OBSERVATION_SUMMARY_NAME_JSON if final else OBSERVATION_SUMMARY_WORKING_NAME_JSON
+
+    observation_summary_json_path = os.path.join(data_dir, getRMSStyleFileName(data_dir, json_name))
     if os.path.exists(observation_summary_json_path):
         if os.path.isfile(observation_summary_json_path):
             with open(observation_summary_json_path, "r") as f:
                 try:
+                    log.info(f"Found an existing {observation_summary_json_path}")
                     d = json.load(f)
+                    log.info(f"Loaded")
 
                 except:
                     os.remove(observation_summary_json_path)
@@ -1255,8 +1294,10 @@ def getObservationSummaryDict(data_dir, final=False):
 
             return d
 
+    log.info("Creating a new observation summary dictionary")
     d = {'night_data_dir': data_dir}
     saveObservationSummaryDict(d, data_dir)
+
 
     return d
 
@@ -1491,6 +1532,7 @@ if __name__ == "__main__":
     conn = getObsDBConn(config, force_delete=False)
     full_path_capture_directory = os.path.join(config.data_dir, config.captured_dir)
     start_time = datetime.datetime.strptime("2025-06-25 08:03:37", "%Y-%m-%d %H:%M:%S")
+    d = getObservationSummaryDict(None, config=config)
 
     ftp_detect_info_file = None
     dir_list = os.listdir(full_path_capture_directory)
