@@ -423,7 +423,7 @@ def getDaysSinceLastDetection(config, data_dir, d=None, debug=False):
             return "Unknown"
         else:
             result = str(result[0])
-        log.infon(f"SQL query is \n {last_fits_file_for_session_sql}")
+        log.info(f"SQL query is \n {last_fits_file_for_session_sql}")
         log.info(f"SQL query result is \n {result}")
         # Keep microseconds
         if '.' in result:
