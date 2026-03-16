@@ -450,9 +450,12 @@ def getDaysSinceLastDetection(config, data_dir, d=None, debug=False):
         log.info("Last detection time for session SQL")
         log.info(last_detection_time_for_session_sql)
 
+    log.info("Write dict to db before doing SQL")
 
     try:
         conn = getObsDBConn(config)
+        storeDictInDB(conn,d, debug=True)
+
         cursor = conn.execute(last_detection_time_for_session_sql)
         result =  cursor.fetchone()[0]
         last_detection_time_for_session = datetime.datetime.strptime(result, "%Y-%m-%d %H:%M:%S")
