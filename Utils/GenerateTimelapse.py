@@ -132,6 +132,7 @@ def generateTimelapse(dir_path, keep_images=False, fps=None, output_file=None, h
         font_scale = 0.4
         thickness = 1
 
+
         cv2.putText(img, text, position, font, font_scale, (0, 0, 0), thickness + 2, cv2.LINE_AA)
         cv2.putText(img, text, position, font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
