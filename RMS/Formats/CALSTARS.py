@@ -16,7 +16,12 @@
 
 
 import os
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+import imageio.v2 as imageio
+from shapely.lib import make_valid_with_params
 
+from RMS.Formats.FFfile import filenameToDatetime
 
 def writeCALSTARS(star_list, ff_directory, file_name, cam_code, nrows, ncols, chunk_frames=256):
     """ Writes the star list into the CAMS CALSTARS format. 
@@ -71,7 +76,10 @@ def writeCALSTARS(star_list, ff_directory, file_name, cam_code, nrows, ncols, ch
             star_file.write("Integ pixels  = -1" + "\n")
 
             # Write every star to file
-            for y, x, amplitude, level, fwhm, background, snr, saturated_count in list(star_data):
+            # CALSTARS format: Y(0) X(1) IntensSum(2) Ampltd(3) FWHM(4) BgLvl(5) SNR(6) NSatPx(7)
+            # Input star_data: (y, x, intensity, amplitude, fwhm, background, snr, saturated_count)
+            # where intensity=IntensSum (integrated), amplitude=Ampltd (peak)
+            for y, x, intensity, amplitude, fwhm, background, snr, saturated_count in list(star_data):
 
                 # Limit the saturation count to 999999
                 if saturated_count > 999999:
@@ -82,8 +90,8 @@ def writeCALSTARS(star_list, ff_directory, file_name, cam_code, nrows, ncols, ch
                     snr = 99.99
 
                 star_file.write("{:7.2f} {:7.2f} {:9d} {:6d} {:5.2f} {:6d} {:5.2f} {:6d}".format(
-                    round(y, 2), round(x, 2), 
-                    int(level), int(amplitude), fwhm, int(background), snr, int(saturated_count)) + "\n")
+                    round(y, 2), round(x, 2),
+                    int(intensity), int(amplitude), fwhm, int(background), snr, int(saturated_count)) + "\n")
 
         # Write the end separator
         star_file.write("##########################################################################\n")
@@ -204,3 +212,201 @@ def readCALSTARS(file_path, file_name, chunk_frames=256):
 
     
     return calibrationstars_list, chunk_frames
+
+def maxCALSTARS(file_path, file_name, chunk_frames=256):
+
+    if not os.path.exists(os.path.join(file_path, file_name)):
+        return [], None
+
+    calstars_list, chunk  = readCALSTARS(file_path, file_name, chunk_frames)
+    calstars_dict = {ff_file: star_data for ff_file, star_data in calstars_list}
+
+    try:
+        max_len_ff = max(calstars_dict, key=lambda k: len(calstars_dict[k]))
+    except:
+        return [], None
+
+    return calstars_dict[max_len_ff], max_len_ff
+
+
+def calstarEntrytoArray(calstars_entry, max_intensity=None):
+
+    calstars_arr = np.array(calstars_entry)
+    coords = np.array((calstars_arr[:, 1], calstars_arr[:, 0], calstars_arr[:, 2], calstars_arr[:,4])).T
+    bitmap = renderStars(coords, (720,1280), gaussian=True)
+
+
+    max_val = bitmap.max()
+    if max_intensity is not None and max_intensity >  0:
+        max_intensity = max_intensity * 0.8
+        bitmap = np.minimum(bitmap, max_intensity)
+        grey = ((bitmap * 255 / max_intensity)).astype(np.uint8)
+    elif max_val > 0 and max_intensity is None:
+        grey = ((bitmap * 255 / max_val)).astype(np.uint8)
+    else:
+        grey = np.minimum(bitmap,255).astype(np.uint8)
+
+
+
+    return np.minimum(grey,255)
+
+def renderStars(coords, shape, gaussian=True):
+    """
+    Render circular blobs with per-star radii into a bitmap.
+
+    coords: array of [y, x, intensity, radius]
+    shape: (height, width)
+    gaussian: if True, use Gaussian falloff instead of flat circle
+    """
+    H, W = shape
+    bitmap = np.zeros((H, W), dtype=np.float32)
+
+    # Cache stencils so repeated radii don't recompute
+    stencil_cache = {}
+
+    for x, y, I, R in coords:
+        y = int(y)
+        x = int(x)
+        I = float(I)
+        if not gaussian:
+            R = int(R * 0.8)
+        else:
+            R = int(R * 0.8)
+
+        if R <= 0:
+            continue
+
+        # Build or retrieve stencil
+        if R not in stencil_cache:
+            yy, xx = np.ogrid[-R:R+1, -R:R+1]
+
+            if gaussian:
+                sigma = R / 2
+                stencil = np.exp(-(xx*xx + yy*yy) / (2 * sigma * sigma))
+            else:
+                stencil = (xx*xx + yy*yy) <= R*R
+                stencil = stencil.astype(np.float32)
+
+            stencil_cache[R] = stencil
+
+        stencil = stencil_cache[R]
+
+        # Bounds in output image
+        y0 = max(0, y - R)
+        y1 = min(H, y + R + 1)
+        x0 = max(0, x - R)
+        x1 = min(W, x + R + 1)
+
+        # Bounds in stencil
+        sy0 = y0 - (y - R)
+        sy1 = sy0 + (y1 - y0)
+        sx0 = x0 - (x - R)
+        sx1 = sx0 + (x1 - x0)
+
+        # Add scaled stencil
+        bitmap[y0:y1, x0:x1] += 3 * I * stencil[sy0:sy1, sx0:sx1]
+
+    return bitmap
+
+
+
+def calstarEntryToPNG(calstars_list, file_path, ff_name, save_images=False, save_path=None):
+
+    if not len(calstars_list):
+        return None
+    grey = calstarEntrytoArray(calstars_list)
+
+
+    save_path_name = createSavePathName(file_path, ff_name ,save_path)
+
+    Image.fromarray(grey).save(save_path_name)
+
+    return grey
+
+def createSavePathName(file_path, file_name, save_path, extension='png'):
+
+
+
+    if save_path is None:
+        save_path_name = os.path.join(file_path, f"{file_name.split('.')[0]}.{extension}")
+
+    else:
+        save_path = os.path.expanduser(save_path)
+        if os.path.exists(save_path):
+
+            if os.path.isdir(save_path):
+                file_name = f"{file_name.split('.')[0]}.png"
+                save_path_name = os.path.join(save_path, file_name)
+            elif os.path.isfile(save_path):
+                save_path_name = save_path
+
+    return save_path_name
+
+
+
+def maxCalstarsToPNG(file_path, file_name, save_path=None, chunk_frames=256):
+
+        # Extract img coordinates
+        calstars_list, ff_max = maxCALSTARS(os.path.expanduser(file_path), file_name, chunk_frames)
+
+        return calstarEntryToPNG(calstars_list, file_path, ff_max, save_path)
+
+
+def calstarsToMP4(file_path, file_name, save_path=None, chunk_frames=256):
+
+
+    file_path = os.path.expanduser(file_path)
+
+    save_path_name = createSavePathName(file_path, file_name, save_path, extension='mp4')
+
+    if not os.path.exists(os.path.join(file_path, file_name)):
+        return False
+
+
+
+    calstar_list, _ = readCALSTARS(file_path, file_name)
+
+    writer = imageio.get_writer(save_path_name, fps=30)
+
+
+    text_x, text_y = 10, 720 - 20
+    font_scale = 0.4
+    thickness = 1
+
+
+    max_intensity = max([coordinates[2]
+                      for calstar in calstar_list
+                      for coordinates in calstar[1]])
+
+    for calstar in calstar_list:
+
+        ff_name = calstar[0]
+        grey = calstarEntrytoArray(calstar[1], max_intensity)
+        stationID = calstar[0].split("_")[1]
+        timestamp = filenameToDatetime(ff_name).strftime("%Y-%m-%d %H:%M:%S")
+        text = f"{stationID} {timestamp} UTC"
+        grey = drawTextOnBitmap(grey, text, text_x, text_y)
+        g = grey.astype(np.uint8)
+        rgb = np.stack([g, g, g], axis=-1)  # (H, W, 3)
+        writer.append_data(rgb)
+
+    writer.close()
+    pass
+
+
+def drawTextOnBitmap(bitmap, text, x, y, intensity=255):
+    """
+    Draw text onto a grayscale NumPy bitmap using Pillow.
+    """
+    img = Image.fromarray(bitmap.astype(np.uint8), mode='L')
+    draw = ImageDraw.Draw(img)
+
+    fontPath = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    fontSize = 12
+    font = font = ImageFont.truetype(fontPath, fontSize)
+
+
+    draw.text((x, y), text, fill=intensity, font=font)
+
+    return np.array(img, dtype=np.uint8)
+
