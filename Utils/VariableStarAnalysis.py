@@ -850,7 +850,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         fov_radius = getFOVSelectionRadius(pp)
         # Get stars from the catalog around the defined center in a given radius
         catalog_stars = catalog_stars[catalog_stars[:,1].argsort()[::-1]]
-        print(RA_c, dec_c, fov_radius)
         ins, extracted_catalog = subsetCatalog(catalog_stars, RA_c, dec_c, jd, pp.lat, pp.lon, fov_radius, observation_config.catalog_mag_limit + 2)
         ra_catalog, dec_catalog, mag_catalog = extracted_catalog.T
 

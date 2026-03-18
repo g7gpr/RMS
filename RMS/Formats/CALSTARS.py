@@ -385,7 +385,7 @@ def calstarsToMP4(file_path, file_name, save_path=None, chunk_frames=256):
     for frame in calstar_list:
 
         ff_name = frame[0]
-        grey = calstarEntrytoArray(frame[1], max_intensity)
+        grey = calstarEntrytoArray(frame, max_intensity)
         stationID = frame[0].split("_")[1]
         timestamp = filenameToDatetime(ff_name).strftime("%Y-%m-%d %H:%M:%S")
         text = f"{stationID} {timestamp} UTC {len(frame[1])}"
