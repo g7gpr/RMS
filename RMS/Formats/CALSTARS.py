@@ -19,7 +19,8 @@ import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import imageio.v2 as imageio
-from shapely.lib import make_valid_with_params
+import tqdm
+
 
 from RMS.Formats.FFfile import filenameToDatetime
 
@@ -224,15 +225,17 @@ def maxCALSTARS(file_path, file_name, chunk_frames=256):
     try:
         max_len_ff = max(calstars_dict, key=lambda k: len(calstars_dict[k]))
     except:
+        print(f"{file_name} had an empty calstars")
         return [], None
+
 
     return calstars_dict[max_len_ff], max_len_ff
 
 
 def calstarEntrytoArray(calstars_entry, max_intensity=None):
 
-    calstars_arr = np.array(calstars_entry)
-    coords = np.array((calstars_arr[:, 1], calstars_arr[:, 0], calstars_arr[:, 2], calstars_arr[:,4])).T
+    calstars_arr = np.array(calstars_entry[1])
+    coords = np.array((calstars_arr[:, 1], calstars_arr[:, 0], calstars_arr[:, 2] + 50, calstars_arr[:,4])).T
     bitmap = renderStars(coords, (720,1280), gaussian=True)
 
 
@@ -315,9 +318,10 @@ def calstarEntryToPNG(calstars_list, file_path, ff_name, save_images=False, save
     if not len(calstars_list):
         return None
     grey = calstarEntrytoArray(calstars_list)
-
+    grey = annotateImage(grey, calstars_list, intensity=125, rescale=2)
 
     save_path_name = createSavePathName(file_path, ff_name ,save_path)
+    print(f"Saving as {os.path.basename(save_path_name)}")
 
     Image.fromarray(grey).save(save_path_name)
 
@@ -349,7 +353,7 @@ def maxCalstarsToPNG(file_path, file_name, save_path=None, chunk_frames=256):
         # Extract img coordinates
         calstars_list, ff_max = maxCALSTARS(os.path.expanduser(file_path), file_name, chunk_frames)
 
-        return calstarEntryToPNG(calstars_list, file_path, ff_max, save_path)
+        return calstarEntryToPNG([[ff_max],calstars_list], file_path, ff_max, save_path)
 
 
 def calstarsToMP4(file_path, file_name, save_path=None, chunk_frames=256):
@@ -366,7 +370,7 @@ def calstarsToMP4(file_path, file_name, save_path=None, chunk_frames=256):
 
     calstar_list, _ = readCALSTARS(file_path, file_name)
 
-    writer = imageio.get_writer(save_path_name, fps=30)
+    writer = imageio.get_writer(save_path_name, fps=2)
 
 
     text_x, text_y = 10, 720 - 20
@@ -378,20 +382,45 @@ def calstarsToMP4(file_path, file_name, save_path=None, chunk_frames=256):
                       for calstar in calstar_list
                       for coordinates in calstar[1]])
 
-    for calstar in calstar_list:
+    for frame in calstar_list:
 
-        ff_name = calstar[0]
-        grey = calstarEntrytoArray(calstar[1], max_intensity)
-        stationID = calstar[0].split("_")[1]
+        ff_name = frame[0]
+        grey = calstarEntrytoArray(frame[1], max_intensity)
+        stationID = frame[0].split("_")[1]
         timestamp = filenameToDatetime(ff_name).strftime("%Y-%m-%d %H:%M:%S")
-        text = f"{stationID} {timestamp} UTC"
+        text = f"{stationID} {timestamp} UTC {len(frame[1])}"
         grey = drawTextOnBitmap(grey, text, text_x, text_y)
+
+        grey = annotateImage(grey, frame, intensity=255)
+
         g = grey.astype(np.uint8)
         rgb = np.stack([g, g, g], axis=-1)  # (H, W, 3)
+
+
         writer.append_data(rgb)
 
     writer.close()
     pass
+
+def annotateImage(bitmap, frame, intensity=255, rescale=2):
+
+
+    img = Image.fromarray(bitmap.astype(np.uint8), mode='L')
+    w, h = img.size
+    img = img.resize((w * rescale, h * rescale), Image.NEAREST)
+    draw = ImageDraw.Draw(img)
+
+
+    for s in frame[1]:
+
+        annotation_text = f"x:{int(s[1])} y:{int(s[0])}\nAmp:{s[3]:4} FWHM:{s[4]:4.2} SNR:{s[6]:5.2} "
+        fontPath = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        fontSize = 12
+        font = ImageFont.truetype(fontPath, fontSize)
+
+        draw.text((int(s[1] + 5) * rescale, int(s[0] + 5) * rescale), annotation_text, fill=intensity, font=font)
+
+    return np.array(img, dtype=np.uint8)
 
 
 def drawTextOnBitmap(bitmap, text, x, y, intensity=255):
@@ -403,7 +432,7 @@ def drawTextOnBitmap(bitmap, text, x, y, intensity=255):
 
     fontPath = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
     fontSize = 12
-    font = font = ImageFont.truetype(fontPath, fontSize)
+    font = ImageFont.truetype(fontPath, fontSize)
 
 
     draw.text((x, y), text, fill=intensity, font=font)

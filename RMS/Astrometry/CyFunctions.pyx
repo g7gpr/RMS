@@ -167,7 +167,7 @@ def subsetCatalog(np.ndarray[FLOAT_TYPE_t, ndim=2] catalog_list, double ra_c, do
 
         # End the loop if the declination is too small
         if dec < dec_min:
-            break
+            continue
 
         # Add star to the list if it is within a given radius and has a certain brightness
         if (angularSeparation(ra, dec, ra_c, dec_c) <= radius) and (mag <= mag_limit):
