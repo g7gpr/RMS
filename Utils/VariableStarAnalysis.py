@@ -16,6 +16,8 @@
 
 from __future__ import print_function, division, absolute_import
 
+from datetime import tzinfo
+
 import RMS.Math
 import os
 import pickle
@@ -214,7 +216,7 @@ def catalogueToDB(conn):
         Nothing
     """
     catalogue = loadGaiaCatalog("~/source/RMS/Catalogs", "gaia_dr2_mag_11.5.npy", lim_mag=11)
-    print("\nInserting catalgue data\n")
+    print("\nInserting catalogue data\n")
     for star in tqdm.tqdm(catalogue):
         sql_command = "INSERT INTO catalogue (r , d, mag) \n"
         sql_command += "Values ({} , {}, {})".format(star[0], star[1], star[2])
@@ -468,10 +470,10 @@ def filterByDate(files_list, earliest_date=None, latest_date=None):
 
 
     if earliest_date is None:
-        earliest_date = datetime.datetime.now() - datetime.timedelta(days=3)
+        earliest_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=3)
 
     if latest_date is None:
-        latest_date = datetime.datetime.now() + datetime.timedelta(days=3)
+        latest_date = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3)
 
     filtered_files_list = []
     for file in files_list:
@@ -483,7 +485,7 @@ def filterByDate(files_list, earliest_date=None, latest_date=None):
         time = file.split("_")[2]
         year, month, day = int(date[0:4]), int(date[4:6]), int(date[6:8])
         hour, minute, second = int(time[0:2]), int(time[2:4]), int(time[4:6])
-        file_date = datetime.datetime(year=year, month=month, day=day, hour=hour, minute=minute, second=second)
+        file_date = datetime.datetime(year=year, month=month, day=day, hour=hour, minute=minute, second=second, tzinfo=datetime.timezone.utc)
         if earliest_date < file_date < latest_date:
             filtered_files_list.append(file)
 
@@ -564,9 +566,12 @@ def buildParamList(data, bottom_keys):
 
 def writeStarObservationsToDB(data_dict):
 
+
+    leaves_keys = getLeaves(data_dict)
+    if not len(leaves_keys):
+        return
     conn = getStationStarDBConn(STAR_OBSERVATION_DB_PATH)
     conn.execute("BEGIN")
-    leaves_keys = getLeaves(data_dict)
     createColumns(conn, STAR_OBSERVATIONS_TABLE_NAME, leaves_keys)
 
 
@@ -576,6 +581,7 @@ def writeStarObservationsToDB(data_dict):
 
     conn.execute("COMMIT")
     conn.close()
+    return
 
 def getStationStarDBConn(db_path, force_delete=False):
     """
@@ -632,31 +638,35 @@ def makeConfigPlateParCalstarsLib(config, station_list, calstars_data_dir=CALSTA
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
     print("Starting to download files.")
-    for station in tqdm.tqdm(station_list):
+    for station in station_list:
 
         remote_dir = remote_station_processed_dir.replace("$STATION", station.lower())
         remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
-        remote_files = filterByDate(remote_files, earliest_date=datetime.datetime(year=2024, month=1, day=1))
+        remote_files = filterByDate(remote_files, earliest_date=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=21))
+        print(f"For station:{station} {len(remote_files)} files to process")
 
-        for remote_file in tqdm.tqdm(remote_files):
-            station_name = remote_file.split("_")[0]
+        for remote_file in remote_files:
+
             file_type = getFileType(remote_file)
+            if file_type != "metadata" and file_type != "detected":
+                continue
+            station_name = remote_file.split("_")[0]
+
             local_dir_name = "_".join(remote_file.split("_")[0:4])
             local_target = os.path.join(calstars_data_full_path, local_dir_name)
 
-            if file_type != "metadata" and file_type != "detected":
-                continue
+
 
             files_already_downloaded = []
             if os.path.exists(calstars_data_full_path):
                 if os.path.isdir(calstars_data_full_path):
                     files_already_downloaded = os.listdir(calstars_data_full_path)
-
+                    print(f"\tAlready downloaded {remote_file}")
 
 
             with tempfile.TemporaryDirectory() as t:
 
-                print(f"Saving to {local_target}")
+
                 # Create paths up front to reduce clutter
                 extraction_dir = os.path.join(t, "extracted")
                 calstars_name = f"CALSTARS_{local_dir_name}.txt"
@@ -686,7 +696,9 @@ def makeConfigPlateParCalstarsLib(config, station_list, calstars_data_dir=CALSTA
 
                 # Download, and extract the file into a subdir
                 if local_dir_name not in files_already_downloaded:
+                    print(f"\tDownloading from {full_remote_path_to_bz2}")
                     downloadFile(host, username, t, full_remote_path_to_bz2)
+                    print(f"\tExtracting to {extraction_dir}")
                     mkdirP(extraction_dir)
                     extractBz2(t, extraction_dir)
 
@@ -703,26 +715,36 @@ def makeConfigPlateParCalstarsLib(config, station_list, calstars_data_dir=CALSTA
                         missing_at_least_one_file = True
                         break
 
+                if os.path.exists(local_json_path):
+                    try:
+                        with open(local_json_path, "r") as f:
+                            dict_from_calstar = json.load(f)
+                            print(f"\tWriting to database")
+                            writeStarObservationsToDB(dict_from_calstar)
+
+                    except:
+                        if os.path.exists(local_json_path):
+                            os.unlink(local_json_path)
+
                 if not missing_at_least_one_file and not os.path.exists(local_json_path):
+                    print("\t Building observation dict")
                     dict_from_calstar = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
-                    print(f"Writing to {local_json_path}")
-                    with open(local_json_path, "w") as f:
-                        json.dump(dict_from_calstar, f, indent=4, sort_keys=True)
-                        f.flush()
-                        os.fsync(f.fileno())
-                else:
-                    with open(local_json_path, "r") as f:
-                        dict_from_calstar = json.load(f)
-
-                writeStarObservationsToDB(dict_from_calstar)
-
-                maxCalstarsToPNG(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
-                calstarsToMP4(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
+                    print(f"\tWriting to {local_json_path}")
+                    #with open(local_json_path, "w") as f:
+                    #    json.dump(dict_from_calstar, f, indent=4, sort_keys=True)
+                    #    f.flush()
+                    #    os.fsync(f.fileno())
 
 
-                if not os.path.exists(local_platepar_path):
-                    print(f"Missing platepar from {local_target_full_path}")
-                    makePlatePar(local_platepar_path)
+                if os.path.exists(local_json_path):
+                    print(f"\tWriting to database")
+                    writeStarObservationsToDB(dict_from_calstar)
+                    print(f"\tMaking image")
+                    maxCalstarsToPNG(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
+                    #print(f"\tMaking MP4")
+                    #calstarsToMP4(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
+
+
 
 
 
@@ -854,21 +876,23 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     # Compute the number of years from J2000
     years_from_J2000 = (ts - J2000).total_seconds()/(365.25*24*3600)
-    print('Loading star catalog with years from J2000: {:.2f}'.format(years_from_J2000))
+    print('\tLoading star catalog with years from J2000: {:.2f}'.format(years_from_J2000))
 
     # Load catalog stars (overwrite the mag band ratios if specific catalog is used)
-    star_catalog_status = StarCatalog.readStarCatalog(
-        observation_config.star_catalog_path,
-        observation_config.star_catalog_file,
-        lim_mag = observation_config.catalog_mag_limit + 8,
+    star_catalog_status  = StarCatalog.readStarCatalog(
+        config.star_catalog_path,
+        config.star_catalog_file,
+        lim_mag = 10,
         years_from_J2000=years_from_J2000,
-        mag_band_ratios=observation_config.star_catalog_band_ratios
-    )
+        mag_band_ratios=config.star_catalog_band_ratios,
+        additional_fields=['preferred_name', 'common_name', 'bayer_name'])
+
+    pass
 
     if not star_catalog_status:
         print("Could not load star catalogue")
 
-    catalog_stars, _, config.star_catalog_band_ratios = star_catalog_status
+    catalog_stars, _, config.star_catalog_band_ratios, extras = star_catalog_status
 
 
     maskFinite = np.isfinite(catalog_stars[:, 0:3]).all(axis=1)
@@ -879,21 +903,15 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     )
 
     mask = maskFinite & maskRange
-
-
     purged_cat = catalog_stars[mask]
-
+    purged_extras = extras['preferred_name'][mask]
 
     spherical_tree, xyz = buildSphericalTree(purged_cat[:,0], purged_cat[:,1])
-
-    sequence_dict = dict()
-
 
     with open(local_recal_path, 'r') as fh:
         pp_recal_json = json.load(fh)
 
     pp = Platepar()
-
     star_dict = starListToDict(observation_config, [calstar, chunk])
 
 
@@ -915,24 +933,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             # If we have a platepar in pp_recal then use it, else just use the uncalibrated platepar
             pp.loadFromDict(pp_recal_json[fits_file])
 
-
-
-
-        # Estimate RA,dec of the centre of the FOV
-        _, RA_c, dec_c, _ = xyToRaDecPP([jd2Date(jd)], [pp.X_res/2], [pp.Y_res/2], [1], \
-            pp, extinction_correction=False, precompute_pointing_corr=True)
-
-        RA_c = RA_c[0]
-        dec_c = dec_c[0]
-
-        fov_radius = getFOVSelectionRadius(pp)
-        # Get stars from the catalog around the defined center in a given radius
-        catalog_stars = catalog_stars[catalog_stars[:,1].argsort()[::-1]]
-        ins, extracted_catalog = subsetCatalog(catalog_stars, RA_c, dec_c, jd, pp.lat, pp.lon, fov_radius, observation_config.catalog_mag_limit + 2)
-        ra_catalog, dec_catalog, mag_catalog = extracted_catalog.T
-
         # Extract stars for the given Julian date
-
         if jd in star_dict:
             stars_list = star_dict[jd]
             stars_list = np.array(stars_list)
@@ -944,70 +945,39 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             continue
 
 
-        # Convert all catalog stars to image coordinates
-        cat_x_array, cat_y_array = raDecToXYPP(ra_catalog, dec_catalog, jd, pp)
+        for star in stars_list:
 
-        # Take only those stars which are within the FOV
-        x_indices = np.argwhere((cat_x_array >= 0) & (cat_x_array < pp.X_res))
-        y_indices = np.argwhere((cat_y_array >= 0) & (cat_y_array < pp.Y_res))
-        cat_good_indices = np.intersect1d(x_indices, y_indices).astype(np.uint32)
+            obs_x, obs_y, bg = star[1], star[0], star[2]
 
-
-
-
-
-        jd_list, y_list, x_list, bg_list, amp_list, FWHM_list = [], [], [], [], [], []
-
-
-
-
-
-        match_radius = 2
-        matched_indices = matchStars(stars_list, cat_x_array, cat_y_array, cat_good_indices, match_radius)
-        ff_dict = {}
-        seen_coordinates = set()
-        for m in matched_indices:
-
-            ss_index = int(m[1])
-            obs_index = int(m[0])
-            subsection_row = extracted_catalog[ss_index]
-            catalog_index = int(np.where((subsection_row == catalog_stars).all(axis=1))[0][0])
-            cat_ra, cat_dec, cat_mag = ra_catalog[ss_index], dec_catalog[ss_index], mag_catalog[ss_index]
-            cat_x, cat_y, obs_x, obs_y, bg = cat_x_array[ss_index], cat_y_array[ss_index], stars_list[obs_index][1], stars_list[obs_index][0], stars_list[obs_index][2]
-            radius = np.hypot(obs_y - pp.Y_res / 2, obs_x - pp.X_res / 2)
-
-            _, obs_ra, obs_dec, obs_mag = xyToRaDecPP(np.array([jd]), np.array([obs_x]), np.array([obs_y]), np.array([bg]), pp, jd_time=True, extinction_correction=True, measurement=True)
+            _, obs_ra, obs_dec, obs_mag = xyToRaDecPP(np.array([jd]), np.array([obs_x]), np.array([obs_y]),
+                                                      np.array([bg]), pp, jd_time=True, extinction_correction=True,
+                                                      measurement=True)
             obs_ra, obs_dec, obs_mag = obs_ra[0], obs_dec[0], obs_mag[0]
+
+            matched_indices_tree = querySphericalTree(spherical_tree, obs_ra, obs_dec, 0.1)
+            brightest_index = selectBrightest(matched_indices_tree, purged_cat)
+            if not len(brightest_index):
+                continue
+            b_row = purged_cat[brightest_index][0]
+            name = purged_extras[brightest_index][0].decode('utf-8').strip()
+
+            cat_ra, cat_dec, cat_mag = b_row[0], b_row[1], b_row[2]
+
 
             #print(catalog_index, jd, cat_ra, obs_ra[0], cat_dec, obs_dec[0], cat_x, obs_x, cat_y, obs_y, cat_mag, obs_mag[0])
 
-            frame_dict[catalog_index] = {   "cat_ra": cat_ra,
-                                            "cat_dec": cat_dec,
-                                            "cat_mag": cat_mag,
-                                            "obs_ra": obs_ra,
-                                            "obs_dec": obs_dec,
-                                            "obs_mag": obs_mag}
+            frame_dict[name] = { "jd": jd, "cat_ra": cat_ra, "cat_dec": cat_dec, "cat_mag": cat_mag,
+                                               "obs_ra": obs_ra, "obs_dec": obs_dec, "obs_mag": obs_mag}
 
             pass
 
 
-            matched_indices_tree = querySphericalTree(spherical_tree, obs_ra, obs_dec, 1)
-            print(matched_indices_tree)
-            m = selectBrightest(matched_indices_tree, purged_cat)
-            brightest_row = purged_cat[m][0]
 
-            r = brightest_row[0]
-            d = brightest_row[1]
-            mag = brightest_row[2]
+            #print("Observed")
+            #print(f"Ra:{obs_ra:6.3f}, Dec:{obs_dec:6.3f}, Mag:{obs_mag:6.3f}")
 
-            print("Observed")
-            print(f"Ra:{obs_ra:6.3f}, Dec:{obs_dec:6.3f}, Mag:{obs_mag:6.3f}")
-
-            print("From rectangular catalog")
-            print(f"Ra:{cat_ra:6.3f}, Dec:{cat_dec:6.3f}, Mag:{cat_mag:6.3f}")
-
-            print("From spherical catalogue")
-            print(f"Ra:{r:6.3f}, Dec:{d:6.3f}, Mag:{mag:6.3f}")
+            #print("From catalog")
+            #print(f"Ra:{cat_ra:6.3f}, Dec:{cat_dec:6.3f}, Mag:{cat_mag:6.3f}")
 
         observation_dict[fits_file] = frame_dict
         pass
@@ -1039,8 +1009,8 @@ if __name__ == "__main__":
     cwd = os.getcwd()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
 
-    #station_list = getStationList(country_code="au")
-    station_list = ['au000x']
+    station_list = getStationList()
+
     makeConfigPlateParCalstarsLib(config, station_list)
 
 

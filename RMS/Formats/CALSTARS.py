@@ -321,8 +321,6 @@ def calstarEntryToPNG(calstars_list, file_path, ff_name, save_images=False, save
     grey = annotateImage(grey, calstars_list, intensity=125, rescale=2)
 
     save_path_name = createSavePathName(file_path, ff_name ,save_path)
-    print(f"Saving as {os.path.basename(save_path_name)}")
-
     Image.fromarray(grey).save(save_path_name)
 
     return grey
