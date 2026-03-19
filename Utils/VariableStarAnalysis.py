@@ -644,7 +644,8 @@ def makeConfigPlateParCalstarsLib(config, station_list, calstars_data_dir=CALSTA
         remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
         remote_files = filterByDate(remote_files, earliest_date=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=21))
         print(f"For station:{station} {len(remote_files)} files to process")
-
+        if not len(remote_files):
+            pass
         for remote_file in remote_files:
 
             file_type = getFileType(remote_file)
@@ -729,16 +730,16 @@ def makeConfigPlateParCalstarsLib(config, station_list, calstars_data_dir=CALSTA
                 if not missing_at_least_one_file and not os.path.exists(local_json_path):
                     print("\t Building observation dict")
                     dict_from_calstar = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
-                    print(f"\tWriting to {local_json_path}")
+
                     #with open(local_json_path, "w") as f:
                     #    json.dump(dict_from_calstar, f, indent=4, sort_keys=True)
                     #    f.flush()
                     #    os.fsync(f.fileno())
-
-
-                if os.path.exists(local_json_path):
                     print(f"\tWriting to database")
                     writeStarObservationsToDB(dict_from_calstar)
+
+                if os.path.exists(local_json_path):
+
                     print(f"\tMaking image")
                     maxCalstarsToPNG(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
                     #print(f"\tMaking MP4")
@@ -966,8 +967,8 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
             #print(catalog_index, jd, cat_ra, obs_ra[0], cat_dec, obs_dec[0], cat_x, obs_x, cat_y, obs_y, cat_mag, obs_mag[0])
 
-            frame_dict[name] = { "jd": jd, "cat_ra": cat_ra, "cat_dec": cat_dec, "cat_mag": cat_mag,
-                                               "obs_ra": obs_ra, "obs_dec": obs_dec, "obs_mag": obs_mag}
+            frame_dict[name] = { "jd": jd,  "stationID": config.stationID.upper(),
+                                            "obs_ra": obs_ra, "obs_dec": obs_dec, "obs_mag": obs_mag}
 
             pass
 
