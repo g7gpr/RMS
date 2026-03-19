@@ -33,13 +33,13 @@ import sys
 import datetime
 import sqlite3
 
-
+from RMS.Astrometry.MatchStars import matchStars
 from RMS.Formats import CALSTARS, FFfile, Platepar, StarCatalog
 from RMS.Astrometry.CheckFit import starListToDict
 from RMS.Formats.StarCatalog import readStarCatalog
 from RMS.Astrometry.Conversions import J2000_JD, date2JD, jd2Date, raDec2AltAz
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP, correctVignetting, photometryFitRobust, getFOVSelectionRadius
-from RMS.Astrometry.CyFunctions import matchStars, subsetCatalog
+from RMS.Astrometry.CyFunctions import subsetCatalog
 
 import numpy as np
 
@@ -52,6 +52,8 @@ from RMS.Formats.Platepar import Platepar
 from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP
 from scipy.spatial import cKDTree
 from RMS.Formats.CALSTARS import readCALSTARS, maxCalstarsToPNG, calstarsToMP4
+from scipy.spatial import cKDTree
+
 
 from RMS.Misc import mkdirP
 import matplotlib.pyplot as plt
@@ -70,6 +72,67 @@ STAR_OBSERVATION_DB_PATH = os.path.expanduser("~/RMS_data/magnitudes.db")
 
 CHARTS = "charts"
 PORT = 22
+
+
+
+def buildSphericalTree(raDeg, decDeg):
+    """
+    Build a cKDTree for spherical coordinates (RA, Dec in degrees).
+    Returns (tree, xyz) where xyz is the Nx3 unit-vector array.
+    """
+
+    ra  = np.deg2rad(raDeg)
+    dec = np.deg2rad(decDeg)
+
+    x = np.cos(dec) * np.cos(ra)
+    y = np.cos(dec) * np.sin(ra)
+    z = np.sin(dec)
+
+    xyz = np.column_stack((x, y, z))
+    tree = cKDTree(xyz)
+
+    return tree, xyz
+
+def querySphericalTree(tree, raDeg, decDeg, radiusDeg):
+    """
+    Query a spherical KD-tree for all catalog entries within an angular radius.
+    Returns an array of indices (possibly empty).
+    """
+
+    ra  = np.deg2rad(raDeg)
+    dec = np.deg2rad(decDeg)
+
+    qx = np.cos(dec) * np.cos(ra)
+    qy = np.cos(dec) * np.sin(ra)
+    qz = np.sin(dec)
+
+    queryVec = np.array([qx, qy, qz])
+
+    # Convert angular radius to Euclidean chord distance
+    theta = np.deg2rad(radiusDeg)
+    euclidR = 2 * np.sin(theta / 2)
+
+    return np.array(tree.query_ball_point(queryVec, euclidR), dtype=int)
+
+
+def selectBrightest(indices, catalog, magCol=2):
+    """
+    Given an array of catalog indices, return a 1-element array containing
+    the index of the brightest star (lowest magnitude).
+    Returns an empty array if no matches.
+    """
+
+    if len(indices) == 0:
+        return np.empty((0,), dtype=int)
+
+    mags = catalog[indices, magCol]
+    i = np.argmin(mags)
+
+    return np.array([indices[i]], dtype=int)
+
+
+
+
 
 def createTableStarObservations(conn):
 
@@ -797,8 +860,8 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     star_catalog_status = StarCatalog.readStarCatalog(
         observation_config.star_catalog_path,
         observation_config.star_catalog_file,
+        lim_mag = observation_config.catalog_mag_limit + 8,
         years_from_J2000=years_from_J2000,
-        lim_mag=observation_config.catalog_mag_limit + 2,
         mag_band_ratios=observation_config.star_catalog_band_ratios
     )
 
@@ -807,6 +870,21 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     catalog_stars, _, config.star_catalog_band_ratios = star_catalog_status
 
+
+    maskFinite = np.isfinite(catalog_stars[:, 0:3]).all(axis=1)
+
+    maskRange = (
+            (catalog_stars[:, 0] >= 0.0) & (catalog_stars[:, 0] < 360.0) &  # RA
+            (catalog_stars[:, 1] >= -90.0) & (catalog_stars[:, 1] <= 90.0)  # Dec
+    )
+
+    mask = maskFinite & maskRange
+
+
+    purged_cat = catalog_stars[mask]
+
+
+    spherical_tree, xyz = buildSphericalTree(purged_cat[:,0], purged_cat[:,1])
 
     sequence_dict = dict()
 
@@ -881,9 +959,13 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         jd_list, y_list, x_list, bg_list, amp_list, FWHM_list = [], [], [], [], [], []
 
 
-        match_radius = 1
+
+
+
+        match_radius = 2
         matched_indices = matchStars(stars_list, cat_x_array, cat_y_array, cat_good_indices, match_radius)
         ff_dict = {}
+        seen_coordinates = set()
         for m in matched_indices:
 
             ss_index = int(m[1])
@@ -909,8 +991,28 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             pass
 
 
+            matched_indices_tree = querySphericalTree(spherical_tree, obs_ra, obs_dec, 1)
+            print(matched_indices_tree)
+            m = selectBrightest(matched_indices_tree, purged_cat)
+            brightest_row = purged_cat[m][0]
+
+            r = brightest_row[0]
+            d = brightest_row[1]
+            mag = brightest_row[2]
+
+            print("Observed")
+            print(f"Ra:{obs_ra:6.3f}, Dec:{obs_dec:6.3f}, Mag:{obs_mag:6.3f}")
+
+            print("From rectangular catalog")
+            print(f"Ra:{cat_ra:6.3f}, Dec:{cat_dec:6.3f}, Mag:{cat_mag:6.3f}")
+
+            print("From spherical catalogue")
+            print(f"Ra:{r:6.3f}, Dec:{d:6.3f}, Mag:{mag:6.3f}")
+
         observation_dict[fits_file] = frame_dict
         pass
+
+
 
 
 
