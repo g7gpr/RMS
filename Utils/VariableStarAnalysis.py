@@ -42,6 +42,7 @@ from RMS.Formats.StarCatalog import readStarCatalog
 from RMS.Astrometry.Conversions import J2000_JD, date2JD, jd2Date, raDec2AltAz
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP, correctVignetting, photometryFitRobust, getFOVSelectionRadius
 from RMS.Astrometry.CyFunctions import subsetCatalog
+from RMS.Formats.StarCatalog import Catalog
 
 import numpy as np
 
@@ -74,6 +75,8 @@ STAR_OBSERVATION_DB_PATH = os.path.expanduser("~/RMS_data/magnitudes.db")
 
 CHARTS = "charts"
 PORT = 22
+
+from RMS.Logger import LoggingManager, getLogger
 
 
 
@@ -216,7 +219,7 @@ def catalogueToDB(conn):
         Nothing
     """
     catalogue = loadGaiaCatalog("~/source/RMS/Catalogs", "gaia_dr2_mag_11.5.npy", lim_mag=11)
-    print("\nInserting catalogue data\n")
+    log.info("\nInserting catalogue data\n")
     for star in tqdm.tqdm(catalogue):
         sql_command = "INSERT INTO catalogue (r , d, mag) \n"
         sql_command += "Values ({} , {}, {})".format(star[0], star[1], star[2])
@@ -356,14 +359,14 @@ def extractBz2Files(bz2_list, input_directory, working_directory, silent=True, h
             continue
         mkdirP(bz2_directory)
         if not silent:
-            print("Extracting {}".format(bz2))
+            log.info("Extracting {}".format(bz2))
 
         try:
             with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
                 tar.extractall(path=bz2_directory)
         except:
             if not silent:
-                print("Redownloading {}".format(basename_bz2))
+                log.info("Redownloading {}".format(basename_bz2))
             remote_path = REMOTE_STATION_PROCESSED_DIR.replace("$STATION", basename_bz2.split("_")[0].lower())
             remote_path = os.path.join(remote_path, basename_bz2)
             downloadFile(host, username, remote_path, port)
@@ -612,7 +615,7 @@ def getStationStarDBConn(db_path, force_delete=False):
     return conn
 
 
-def makeConfigPlateParCalstarsLib(config, station_list, calstars_data_dir=CALSTARS_DATA_DIR,
+def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, calstars_data_dir=CALSTARS_DATA_DIR,
                                   remote_station_processed_dir=REMOTE_STATION_PROCESSED_DIR,
                                   host=REMOTE_SERVER, username=USER_NAME, port=PORT):
 
@@ -635,15 +638,18 @@ def makeConfigPlateParCalstarsLib(config, station_list, calstars_data_dir=CALSTA
         Nothing.
     """
 
+    if country_code is None:
+        country_code = ""
+
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
-    print("Starting to download files.")
+    log.info("Starting to download files.")
     for station in station_list:
 
         remote_dir = remote_station_processed_dir.replace("$STATION", station.lower())
         remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
         remote_files = filterByDate(remote_files, earliest_date=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=21))
-        print(f"For station:{station} {len(remote_files)} files to process")
+        log.info(f"For station:{station} {len(remote_files)} files to process")
         if not len(remote_files):
             pass
         for remote_file in remote_files:
@@ -662,7 +668,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, calstars_data_dir=CALSTA
             if os.path.exists(calstars_data_full_path):
                 if os.path.isdir(calstars_data_full_path):
                     files_already_downloaded = os.listdir(calstars_data_full_path)
-                    print(f"\tAlready downloaded {remote_file}")
+
 
 
             with tempfile.TemporaryDirectory() as t:
@@ -694,12 +700,12 @@ def makeConfigPlateParCalstarsLib(config, station_list, calstars_data_dir=CALSTA
                 path_local_list = [local_config_path, local_platepar_path, local_mask_path, local_calstars_path, local_recalibrated_path]
 
 
-
+                log.info(f"\tWorking on {local_dir_name}")
                 # Download, and extract the file into a subdir
                 if local_dir_name not in files_already_downloaded:
-                    print(f"\tDownloading from {full_remote_path_to_bz2}")
+                    log.info(f"\tDownloading from {full_remote_path_to_bz2}")
                     downloadFile(host, username, t, full_remote_path_to_bz2)
-                    print(f"\tExtracting to {extraction_dir}")
+                    log.info(f"\tExtracting to {extraction_dir}")
                     mkdirP(extraction_dir)
                     extractBz2(t, extraction_dir)
 
@@ -720,27 +726,28 @@ def makeConfigPlateParCalstarsLib(config, station_list, calstars_data_dir=CALSTA
                     try:
                         with open(local_json_path, "r") as f:
                             dict_from_calstar = json.load(f)
-                            print(f"\tWriting to database")
+                            log.info(f"\tWriting to database")
                             writeStarObservationsToDB(dict_from_calstar)
+                            log.info(f"\tDatabase write completed")
 
                     except:
                         if os.path.exists(local_json_path):
                             os.unlink(local_json_path)
 
                 if not missing_at_least_one_file and not os.path.exists(local_json_path):
-                    print("\t Building observation dict")
+                    log.info(f"\tIngesting {calstars_name}")
                     dict_from_calstar = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
 
                     #with open(local_json_path, "w") as f:
                     #    json.dump(dict_from_calstar, f, indent=4, sort_keys=True)
                     #    f.flush()
                     #    os.fsync(f.fileno())
-                    print(f"\tWriting to database")
+                    log.info(f"\tWriting to database")
                     writeStarObservationsToDB(dict_from_calstar)
 
                 if os.path.exists(local_json_path):
 
-                    print(f"\tMaking image")
+                    log.info(f"\tMaking image")
                     maxCalstarsToPNG(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
                     #print(f"\tMaking MP4")
                     #calstarsToMP4(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
@@ -871,44 +878,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     observation_config = cr.parse(local_config_path)
     calstar, chunk = readCALSTARS(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
 
-    ts = FFfile.getMiddleTimeFF(calstar[0][0], fps=observation_config.fps, ret_milliseconds=True, dt_obj=True)
-
-    J2000 = datetime.datetime(2000, 1, 1, 12, 0, 0)
-
-    # Compute the number of years from J2000
-    years_from_J2000 = (ts - J2000).total_seconds()/(365.25*24*3600)
-    print('\tLoading star catalog with years from J2000: {:.2f}'.format(years_from_J2000))
-
-    # Load catalog stars (overwrite the mag band ratios if specific catalog is used)
-    star_catalog_status  = StarCatalog.readStarCatalog(
-        config.star_catalog_path,
-        config.star_catalog_file,
-        lim_mag = 10,
-        years_from_J2000=years_from_J2000,
-        mag_band_ratios=config.star_catalog_band_ratios,
-        additional_fields=['preferred_name', 'common_name', 'bayer_name'])
-
-    pass
-
-    if not star_catalog_status:
-        print("Could not load star catalogue")
-
-    catalog_stars, _, config.star_catalog_band_ratios, extras = star_catalog_status
-
-
-    maskFinite = np.isfinite(catalog_stars[:, 0:3]).all(axis=1)
-
-    maskRange = (
-            (catalog_stars[:, 0] >= 0.0) & (catalog_stars[:, 0] < 360.0) &  # RA
-            (catalog_stars[:, 1] >= -90.0) & (catalog_stars[:, 1] <= 90.0)  # Dec
-    )
-
-    mask = maskFinite & maskRange
-    purged_cat = catalog_stars[mask]
-    purged_extras = extras['preferred_name'][mask]
-
-    spherical_tree, xyz = buildSphericalTree(purged_cat[:,0], purged_cat[:,1])
-
     with open(local_recal_path, 'r') as fh:
         pp_recal_json = json.load(fh)
 
@@ -924,7 +893,9 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     observation_dict = {}
 
+    fits_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
     for fits_file, star_list in calstar:
+
         frame_dict = {}
 
         dt = FFfile.getMiddleTimeFF(fits_file, observation_config.fps, ret_milliseconds=True, ff_frames=256)
@@ -946,31 +917,25 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             continue
 
 
-        for star in stars_list:
+        stars = np.array(stars_list)
 
-            obs_x, obs_y, bg = star[1], star[0], star[2]
+        obs_x, obs_y, intensity = stars[:,0], stars[:,1], stars[:,2]
+        jd = np.full_like(obs_x, jd, dtype=float)
 
-            _, obs_ra, obs_dec, obs_mag = xyToRaDecPP(np.array([jd]), np.array([obs_x]), np.array([obs_y]),
-                                                      np.array([bg]), pp, jd_time=True, extinction_correction=True,
-                                                      measurement=True)
-            obs_ra, obs_dec, obs_mag = obs_ra[0], obs_dec[0], obs_mag[0]
-
-            matched_indices_tree = querySphericalTree(spherical_tree, obs_ra, obs_dec, 0.1)
-            brightest_index = selectBrightest(matched_indices_tree, purged_cat)
-            if not len(brightest_index):
-                continue
-            b_row = purged_cat[brightest_index][0]
-            name = purged_extras[brightest_index][0].decode('utf-8').strip()
-
-            cat_ra, cat_dec, cat_mag = b_row[0], b_row[1], b_row[2]
+        _, obs_ra_arr, obs_dec_arr, obs_mag_arr = xyToRaDecPP(jd, obs_x, obs_y, intensity, pp, jd_time=True,
+                                                  extinction_correction=True, measurement=True, precompute_pointing_corr=True)
+        results = cat.queryRaDec(obs_ra_arr, obs_dec_arr)
 
 
-            #print(catalog_index, jd, cat_ra, obs_ra[0], cat_dec, obs_dec[0], cat_x, obs_x, cat_y, obs_y, cat_mag, obs_mag[0])
+        for r in zip(results, obs_ra_arr, obs_dec_arr, obs_mag_arr):
+            r, o_ra, o_dec, o_mag = r
+            name, cat_ra, cat_deg, cat_mag, theta = r
 
             frame_dict[name] = { "jd": jd,  "stationID": config.stationID.upper(),
-                                            "obs_ra": obs_ra, "obs_dec": obs_dec, "obs_mag": obs_mag}
+                                            "cat_ra": cat_ra, "cat_deg": cat_deg, "cat_mag": cat_mag,
+                                            "obs_ra": o_ra, "obs_dec": o_dec, "obs_mag": o_mag, "theta": theta}
 
-            pass
+        pass
 
 
 
@@ -986,6 +951,10 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
 
 
+    fits_end_time = datetime.datetime.now(tz=datetime.timezone.utc)
+    elapsed_seconds = (fits_end_time - fits_start_time).total_seconds()
+    fits_count = len(observation_dict)
+    log.info(f"Processing at {fits_count / elapsed_seconds:.1f} fits / second")
 
     return dictInvert(observation_dict)
 
@@ -995,6 +964,8 @@ if __name__ == "__main__":
 
     import argparse
 
+
+
     arg_parser = argparse.ArgumentParser(description="""Conduct analysis of variable stars \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
@@ -1002,17 +973,34 @@ if __name__ == "__main__":
                             help="Plot chart for debugging purposes.")
 
 
+
+
+    arg_parser.add_argument('--country', metavar='radec', help="""Country code to work on""")
+
     cml_args = arg_parser.parse_args()
 
+
+    config = cr.parse(os.path.join(os.getcwd(),".config"))
+    country_code = cml_args.country
+    # Initialize the logger
+    log_manager = LoggingManager()
+    log_manager.initLogging(config)
+
+    # Get the logger handle
+    log = getLogger("rmslogger")
 
     conn = getStationStarDBConn(STAR_OBSERVATION_DB_PATH)
 
     cwd = os.getcwd()
-    config = cr.parse(os.path.join(os.getcwd(),".config"))
 
-    station_list = getStationList()
 
-    makeConfigPlateParCalstarsLib(config, station_list)
+
+    station_list = getStationList(country_code=country_code)
+
+    log.info("Loading star catalog")
+    cat = Catalog(config)
+    log.info("Loaded catalog")
+    makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=country_code)
 
 
     pass
