@@ -542,7 +542,7 @@ def getStationList(url=STATION_COORDINATES_JSON, country_code=None):
                 station_list.append(station)
     return sorted(station_list)
 
-def filterByDate(files_list, earliest_date=None, latest_date=None):
+def filterByDate(files_list, earliest_date=None, latest_date=None, station=None):
     """
     Filter a list of bz2 files by date.
     Arguments:
@@ -563,11 +563,17 @@ def filterByDate(files_list, earliest_date=None, latest_date=None):
     if latest_date is None:
         latest_date = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3)
 
+
+
     filtered_files_list = []
     for file in files_list:
 
         if len(file.split("_")) != 5:
             continue
+
+        if station is not None:
+            if not file.startswith(station):
+                continue
 
         date = file.split("_")[1]
         time = file.split("_")[2]
@@ -800,7 +806,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, 
             else:
                 break
 
-        remote_files = filterByDate(remote_files, earliest_date=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=21))
+        remote_files = filterByDate(remote_files, earliest_date=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=21), station=station)
         log.info(f"For station:{station} {len(remote_files)} files to process")
         if not len(remote_files):
             pass
