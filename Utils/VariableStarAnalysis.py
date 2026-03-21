@@ -1184,8 +1184,6 @@ if __name__ == "__main__":
     log.info("Loading star catalog")
     cat = Catalog(config)
     log.info(f"Loaded catalog of {cat.entry_count} entries")
-    user, _, hostname = cml_args.user_host_name.partition("@")
-    path_template = cml_args.path_template
 
 
 
