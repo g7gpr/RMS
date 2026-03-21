@@ -362,6 +362,7 @@ def lsRemote(host, username, port, remote_path):
     try:
 
         remote = "{}@{}:{}".format(username, host, os.path.join(remote_path))
+        log.info("Remote path: {}".format(remote))
         result_lines = subprocess.run(['rsync', '-z', "{}/".format(remote)], capture_output=True, text=True).stdout.splitlines()
 
         file_list = []
@@ -1186,8 +1187,7 @@ if __name__ == "__main__":
     log.info(f"Loaded catalog of {cat.entry_count} entries")
 
 
-
-    makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=country_code, remote_station_processed_dir=path_template)
+    makeConfigPlateParCalstarsLib(config, station_list, cat, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template)
 
 
 
