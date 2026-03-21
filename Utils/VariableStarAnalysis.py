@@ -64,17 +64,10 @@ from RMS.Misc import mkdirP
 import matplotlib.pyplot as plt
 
 
+
+
 TARGET = "local"
 
-
-if TARGET == "gmn.uwo.ca":
-    REMOTE_SERVER = 'gmn.uwo.ca'
-    USER_NAME = "analysis"
-    REMOTE_STATION_PROCESSED_DIR = "/home/$STATION/files/processed"
-elif TARGET == "local":
-    REMOTE_SERVER = '192.168.1.241'
-    USER_NAME = "gmn"
-    REMOTE_STATION_PROCESSED_DIR = "/home/$STATION/files/"
 
 
 STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
@@ -385,7 +378,7 @@ def lsRemote(host, username, port, remote_path):
 
 
 
-def extractBz2(input_directory, working_directory, local_target_list=None):
+def extractBz2(input_directory, working_directory, host, username, local_target_list=None):
 
     """
     Extract BZ2 files from a directory.
@@ -412,11 +405,11 @@ def extractBz2(input_directory, working_directory, local_target_list=None):
 
     bz2_list.sort()
     mkdirP(working_directory)
-    extractBz2Files(bz2_list, input_directory, working_directory)
+    extractBz2Files(bz2_list, input_directory, working_directory, host=host, username=username)
 
     return working_directory
 
-def extractBz2Files(bz2_list, input_directory, working_directory, silent=True, host=REMOTE_SERVER, username=USER_NAME, port=PORT):
+def extractBz2Files(bz2_list, input_directory, working_directory, silent=True, host=None, username=None, port=PORT):
     """
     Extract BZ2 files from a directory into a subdirectory of working_directory, if extraction fails, redownload.
 
@@ -762,8 +755,8 @@ def releaseWriteLock(conn):
 
 
 def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, calstars_data_dir=CALSTARS_DATA_DIR,
-                                  remote_station_processed_dir=REMOTE_STATION_PROCESSED_DIR,
-                                  host=REMOTE_SERVER, username=USER_NAME, port=PORT):
+                                  remote_station_processed_dir=None,
+                                  host=None, username=None, port=PORT):
 
     """
     In a subdirectoy of station_data_dir create a directory for each station containing mask
@@ -872,7 +865,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, 
 
                     log.info(f"\t\tExtracting to {extraction_dir}")
                     mkdirP(extraction_dir)
-                    extractBz2(t, extraction_dir)
+                    extractBz2(t, extraction_dir, host, username)
 
                     for p_source, p_local in zip(path_source_list, path_local_list):
                         if os.path.exists(p_source):
@@ -1149,16 +1142,25 @@ if __name__ == "__main__":
 
     import argparse
 
-    arg_parser = argparse.ArgumentParser(description="""Conduct analysis of variable stars \
+    arg_parser = argparse.ArgumentParser(description="""Ingest CALSTAR data \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
-    arg_parser.add_argument('-p', '--plot', dest='plot_charts', default=False, action="store_true",
-                            help="Plot chart for debugging purposes.")
 
-    arg_parser.add_argument('--country', metavar='', help="""Country code to work on""")
+    arg_parser.add_argument('user_hostname', help="""user@hostname""")
+
+    arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. /home/$STATION/files/processed """)
+
+
+    arg_parser.add_argument('-l', '--local', dest='run_local', default=False, action="store_true",
+                            help="Run using local mirror.")
+
+    arg_parser.add_argument('--country', metavar='COUNTRY', help="""Country code to work on""")
+
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
     country_code = cml_args.country
+
+
 
     # Initialize the logger
     log_manager = LoggingManager()
@@ -1167,6 +1169,10 @@ if __name__ == "__main__":
     # Get the logger handle
     log = getLogger("rmslogger")
 
+    user, _, hostname = cml_args.user_hostname.partition("@")
+    path_template = cml_args.path_template
+
+    log.info(f"Starting ingestion from {user}@{hostname} with path template {path_template}")
     conn = getStationStarDBConn(STAR_OBSERVATION_DB_PATH)
 
     cwd = os.getcwd()
@@ -1178,7 +1184,14 @@ if __name__ == "__main__":
     log.info("Loading star catalog")
     cat = Catalog(config)
     log.info(f"Loaded catalog of {cat.entry_count} entries")
-    makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=country_code)
+    user, _, hostname = cml_args.user_host_name.partition("@")
+    path_template = cml_args.path_template
+
+
+
+    makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=country_code, remote_station_processed_dir=path_template)
+
+
 
 
     pass
