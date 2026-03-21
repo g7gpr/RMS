@@ -42,7 +42,7 @@ from RMS.Formats import CALSTARS, FFfile, Platepar, StarCatalog
 from RMS.Astrometry.CheckFit import starListToDict
 from RMS.Formats.StarCatalog import readStarCatalog
 from RMS.Astrometry.Conversions import J2000_JD, date2JD, jd2Date, raDec2AltAz
-from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP, correctVignetting, photometryFitRobust, getFOVSelectionRadius
+
 from RMS.Astrometry.CyFunctions import subsetCatalog
 from RMS.Formats.StarCatalog import Catalog
 
@@ -54,22 +54,31 @@ from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, ECEF2AltA
 from RMS.Math import angularSeparationDeg, vectNorm
 from RMS.Routines.MaskImage import getMaskFile
 from RMS.Formats.Platepar import Platepar
-from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP
+from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP, raDec2AltAz
 from scipy.spatial import cKDTree
 from RMS.Formats.CALSTARS import readCALSTARS, maxCalstarsToPNG, calstarsToMP4
 from scipy.spatial import cKDTree
-
+import socket
 
 from RMS.Misc import mkdirP
 import matplotlib.pyplot as plt
 
 
+TARGET = "local"
 
-REMOTE_SERVER = 'gmn.uwo.ca'
-USER_NAME = "analysis"
+
+if TARGET == "gmn.uwo.ca":
+    REMOTE_SERVER = 'gmn.uwo.ca'
+    USER_NAME = "analysis"
+    REMOTE_STATION_PROCESSED_DIR = "/home/$STATION/files/processed"
+elif TARGET == "local":
+    REMOTE_SERVER = '192.168.1.241'
+    USER_NAME = "gmn"
+    REMOTE_STATION_PROCESSED_DIR = "/home/$STATION/files/"
+
+
 STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
 CALSTARS_DATA_DIR = "CALSTARS"
-REMOTE_STATION_PROCESSED_DIR = "/home/$STATION/files/processed"
 WORKING_DIRECTORY = os.path.expanduser("~/RMS_data/Coverage")
 PLATEPARS_ALL_RECALIBRATED_JSON = "platepars_all_recalibrated.json"
 STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
@@ -83,6 +92,60 @@ from RMS.Logger import LoggingManager, getLogger
 
 
 from pathlib import Path
+
+
+def connectionProblem(host, port=22, timeout=3):
+    """
+    Returns True if Fail2ban has likely blocked us.
+    Detection logic:
+      - TCP connect succeeds
+      - But SSH banner never arrives
+      - Server closes connection immediately
+    """
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout)
+        sock.settimeout(timeout)
+
+        try:
+            banner = sock.recv(1024)
+            if not banner:
+                # Connection closed before banner → classic Fail2ban signature
+                return True
+            # Banner received → not banned
+            return False
+
+        except socket.timeout:
+            # No banner within timeout → also typical of Fail2ban
+            return True
+
+        finally:
+            sock.close()
+
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        # Can't connect at all → not Fail2ban, something else
+        return True
+
+
+def createCalstarFilesTable(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS calstar_files (
+            file_name TEXT PRIMARY KEY,
+            ingestion_time REAL
+        )
+    """)
+    conn.commit()
+
+
+def recordCalstarFileIngested(conn, file_name):
+
+    ingestion_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    conn.execute("""
+        INSERT OR REPLACE INTO calstar_files (file_name, ingestion_time)
+        VALUES (?, ?)
+    """, (file_name, ingestion_time))
+    conn.commit()
+
+
 
 def markIngested(folder_path):
      folder_path = Path(folder_path)
@@ -627,7 +690,7 @@ def writeStarObservationsToDB(data_dict, ident):
     conn.commit()
     log.info("\t\tCommit made")
     conn.close()
-    log.info("\t\tConnection closed made")
+    log.info("\t\tConnection closed")
 
     write_end = datetime.datetime.now(datetime.timezone.utc)
     elapsed_seconds = (write_end - write_start).total_seconds()
@@ -661,6 +724,7 @@ def getStationStarDBConn(db_path, force_delete=False):
     createTableStarObservations(conn)
     createTableCatalogue(conn)
     createLockTable(conn)
+    createCalstarFilesTable(conn)
     return conn
 
 def createLockTable(conn):
@@ -672,13 +736,16 @@ def createLockTable(conn):
                             ident TEXT);""")
         conn.commit()
 
-def acquireWriteLock(conn, ident):
+def acquireWriteLock(conn, ident, lock_name="global"):
 
     try:
-        conn.execute("""
-            INSERT INTO write_lock (lock_name, locked_at, ident)
-            VALUES ('global', strftime('%s','now'), ident)
-        """)
+        sql_command = ""
+        sql_command += "INSERT INTO write_lock (lock_name, locked_at, ident)"
+        sql_command += "VALUES (?, strftime('%s','now'), ?)"
+
+        conn.execute(sql_command, (lock_name, ident))
+
+
         return True
     except sqlite3.IntegrityError:
         return False
@@ -720,7 +787,19 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, 
     for station in station_list:
 
         remote_dir = remote_station_processed_dir.replace("$STATION", station.lower())
-        remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
+        remote_files = []
+        while not len(remote_files):
+            remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
+            #remote_files = os.listdir(os.path.expanduser("~/RMS_data/CALSTARS"))
+            if len(remote_files):
+                break
+            if connectionProblem(host):
+                delay = random.randint(600, 900)
+                log.info(f"Detected a connection problem - waiting {delay/60:.1f} minutes")
+                time.sleep(delay)
+            else:
+                break
+
         remote_files = filterByDate(remote_files, earliest_date=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=21))
         log.info(f"For station:{station} {len(remote_files)} files to process")
         if not len(remote_files):
@@ -817,14 +896,16 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, 
                 if not missing_at_least_one_file and not os.path.exists(local_json_path) and not isIngested(local_target_full_path):
                     log.info(f"\t\tIngesting {calstars_name}")
                     dict_from_calstar = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
+                    log.info(f"\t\tIngested {calstars_name}")
                     markIngested(local_target_full_path)
+                    recordCalstarFileIngested(conn, calstars_name)
 
                     #with open(local_json_path, "w") as f:
                     #    json.dump(dict_from_calstar, f, indent=4, sort_keys=True)
                     #    f.flush()
                     #    os.fsync(f.fileno())
 
-                    writeStarObservationsToDB(dict_from_calstar)
+                    writeStarObservationsToDB(dict_from_calstar, local_target_full_path)
 
 
 
@@ -978,16 +1059,25 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     observation_dict = {}
 
     fits_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-    for fits_file, star_list in calstar:
 
+
+
+    for fits_file, star_list in calstar:
+        fits_station_id = fits_file.split('_')[1]
         frame_dict = {}
 
         dt = FFfile.getMiddleTimeFF(fits_file, observation_config.fps, ret_milliseconds=True, ff_frames=256)
         jd = date2JD(*dt)
 
+        if pp.station_code != observation_config.stationID:
+            log.warning("\tPlatepar mismatch")
+
         if fits_file in pp_recal_json:
+            # log.info(f"\t\t\tReading in new platepar for {fits_file}")
             # If we have a platepar in pp_recal then use it, else just use the uncalibrated platepar
             pp.loadFromDict(pp_recal_json[fits_file])
+
+
 
         # Extract stars for the given Julian date
         if jd in star_dict:
@@ -1003,21 +1093,27 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
         stars = np.array(stars_list)
 
-        obs_x, obs_y, intensity = stars[:,0], stars[:,1], stars[:,2]
-        jd = np.full_like(obs_x, jd, dtype=float)
+        arr_obs_y, arr_obs_x, arr_intensity = stars[:,0], stars[:,1], stars[:,2]
+        arr_jd = np.full_like(arr_obs_x, jd, dtype=float)
 
-        _, obs_ra_arr, obs_dec_arr, obs_mag_arr = xyToRaDecPP(jd, obs_x, obs_y, intensity, pp, jd_time=True,
-                                                  extinction_correction=True, measurement=True, precompute_pointing_corr=True)
-        results = cat.queryRaDec(obs_ra_arr, obs_dec_arr)
+        _arr_jd, arr_obs_ra, arr_obs_dec, arr_obs_mag = xyToRaDecPP(arr_jd, arr_obs_x, arr_obs_y, arr_intensity, pp, jd_time=True,  measurement=False, precompute_pointing_corr=True)
 
 
-        for r in zip(results, obs_ra_arr, obs_dec_arr, obs_mag_arr):
-            r, o_ra, o_dec, o_mag = r
-            name, cat_ra, cat_deg, cat_mag, theta = r
+        arr_obs_az, arr_obs_alt = raDec2AltAz(arr_obs_ra, arr_obs_dec, arr_jd, observation_config.latitude, observation_config.longitude)
 
-            frame_dict[name] = { "jd": jd,  "stationID": config.stationID.upper(),
-                                            "cat_ra": cat_ra, "cat_deg": cat_deg, "cat_mag": cat_mag,
-                                            "obs_ra": o_ra, "obs_dec": o_dec, "obs_mag": o_mag, "theta": theta}
+        results = cat.queryRaDec(arr_obs_ra, arr_obs_dec)
+        arr_mag_error = arr_obs_mag - results[:, 3].astype(float)
+
+        for r in zip(results, arr_obs_ra, arr_obs_dec, arr_obs_mag, arr_obs_x, arr_obs_y, arr_obs_az, arr_obs_alt, arr_mag_error):
+            query_results, o_ra, o_dec, o_mag, o_x, o_y, o_az, o_alt, mag_err = r
+            name, c_ra, c_deg, c_mag, theta = query_results
+
+
+            frame_dict[name] = { "jd": float(jd),  "stationID": fits_station_id.upper(),
+                                            "cat_ra": c_ra, "cat_deg": c_deg,
+                                            "obs_ra": o_ra, "obs_dec": o_dec, "theta": theta,
+                                            "cat_mag": c_mag, "obs_mag": o_mag, "err_mag": mag_err,
+                                            "obs_x": o_x, "obs_y": o_y, "obs_az": o_az, "obs_alt": o_alt}
 
         pass
 
@@ -1038,7 +1134,8 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     fits_end_time = datetime.datetime.now(tz=datetime.timezone.utc)
     elapsed_seconds = (fits_end_time - fits_start_time).total_seconds()
     fits_count = len(observation_dict)
-    log.info(f"\tIngested {calstars_name} at {fits_count / elapsed_seconds:.1f} fits / second")
+    log.info(f"\tRead {calstars_name} at {fits_count / elapsed_seconds:.1f} fits / second")
+
 
     return dictInvert(observation_dict)
 
@@ -1052,7 +1149,7 @@ if __name__ == "__main__":
     arg_parser.add_argument('-p', '--plot', dest='plot_charts', default=False, action="store_true",
                             help="Plot chart for debugging purposes.")
 
-    arg_parser.add_argument('--country', metavar='radec', help="""Country code to work on""")
+    arg_parser.add_argument('--country', metavar='', help="""Country code to work on""")
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
     country_code = cml_args.country
