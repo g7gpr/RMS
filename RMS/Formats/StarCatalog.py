@@ -92,6 +92,7 @@ class Catalog:
 
         # Build tree of spherical unit vectors
         self.tree = cKDTree(np.column_stack((np.cos(dec) * np.cos(ra), np.cos(dec) * np.sin(ra), np.sin(dec))))
+        self.entry_count = len(self.names)
 
     def queryRaDec(self, ra_deg, dec_deg, radius_deg=0.1, n_brightest=1):
         """

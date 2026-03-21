@@ -34,6 +34,8 @@ import shutil
 import sys
 import datetime
 import sqlite3
+import time
+import random
 
 from RMS.Astrometry.MatchStars import matchStars
 from RMS.Formats import CALSTARS, FFfile, Platepar, StarCatalog
@@ -72,11 +74,31 @@ WORKING_DIRECTORY = os.path.expanduser("~/RMS_data/Coverage")
 PLATEPARS_ALL_RECALIBRATED_JSON = "platepars_all_recalibrated.json"
 STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
 STAR_OBSERVATION_DB_PATH = os.path.expanduser("~/RMS_data/magnitudes.db")
+FOLDER_INGESTED_MARKER = ".ingested"
 
 CHARTS = "charts"
 PORT = 22
 
 from RMS.Logger import LoggingManager, getLogger
+
+
+from pathlib import Path
+
+def markIngested(folder_path):
+     folder_path = Path(folder_path)
+     marker_file = folder_path /  ".ingested"
+     log.info(f"\t\tMarked {folder_path} as ingested")
+     marker_file.touch()
+
+def isIngested(folder_path):
+     folder_path = Path(folder_path)
+     marker_file = folder_path / ".ingested"
+     if marker_file.exists():
+         log.info(f"\t\t{os.path.basename(folder_path)} was already ingested")
+         return True
+     else:
+         return False
+
 
 
 
@@ -220,7 +242,7 @@ def catalogueToDB(conn):
     """
     catalogue = loadGaiaCatalog("~/source/RMS/Catalogs", "gaia_dr2_mag_11.5.npy", lim_mag=11)
     log.info("\nInserting catalogue data\n")
-    for star in tqdm.tqdm(catalogue):
+    for star in catalogue:
         sql_command = "INSERT INTO catalogue (r , d, mag) \n"
         sql_command += "Values ({} , {}, {})".format(star[0], star[1], star[2])
         conn.execute(sql_command)
@@ -567,23 +589,49 @@ def buildParamList(data, bottom_keys):
     return params
 
 
-def writeStarObservationsToDB(data_dict):
 
+def writeStarObservationsToDB(data_dict, ident):
+
+
+    write_start = datetime.datetime.now(datetime.timezone.utc)
+
+    log.info("\t\tPreparing transaction")
 
     leaves_keys = getLeaves(data_dict)
     if not len(leaves_keys):
         return
-    conn = getStationStarDBConn(STAR_OBSERVATION_DB_PATH)
-    conn.execute("BEGIN")
-    createColumns(conn, STAR_OBSERVATIONS_TABLE_NAME, leaves_keys)
-
 
     sql, cols = buildUpsertSQL(STAR_OBSERVATIONS_TABLE_NAME, leaves_keys)
     param_list = buildParamList(data_dict, leaves_keys)
-    conn.executemany(sql, param_list)
 
-    conn.execute("COMMIT")
+    log.info(f"\t\tWriting to database")
+
+    conn = getStationStarDBConn(STAR_OBSERVATION_DB_PATH)
+    log.info(f"\t\t Requesting lock")
+
+    # Optimised for large concurrent commits in sqlite
+    conn.execute("BEGIN IMMEDIATE")
+
+    # Acquire lock
+    while not (acquireWriteLock(conn, ident)):
+        delay_seconds = random.randint(5, 30)
+        log.warning(f"\t\t\tLock denied waiting f{delay_seconds} seconds")
+        time.sleep(delay_seconds)
+
+    log.info("\t\t\tLock received")
+
+    createColumns(conn, STAR_OBSERVATIONS_TABLE_NAME, leaves_keys)
+    conn.executemany(sql, param_list)
+    releaseWriteLock(conn)
+    log.info("\t\t\tLock released")
+    conn.commit()
+    log.info("\t\tCommit made")
     conn.close()
+    log.info("\t\tConnection closed made")
+
+    write_end = datetime.datetime.now(datetime.timezone.utc)
+    elapsed_seconds = (write_end - write_start).total_seconds()
+    log.info(f"\tDatabase write completed at {len(data_dict) / elapsed_seconds:.0f} fits / second  ")
     return
 
 def getStationStarDBConn(db_path, force_delete=False):
@@ -612,7 +660,32 @@ def getStationStarDBConn(db_path, force_delete=False):
     conn.execute("PRAGMA journal_mode = WAL")
     createTableStarObservations(conn)
     createTableCatalogue(conn)
+    createLockTable(conn)
     return conn
+
+def createLockTable(conn):
+
+
+        conn.execute("""CREATE TABLE IF NOT EXISTS write_lock (
+                            lock_name TEXT PRIMARY KEY,
+                            locked_at REAL,
+                            ident TEXT);""")
+        conn.commit()
+
+def acquireWriteLock(conn, ident):
+
+    try:
+        conn.execute("""
+            INSERT INTO write_lock (lock_name, locked_at, ident)
+            VALUES ('global', strftime('%s','now'), ident)
+        """)
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+def releaseWriteLock(conn):
+
+    conn.execute("DELETE FROM write_lock WHERE lock_name = 'global'")
 
 
 def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, calstars_data_dir=CALSTARS_DATA_DIR,
@@ -643,7 +716,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, 
 
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
-    log.info("Starting to download files.")
+    log.info("Starting to download files")
     for station in station_list:
 
         remote_dir = remote_station_processed_dir.replace("$STATION", station.lower())
@@ -703,9 +776,16 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, 
                 log.info(f"\tWorking on {local_dir_name}")
                 # Download, and extract the file into a subdir
                 if local_dir_name not in files_already_downloaded:
-                    log.info(f"\tDownloading from {full_remote_path_to_bz2}")
+                    download_start_time = datetime.datetime.now(datetime.timezone.utc)
+                    log.info(f"\t\tDownloading {remote_file}")
+
                     downloadFile(host, username, t, full_remote_path_to_bz2)
-                    log.info(f"\tExtracting to {extraction_dir}")
+                    download_end_time = datetime.datetime.now(datetime.timezone.utc)
+                    downloaded_size = os.path.getsize(os.path.join(t, remote_file)) / (1000 ** 2)
+                    rate_mb_s = downloaded_size / (download_end_time - download_start_time).total_seconds()
+                    log.info(f"\t\tDownloaded {remote_file} of size {downloaded_size:.2f}MB at {rate_mb_s:.2f} MB/s)")
+
+                    log.info(f"\t\tExtracting to {extraction_dir}")
                     mkdirP(extraction_dir)
                     extractBz2(t, extraction_dir)
 
@@ -726,28 +806,31 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, 
                     try:
                         with open(local_json_path, "r") as f:
                             dict_from_calstar = json.load(f)
-                            log.info(f"\tWriting to database")
+
                             writeStarObservationsToDB(dict_from_calstar)
-                            log.info(f"\tDatabase write completed")
+
 
                     except:
                         if os.path.exists(local_json_path):
                             os.unlink(local_json_path)
 
-                if not missing_at_least_one_file and not os.path.exists(local_json_path):
-                    log.info(f"\tIngesting {calstars_name}")
+                if not missing_at_least_one_file and not os.path.exists(local_json_path) and not isIngested(local_target_full_path):
+                    log.info(f"\t\tIngesting {calstars_name}")
                     dict_from_calstar = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
+                    markIngested(local_target_full_path)
 
                     #with open(local_json_path, "w") as f:
                     #    json.dump(dict_from_calstar, f, indent=4, sort_keys=True)
                     #    f.flush()
                     #    os.fsync(f.fileno())
-                    log.info(f"\tWriting to database")
+
                     writeStarObservationsToDB(dict_from_calstar)
+
+
 
                 if os.path.exists(local_json_path):
 
-                    log.info(f"\tMaking image")
+                    log.info(f"\t\tMaking image")
                     maxCalstarsToPNG(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
                     #print(f"\tMaking MP4")
                     #calstarsToMP4(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
@@ -806,7 +889,7 @@ def makeStationsInfoDict(c, stations_data_dir=CALSTARS_DATA_DIR, country_code=No
     stations_list = sorted(os.listdir(stations_data_full_path))
 
     # Iterate and populate if all the expected fies are present
-    for station in tqdm.tqdm(stations_list):
+    for station in stations_list:
 
         if country_code is not None:
             if not station.lower().startswith(country_code.lower()):
@@ -876,7 +959,8 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
       """
 
     observation_config = cr.parse(local_config_path)
-    calstar, chunk = readCALSTARS(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
+    calstars_name = os.path.basename(local_calstars_path)
+    calstar, chunk = readCALSTARS(os.path.dirname(local_calstars_path), calstars_name)
 
     with open(local_recal_path, 'r') as fh:
         pp_recal_json = json.load(fh)
@@ -954,17 +1038,13 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     fits_end_time = datetime.datetime.now(tz=datetime.timezone.utc)
     elapsed_seconds = (fits_end_time - fits_start_time).total_seconds()
     fits_count = len(observation_dict)
-    log.info(f"Processing at {fits_count / elapsed_seconds:.1f} fits / second")
+    log.info(f"\tIngested {calstars_name} at {fits_count / elapsed_seconds:.1f} fits / second")
 
     return dictInvert(observation_dict)
-
-
 
 if __name__ == "__main__":
 
     import argparse
-
-
 
     arg_parser = argparse.ArgumentParser(description="""Conduct analysis of variable stars \
         """, formatter_class=argparse.RawTextHelpFormatter)
@@ -972,16 +1052,11 @@ if __name__ == "__main__":
     arg_parser.add_argument('-p', '--plot', dest='plot_charts', default=False, action="store_true",
                             help="Plot chart for debugging purposes.")
 
-
-
-
     arg_parser.add_argument('--country', metavar='radec', help="""Country code to work on""")
-
     cml_args = arg_parser.parse_args()
-
-
     config = cr.parse(os.path.join(os.getcwd(),".config"))
     country_code = cml_args.country
+
     # Initialize the logger
     log_manager = LoggingManager()
     log_manager.initLogging(config)
@@ -999,7 +1074,7 @@ if __name__ == "__main__":
 
     log.info("Loading star catalog")
     cat = Catalog(config)
-    log.info("Loaded catalog")
+    log.info(f"Loaded catalog of {cat.entry_count} entries")
     makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=country_code)
 
 
