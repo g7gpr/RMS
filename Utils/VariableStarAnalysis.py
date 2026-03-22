@@ -747,7 +747,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
 
             local_dir_name = "_".join(remote_file.split("_")[0:4])
             local_target = os.path.join(calstars_data_full_path, local_dir_name)
-
+            stars_written = 0
 
 
             with tempfile.TemporaryDirectory() as t:
