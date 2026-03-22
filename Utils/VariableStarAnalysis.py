@@ -821,8 +821,16 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
 
             if stars_written is not None:
                 stars_observations_second = stars_written / time_elapsed
-                log.info(f"In {time_elapsed:.0f}seconds, processed {stars_observations_second:.0f} star observations per second for {remote_file}")
+                number_of_fits_files = len(dict_from_calstar)
+                fits_processed_per_seconds = number_of_fits_files / time_elapsed
+                # About one fits every 10 seconds at  - only observing for half of 24 hours so one every 20 seconds
+                fits_generated_per_second = 0.05
+                faster_than_real_time = fits_generated_per_second / fits_processed_per_seconds
 
+                log.info(f"Time {time_elapsed:.0f} seconds")
+                log.info(f"Processed {stars_observations_second:.0f} star observations per second for {remote_file}")
+                log.info(f"Processed {number_of_fits_files} fits files at {fits_processed_per_seconds:.0f} fits per second")
+                log.info(f"Pipe line can support up to {faster_than_real_time:.0f} cameras")
 
 
 def makeGeoJson(names, lats, lons, output_file_path=None):
