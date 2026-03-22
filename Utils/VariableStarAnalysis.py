@@ -1081,10 +1081,7 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="""Ingest CALSTAR data \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
-
-    arg_parser.add_argument('user_hostname', help="""user@hostname""")
-
-    arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. gmn@host:/home/stationID/files/ """)
+    arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. user@host:/home/stationID/files/ """)
 
     arg_parser.add_argument('postgresql_host', help="""PostgreSQL server host """)
 
