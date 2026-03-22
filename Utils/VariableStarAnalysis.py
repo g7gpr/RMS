@@ -1017,7 +1017,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
 
 
-            query_results, o_ra, o_dec, o_mag, o_x, o_y, o_az, o_alt, mag_err = r
+            query_results, o_ra, o_dec, o_mag, o_x, o_y, o_az, o_alt = r
             name, c_ra, c_deg, c_mag, theta = query_results
 
             if query_results == []:
@@ -1030,7 +1030,10 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
             # Compute magnitude error
             mag_err = o_mag - c_mag
-            name = name.decode("uft-8", errors="replace").strip()
+            if isinstance(name, bytes):
+                name = name.decode("utf-8", errors="replace").strip()
+            else:
+                log.info("Expected bytes in {name} but came as a string")
 
             frame_dict[name] = { "jd": float(jd),  "stationID": fits_station_id.upper(),
                                             "cat_ra": c_ra, "cat_deg": c_deg,
