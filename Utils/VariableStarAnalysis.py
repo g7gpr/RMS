@@ -1010,12 +1010,10 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         arr_cat_mags = np.array([float(r[3]) if r[3] is not None else np.nan for r in results_list])
 
 
-        if len(arr_obs_mag) == len(arr_cat_mags):
-            arr_mag_error = arr_obs_mag - arr_cat_mags
-        else:
-            pass
 
-        for r in zip(results_list, arr_obs_ra, arr_obs_dec, arr_obs_mag, arr_obs_x, arr_obs_y, arr_obs_az, arr_obs_alt, arr_mag_error):
+
+
+        for r in zip(results_list, arr_obs_ra, arr_obs_dec, arr_obs_mag, arr_obs_x, arr_obs_y, arr_obs_az, arr_obs_alt):
 
 
 
@@ -1027,9 +1025,11 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
             # Enforce uniqueness: we should not have the same star appearing in two places
             if name in frame_dict:
-                log.error(f"Duplicate catalogue star {name} in frame!")
+                log.error(f"Duplicate catalogue star {name} in {fits_file} at image coordinates x:{o_x:.1f}, r:{o_y:.1f}")
                 name = f"{name}_duplicate_star"
 
+            # Compute magnitude error
+            mag_err = o_mag - c_mag
             frame_dict[name] = { "jd": float(jd),  "stationID": fits_station_id.upper(),
                                             "cat_ra": c_ra, "cat_deg": c_deg,
                                             "obs_ra": o_ra, "obs_dec": o_dec, "theta": theta,
