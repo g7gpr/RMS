@@ -74,11 +74,8 @@ DB_SCALE_FACTOR = 1e6
 print(DB_SCALE_FACTOR)
 STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
 CALSTARS_DATA_DIR = "CALSTARS"
-WORKING_DIRECTORY = os.path.expanduser("~/RMS_data/Coverage")
 PLATEPARS_ALL_RECALIBRATED_JSON = "platepars_all_recalibrated.json"
-
 FOLDER_INGESTED_MARKER = ".ingested"
-
 CALSTAR_FILES_TABLE_NAME = "calstar_files"
 STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
 
