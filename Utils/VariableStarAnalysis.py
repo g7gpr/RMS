@@ -839,7 +839,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
 
 
                         faster_than_real_time = fits_processed_per_seconds / fits_generated_per_second
-                        log.info(f"\tFrom this iteration Pipe line can support up to {faster_than_real_time:.0f} cameras")
+                        log.info(f"\tFrom this iteration pipeline can support up to {faster_than_real_time:.0f} cameras")
 
         routine_elapsed_time = time.perf_counter() - routine_start_time
         total_fits_processed_per_second = total_fits_processed / routine_elapsed_time
@@ -847,7 +847,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
         log.info(f"Cumulative rate is {total_fits_processed_per_second:.0f} fits per second")
 
         faster_than_real_time = total_fits_processed_per_second / fits_generated_per_second
-        log.info(f"Pipe line can support up to {faster_than_real_time:.0f} cameras")
+        log.info(f"Pipeline can support up to {faster_than_real_time:.0f} cameras")
 
 
 def makeGeoJson(names, lats, lons, output_file_path=None):
