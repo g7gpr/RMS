@@ -1106,7 +1106,7 @@ if __name__ == "__main__":
     # Get the logger handle
     log = getLogger("rmslogger")
 
-    user, _, remainder = cml_args.user_hostname.partition("@")
+    user, _, remainder = cml_args.path_template.partition("@")
     hostname, _, path_template = remainder.partition(":")
 
     postgresql_host = cml_args.postgresql_host
