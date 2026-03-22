@@ -62,7 +62,7 @@ import socket
 
 from RMS.Misc import mkdirP
 import matplotlib.pyplot as plt
-
+import psycopg
 
 
 
