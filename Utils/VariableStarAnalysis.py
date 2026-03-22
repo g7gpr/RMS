@@ -1084,12 +1084,9 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('user_hostname', help="""user@hostname""")
 
-    arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. /home/stationID/files/processed """)
+    arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. gmn@host:/home/stationID/files/ """)
 
     arg_parser.add_argument('postgresql_host', help="""PostgreSQL server host """)
-
-    arg_parser.add_argument('-l', '--local', dest='run_local', default=False, action="store_true",
-                            help="Run using local mirror.")
 
     arg_parser.add_argument('-d', '--drop', dest='drop', default=False, action="store_true",
                             help="Drop all tables at start - do not use in production")
@@ -1112,8 +1109,9 @@ if __name__ == "__main__":
     # Get the logger handle
     log = getLogger("rmslogger")
 
-    user, _, hostname = cml_args.user_hostname.partition("@")
-    path_template = cml_args.path_template
+    user, _, remainder = cml_args.user_hostname.partition("@")
+    hostname, _, path_template = remainder.partition(":")
+
     postgresql_host = cml_args.postgresql_host
 
     log.info(f"Starting ingestion from {user}@{hostname} with path template {path_template}")
