@@ -189,7 +189,7 @@ if __name__ == "__main__":
         "user": "ingest_user"
     }
 
-    catalogue_id =
+    catalogue_id = b'HD 66811'
 
     plotStarLightcurve(conn_params, catalogue_id=catalogue_id, jd_start, jd_end)
 
