@@ -87,6 +87,9 @@ def plotStarLightcurve(conn_params, catalogue_id, jd_start, jd_end):
     Plot observed magnitudes for a given catalogue star across all stations.
     """
 
+    jd_start = int(jd_start * DB_SCALE_FACTOR)
+    jd_end = int(jd_end * DB_SCALE_FACTOR)
+
     query = """
         SELECT jd, obs_mag, stationID
         FROM star_observations
@@ -109,7 +112,7 @@ def plotStarLightcurve(conn_params, catalogue_id, jd_start, jd_end):
     by_station = defaultdict(lambda: {"jd": [], "mag": []})
 
     for jd, mag, station_id in rows:
-        by_station[station_id]["jd"].append(jd)
+        by_station[station_id]["jd"].append(jd / DB_SCALE_FACTOR)
         by_station[station_id]["mag"].append(mag)
 
     plt.figure(figsize=(12, 6))
@@ -139,30 +142,16 @@ if __name__ == "__main__":
 
     import argparse
 
-    arg_parser = argparse.ArgumentParser(description="""Ingest CALSTAR data \
+    arg_parser = argparse.ArgumentParser(description="""Plot data \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
 
-    arg_parser.add_argument('user_hostname', help="""user@hostname""")
 
-    arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. /home/stationID/files/processed """)
 
-    arg_parser.add_argument('postgresql_host', help="""PostgreSQL server host """)
 
-    arg_parser.add_argument('-l', '--local', dest='run_local', default=False, action="store_true",
-                            help="Run using local mirror.")
-
-    arg_parser.add_argument('-d', '--drop', dest='drop', default=False, action="store_true",
-                            help="Drop all tables at start - do not use in production")
-
-    arg_parser.add_argument('-r', '--reset_ingestion', dest='reset_ingestion', default=False, action="store_true",
-                            help="Reset all ingestion markers")
-
-    arg_parser.add_argument('--country', metavar='COUNTRY', help="""Country code to work on""")
 
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
-    country_code = cml_args.country
 
 
 
@@ -173,25 +162,21 @@ if __name__ == "__main__":
     # Get the logger handle
     log = getLogger("rmslogger")
 
-    user, _, hostname = cml_args.user_hostname.partition("@")
-    path_template = cml_args.path_template
-    postgresql_host = cml_args.postgresql_host
-
-    log.info(f"Starting ingestion from {user}@{hostname} with path template {path_template}")
-    log.info(f"Postgresql host {postgresql_host}")
 
 
     cwd = os.getcwd()
 
     conn_params = {
         "host": "192.168.1.174",
-        "dbname": "meteor_ingest",
+        "dbname": "star_data",
         "user": "ingest_user"
     }
 
-    catalogue_id = b'HD 66811'
+    catalogue_id = 'HD 66811'
+    jd_start = 2461119.158
+    jd_end = 2461119.190
 
-    plotStarLightcurve(conn_params, catalogue_id=catalogue_id, jd_start, jd_end)
+    plotStarLightcurve(conn_params, catalogue_id, jd_start, jd_end)
 
 
     pass

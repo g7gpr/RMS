@@ -963,7 +963,10 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     fits_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
 
-
+    pixel_scale_h = pp.fov_h / pp.X_res
+    pixel_scale_v = pp.fov_w / pp.y_res
+    pixel_scale = max(pixel_scale_h, pixel_scale_v)
+    radius_deg = pixel_scale * 2
 
     for fits_file, star_list in calstar:
         fits_station_id = fits_file.split('_')[1]
@@ -1002,7 +1005,9 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
         arr_obs_az, arr_obs_alt = raDec2AltAz(arr_obs_ra, arr_obs_dec, arr_jd, observation_config.latitude, observation_config.longitude)
 
-        results_list = cat.queryRaDec(arr_obs_ra, arr_obs_dec, n_brightest=1)
+
+
+        results_list = cat.queryRaDec(arr_obs_ra, arr_obs_dec, n_brightest=1, radius_deg=radius_deg)
 
         #results = np.array([row if row else [None, None, None, None, None] for row in results_list], dtype=object)
 
