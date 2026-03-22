@@ -715,7 +715,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
     log.info("Starting to download files")
     for station in station_list:
 
-        remote_dir = remote_station_processed_dir.replace("$STATION", station.lower())
+        remote_dir = remote_station_processed_dir.replace("stationID", station.lower())
         remote_files = []
         while not len(remote_files):
             remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
@@ -1073,7 +1073,7 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('user_hostname', help="""user@hostname""")
 
-    arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. /home/$STATION/files/processed """)
+    arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. /home/stationID/files/processed """)
 
     arg_parser.add_argument('postgresql_host', help="""PostgreSQL server host """)
 
