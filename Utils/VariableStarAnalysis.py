@@ -567,6 +567,7 @@ def filterByDate(files_list, earliest_date=None, latest_date=None, station=None)
 
         if station is not None:
             if not file.startswith(station):
+                log.info(f"\tUnexpected file {file}")
                 continue
 
         date = file.split("_")[1]
@@ -790,7 +791,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, 
         remote_files = []
         while not len(remote_files):
             remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
-            #remote_files = os.listdir(os.path.expanduser("~/RMS_data/CALSTARS"))
+
             if len(remote_files):
                 break
             if connectionProblem(host):
