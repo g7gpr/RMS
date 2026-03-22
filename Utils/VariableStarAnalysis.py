@@ -820,8 +820,8 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
             time_elapsed = remote_file_end_time - remote_file_start_time
 
             if stars_written is not None:
-                stars_second = stars_written / time_elapsed
-                log.info(f"Processed {stars_second:.0f} stars per second for {remote_file}")
+                stars_observations_second = stars_written / time_elapsed
+                log.info(f"In {time_elapsed:.0f}seconds, processed {stars_observations_second:.0f} star observations per second for {remote_file}")
 
 
 
