@@ -718,6 +718,8 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
     log.info("Starting to download files")
+    total_fits_processed = 0
+    routine_start_time = time.perf_counter()
     for station in station_list:
 
         remote_dir = remote_station_processed_dir.replace("stationID", station.lower())
@@ -819,24 +821,33 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
                     recordCalstarFileIngested(conn, calstars_name)
                     log.info(f"\t\tIngested {calstars_name}")
 
-            remote_file_end_time = time.perf_counter()
-            time_elapsed = remote_file_end_time - remote_file_start_time
+                    remote_file_end_time = time.perf_counter()
+                    time_elapsed = remote_file_end_time - remote_file_start_time
 
-            if stars_written is not None:
-                stars_observations_second = stars_written / time_elapsed
-                number_of_fits_files = len(dict_from_calstar)
-                fits_processed_per_seconds = number_of_fits_files / time_elapsed
-                # About one fits every 10 seconds at  - only observing for half of 24 hours so one every 20 seconds
-                fits_generated_per_second = 0.05
+                    if stars_written is not None:
+                        stars_observations_second = stars_written / time_elapsed
+                        number_of_fits_files = len(dict_from_calstar)
+                        total_fits_processed += number_of_fits_files
+                        fits_processed_per_seconds = number_of_fits_files / time_elapsed
+                        # About one fits every 10 seconds at  - only observing for half of 24 hours so one every 20 seconds
+                        fits_generated_per_second = 0.05
 
 
-                log.info(f"\tTime {time_elapsed:.0f} seconds")
-                log.info(f"\tProcessed {stars_observations_second:.0f} star observations per second for {remote_file}")
-                log.info(f"\tProcessed {number_of_fits_files} fits files at {fits_processed_per_seconds:.0f} fits per second")
+                        log.info(f"\tTime {time_elapsed:.0f} seconds")
+                        log.info(f"\tProcessed {stars_observations_second:.0f} star observations per second for {remote_file}")
+                        log.info(f"\tProcessed {number_of_fits_files} fits files at {fits_processed_per_seconds:.0f} fits per second")
 
-                if fits_processed_per_seconds > 0.1:
-                    faster_than_real_time = fits_generated_per_second / fits_processed_per_seconds
-                    log.info(f"\tPipe line can support up to {faster_than_real_time:.0f} cameras")
+                        if fits_processed_per_seconds > 0.1:
+                            faster_than_real_time = fits_generated_per_second / fits_processed_per_seconds
+                            log.info(f"\tFrom this iteration Pipe line can support up to {faster_than_real_time:.0f} cameras")
+
+        routine_elapsed_time = time.perf_counter() - routine_start_time
+        total_fits_processed_per_second = total_fits_processed / routine_elapsed_time
+        fits_generated_per_second = 0.06
+        log.info(f"Cumulative rate is {total_fits_processed_per_second}")
+        if total_fits_processed_per_second > 0:
+            faster_than_real_time = fits_generated_per_second / total_fits_processed_per_second
+            log.info(f"Pipe line can support up to {faster_than_real_time:.0f} cameras")
 
 
 def makeGeoJson(names, lats, lons, output_file_path=None):
