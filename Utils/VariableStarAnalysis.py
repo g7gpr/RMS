@@ -1032,8 +1032,8 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             mag_err = o_mag - c_mag
             if isinstance(name, bytes):
                 name = name.decode("utf-8", errors="replace").strip()
-            else:
-                log.info("Expected bytes in {name} but came as a string")
+
+            print("NAME DEBUG:", name, type(name), repr(name))
 
             frame_dict[name] = { "jd": float(jd),  "stationID": fits_station_id.upper(),
                                             "cat_ra": c_ra, "cat_deg": c_deg,

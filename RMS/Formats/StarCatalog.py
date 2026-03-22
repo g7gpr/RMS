@@ -134,7 +134,7 @@ class Catalog:
             chosen = idx[np.argsort(mags)[:n_brightest]]
 
             # Extract fields as Python types
-            names = [str(x) for x in self.names[chosen]]
+            names = [x.decode("utf-8", errors="replace").strip() for x in self.names[chosen]]
             ras   = [float(x) for x in self.cat[chosen, self.ra_col]]
             decs  = [float(x) for x in self.cat[chosen, self.dec_col]]
             mags  = [float(x) for x in self.cat[chosen, self.mag_col]]
