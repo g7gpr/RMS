@@ -688,7 +688,7 @@ def getStarDBConn(postgresql_host):
 
 def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=None, calstars_data_dir=CALSTARS_DATA_DIR,
                                   remote_station_processed_dir=None,
-                                  host=None, username=None, port=PORT):
+                                  host=None, username=None, port=PORT, history_days=None):
 
     """
     In a subdirectoy of station_data_dir create a directory for each station containing mask
@@ -712,6 +712,9 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
     if country_code is None:
         country_code = ""
 
+    if history_days is None:
+        history_days = 365
+
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
     log.info("Starting to download files")
@@ -731,7 +734,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
             else:
                 break
 
-        remote_files = filterByDate(remote_files, earliest_date=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=21), station=station)
+        remote_files = filterByDate(remote_files, earliest_date=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=history_days), station=station)
         log.info(f"For station:{station} {len(remote_files)} files to process")
         if not len(remote_files):
             pass
@@ -825,12 +828,15 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
                 fits_processed_per_seconds = number_of_fits_files / time_elapsed
                 # About one fits every 10 seconds at  - only observing for half of 24 hours so one every 20 seconds
                 fits_generated_per_second = 0.05
-                faster_than_real_time = fits_generated_per_second / fits_processed_per_seconds
+
 
                 log.info(f"Time {time_elapsed:.0f} seconds")
                 log.info(f"Processed {stars_observations_second:.0f} star observations per second for {remote_file}")
                 log.info(f"Processed {number_of_fits_files} fits files at {fits_processed_per_seconds:.0f} fits per second")
-                log.info(f"Pipe line can support up to {faster_than_real_time:.0f} cameras")
+
+                if fits_processed_per_seconds > 0.1:
+                    faster_than_real_time = fits_generated_per_second / fits_processed_per_seconds
+                    log.info(f"Pipe line can support up to {faster_than_real_time:.0f} cameras")
 
 
 def makeGeoJson(names, lats, lons, output_file_path=None):
@@ -1085,11 +1091,17 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('postgresql_host', help="""PostgreSQL server host """)
 
-    arg_parser.add_argument('-d', '--drop', dest='drop', default=False, action="store_true",
+    arg_parser.add_argument('-d', '--days_history', type=int,  default=7, help="""Number of days of history """)
+
+    arg_parser.add_argument('--drop', dest='drop', default=False, action="store_true",
                             help="Drop all tables at start - do not use in production")
+
+
 
     arg_parser.add_argument('-r', '--reset_ingestion', dest='reset_ingestion', default=False, action="store_true",
                             help="Reset all ingestion markers")
+
+
 
     arg_parser.add_argument('--country', metavar='COUNTRY', help="""Country code to work on""")
 
@@ -1114,6 +1126,8 @@ if __name__ == "__main__":
     log.info(f"Starting ingestion from {user}@{hostname} with path template {path_template}")
     log.info(f"Postgresql host {postgresql_host}")
 
+    days_history = cml_args.days_history
+    log.info(f"Using a history of {days_history} days")
 
     cwd = os.getcwd()
 
@@ -1148,7 +1162,7 @@ if __name__ == "__main__":
 
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
-        makeConfigPlateParCalstarsLib(config, station_list, cat, conn, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template)
+        makeConfigPlateParCalstarsLib(config, station_list, cat, conn, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template, history_days=days_history)
 
 
 
