@@ -631,7 +631,11 @@ def calculateMagnitudes(px_sum_arr, radius_arr, photom_offset, vignetting_coeff)
         px_sum_corr = correctVignetting(px_sum, radius, vignetting_coeff)
 
         # Save magnitude data to the output array
-        magnitude_data[i] = -2.5*np.log10(px_sum_corr) + photom_offset
+        if px_sum_corr != 0:
+            magnitude_data[i] = -2.5*np.log10(px_sum_corr) + photom_offset
+        else:
+            print(f"Log error with {px_sum_corr} pixel intensities")
+            magnitude_data[i] = -2.5*np.log10(1e-12) + photom_offset
 
 
     return magnitude_data
