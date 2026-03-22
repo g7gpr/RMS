@@ -837,17 +837,17 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
                         log.info(f"\tProcessed {stars_observations_second:.0f} star observations per second for {remote_file}")
                         log.info(f"\tProcessed {number_of_fits_files} fits files at {fits_processed_per_seconds:.0f} fits per second")
 
-                        if fits_processed_per_seconds > 0.1:
-                            faster_than_real_time = fits_generated_per_second / fits_processed_per_seconds
-                            log.info(f"\tFrom this iteration Pipe line can support up to {faster_than_real_time:.0f} cameras")
+
+                        faster_than_real_time = fits_processed_per_seconds / fits_generated_per_second
+                        log.info(f"\tFrom this iteration Pipe line can support up to {faster_than_real_time:.0f} cameras")
 
         routine_elapsed_time = time.perf_counter() - routine_start_time
         total_fits_processed_per_second = total_fits_processed / routine_elapsed_time
         fits_generated_per_second = 0.06
-        log.info(f"Cumulative rate is {total_fits_processed_per_second}")
-        if total_fits_processed_per_second > 0:
-            faster_than_real_time = fits_generated_per_second / total_fits_processed_per_second
-            log.info(f"Pipe line can support up to {faster_than_real_time:.0f} cameras")
+        log.info(f"Cumulative rate is {total_fits_processed_per_second} fits per second")
+
+        faster_than_real_time = total_fits_processed_per_second / fits_generated_per_second
+        log.info(f"Pipe line can support up to {faster_than_real_time:.0f} cameras")
 
 
 def makeGeoJson(names, lats, lons, output_file_path=None):
