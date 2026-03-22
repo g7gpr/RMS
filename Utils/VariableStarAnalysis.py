@@ -66,24 +66,27 @@ import psycopg
 
 
 
+
 TARGET = "local"
 
 
-
+DB_SCALE_FACTOR = 1e6
+print(DB_SCALE_FACTOR)
 STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
 CALSTARS_DATA_DIR = "CALSTARS"
 WORKING_DIRECTORY = os.path.expanduser("~/RMS_data/Coverage")
 PLATEPARS_ALL_RECALIBRATED_JSON = "platepars_all_recalibrated.json"
-STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
-STAR_OBSERVATION_DB_PATH = os.path.expanduser("~/RMS_data/magnitudes.db")
+
 FOLDER_INGESTED_MARKER = ".ingested"
+
+CALSTAR_FILES_TABLE_NAME = "calstar_files"
+STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
+
 
 CHARTS = "charts"
 PORT = 22
 
 from RMS.Logger import LoggingManager, getLogger
-
-
 from pathlib import Path
 
 
@@ -120,25 +123,61 @@ def connectionProblem(host, port=22, timeout=3):
 
 
 def createCalstarFilesTable(conn):
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS calstar_files (
-            file_name TEXT PRIMARY KEY,
-            ingestion_time REAL
-        )
-    """)
+
+    sql_command = ""
+    sql_command += f"CREATE TABLE IF NOT EXISTS {CALSTAR_FILES_TABLE_NAME}\n"
+    sql_command += "(file_name TEXT PRIMARY KEY, ingestion_time TIMESTAMPTZ NOT NULL);"
+
+    with conn.cursor() as cur:
+        cur.execute(sql_command)
     conn.commit()
 
+def createTableStarObservations(conn):
+
+    """
+    If the star_observations table does not exist, then create
+    Args:
+        conn (): connection to database
+
+    Returns:
+
+    """
+
+    # If a table does not exist, create with a composite primary key of catalogue_id and ff_name.
+    # A single observation (i.e. ff_file) should never have the same catalogue id twice
+    sql_command = ""
+    sql_command += f"CREATE TABLE IF NOT EXISTS {STAR_OBSERVATIONS_TABLE_NAME}\n"
+    sql_command += f"        (catalogue_id TEXT, ff_name TEXT, PRIMARY KEY(catalogue_id, ff_name));\n"
+
+    log.info("Executing...")
+    log.info(f"\n{sql_command}")
+
+    with conn.cursor() as cur:
+        cur.execute(sql_command)
+    conn.commit()
+
+def dropTable(conn, table_name):
+    sql_command = f"DROP TABLE IF EXISTS {table_name};"
+    log.info(f"Dropping table {table_name}")
+    log.info(f"Executing sql command \n {sql_command}")
+
+    with conn.cursor() as cur:
+        cur.execute(sql_command)
+    conn.commit()
 
 def recordCalstarFileIngested(conn, file_name):
 
     ingestion_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    conn.execute("""
-        INSERT OR REPLACE INTO calstar_files (file_name, ingestion_time)
-        VALUES (?, ?)
-    """, (file_name, ingestion_time))
-    conn.commit()
+    sql_command = ""
+    sql_command += "INSERT INTO calstar_files (file_name, ingestion_time)\n"
+    sql_command += "VALUES (%s, %s)\n"
+    sql_command += "ON CONFLICT (file_name)\n"
+    sql_command += "DO UPDATE SET ingestion_time = EXCLUDED.ingestion_time;"
 
 
+    with conn.cursor() as cur:
+        cur.execute(sql_command, (file_name, ingestion_time))
+        conn.commit()
 
 def markIngested(folder_path):
      folder_path = Path(folder_path)
@@ -154,27 +193,6 @@ def isIngested(folder_path):
          return True
      else:
          return False
-
-
-
-
-def buildSphericalTree(raDeg, decDeg):
-    """
-    Build a cKDTree for spherical coordinates (RA, Dec in degrees).
-    Returns (tree, xyz) where xyz is the Nx3 unit-vector array.
-    """
-
-    ra  = np.deg2rad(raDeg)
-    dec = np.deg2rad(decDeg)
-
-    x = np.cos(dec) * np.cos(ra)
-    y = np.cos(dec) * np.sin(ra)
-    z = np.sin(dec)
-
-    xyz = np.column_stack((x, y, z))
-    tree = cKDTree(xyz)
-
-    return tree, xyz
 
 def querySphericalTree(tree, raDeg, decDeg, radiusDeg):
     """
@@ -197,7 +215,6 @@ def querySphericalTree(tree, raDeg, decDeg, radiusDeg):
 
     return np.array(tree.query_ball_point(queryVec, euclidR), dtype=int)
 
-
 def selectBrightest(indices, catalog, magCol=2):
     """
     Given an array of catalog indices, return a 1-element array containing
@@ -212,43 +229,6 @@ def selectBrightest(indices, catalog, magCol=2):
     i = np.argmin(mags)
 
     return np.array([indices[i]], dtype=int)
-
-
-
-
-
-def createTableStarObservations(conn):
-
-    """
-    If the star_observations table does not exist, then create
-    Args:
-        conn (): connection to database
-
-    Returns:
-
-    """
-
-    # Returns true if the table exists in the database
-    try:
-        tables = conn.cursor().execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table' and name = '{}';".format(STAR_OBSERVATIONS_TABLE_NAME)).fetchall()
-
-        if len(tables) > 0:
-            return conn
-    except:
-
-        return None
-
-    # If a table does not exist, create with a composite primary key of catalogue_id and ff_name.
-    # A single observation (i.e. ff_file) should never have the same catalogue id twice
-    sql_command = ""
-    sql_command += f"CREATE TABLE IF NOT EXISTS {STAR_OBSERVATIONS_TABLE_NAME}\n"
-    sql_command += f"        (catalogue_id INT, ff_name TEXT, PRIMARY KEY(catalogue_id, ff_name))\n"
-
-    print(sql_command)
-    conn.execute(sql_command)
-
-    return conn
 
 def createTableCatalogue(conn):
 
@@ -345,7 +325,6 @@ def dictInvert(d):
 
     return out
 
-
 def lsRemote(host, username, port, remote_path):
     """Return the files in a remote directory, prefer rsync if available
 
@@ -375,9 +354,6 @@ def lsRemote(host, username, port, remote_path):
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # Accept unknown host keys
-
-
-
 
 def extractBz2(input_directory, working_directory, host, username, local_target_list=None):
 
@@ -445,15 +421,7 @@ def extractBz2Files(bz2_list, input_directory, working_directory, silent=True, h
                 tar.extractall(path=bz2_directory)
         except:
             if not silent:
-                log.info("Redownloading {}".format(basename_bz2))
-            remote_path = REMOTE_STATION_PROCESSED_DIR.replace("$STATION", basename_bz2.split("_")[0].lower())
-            remote_path = os.path.join(remote_path, basename_bz2)
-            downloadFile(host, username, remote_path, port)
-            with tarfile.open(os.path.join(input_directory, basename_bz2), 'r:bz2') as tar:
-                tar.extractall(path=bz2_directory)
-
-
-
+                log.info("Unable to extract".format(basename_bz2))
 
 def downloadFile(host, username, local_path, remote_path, port=PORT,  silent=False):
     """Download a single file try compressed rsync first, then fall back to Paramiko.
@@ -580,7 +548,6 @@ def filterByDate(files_list, earliest_date=None, latest_date=None, station=None)
 
     return filtered_files_list
 
-
 def getFileType(file_name):
 
     return file_name.split(".")[0].split("_")[4]
@@ -590,36 +557,25 @@ def makePlatePar(captured_directory):
     print("No platepar found - this is a placeholder for automatic platepar creation")
     pass
 
-
 def createColumns(conn, table, columns):
-    cur = conn.execute(f"PRAGMA table_info({table})")
-    existing_columns = {row[1] for row in cur.fetchall()}
+    # Query PostgreSQL's catalog for existing columns
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = %s
+        """, (table,))
+        existing_columns = {row[0] for row in cur.fetchall()}
 
-    for col in columns:
-        if col not in existing_columns:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} REAL")
+        # Add any missing columns
+        for col in columns:
+            if col not in existing_columns:
+                cur.execute(
+                    f"ALTER TABLE {table} "
+                    f"ADD COLUMN IF NOT EXISTS {col} INTEGER"
+                )
 
-
-def upsertRow(conn, table, catalogue_id, ff_name, values):
-
-
-    # Build column list
-    cols = ["catalogue_id", "ff_name"] + list(values.keys())
-    placeholders = ", ".join("?" for _ in cols)
-
-    # Build update clause for dynamic fields
-    update_clause = ", ".join(f"{col}=excluded.{col}" for col in values.keys())
-
-    sql = f"""
-        INSERT INTO {table} ({", ".join(cols)})
-        VALUES ({placeholders})
-        ON CONFLICT(catalogue_id, ff_name)
-        DO UPDATE SET {update_clause}
-    """
-
-    params = [catalogue_id, ff_name] + list(values.values())
-    conn.execute(sql, params)
-
+    conn.commit()
 
 def getLeaves(data_dict):
 
@@ -629,76 +585,58 @@ def getLeaves(data_dict):
             leaves.update(bottom_dict.keys())
     return leaves
 
+def buildUpsertSQL(table, leaves):
+    cols = ["catalogue_id", "ff_name"] + list(leaves)
+    placeholders = ", ".join("%s" for _ in cols)
 
-def buildUpsertSQL(table, bottom_keys):
-    cols = ["catalogue_id", "ff_name"] + list(bottom_keys)
-    placeholders = ", ".join("?" for _ in cols)
-    update_clause = ", ".join(f"{col}=excluded.{col}" for col in bottom_keys)
+    update_clause = ", ".join(f"{col} = EXCLUDED.{col}" for col in leaves)
 
     sql = f"""
         INSERT INTO {table} ({", ".join(cols)})
         VALUES ({placeholders})
-        ON CONFLICT(catalogue_id, ff_name)
-        DO UPDATE SET {update_clause}
+        ON CONFLICT (catalogue_id, ff_name)
+        DO UPDATE SET {update_clause};
     """
 
     return sql, cols
 
-def buildParamList(data, bottom_keys):
+def buildParamList(data, leaves):
     params = []
     for catalogue_id, ff_dict in data.items():
         for ff_name, bottom_dict in ff_dict.items():
-            row = [catalogue_id, ff_name] + [bottom_dict[k] for k in bottom_keys]
+            row = [catalogue_id, ff_name] + [bottom_dict[k] for k in leaves]
             params.append(row)
     return params
 
-
-
-def writeStarObservationsToDB(data_dict, ident):
-
-
+def writeStarObservationsToDB(conn, data_dict, ident):
     write_start = datetime.datetime.now(datetime.timezone.utc)
-
     log.info("\t\tPreparing transaction")
 
     leaves_keys = getLeaves(data_dict)
-    if not len(leaves_keys):
+    if not leaves_keys:
         return
 
     sql, cols = buildUpsertSQL(STAR_OBSERVATIONS_TABLE_NAME, leaves_keys)
     param_list = buildParamList(data_dict, leaves_keys)
 
-    log.info(f"\t\tWriting to database")
+    log.info("\t\tWriting to database")
 
-    conn = getStationStarDBConn(STAR_OBSERVATION_DB_PATH)
-    log.info(f"\t\t Requesting lock")
 
-    # Optimised for large concurrent commits in sqlite
-    conn.execute("BEGIN IMMEDIATE")
 
-    # Acquire lock
-    while not (acquireWriteLock(conn, ident)):
-        delay_seconds = random.randint(5, 30)
-        log.warning(f"\t\t\tLock denied waiting f{delay_seconds} seconds")
-        time.sleep(delay_seconds)
+    with conn.cursor() as cur:
 
-    log.info("\t\t\tLock received")
+        createColumns(conn, STAR_OBSERVATIONS_TABLE_NAME, leaves_keys)
 
-    createColumns(conn, STAR_OBSERVATIONS_TABLE_NAME, leaves_keys)
-    conn.executemany(sql, param_list)
-    releaseWriteLock(conn)
-    log.info("\t\t\tLock released")
+        cur.executemany(sql, param_list)
+
     conn.commit()
-    log.info("\t\tCommit made")
-    conn.close()
-    log.info("\t\tConnection closed")
+
 
     write_end = datetime.datetime.now(datetime.timezone.utc)
     elapsed_seconds = (write_end - write_start).total_seconds()
-    log.info(f"\tDatabase write completed at {len(data_dict) / elapsed_seconds:.0f} fits / second  ")
-    return
+    log.info(f"\tDatabase write completed at {len(data_dict) / elapsed_seconds:.0f} fits / second")
 
-def getStationStarDBConn(db_path, force_delete=False):
+def getStarDBConn(postgresql_host):
     """
     Get the connection to the stellar magnitude database, if it does not exist, then create
     Args:
@@ -710,53 +648,14 @@ def getStationStarDBConn(db_path, force_delete=False):
     """
     # Create the station star database
 
-    if force_delete:
-        os.unlink(db_path)
 
-    if not os.path.exists(os.path.dirname(db_path)):
-        # Handle the very rare case where this could run before any observation sessions
-        # and RMS_data does not exist
-        os.makedirs(os.path.dirname(db_path))
+    with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 
+        createTableStarObservations(conn)
+        createCalstarFilesTable(conn)
+    return
 
-
-    conn = sqlite3.connect(db_path, timeout=60)
-    conn.execute("PRAGMA journal_mode = WAL")
-    createTableStarObservations(conn)
-    createTableCatalogue(conn)
-    createLockTable(conn)
-    createCalstarFilesTable(conn)
-    return conn
-
-def createLockTable(conn):
-
-
-        conn.execute("""CREATE TABLE IF NOT EXISTS write_lock (
-                            lock_name TEXT PRIMARY KEY,
-                            locked_at REAL,
-                            ident TEXT);""")
-        conn.commit()
-
-def acquireWriteLock(conn, ident, lock_name="global"):
-
-    try:
-        sql_command = ""
-        sql_command += "INSERT INTO write_lock (lock_name, locked_at, ident)"
-        sql_command += "VALUES (?, strftime('%s','now'), ?)"
-
-        conn.execute(sql_command, (lock_name, ident))
-
-
-        return True
-    except sqlite3.IntegrityError:
-        return False
-
-def releaseWriteLock(conn):
-
-    conn.execute("DELETE FROM write_lock WHERE lock_name = 'global'")
-
-
-def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, calstars_data_dir=CALSTARS_DATA_DIR,
+def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=None, calstars_data_dir=CALSTARS_DATA_DIR,
                                   remote_station_processed_dir=None,
                                   host=None, username=None, port=PORT):
 
@@ -887,7 +786,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, 
                         with open(local_json_path, "r") as f:
                             dict_from_calstar = json.load(f)
 
-                            writeStarObservationsToDB(dict_from_calstar)
+                            writeStarObservationsToDB(conn, dict_from_calstar)
 
 
                     except:
@@ -906,7 +805,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, 
                     #    f.flush()
                     #    os.fsync(f.fileno())
 
-                    writeStarObservationsToDB(dict_from_calstar, local_target_full_path)
+                    writeStarObservationsToDB(conn, dict_from_calstar, local_target_full_path)
 
 
 
@@ -916,11 +815,6 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, country_code=None, 
                     maxCalstarsToPNG(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
                     #print(f"\tMaking MP4")
                     #calstarsToMP4(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
-
-
-
-
-
 
 def makeGeoJson(names, lats, lons, output_file_path=None):
     # Example input lists
@@ -946,7 +840,6 @@ def makeGeoJson(names, lats, lons, output_file_path=None):
             json.dump(geojson, f, indent=2)
 
     return geojson
-
 
 def makeStationsInfoDict(c, stations_data_dir=CALSTARS_DATA_DIR, country_code=None):
     """
@@ -1152,9 +1045,13 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. /home/$STATION/files/processed """)
 
+    arg_parser.add_argument('postgresql_host', help="""PostgreSQL server host """)
 
     arg_parser.add_argument('-l', '--local', dest='run_local', default=False, action="store_true",
                             help="Run using local mirror.")
+
+    arg_parser.add_argument('-d', '--drop', dest='drop', default=False, action="store_true",
+                            help="Drop all tables at star - do not use in production")
 
     arg_parser.add_argument('--country', metavar='COUNTRY', help="""Country code to work on""")
 
@@ -1173,9 +1070,11 @@ if __name__ == "__main__":
 
     user, _, hostname = cml_args.user_hostname.partition("@")
     path_template = cml_args.path_template
+    postgresql_host = cml_args.postgresql_host
 
     log.info(f"Starting ingestion from {user}@{hostname} with path template {path_template}")
-    conn = getStationStarDBConn(STAR_OBSERVATION_DB_PATH)
+    log.info(f"Postgresql host {postgresql_host}")
+
 
     cwd = os.getcwd()
 
@@ -1187,8 +1086,18 @@ if __name__ == "__main__":
     cat = Catalog(config)
     log.info(f"Loaded catalog of {cat.entry_count} entries")
 
+    with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
+        log.info("Dropping tables")
+        if cml_args.drop:
+            dropTable(conn, CALSTAR_FILES_TABLE_NAME)
+            dropTable(conn, STAR_OBSERVATIONS_TABLE_NAME)
 
-    makeConfigPlateParCalstarsLib(config, station_list, cat, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template)
+    getStarDBConn(postgresql_host = postgresql_host)
+
+
+
+    with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
+        makeConfigPlateParCalstarsLib(config, station_list, cat, conn, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template)
 
 
 
