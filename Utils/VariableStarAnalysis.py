@@ -789,8 +789,13 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
                 if not os.path.exists(local_calstars_path):
                     download_start_time = datetime.datetime.now(datetime.timezone.utc)
                     log.info(f"\t\tDownloading {remote_file}")
-
-                    downloadFile(host, username, t, full_remote_path_to_bz2)
+                    max_tries = 3
+                    download_count = 0
+                    while not os.path.exists(os.path.join(t, os.path.basename(full_remote_path_to_bz2))) and download_count < max_tries:
+                        downloadFile(host, username, t, full_remote_path_to_bz2)
+                        download_count += 1
+                    if download_count >= max_tries:
+                        continue
                     download_end_time = datetime.datetime.now(datetime.timezone.utc)
                     downloaded_size = os.path.getsize(os.path.join(t, remote_file)) / (1000 ** 2)
                     rate_mb_s = downloaded_size / (download_end_time - download_start_time).total_seconds()
