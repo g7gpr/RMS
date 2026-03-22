@@ -135,8 +135,8 @@ def createTableStarObservations(conn):
     sql_command += f"CREATE TABLE IF NOT EXISTS {STAR_OBSERVATIONS_TABLE_NAME}\n"
     sql_command += f"        (catalogue_id TEXT, ff_name TEXT, PRIMARY KEY(catalogue_id, ff_name));\n"
 
-    log.info("Executing...")
-    log.info(f"\n\t{sql_command}")
+    #log.info("Executing...")
+    #log.info(f"\n\t{sql_command}")
 
     with conn.cursor() as cur:
         cur.execute(sql_command)
@@ -144,8 +144,8 @@ def createTableStarObservations(conn):
 
 def dropTable(conn, table_name):
     sql_command = f"DROP TABLE IF EXISTS {table_name};"
-    log.info(f"Dropping table {table_name}")
-    log.info(f"Executing sql command \n\t{sql_command}")
+    #log.info(f"Dropping table {table_name}")
+    #log.info(f"Executing sql command \n\t{sql_command}")
 
     with conn.cursor() as cur:
         cur.execute(sql_command)
@@ -161,7 +161,7 @@ def recordCalstarFileIngested(conn, file_name):
     sql_command += "DO UPDATE SET ingestion_time = EXCLUDED.ingestion_time;"
 
     log.info(f"Recording {file_name} as ingested")
-    log.info(f"Executing sql command \n\t{sql_command}")
+    #log.info(f"Executing sql command \n\t{sql_command}")
 
     with conn.cursor() as cur:
         cur.execute(sql_command, (file_name, ingestion_time))
