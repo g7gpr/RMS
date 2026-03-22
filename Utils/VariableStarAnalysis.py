@@ -145,7 +145,7 @@ def createTableStarObservations(conn):
 def dropTable(conn, table_name):
     sql_command = f"DROP TABLE IF EXISTS {table_name};"
     log.info(f"Dropping table {table_name}")
-    log.info(f"Executing sql command \n {sql_command}")
+    log.info(f"Executing sql command \n\t{sql_command}")
 
     with conn.cursor() as cur:
         cur.execute(sql_command)
@@ -160,6 +160,8 @@ def recordCalstarFileIngested(conn, file_name):
     sql_command += "ON CONFLICT (file_name)\n"
     sql_command += "DO UPDATE SET ingestion_time = EXCLUDED.ingestion_time;"
 
+    log.info(f"Recording {file_name} as ingested")
+    log.info(f"Executing sql command \n\t{sql_command}")
 
     with conn.cursor() as cur:
         cur.execute(sql_command, (file_name, ingestion_time))
@@ -654,14 +656,14 @@ def writeStarObservationsToDB(conn, data_dict, ident):
         elapsed = end_time - start_time
         rows = len(param_list)
 
-        log.info(f"DB write: {rows} rows in {elapsed:.3f}s ({rows / elapsed:.1f} rows/s)")
+        log.info(f"\t\t\tDB write: {rows} rows in {elapsed:.3f}s ({rows / elapsed:.1f} rows/s)")
 
     conn.commit()
 
 
     write_end = datetime.datetime.now(datetime.timezone.utc)
     elapsed_seconds = (write_end - write_start).total_seconds()
-    log.info(f"\tDatabase write completed at {len(data_dict) / elapsed_seconds:.0f} fits / second")
+    log.info(f"\t\t\tDatabase write completed at {len(data_dict) / elapsed_seconds:.0f} fits / second")
 
     return rows
 
@@ -809,16 +811,11 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
                 if not missing_at_least_one_file and not isIngested(local_target_full_path):
                     log.info(f"\t\tIngesting {calstars_name}")
                     dict_from_calstar = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
-                    log.info(f"\t\tIngested {calstars_name}")
+                    stars_written = writeStarObservationsToDB(conn, dict_from_calstar, local_target_full_path)
                     markIngested(local_target_full_path)
                     recordCalstarFileIngested(conn, calstars_name)
+                    log.info(f"\t\tIngested {calstars_name}")
 
-                    #with open(local_json_path, "w") as f:
-                    #    json.dump(dict_from_calstar, f, indent=4, sort_keys=True)
-                    #    f.flush()
-                    #    os.fsync(f.fileno())
-
-                    stars_written = writeStarObservationsToDB(conn, dict_from_calstar, local_target_full_path)
             remote_file_end_time = time.perf_counter()
             time_elapsed = remote_file_end_time - remote_file_start_time
 
