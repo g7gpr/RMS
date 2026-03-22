@@ -964,7 +964,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     fits_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
 
     pixel_scale_h = pp.fov_h / pp.X_res
-    pixel_scale_v = pp.fov_v / pp.y_res
+    pixel_scale_v = pp.fov_v / pp.Y_res
     pixel_scale = max(pixel_scale_h, pixel_scale_v)
     radius_deg = pixel_scale * 2
 
