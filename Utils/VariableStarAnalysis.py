@@ -18,64 +18,53 @@ from __future__ import print_function, division, absolute_import
 
 from datetime import tzinfo
 
-import RMS.Math
+
 import os
-import pickle
 import tempfile
 import tarfile
+from tkinter.filedialog import Directory
+
 import paramiko
 import subprocess
 import json
 import requests
-import tqdm
 import RMS.ConfigReader as cr
-import gc
 import shutil
 import sys
 import datetime
-import sqlite3
+import numpy as np
 import time
 import random
+import socket
+import psycopg
 
-from RMS.Astrometry.MatchStars import matchStars
-from RMS.Formats import CALSTARS, FFfile, Platepar, StarCatalog
+from RMS.Formats import FFfile, Platepar
 from RMS.Astrometry.CheckFit import starListToDict
-from RMS.Formats.StarCatalog import readStarCatalog
-from RMS.Astrometry.Conversions import J2000_JD, date2JD, jd2Date, raDec2AltAz
-
-from RMS.Astrometry.CyFunctions import subsetCatalog
+from RMS.Astrometry.Conversions import J2000_JD, date2JD
 from RMS.Formats.StarCatalog import Catalog
-
-import numpy as np
-
-
-
-from RMS.Astrometry.Conversions import latLonAlt2ECEF, ecef2LatLonAlt, ECEF2AltAz, altAz2RADec, raDec2AltAz, AER2ECEF
-from RMS.Math import angularSeparationDeg, vectNorm
+from RMS.Astrometry.Conversions import latLonAlt2ECEF
 from RMS.Routines.MaskImage import getMaskFile
 from RMS.Formats.Platepar import Platepar
 from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP, raDec2AltAz
-from scipy.spatial import cKDTree
 from RMS.Formats.CALSTARS import readCALSTARS, maxCalstarsToPNG, calstarsToMP4
-from scipy.spatial import cKDTree
-import socket
-
 from RMS.Misc import mkdirP
-import matplotlib.pyplot as plt
-import psycopg
 
-
-
-
-TARGET = "local"
 
 
 DB_SCALE_FACTOR = 1e6
-print(DB_SCALE_FACTOR)
+JD_OFFSET = J2000_JD
+
+TYPE_MAP = {
+    "stationID": "TEXT",
+    "jd": "BIGINT",
+    # Add more special cases here as your schema evolves
+}
+
+
 STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
 CALSTARS_DATA_DIR = "CALSTARS"
 PLATEPARS_ALL_RECALIBRATED_JSON = "platepars_all_recalibrated.json"
-FOLDER_INGESTED_MARKER = ".ingested"
+DIRECTORY_INGESTED_MARKER = ".ingested"
 CALSTAR_FILES_TABLE_NAME = "calstar_files"
 STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
 
@@ -554,25 +543,30 @@ def makePlatePar(captured_directory):
     print("No platepar found - this is a placeholder for automatic platepar creation")
     pass
 
+
 def createColumns(conn, table, columns):
-    # Query PostgreSQL's catalog for existing columns
+
+
     with conn.cursor() as cur:
+        # Fetch existing columns
         cur.execute("""
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_name = %s
-        """, (table,))
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = %s
+                    """, (table,))
         existing_columns = {row[0] for row in cur.fetchall()}
 
-        # Add any missing columns
         for col in columns:
-            if col not in existing_columns:
-                cur.execute(
-                    f"ALTER TABLE {table} "
-                    f"ADD COLUMN IF NOT EXISTS {col} INTEGER"
-                )
+            if col in existing_columns:
+                continue
 
-    conn.commit()
+            coltype = TYPE_MAP.get(col, "INTEGER")
+
+            cur.execute(
+                f"ALTER TABLE {table} "
+                f"ADD COLUMN IF NOT EXISTS {col} {coltype}"
+            )
+
 
 def getLeaves(data_dict):
 
@@ -597,24 +591,54 @@ def buildUpsertSQL(table, leaves):
 
     return sql, cols
 
+def dbScaleIn(v):
+
+    try:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v
+        if np.isinf(v):
+            return None
+
+
+        return int(v * DB_SCALE_FACTOR)
+
+    except Exception as e:
+        log.error(f"dbScaleIn failed for value {v!r} of type {type(v)}: {e}")
+        pass  # <-- your breakpoint goes here
+        raise
+
+
+def dbScaleOut(v):
+
+    if v is None:
+        return None
+
+    return float(v / DB_SCALE_FACTOR)
+
+
 def buildParamList(data, leaves):
     params = []
     for catalogue_id, ff_dict in data.items():
-        for ff_name, bottom_dict in ff_dict.items():
-            row = [catalogue_id, ff_name] + [bottom_dict[k] for k in leaves]
+        if catalogue_id is None:
+            continue
+        for ff_name, leaf in ff_dict.items():
+            row = [catalogue_id, ff_name] + [dbScaleIn(leaf[k]) for k in leaves]
             params.append(row)
     return params
 
 def writeStarObservationsToDB(conn, data_dict, ident):
+
+
     write_start = datetime.datetime.now(datetime.timezone.utc)
     log.info("\t\tPreparing transaction")
-
     leaves_keys = getLeaves(data_dict)
     if not leaves_keys:
-        return
-
+        return 0
     sql, cols = buildUpsertSQL(STAR_OBSERVATIONS_TABLE_NAME, leaves_keys)
     param_list = buildParamList(data_dict, leaves_keys)
+
 
     log.info("\t\tWriting to database")
 
@@ -624,7 +648,13 @@ def writeStarObservationsToDB(conn, data_dict, ident):
 
         createColumns(conn, STAR_OBSERVATIONS_TABLE_NAME, leaves_keys)
 
+        start_time = time.perf_counter()
         cur.executemany(sql, param_list)
+        end_time = time.perf_counter()
+        elapsed = end_time - start_time
+        rows = len(param_list)
+
+        log.info(f"DB write: {rows} rows in {elapsed:.3f}s ({rows / elapsed:.1f} rows/s)")
 
     conn.commit()
 
@@ -632,6 +662,8 @@ def writeStarObservationsToDB(conn, data_dict, ident):
     write_end = datetime.datetime.now(datetime.timezone.utc)
     elapsed_seconds = (write_end - write_start).total_seconds()
     log.info(f"\tDatabase write completed at {len(data_dict) / elapsed_seconds:.0f} fits / second")
+
+    return rows
 
 def getStarDBConn(postgresql_host):
     """
@@ -702,7 +734,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
         if not len(remote_files):
             pass
         for remote_file in remote_files:
-
+            remote_file_start_time = time.perf_counter()
             file_type = getFileType(remote_file)
             if file_type != "metadata" and file_type != "detected":
                 continue
@@ -710,13 +742,6 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
 
             local_dir_name = "_".join(remote_file.split("_")[0:4])
             local_target = os.path.join(calstars_data_full_path, local_dir_name)
-
-
-
-            files_already_downloaded = []
-            if os.path.exists(calstars_data_full_path):
-                if os.path.isdir(calstars_data_full_path):
-                    files_already_downloaded = os.listdir(calstars_data_full_path)
 
 
 
@@ -735,6 +760,8 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
                 local_json_path = os.path.join(local_target_full_path, f"{local_dir_name}_star_observations.json")
 
 
+
+
                 extracted_files_path = os.path.join(extraction_dir, station_name.lower(), remote_file.split(".")[0])
                 extracted_config_path = os.path.join(extracted_files_path, ".config")
                 extracted_platepar_path = os.path.join(extracted_files_path, config.platepar_name)
@@ -745,13 +772,14 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
 
 
 
+
                 path_source_list = [extracted_config_path, extracted_platepar_path, extracted_mask_path, extracted_calstars_path, extracted_recalibrated_path]
                 path_local_list = [local_config_path, local_platepar_path, local_mask_path, local_calstars_path, local_recalibrated_path]
 
 
                 log.info(f"\tWorking on {local_dir_name}")
-                # Download, and extract the file into a subdir
-                if local_dir_name not in files_already_downloaded:
+                # Download, and extract the file into a subdir if the CALSTARS file does not already exist there
+                if not os.path.exists(local_calstars_path):
                     download_start_time = datetime.datetime.now(datetime.timezone.utc)
                     log.info(f"\t\tDownloading {remote_file}")
 
@@ -778,19 +806,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
                         missing_at_least_one_file = True
                         break
 
-                if os.path.exists(local_json_path):
-                    try:
-                        with open(local_json_path, "r") as f:
-                            dict_from_calstar = json.load(f)
-
-                            writeStarObservationsToDB(conn, dict_from_calstar)
-
-
-                    except:
-                        if os.path.exists(local_json_path):
-                            os.unlink(local_json_path)
-
-                if not missing_at_least_one_file and not os.path.exists(local_json_path) and not isIngested(local_target_full_path):
+                if not missing_at_least_one_file and not isIngested(local_target_full_path):
                     log.info(f"\t\tIngesting {calstars_name}")
                     dict_from_calstar = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
                     log.info(f"\t\tIngested {calstars_name}")
@@ -802,16 +818,15 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
                     #    f.flush()
                     #    os.fsync(f.fileno())
 
-                    writeStarObservationsToDB(conn, dict_from_calstar, local_target_full_path)
+                    stars_written = writeStarObservationsToDB(conn, dict_from_calstar, local_target_full_path)
+            remote_file_end_time = time.perf_counter()
+            time_elapsed = remote_file_end_time - remote_file_start_time
+
+            if stars_written is not None:
+                stars_second = stars_written / time_elapsed
+                log.info(f"Processed {stars_second:.0f} stars per second for {remote_file}")
 
 
-
-                if os.path.exists(local_json_path):
-
-                    log.info(f"\t\tMaking image")
-                    maxCalstarsToPNG(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
-                    #print(f"\tMaking MP4")
-                    #calstarsToMP4(os.path.dirname(local_calstars_path), os.path.basename(local_calstars_path))
 
 def makeGeoJson(names, lats, lons, output_file_path=None):
     # Example input lists
@@ -968,8 +983,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             # If we have a platepar in pp_recal then use it, else just use the uncalibrated platepar
             pp.loadFromDict(pp_recal_json[fits_file])
 
-
-
         # Extract stars for the given Julian date
         if jd in star_dict:
             stars_list = star_dict[jd]
@@ -992,13 +1005,33 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
         arr_obs_az, arr_obs_alt = raDec2AltAz(arr_obs_ra, arr_obs_dec, arr_jd, observation_config.latitude, observation_config.longitude)
 
-        results = cat.queryRaDec(arr_obs_ra, arr_obs_dec)
-        arr_mag_error = arr_obs_mag - results[:, 3].astype(float)
+        results_list = cat.queryRaDec(arr_obs_ra, arr_obs_dec, n_brightest=1)
 
-        for r in zip(results, arr_obs_ra, arr_obs_dec, arr_obs_mag, arr_obs_x, arr_obs_y, arr_obs_az, arr_obs_alt, arr_mag_error):
+        #results = np.array([row if row else [None, None, None, None, None] for row in results_list], dtype=object)
+
+        # Compute magnitude error
+        arr_cat_mags = np.array([float(r[3]) if r[3] is not None else np.nan for r in results_list])
+
+
+        if len(arr_obs_mag) == len(arr_cat_mags):
+            arr_mag_error = arr_obs_mag - arr_cat_mags
+        else:
+            pass
+
+        for r in zip(results_list, arr_obs_ra, arr_obs_dec, arr_obs_mag, arr_obs_x, arr_obs_y, arr_obs_az, arr_obs_alt, arr_mag_error):
+
+
+
             query_results, o_ra, o_dec, o_mag, o_x, o_y, o_az, o_alt, mag_err = r
             name, c_ra, c_deg, c_mag, theta = query_results
 
+            if query_results == []:
+                continue
+
+            # Enforce uniqueness: we should not have the same star appearing in two places
+            if name in frame_dict:
+                log.error(f"Duplicate catalogue star {name} in frame!")
+                name = f"{name}_duplicate_star"
 
             frame_dict[name] = { "jd": float(jd),  "stationID": fits_station_id.upper(),
                                             "cat_ra": c_ra, "cat_deg": c_deg,
@@ -1025,7 +1058,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     fits_end_time = datetime.datetime.now(tz=datetime.timezone.utc)
     elapsed_seconds = (fits_end_time - fits_start_time).total_seconds()
     fits_count = len(observation_dict)
-    log.info(f"\tRead {calstars_name} at {fits_count / elapsed_seconds:.1f} fits / second")
+    log.info(f"\t\tRead {calstars_name} at {fits_count / elapsed_seconds:.1f} fits / second")
 
 
     return dictInvert(observation_dict)
@@ -1048,7 +1081,10 @@ if __name__ == "__main__":
                             help="Run using local mirror.")
 
     arg_parser.add_argument('-d', '--drop', dest='drop', default=False, action="store_true",
-                            help="Drop all tables at star - do not use in production")
+                            help="Drop all tables at start - do not use in production")
+
+    arg_parser.add_argument('-r', '--reset_ingestion', dest='reset_ingestion', default=False, action="store_true",
+                            help="Reset all ingestion markers")
 
     arg_parser.add_argument('--country', metavar='COUNTRY', help="""Country code to work on""")
 
@@ -1088,6 +1124,18 @@ if __name__ == "__main__":
         if cml_args.drop:
             dropTable(conn, CALSTAR_FILES_TABLE_NAME)
             dropTable(conn, STAR_OBSERVATIONS_TABLE_NAME)
+
+    if cml_args.reset_ingestion:
+        local_calstars_path = Path(os.path.expanduser(config.data_dir)) / CALSTARS_DATA_DIR
+        log.info(f"Removing all ingestion markers ({DIRECTORY_INGESTED_MARKER}) from {local_calstars_path}")
+
+        for marker in local_calstars_path.rglob(DIRECTORY_INGESTED_MARKER):
+            if marker.is_file():
+                log.info(f"Removing {marker}")
+                marker.unlink()
+
+
+        
 
     getStarDBConn(postgresql_host = postgresql_host)
 

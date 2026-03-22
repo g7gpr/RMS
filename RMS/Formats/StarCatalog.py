@@ -96,70 +96,70 @@ class Catalog:
 
     def queryRaDec(self, ra_deg, dec_deg, radius_deg=0.1, n_brightest=1):
         """
-        Tree search for ra dec coordinates, search is in a wrapped Euclidean space
-
-        Arguments:
-            ra_deg: [float] right ascension degrees
-            dec_deg: [float] declination degrees
-
-        Keyword Arguments:
-            radius_deg:[float] search radius degrees default 0.1
-            n_brightest: [int] number of stars to return, ordered by increasing magnitude, default 1
+        Tree search for RA/Dec coordinates, search is in a Euclidean space.
 
         Returns:
-            [list of arrays]: [names, ra ,dec ,mag ,theta] theta is angular separation (degrees)
+            A list of rows: [name, ra, dec, mag, theta]
+            Missing entries are simply omitted.
         """
 
-        # Normalise inputs to arrays of radians
+        # Normalize inputs to arrays of radians
         ra_deg, dec_deg = np.atleast_1d(ra_deg), np.atleast_1d(dec_deg)
         ra, dec = np.radians(ra_deg), np.radians(dec_deg)
 
         # Build query vectors
-        query_vectors = np.column_stack((np.cos(dec) * np.cos(ra),  np.cos(dec) * np.sin(ra), np.sin(dec)))
+        query_vectors = np.column_stack((
+            np.cos(dec) * np.cos(ra),
+            np.cos(dec) * np.sin(ra),
+            np.sin(dec)
+        ))
 
         # Euclidean chord distance for spherical radius
         ecd = 2 * np.sin(np.radians(radius_deg) / 2)
 
         results = []
-        for i, (qvec, ra0, dec0) in enumerate(zip(query_vectors, ra_deg, dec_deg)):
+
+        for qvec, ra0, dec0 in zip(query_vectors, ra_deg, dec_deg):
 
             # KD-tree search
-            result_index_on_full_catalogue = np.array(self.tree.query_ball_point(qvec, ecd), dtype=int)
+            idx = np.array(self.tree.query_ball_point(qvec, ecd), dtype=int)
 
-            if len(result_index_on_full_catalogue) == 0:
-                row = np.full((n_brightest, 5), None, dtype=object)
+            if len(idx) == 0:
+                # No matches -> return empty list for this query
+                results.append([])
+                continue
 
-            else:
+            # Sort by magnitude ascending (brightest first)
+            mags = self.cat[idx, self.mag_col]
+            chosen = idx[np.argsort(mags)[:n_brightest]]
 
-                # Sort by magnitude ascending - brightest stars first
-                mags = self.cat[result_index_on_full_catalogue, self.mag_col]
-                chosen = result_index_on_full_catalogue[np.argsort(mags)[:n_brightest]]
+            # Extract fields as Python types
+            names = [str(x) for x in self.names[chosen]]
+            ras   = [float(x) for x in self.cat[chosen, self.ra_col]]
+            decs  = [float(x) for x in self.cat[chosen, self.dec_col]]
+            mags  = [float(x) for x in self.cat[chosen, self.mag_col]]
 
-                # Extract fields
-                names = self.names[chosen].astype(str)
-                ras, decs = self.cat[chosen, self.ra_col].astype(float), self.cat[chosen, self.dec_col].astype(float)
-                mags = self.cat[chosen, self.mag_col].astype(float)
+            # Angular separation
+            thetas = angularSeparationDeg(ra0, dec0, ras, decs)
+            thetas = [float(t) for t in thetas]
 
+            # Build matched rows
+            matched = [
+                [names[i], ras[i], decs[i], mags[i], thetas[i]]
+                for i in range(len(names))
+            ]
 
-                # Angular separation
-                thetas = angularSeparationDeg(ra0, dec0, ras, decs)
+            results.append(matched)
 
-                # Stack result for this query
-                matched = np.column_stack((names, ras, decs, mags, thetas))
-
-                if matched.shape[0] < n_brightest:
-                    pad = np.full((n_brightest - matched.shape[0], 5), None, dtype=object)
-                    row = np.vstack((matched, pad))
-                else:
-                    row = matched
-
-            results.append(row)
-
-        # If input was scalar, return a list with a single entry of an array
+        # Scalar input -> return a single list of rows
         if len(ra_deg) == 1:
             return results[0]
 
-        return np.vstack(results)
+        # Multi-input -> flatten one level
+        flat = []
+        for block in results:
+            flat.extend(block)
+        return flat
 
 
 
