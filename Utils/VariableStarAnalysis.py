@@ -406,7 +406,7 @@ def extractBz2Files(bz2_list, input_directory, working_directory, silent=True, h
 
         try:
             with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
-                tar.extractall(path=bz2_directory)
+                tar.extractall(path=bz2_directory, filter="data")
         except:
             if not silent:
                 log.info("Unable to extract".format(basename_bz2))
