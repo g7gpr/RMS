@@ -1058,13 +1058,14 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             if query_results == []:
                 continue
 
-            # Enforce uniqueness: we should not have the same star appearing in two places
-            if name in frame_dict:
+            # Detect the same star appearing in two places
+            duplicate_counter = 1
+            while name in frame_dict:
                 log.error(f"Duplicate catalogue star {name} in {fits_file} at image coordinates x:{o_x:.1f}, r:{o_y:.1f}")
-                log.error(f"Last observation {frame_dict[name]['obs_mag']}")
-                log.error(f"Last observation {frame_dict[name]['obs_mag']:.2f}")
+                log.error(f"Initial observation {frame_dict[name]['obs_mag']:.2f}")
                 log.error(f"This observation {o_mag:.2f}")
-                name = f"{name}_duplicate_star"
+                name = f"{name}_duplicate_{duplicate_counter:03d}"
+                duplicate_counter += 1
 
             # Compute magnitude error
             mag_err = o_mag - c_mag
