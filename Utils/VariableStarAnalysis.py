@@ -830,13 +830,13 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
                 fits_generated_per_second = 0.05
 
 
-                log.info(f"Time {time_elapsed:.0f} seconds")
-                log.info(f"Processed {stars_observations_second:.0f} star observations per second for {remote_file}")
-                log.info(f"Processed {number_of_fits_files} fits files at {fits_processed_per_seconds:.0f} fits per second")
+                log.info(f"\tTime {time_elapsed:.0f} seconds")
+                log.info(f"\tProcessed {stars_observations_second:.0f} star observations per second for {remote_file}")
+                log.info(f"\tProcessed {number_of_fits_files} fits files at {fits_processed_per_seconds:.0f} fits per second")
 
                 if fits_processed_per_seconds > 0.1:
                     faster_than_real_time = fits_generated_per_second / fits_processed_per_seconds
-                    log.info(f"Pipe line can support up to {faster_than_real_time:.0f} cameras")
+                    log.info(f"\tPipe line can support up to {faster_than_real_time:.0f} cameras")
 
 
 def makeGeoJson(names, lats, lons, output_file_path=None):
@@ -980,7 +980,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     pixel_scale_h = pp.fov_h / pp.X_res
     pixel_scale_v = pp.fov_v / pp.Y_res
     pixel_scale = max(pixel_scale_h, pixel_scale_v)
-    radius_deg = pixel_scale * 2
+    radius_deg = pixel_scale * 3
 
     for fits_file, star_list in calstar:
         fits_station_id = fits_file.split('_')[1]
