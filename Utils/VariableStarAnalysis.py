@@ -136,7 +136,7 @@ def createTableStarObservations(conn):
     sql_command += f"        (catalogue_id TEXT, ff_name TEXT, PRIMARY KEY(catalogue_id, ff_name));\n"
 
     log.info("Executing...")
-    log.info(f"\n{sql_command}")
+    log.info(f"\n\t{sql_command}")
 
     with conn.cursor() as cur:
         cur.execute(sql_command)
