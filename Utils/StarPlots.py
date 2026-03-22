@@ -36,7 +36,7 @@ import numpy as np
 import time
 import random
 import socket
-import psycopg2
+import psycopg
 
 from RMS.Formats import FFfile, Platepar
 from RMS.Astrometry.CheckFit import starListToDict
@@ -183,40 +183,15 @@ if __name__ == "__main__":
 
     cwd = os.getcwd()
 
+    conn_params = {
+        "host": "192.168.1.174",
+        "dbname": "meteor_ingest",
+        "user": "ingest_user"
+    }
 
+    catalogue_id =
 
-    station_list = getStationList(country_code=country_code)
-
-    log.info("Loading star catalog")
-    cat = Catalog(config)
-    log.info(f"Loaded catalog of {cat.entry_count} entries")
-
-    with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
-        log.info("Dropping tables")
-        if cml_args.drop:
-            dropTable(conn, CALSTAR_FILES_TABLE_NAME)
-            dropTable(conn, STAR_OBSERVATIONS_TABLE_NAME)
-
-    if cml_args.reset_ingestion:
-        local_calstars_path = Path(os.path.expanduser(config.data_dir)) / CALSTARS_DATA_DIR
-        log.info(f"Removing all ingestion markers ({DIRECTORY_INGESTED_MARKER}) from {local_calstars_path}")
-
-        for marker in local_calstars_path.rglob(DIRECTORY_INGESTED_MARKER):
-            if marker.is_file():
-                log.info(f"Removing {marker}")
-                marker.unlink()
-
-
-        
-
-    getStarDBConn(postgresql_host = postgresql_host)
-
-
-
-    with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
-        makeConfigPlateParCalstarsLib(config, station_list, cat, conn, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template)
-
-
+    plotStarLightcurve(conn_params, catalogue_id=catalogue_id, jd_start, jd_end)
 
 
     pass

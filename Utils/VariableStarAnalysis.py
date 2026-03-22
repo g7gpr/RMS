@@ -1030,6 +1030,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
             # Compute magnitude error
             mag_err = o_mag - c_mag
+            name = name.decode()
             frame_dict[name] = { "jd": float(jd),  "stationID": fits_station_id.upper(),
                                             "cat_ra": c_ra, "cat_deg": c_deg,
                                             "obs_ra": o_ra, "obs_dec": o_dec, "theta": theta,
