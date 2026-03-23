@@ -18,7 +18,7 @@ from __future__ import print_function, division, absolute_import
 
 from datetime import tzinfo
 
-
+import traceback
 import os
 import tempfile
 import tarfile
@@ -84,26 +84,92 @@ def makeTarBz2(source_dir: Path, output_file: Path):
         tar.add(source_dir, arcname=dir_name)
 
 
-def archiveDirectories(root: Path, directories_list, ingested_only=True):
+
+def extractCalstarArchives(root: Path, archives_list, remove_archives=True):
+    root = Path(root)
+    calstars_dir = root
+    output_dir = None
+
+    for archive_name in archives_list:
+        log.info(f"\t\tExtracting {archive_name}")
+        archive_path = calstars_dir / archive_name
+
+        if not archive_path.is_file():
+            continue
+
+        # Derive original directory name
+        dir_name = archive_name.replace("_CALSTAR.tar.bz2", "")
+        output_dir = calstars_dir / dir_name
+
+        #log.info(f"Extracting {archive_path} to {output_dir}")
+
+        # Ensure output directory does not already exist
+        if output_dir.exists():
+            log.warning(f"Output directory {output_dir} already exists, removing it first")
+            shutil.rmtree(output_dir)
+
+        # Extract archive (no filter argument!)
+        with tarfile.open(archive_path, "r:*") as tar:
+            try:
+                tar.extractall(calstars_dir)
+            except Exception as e:
+                msg = "Exception: {}".format(str(e))
+                tb = traceback.format_exc().encode("ascii", "replace").decode("ascii")
+
+                log.error(msg)
+                log.error(tb)
+
+                log.warning(f"{os.path.basename(archive_path)} was corrupted and could not be extracted - removing")
+                os.unlink(archive_path)
+
+        # Optionally remove the archive
+        if remove_archives and os.path.exists(archive_path):
+            #log.info(f"Removing archive {archive_path}")
+            archive_path.unlink()
+
+    return output_dir
+
+def getDirectorySize(path: Path):
+    total = 0
+    for root, dirs, files in os.walk(path):
+        for name in files:
+            fp = Path(root) / name
+            try:
+                total += fp.stat().st_size
+            except OSError:
+                pass
+    return total
+
+def archiveCalstarDirectories(root, directories_list, ingested_only=True):
+
+
     root = Path(root)
 
     for d in directories_list:
         source_dir = root / d
-
+        if not os.path.isdir(source_dir):
+            continue
         # Check for ingestion marker inside the directory
         if ingested_only:
-            if DIRECTORY_INGESTED_MARKER not in os.listdir(source_dir):
+
+            dir_list = os.listdir(source_dir)
+            if DIRECTORY_INGESTED_MARKER not in dir_list:
                 continue
 
-        log.info(f"{d} has been ingested, good to archive")
+
 
         tar_file_name = f"{d}_CALSTAR.tar.bz2"
         output_file = root / tar_file_name
 
-        log.info(f"Creating {output_file}")
+        log.info(f"Creating {os.path.basename(output_file)}")
         makeTarBz2(source_dir, output_file)
 
-        log.info(f"Removing {source_dir}")
+        # compute uncompressed size
+        uncompressed_size = getDirectorySize(source_dir)  / (1024 ** 2)
+        # compute compressed size
+        compressed_size = output_file.stat().st_size / (1024 **2)
+
+        log.info(f"Removing {os.path.basename(source_dir)} of size {uncompressed_size:.1f} MB and replaced with archive of size {compressed_size:.1f} MB - ratio {compressed_size / uncompressed_size:.2f}")
         shutil.rmtree(source_dir, ignore_errors=True)
 
 
@@ -201,7 +267,7 @@ def recordCalstarFileIngested(conn, file_name):
 def markIngested(folder_path):
      folder_path = Path(folder_path)
      marker_file = folder_path /  ".ingested"
-     log.info(f"\t\tMarked {folder_path} as ingested")
+     log.info(f"\t\tMarked {os.path.basename(folder_path)} as ingested")
      marker_file.touch()
 
 def isIngested(folder_path):
@@ -433,7 +499,7 @@ def extractBz2Files(bz2_list, input_directory, working_directory, silent=True, h
             continue
         mkdirP(bz2_directory)
         if not silent:
-            log.info("Extracting {}".format(bz2))
+            log.info("\t\tExtracting {}".format(bz2))
 
         try:
             with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
@@ -683,7 +749,8 @@ def writeStarObservationsToDB(conn, data_dict, ident):
         createColumns(conn, STAR_OBSERVATIONS_TABLE_NAME, leaves_keys)
 
         start_time = time.perf_counter()
-        cur.executemany(sql, param_list)
+        #todo :renable writes
+        #cur.executemany(sql, param_list)
         end_time = time.perf_counter()
         elapsed = end_time - start_time
         rows = len(param_list)
@@ -808,7 +875,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
                 extracted_recalibrated_path = os.path.join(extracted_files_path, PLATEPARS_ALL_RECALIBRATED_JSON)
                 extracted_calstars_path = os.path.join(extracted_files_path, calstars_name)
                 full_remote_path_to_bz2 = os.path.join(remote_dir, remote_file)
-
+                local_calstars_archive_path = f"{local_target_full_path}_CALSTAR.tar.bz2"
 
 
 
@@ -818,6 +885,10 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
 
                 log.info(f"\tWorking on {local_dir_name}")
                 # Download, and extract the file into a subdir if the CALSTARS file does not already exist there
+
+                if os.path.exists(local_calstars_archive_path):
+                    extractCalstarArchives(calstars_data_full_path, [os.path.basename(local_calstars_archive_path)], remove_archives=True)
+
                 if not os.path.exists(local_calstars_path):
                     download_start_time = datetime.datetime.now(datetime.timezone.utc)
                     log.info(f"\t\tDownloading {remote_file}")
@@ -857,7 +928,7 @@ def makeConfigPlateParCalstarsLib(config, station_list, cat, conn, country_code=
                     markIngested(local_target_full_path)
                     recordCalstarFileIngested(conn, calstars_name)
                     log.info(f"\t\tIngested {calstars_name}")
-
+                    archiveCalstarDirectories(calstars_data_full_path, [local_dir_name])
                     remote_file_end_time = time.perf_counter()
                     time_elapsed = remote_file_end_time - remote_file_start_time
 
@@ -1093,10 +1164,11 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             # Detect the same star appearing in two places
             duplicate_counter = 1
             while name in frame_dict:
-                log.error(f"Duplicate catalogue star {name} in {fits_file} at image coordinates x:{o_x:.1f}, r:{o_y:.1f}")
+                log.error(f"Duplicate catalogue star {name} in {fits_file} at image coordinates x:{o_x:.1f}, r:{o_y:.1f} sky coordinates RA:{o_ra:.f2} DEC:{o_dec:.f2}")
                 log.error(f"Initial observation {frame_dict[name]['obs_mag']:.2f}")
                 log.error(f"This observation {o_mag:.2f}")
                 name = f"{name}_duplicate_{duplicate_counter:03d}"
+                log.error(f"Storing as {name}")
                 duplicate_counter += 1
 
             # Compute magnitude error
@@ -1131,6 +1203,27 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
 
     return dictInvert(observation_dict)
+
+def resetIngestion(local_calstars_path, ingestion_marker):
+
+    dir_contents = os.listdir(local_calstars_path)
+    for object in dir_contents:
+        object_full_path = os.path.join(local_calstars_path, object)
+        if os.path.isdir(object_full_path):
+            calstar_dir_contents = os.listdir(object_full_path)
+            if ingestion_marker in calstar_dir_contents:
+                os.unlink(os.path.join(object_full_path, ingestion_marker))
+
+
+        elif os.path.isfile(object_full_path):
+            calstar_path = os.path.join(local_calstars_path, extractCalstarArchives(local_calstars_path, [object]))
+
+            log.info(f"\t\tExtracted {object} to {os.path.basename(calstar_path)}")
+            calstar_dir_contents = os.listdir(calstar_path)
+            if ingestion_marker in calstar_dir_contents:
+                os.unlink(os.path.join(calstar_path, ingestion_marker))
+            archiveCalstarDirectories(local_calstars_path, [os.path.basename(calstar_path)], ingested_only=False)
+            pass
 
 if __name__ == "__main__":
 
@@ -1200,11 +1293,7 @@ if __name__ == "__main__":
     if cml_args.reset_ingestion:
         local_calstars_path = Path(os.path.expanduser(config.data_dir)) / CALSTARS_DATA_DIR
         log.info(f"Removing all ingestion markers ({DIRECTORY_INGESTED_MARKER}) from {local_calstars_path}")
-
-        for marker in local_calstars_path.rglob(DIRECTORY_INGESTED_MARKER):
-            if marker.is_file():
-                log.info(f"Removing {marker}")
-                marker.unlink()
+        resetIngestion(local_calstars_path, DIRECTORY_INGESTED_MARKER)
 
 
         
@@ -1215,7 +1304,8 @@ if __name__ == "__main__":
 
     directories_list = os.listdir(calstars_directory_path)
 
-    archiveDirectories(config.data_dir, directories_list, ingested_only=True)
+
+    archiveCalstarDirectories(os.path.join(config.data_dir, CALSTARS_DATA_DIR), directories_list, ingested_only=True)
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
         makeConfigPlateParCalstarsLib(config, station_list, cat, conn, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template, history_days=days_history)
