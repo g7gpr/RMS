@@ -1132,27 +1132,15 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         arr_obs_y, arr_obs_x, arr_intensity = stars[:,0], stars[:,1], stars[:,2]
         arr_jd = np.full_like(arr_obs_x, jd, dtype=float)
 
-        _arr_jd, arr_obs_ra, arr_obs_dec, arr_obs_mag = xyToRaDecPP(arr_jd, arr_obs_x, arr_obs_y, arr_intensity, pp, jd_time=True,  measurement=False, precompute_pointing_corr=True)
-
-
-        arr_obs_az, arr_obs_alt = raDec2AltAz(arr_obs_ra, arr_obs_dec, arr_jd, observation_config.latitude, observation_config.longitude)
-
-
+        _arr_jd, arr_obs_ra, arr_obs_dec, arr_obs_mag = \
+                                xyToRaDecPP(arr_jd, arr_obs_x, arr_obs_y, arr_intensity, pp,
+                                            jd_time=True,  measurement=True, precompute_pointing_corr=True, extinction_correction=True)
 
         results_list = cat.queryRaDec(arr_obs_ra, arr_obs_dec, n_brightest=1, radius_deg=radius_deg)
 
-        #results = np.array([row if row else [None, None, None, None, None] for row in results_list], dtype=object)
 
-        # Compute magnitude error
-        arr_cat_mags = np.array([float(r[3]) if r[3] is not None else np.nan for r in results_list])
-
-
-
-
-
+        arr_obs_az, arr_obs_alt = raDec2AltAz(arr_obs_ra, arr_obs_dec, arr_jd, observation_config.latitude, observation_config.longitude)
         for r in zip(results_list, arr_obs_ra, arr_obs_dec, arr_obs_mag, arr_obs_x, arr_obs_y, arr_obs_az, arr_obs_alt):
-
-
 
             query_results, o_ra, o_dec, o_mag, o_x, o_y, o_az, o_alt = r
             name, c_ra, c_deg, c_mag, theta = query_results
@@ -1204,7 +1192,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
 def resetIngestion(local_calstars_path, ingestion_marker):
 
-    dir_contents = os.listdir(local_calstars_path)
+    dir_contents = sorted(os.listdir(local_calstars_path))
     for object in dir_contents:
         object_full_path = os.path.join(local_calstars_path, object)
         if os.path.isdir(object_full_path):

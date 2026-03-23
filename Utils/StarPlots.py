@@ -172,9 +172,9 @@ if __name__ == "__main__":
         "user": "ingest_user"
     }
 
-    catalogue_id = 'HD 66811'
-    jd_start = 2461122
-    jd_end = 2461121
+    catalogue_id = 'HD 161471'
+    jd_start = 2461121.1
+    jd_end = 2461121.2
 
     plotStarLightcurve(conn_params, catalogue_id, jd_start, jd_end)
 
