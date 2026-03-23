@@ -161,7 +161,7 @@ def archiveCalstarDirectories(root, directories_list, ingested_only=True):
         tar_file_name = f"{d}_CALSTAR.tar.bz2"
         output_file = root / tar_file_name
 
-        log.info(f"Creating {os.path.basename(output_file)}")
+        #log.info(f"Creating {os.path.basename(output_file)}")
         makeTarBz2(source_dir, output_file)
 
         # compute uncompressed size
@@ -169,7 +169,7 @@ def archiveCalstarDirectories(root, directories_list, ingested_only=True):
         # compute compressed size
         compressed_size = output_file.stat().st_size / (1024 **2)
 
-        log.info(f"Removing {os.path.basename(source_dir)} of size {uncompressed_size:.1f} MB and replaced with archive of size {compressed_size:.1f} MB - ratio {compressed_size / uncompressed_size:.2f}")
+        log.info(f"\tRemoving {os.path.basename(source_dir)} of size {uncompressed_size:.1f} MB and replaced with archive of size {compressed_size:.1f} MB - ratio {compressed_size / uncompressed_size:.2f}")
         shutil.rmtree(source_dir, ignore_errors=True)
 
 
@@ -749,8 +749,7 @@ def writeStarObservationsToDB(conn, data_dict, ident):
         createColumns(conn, STAR_OBSERVATIONS_TABLE_NAME, leaves_keys)
 
         start_time = time.perf_counter()
-        #todo :renable writes
-        #cur.executemany(sql, param_list)
+        cur.executemany(sql, param_list)
         end_time = time.perf_counter()
         elapsed = end_time - start_time
         rows = len(param_list)
