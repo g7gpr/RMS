@@ -76,6 +76,37 @@ from RMS.Logger import LoggingManager, getLogger
 from pathlib import Path
 
 
+def makeTarBz2(source_dir: Path, output_file: Path):
+    source_dir = source_dir.resolve()
+    dir_name = source_dir.name
+
+    with tarfile.open(output_file, "w:bz2") as tar:
+        tar.add(source_dir, arcname=dir_name)
+
+
+def archiveDirectories(root: Path, directories_list, ingested_only=True):
+    root = Path(root)
+
+    for d in directories_list:
+        source_dir = root / d
+
+        # Check for ingestion marker inside the directory
+        if ingested_only:
+            if DIRECTORY_INGESTED_MARKER not in os.listdir(source_dir):
+                continue
+
+        log.info(f"{d} has been ingested, good to archive")
+
+        tar_file_name = f"{d}_CALSTAR.tar.bz2"
+        output_file = root / tar_file_name
+
+        log.info(f"Creating {output_file}")
+        makeTarBz2(source_dir, output_file)
+
+        log.info(f"Removing {source_dir}")
+        shutil.rmtree(source_dir, ignore_errors=True)
+
+
 def connectionProblem(host, port=22, timeout=3):
     """
     Returns True if Fail2ban has likely blocked us.
@@ -406,7 +437,8 @@ def extractBz2Files(bz2_list, input_directory, working_directory, silent=True, h
 
         try:
             with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
-                tar.extractall(path=bz2_directory, filter="data")
+                # todo: work out why this does not support filter keyword argument
+                tar.extractall(path=bz2_directory)
         except:
             if not silent:
                 log.info("Unable to extract".format(basename_bz2))
@@ -1179,7 +1211,11 @@ if __name__ == "__main__":
 
     getStarDBConn(postgresql_host = postgresql_host)
 
+    calstars_directory_path = os.path.join(config.data_dir, CALSTARS_DATA_DIR)
 
+    directories_list = os.listdir(calstars_directory_path)
+
+    archiveDirectories(config.data_dir, directories_list, ingested_only=True)
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
         makeConfigPlateParCalstarsLib(config, station_list, cat, conn, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template, history_days=days_history)
