@@ -187,7 +187,9 @@ def buildFrameRows(observation_dict, session_name):
         frame_name = extractFrameName(fits_file)
         frame_index = extractFrameIndex(fits_file)
 
+        # If there are no stars, then do no more work here
         if not frame_dict:
+            log.info(f"{fits_file} had no stars, skipping")
             continue
 
         # Get JD from any star entry (all stars in frame share same JD)
