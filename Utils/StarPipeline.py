@@ -1408,6 +1408,10 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum, o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx = r
             name, c_ra, c_deg, c_mag, theta = query_results
 
+            if o_intens_sum <= 0:
+                log.info(f"Observation on {fits_file} at {o_x:.2f} {o_y:.2f} had an unrealistic intensity sum.")
+                continue
+
             if query_results == []:
                 continue
 
