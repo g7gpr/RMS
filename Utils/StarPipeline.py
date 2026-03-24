@@ -297,7 +297,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd,
     Write one full CALSTARS session to the database in a single transaction.
     """
 
-    log.info(f"Starting write for {session_name} with len{observation_rows} entries."}
+    log.info(f"Starting write for {session_name} with {len(observation_rows)} entries."}
 
     try:
         with conn.cursor() as cur:
