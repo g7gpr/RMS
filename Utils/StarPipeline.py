@@ -187,6 +187,9 @@ def buildFrameRows(observation_dict, session_name):
         frame_name = extractFrameName(fits_file)
         frame_index = extractFrameIndex(fits_file)
 
+        if not frame_dict:
+            continue
+
         # Get JD from any star entry (all stars in frame share same JD)
         first_star = next(iter(frame_dict.values()))
         jd_mid = scale1e6(first_star["jd"])
