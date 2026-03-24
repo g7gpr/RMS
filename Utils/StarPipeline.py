@@ -297,7 +297,11 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd,
     Write one full CALSTARS session to the database in a single transaction.
     """
 
-    log.info(f"Starting write for {session_name} with {len(observation_rows)} entries.")
+    observation_count = len(observation_rows)
+    log.info(f"Starting write for {session_name} with {observation_count} entries.")
+
+    if not observation_count:
+        return observation_count
 
     try:
         with conn.cursor() as cur:
@@ -351,6 +355,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd,
         conn.rollback()
         raise
 
+    return observation_count
 
 def ensureList(value):
     """Return: list containing value, or value itself if already a list."""
