@@ -311,7 +311,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd,
                 INSERT INTO session (session_name, station_id, start_jd, end_jd)
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT DO NOTHING;
-            """, (session_name, station_id, start_jd, end_jd))
+            """, (session_name, station_id, scale1e6(start_jd), scale1e6(end_jd)))
 
             # Insert frames
             cur.executemany("""
