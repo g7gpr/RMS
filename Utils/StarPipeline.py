@@ -1223,7 +1223,7 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
 
         if not isIngested(local_target):
             star_observations_processed = 0
-            dict_from_calstar = {}
+            observation_session_dict = {}
 
             if not write_db:
                 log.info(f"Data from {local_dir_name} not being written to database as writes not enabled.")
@@ -1235,7 +1235,7 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
                 session_name = extractSessionNameFromCalstar(local_calstars_path)
                 frame_rows, star_rows, observation_rows = buildAllRows(observation_session_dict, session_name)
 
-                writeSessionBatch(
+                star_observations_processed = writeSessionBatch(
                     conn,
                     session_name=session_name,
                     station_id=station_name,
@@ -1245,25 +1245,27 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
                     star_rows=star_rows,
                     observation_rows=observation_rows
                 )
-
+                star_observations_processed_this_station += star_observations_processed
 
                 markIngested(local_target)
-
 
             remote_file_end_time = time.perf_counter()
             time_elapsed = remote_file_end_time - remote_file_start_time
 
             if star_observations_processed != 0:
                 stars_observations_second = star_observations_processed / time_elapsed
-                fits_files_processed_this_station = len(dict_from_calstar)
-                fits_processed_per_seconds = fits_files_processed_this_station / time_elapsed
+
+                fits_in_this_session = len(frame_rows)
+                fits_files_processed_this_station += fits_in_this_session
+
+                fits_processed_per_second = fits_in_this_session / time_elapsed
                 # About one fits every 10 seconds at  - only observing for half of 24 hours so one every 20 seconds
                 fits_generated_per_second = 0.05
 
                 log.info(f"For {remote_file} processed {stars_observations_second:.0f} observations / second  and ")
-                log.info(f"                            {fits_processed_per_seconds:.0f} fits per second")
+                log.info(f"                            {fits_processed_per_second:.0f} fits per second")
 
-                no_of_cameras = fits_processed_per_seconds / fits_generated_per_second
+                no_of_cameras = fits_processed_per_second / fits_generated_per_second
                 log.info(f"From this iteration pipeline can support up to {no_of_cameras:.0f} cameras")
 
         # Put back in an archive if it has been ingested
@@ -1312,8 +1314,9 @@ def ingest(config, station_list, conn, country_code=None, calstars_data_dir=CALS
 
     for station in station_list:
 
-
-        processStation(station, remote_station_processed_dir, username, host, port, history_days, calstars_data_full_path, write_db=write_db)
+        star_observations_processed_this_station, fits_files_processed_this_station = \
+            processStation(station, remote_station_processed_dir, username, host, port, history_days, calstars_data_full_path, write_db=write_db)
+        total_fits_processed += fits_files_processed_this_station
         routine_elapsed_time = time.perf_counter() - routine_start_time
         total_fits_processed_per_second = total_fits_processed / routine_elapsed_time
         fits_generated_per_second = 0.06
