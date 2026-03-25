@@ -1353,16 +1353,16 @@ def moveFiles(local_target, path_source_list, path_local_list):
             files_available.append(os.path.basename(p_local))
     return files_available
 
-def markIngestedIfFilesMissing(path_local_list, files_available, local_target):
+def markIngestedIfFilesMissing(conn, path_local_list, files_available, local_target):
 
     for f in path_local_list:
         if os.path.basename(f) not in files_available and f != "mask.bmp":
             # Mark this folder as ingested so we don't waste time on it in future
             log.warning(f"Missing files for {os.path.basename(local_target)}: {f}")
-            markIngested(local_target)
+            markIngested(conn, local_target)
             continue
 
-def getFromRemote(host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path):
+def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path):
 
 
     parts = remote_file.split("_")
@@ -1422,7 +1422,7 @@ def getFromRemote(host, username, port, station_name, remote_dir, remote_file, c
         files_available = moveFiles(local_target, path_source_list, path_local_list)
 
         # If we are missing key files, then mark ingested - this is not beautiful
-        markIngestedIfFilesMissing(path_local_list, files_available, local_target)
+        markIngestedIfFilesMissing(conn, path_local_list, files_available, local_target)
 
 
     return local_config_path, local_platepar_path, local_recalibrated_path, calstars_name
@@ -1493,7 +1493,7 @@ def processStation(conn, station, remote_station_processed_dir, username, host, 
         # If we don't have a directory, then get from remote working in a temporary directory
         if not os.path.exists(os.path.join(calstars_data_full_path, local_dir_name)):
             log.info(f"Retrieving {remote_file} from {host}")
-            local_config_path, local_platepar_path, local_recalibrated_path, calstars_name = getFromRemote(host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path)
+            local_config_path, local_platepar_path, local_recalibrated_path, calstars_name = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path)
 
             if local_config_path is None:
                 log.info(f"Skipping {remote_file} because config file not available")
