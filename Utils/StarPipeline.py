@@ -14,7 +14,81 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+
+"""
+CALSTARS Database Schema (PostgreSQL)
+-------------------------------------
+
+All scaled numeric fields in this schema are scaled by 1e6.
+
+station
+-------
+station_id        CHAR(6) PRIMARY KEY
+name              TEXT
+notes             TEXT
+
+
+session - one session per calstars file
+---------------------------------------
+session_name      TEXT PRIMARY KEY - this is a reduced form of the CALSTARS file name
+station_id        CHAR(6) REFERENCES station(station_id)
+start_jd          BIGINT        -- scaled ×1e6
+end_jd            BIGINT        -- scaled ×1e6
+config_hash       CHAR(32)      -- pipeline/configuration hash
+comment           TEXT          -- free-form session notes
+
+
+frame - one frame per fits file
+-------------------------------
+frame_name        TEXT PRIMARY KEY - the fits file name
+session_name      TEXT REFERENCES session(session_name)
+jd_mid            BIGINT        -- scaled ×1e6
+frame_index       INTEGER
+quality_flags     SMALLINT      -- bitwise quality flags
+
+
+star
+----
+star_name         TEXT PRIMARY KEY - taken from the GMN star catalog
+ra                INTEGER       -- scaled ×1e6
+dec               INTEGER       -- scaled ×1e6
+mag               INTEGER       -- scaled ×1e6 (catalog magnitude)
+catalog_source    TEXT
+canonical_name    TEXT
+
+
+observation
+-----------
+obs_id            BIGSERIAL PRIMARY KEY
+frame_name        TEXT REFERENCES frame(frame_name)
+star_name         TEXT REFERENCES star(star_name)
+
+y                 INTEGER       -- pixel Y
+x                 INTEGER       -- pixel X
+intens_sum        INTEGER       -- scaled ×1e6
+ampltd            INTEGER       -- scaled ×1e6
+fwhm              INTEGER       -- scaled ×1e6
+bg_lvl            INTEGER       -- scaled ×1e6
+snr               INTEGER       -- scaled ×1e6
+nsatpx            SMALLINT
+
+mag               INTEGER       -- scaled ×1e6 (instrumental magnitude)
+mag_err           INTEGER       -- scaled ×1e6
+
+flags             SMALLINT      -- bitwise flags
+
+
+Notes
+-----
+- Only `obs_id` is a surrogate key; all other relationships use natural keys.
+- Ingestion uses ON CONFLICT DO NOTHING for idempotency.
+- Schema is intentionally minimal and integer-heavy for performance and scale.
+"""
+
+
+
 from __future__ import print_function, division, absolute_import
+
 
 import traceback
 import os
@@ -93,16 +167,24 @@ def createStationTable(conn):
 
 
 def createSessionTable(conn):
-    sql = """
-    CREATE TABLE IF NOT EXISTS session (
-        session_name    TEXT PRIMARY KEY,
-        station_id      CHAR(6) REFERENCES station(station_id),
-        start_jd        BIGINT,
-        end_jd          BIGINT,
-        config_hash     CHAR(32),
-        comment         TEXT
-    );
-    """
+
+
+
+    sql = """CREATE TABLE IF NOT EXISTS session (
+                session_id      SERIAL PRIMARY KEY,
+                session_name    TEXT NOT NULL UNIQUE,
+                station_id      TEXT NOT NULL,
+        
+                start_jd        INTEGER,
+                end_jd          INTEGER,
+        
+                pixel_scale_h   INTEGER,
+                pixel_scale_v   INTEGER,
+        
+                lat             INTEGER,
+                lon             INTEGER,
+                elevation       INTEGER);"""
+
     with conn.cursor() as cur:
         cur.execute(sql)
     conn.commit()
@@ -296,14 +378,22 @@ def extractFrameIndex(fits_file):
 
     return int(parts[4])
 
-def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd,
-                      frame_rows, star_rows, observation_rows):
+def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_scale_h, pixel_scale_v,
+                      frame_rows, star_rows, observation_rows, session_config=None):
     """
     Write one full CALSTARS session to the database in a single transaction.
     """
 
     observation_count = len(observation_rows)
     log.info(f"Starting write for {session_name} with {observation_count} entries.")
+
+    if session_config is None:
+        lat, lon, elevation = None, None, None
+    else:
+        lat = session_config.lat
+        lon = session_config.lon
+        elevation = session_config.elevation
+
 
     if not observation_count:
         return observation_count
@@ -319,15 +409,32 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd,
 
             # Insert session
             cur.execute("""
-                INSERT INTO session (session_name, station_id, start_jd, end_jd)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT DO NOTHING;
-            """, (session_name, station_id, scale1e6(start_jd), scale1e6(end_jd)))
+                        INSERT INTO session (session_name,
+                                             station_id,
+                                             start_jd,
+                                             end_jd,
+                                             pixel_scale_h,
+                                             pixel_scale_v,
+                                             lat,
+                                             lon,
+                                             elevation)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
+                        """, (
+                            session_name,
+                            station_id,
+                            scale1e6(start_jd),
+                            scale1e6(end_jd),
+                            scale1e6(pixel_scale_h),
+                            scale1e6(pixel_scale_v),
+                            scale1e6(lat),
+                            scale1e6(lon),
+                            scale1e6(ele)
+                        ))
 
             # Insert frames
             cur.executemany("""
                 INSERT INTO frame (frame_name, session_name, jd_mid, frame_index, quality_flags)
-                VALUES (%s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING;
             """, frame_rows)
 
@@ -860,15 +967,24 @@ def getStationList(url=STATION_COORDINATES_JSON, country_code=None):
         [list] station names.
     """
 
-    print("Downloading station list from {}".format(url))
-    station_list, stations_dict = [], json.loads(requests.get(url).content.decode('utf-8'))
 
-    for station in stations_dict:
+    log.info(f"Downloading station list from {url}")
+
+    response = requests.get(url)
+    response.raise_for_status()  # fail fast if the JSON is unreachable
+
+    stations_dict = response.json()
+    station_list = []
+
+    for station in stations_dict.keys():
+        station_lower = station.lower()
+
         if country_code is None:
             station_list.append(station)
         else:
-            if station.lower().startswith(country_code.lower()):
+            if station_lower.startswith(country_code.lower()):
                 station_list.append(station)
+
     return sorted(station_list)
 
 def filterByDate(files_list, earliest_date=None, latest_date=None, station=None):
@@ -897,7 +1013,8 @@ def filterByDate(files_list, earliest_date=None, latest_date=None, station=None)
     filtered_files_list = []
     for file in files_list:
 
-        if len(file.split("_")) != 5:
+        parts = file.split("_")
+        if len(parts) != 5:
             continue
 
         if station is not None:
@@ -905,11 +1022,20 @@ def filterByDate(files_list, earliest_date=None, latest_date=None, station=None)
                 log.info(f"Unexpected file {file}")
                 continue
 
-        date = file.split("_")[1]
-        time = file.split("_")[2]
-        year, month, day = int(date[0:4]), int(date[4:6]), int(date[6:8])
-        hour, minute, second = int(time[0:2]), int(time[2:4]), int(time[4:6])
-        file_date = datetime.datetime(year=year, month=month, day=day, hour=hour, minute=minute, second=second, tzinfo=datetime.timezone.utc)
+        try:
+            date = parts[1]
+            time = parts[2]
+            year, month, day = int(date[0:4]), int(date[4:6]), int(date[6:8])
+            hour, minute, second = int(time[0:2]), int(time[2:4]), int(time[4:6])
+
+            file_date = datetime.datetime(year=year, month=month, day=day, hour=hour, minute=minute, second=second,
+                                          tzinfo=datetime.timezone.utc)
+
+
+        except Exception:
+            log.warning(f"Skipping malformed filename: {file}")
+            continue
+
         if earliest_date < file_date < latest_date:
             filtered_files_list.append(file)
 
@@ -1060,18 +1186,27 @@ def initialiseDatabase(postgresql_host):
 
 def getRemoteFiles(username, host, port, remote_dir):
 
-
     remote_files = []
-    while not len(remote_files):
-        remote_files = sorted(lsRemote(host, username, port, remote_dir), reverse=True)
 
-        if len(remote_files):
-            break
+    while not remote_files:
+        try:
+            remote_files = sorted(
+                lsRemote(host, username, port, remote_dir),
+                reverse=True
+            )
+        except Exception as e:
+            log.warning(f"lsRemote failed for {host}:{remote_dir}: {e}")
+            remote_files = []
+
+        if remote_files:
+            return remote_files
+
         if connectionProblem(host):
             delay = random.randint(600, 900)
-            log.info(f"Detected a connection problem - waiting {delay / 60:.1f} minutes")
+            log.info(f"Connection problem for {host}, retrying in {delay/60:.1f} minutes")
             time.sleep(delay)
         else:
+            log.info(f"No remote files found in {remote_dir} for {host}")
             break
 
     return remote_files
@@ -1111,10 +1246,17 @@ def markIngestedIfFilesMissing(path_local_list, files_available, local_target):
     for f in path_local_list:
         if os.path.basename(f) not in files_available and f != "mask.bmp":
             # Mark this folder as ingested so we don't waste time on it in future
+            log.warning(f"Missing files for {os.path.basename(local_target)}: {f}")
             markIngested(local_target)
             continue
 
 def getFromRemote(host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path):
+
+
+    parts = remote_file.split("_")
+    if len(parts) < 4:
+        log.error(f"Unexpected remote filename format: {remote_file}")
+        return None, None, None, None
 
     local_dir_name = "_".join(remote_file.split("_")[0:4])
     calstars_name = f"CALSTARS_{local_dir_name}.txt"
@@ -1135,6 +1277,11 @@ def getFromRemote(host, username, port, station_name, remote_dir, remote_file, c
 
         # Create the expected paths for all the extracted files
         extracted_files_path = os.path.join(extraction_dir, station_name.lower(), remote_file.split(".")[0])
+
+        if not os.path.exists(extracted_files_path):
+            log.error(f"Extraction failed or unexpected structure: {extracted_files_path}")
+            return None, None, None, None
+
         extracted_config_path = os.path.join(extracted_files_path, ".config")
         extracted_platepar_path = os.path.join(extracted_files_path, config.platepar_name)
         extracted_mask_path = os.path.join(extracted_files_path, config.mask_file)
@@ -1236,7 +1383,9 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
 
             if write_db:
                 log.info(f"Ingesting {calstars_name}")
+                observation_session_config = cr.parse(local_config_path)
                 observation_session_dict, start_jd, end_jd = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
+                pixel_scale_h, pixel_scale_v = extractMedianPixelScale(observation_session_dict)
                 session_name = extractSessionNameFromCalstar(local_calstars_path)
                 frame_rows, star_rows, observation_rows = buildAllRows(observation_session_dict, session_name)
 
@@ -1246,9 +1395,12 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
                     station_id=station_name,
                     start_jd=start_jd,
                     end_jd=end_jd,
+                    pixel_scale_h=pixel_scale_h,
+                    pixel_scale_v=pixel_scale_v,
                     frame_rows=frame_rows,
                     star_rows=star_rows,
-                    observation_rows=observation_rows
+                    observation_rows=observation_rows,
+                    session_config=observation_session_config
                 )
                 star_observations_processed_this_station += star_observations_processed
 
@@ -1257,7 +1409,7 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
             remote_file_end_time = time.perf_counter()
             time_elapsed = remote_file_end_time - remote_file_start_time
 
-            if star_observations_processed != 0:
+            if star_observations_processed != 0 and fits_in_this_session != 0:
                 stars_observations_second = star_observations_processed / time_elapsed
 
                 fits_in_this_session = len(frame_rows)
@@ -1267,8 +1419,7 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
                 # About one fits every 10 seconds at  - only observing for half of 24 hours so one every 20 seconds
                 fits_generated_per_second = 0.05
 
-                log.info(f"For {remote_file} processed {stars_observations_second:.0f} observations / second  and ")
-                log.info(f"                            {fits_processed_per_second:.0f} fits per second")
+                log.info(f"For {remote_file} processed {stars_observations_second:.0f} obs/sec {fits_processed_per_second:.0f} fits/sec")
 
                 no_of_cameras = fits_processed_per_second / fits_generated_per_second
                 log.info(f"From this iteration pipeline can support up to {no_of_cameras:.0f} cameras")
@@ -1330,6 +1481,24 @@ def ingest(config, station_list, conn, country_code=None, calstars_data_dir=CALS
         faster_than_real_time = total_fits_processed_per_second / fits_generated_per_second
         log.info(f"Pipeline can support up to {faster_than_real_time:.0f} cameras")
 
+
+
+def extractMedianPixelScale(observation_dict):
+    pixel_scale_h_values = []
+    pixel_scale_v_values = []
+
+    for frame in observation_dict.values():
+        for obs in frame.values():
+            pixel_scale_h_values.append(obs["pixel_scale_h"])
+            pixel_scale_v_values.append(obs["pixel_scale_v"])
+
+    median_h = float(np.median(pixel_scale_h_values))
+    median_v = float(np.median(pixel_scale_v_values))
+
+    return median_h, median_v
+
+
+
 def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path):
     """
       Parses a calstar data structures in archived directories path,
@@ -1364,10 +1533,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     fits_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
 
-    pixel_scale_h = pp.fov_h / pp.X_res
-    pixel_scale_v = pp.fov_v / pp.Y_res
-    pixel_scale = max(pixel_scale_h, pixel_scale_v)
-    radius_deg = pixel_scale * 3
+
 
     dt = FFfile.getMiddleTimeFF(calstar[0][0], observation_config.fps, ret_milliseconds=True, ff_frames=256)
     start_jd = date2JD(*dt)
@@ -1389,6 +1555,11 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             # log.info(f"Reading in new platepar for {fits_file}")
             # If we have a platepar in pp_recal then use it, else just use the uncalibrated platepar
             pp.loadFromDict(pp_recal_json[fits_file])
+
+        pixel_scale_h = pp.fov_h / pp.X_res
+        pixel_scale_v = pp.fov_v / pp.Y_res
+        pixel_scale = max(pixel_scale_h, pixel_scale_v)
+        radius_deg = pixel_scale * 3
 
         # Extract stars for the given Julian date
         if jd in star_dict:
@@ -1472,7 +1643,11 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
                 "fwhm": o_fwhm,
                 "bg_lvl": o_bg_lvl,
                 "snr": o_snr,
-                "nsatpx": o_nsatpx
+                "nsatpx": o_nsatpx,
+
+                # Pixel scaling
+                "pixel_scale_h": pixel_scale_h,
+                "pixel_scale_v": pixel_scale_v
             }
 
         observation_dict[fits_file] = frame_dict
@@ -1585,6 +1760,9 @@ if __name__ == "__main__":
     # initialiseDatabase(postgresql_host = postgresql_host)
 
     calstars_directory_path = os.path.join(config.data_dir, CALSTARS_DATA_DIR)
+
+    if not os.path.exists(calstars_directory_path):
+        Path(calstars_directory_path).mkdir(parents=True, exist_ok=True)
 
     directories_list = os.listdir(calstars_directory_path)
 
