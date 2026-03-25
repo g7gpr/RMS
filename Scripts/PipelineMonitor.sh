@@ -3,7 +3,7 @@
 # --- Defaults ---
 DB="star_data"
 USER="ingest_user"
-HOST="localhost"   # default, overridden by --host
+HOST="localhost"   # override with --host
 
 # --- Parse parameters ---
 while [[ "$1" =~ ^-- ]]; do
@@ -48,13 +48,13 @@ latest_sessions() {
 frame_counts() {
     echo "${BLUE}=== Frame Counts ===${RESET}"
     run "
-SELECT s.station_name,
-       COUNT(f.frame_id) AS frames
-FROM frame f
-JOIN session ss ON f.session_id = ss.session_id
-JOIN station s ON ss.station_id = s.station_id
-GROUP BY s.station_name
-ORDER BY s.station_name;
+        SELECT s.name AS station_name,
+               COUNT(f.frame_name) AS frames
+        FROM frame f
+        JOIN session ss ON f.session_name = ss.session_name
+        JOIN station s ON ss.station_id = s.station_id
+        GROUP BY s.name
+        ORDER BY s.name;
     "
 }
 
@@ -63,7 +63,7 @@ obs_counts() {
     echo "${BLUE}=== Observation Counts ===${RESET}"
     run "
         SELECT session_id, COUNT(*) AS observations
-        FROM star_observations
+        FROM observation
         GROUP BY session_id
         ORDER BY session_id DESC;
     "
