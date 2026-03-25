@@ -1304,7 +1304,7 @@ def initialiseDatabase(postgresql_host):
         createCalstarFilesTable(conn)
     return
 
-def getRemoteFiles(username, host, port, remote_dir):
+def getRemoteFiles(username, host, port, remote_dir, delay_retry=True):
 
     remote_files = []
 
@@ -1322,8 +1322,11 @@ def getRemoteFiles(username, host, port, remote_dir):
             return remote_files
 
         if connectionProblem(host):
+            if not delay_retry:
+                log.info(f"Connection problem for {host}, not delaying")
+                break
             delay = random.randint(600, 900)
-            log.info(f"Connection problem for {host}, retrying in {delay/60:.1f} minutes")
+
             time.sleep(delay)
         else:
             log.info(f"No remote files found in {remote_dir} for {host}")
@@ -1473,7 +1476,7 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
 
 
     remote_dir = remote_station_processed_dir.replace("stationID", station.lower())
-    remote_files = getRemoteFiles(username, host, port, remote_dir)
+    remote_files = getRemoteFiles(username, host, port, remote_dir, delay_retry=False)
     remote_files = filterByDate(remote_files, earliest_date=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=history_days), station=station)
     fits_files_processed_this_station, star_observations_processed_this_station = 0, 0
     log.info(f"For station:{station} {len(remote_files)} files to process")
