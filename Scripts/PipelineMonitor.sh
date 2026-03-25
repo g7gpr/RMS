@@ -62,10 +62,13 @@ frame_counts() {
 obs_counts() {
     echo "${BLUE}=== Observation Counts ===${RESET}"
     run "
-        SELECT session_id, COUNT(*) AS observations
-        FROM observation
-        GROUP BY session_id
-        ORDER BY session_id DESC;
+SELECT ss.session_id,
+       COUNT(*) AS observations
+FROM observation o
+JOIN frame f ON o.frame_name = f.frame_name
+JOIN session ss ON f.session_name = ss.session_name
+GROUP BY ss.session_id
+ORDER BY ss.session_id DESC;
     "
 }
 
