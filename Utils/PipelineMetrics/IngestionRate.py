@@ -16,10 +16,10 @@ def loadState():
             return None
     return None
 
-def saveState(count, timestamp):
+def saveState(initialCount, initialTime):
     STATE_FILE.write_text(json.dumps({
-        "count": count,
-        "timestamp": timestamp
+        "initial_count": initialCount,
+        "initial_time": initialTime
     }))
 
 def framesPerSecond():
@@ -27,17 +27,19 @@ def framesPerSecond():
     nowTime = time.time()
 
     state = loadState()
+
     if state is None:
+        # First run — initialise baseline
         saveState(nowCount, nowTime)
         return 0.0
 
-    prevCount = state["count"]
-    prevTime = state["timestamp"]
+    initialCount = state["initial_count"]
+    initialTime = state["initial_time"]
 
-    deltaFrames = nowCount - prevCount
-    deltaTime = nowTime - prevTime
+    deltaFrames = nowCount - initialCount
+    deltaTime = nowTime - initialTime
 
-    fps = deltaFrames / deltaTime if deltaTime > 0 else 0.0
+    if deltaTime <= 0:
+        return 0.0
 
-    saveState(nowCount, nowTime)
-    return fps
+    return deltaFrames / deltaTime
