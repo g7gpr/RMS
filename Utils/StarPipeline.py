@@ -1366,10 +1366,14 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
 
     # This loop processes files held locally - the remote files is used to create the local file names
     for remote_file in remote_files:
+
+        fits_in_this_session = 0
+
         remote_file_start_time = time.perf_counter()
         file_type = getFileType(remote_file)
         if file_type != "metadata" and file_type != "detected":
             continue
+
 
         station_name = remote_file.split("_")[0]
         local_dir_name = "_".join(remote_file.split("_")[0:4])
@@ -1402,9 +1406,11 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
                 log.info(f"Ingesting {calstars_name}")
                 observation_session_config = cr.parse(local_config_path)
                 observation_session_dict, start_jd, end_jd = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
+
                 pixel_scale_h, pixel_scale_v = extractMedianPixelScale(observation_session_dict)
                 session_name = extractSessionNameFromCalstar(local_calstars_path)
                 frame_rows, star_rows, observation_rows = buildAllRows(observation_session_dict, session_name)
+                fits_in_this_session = len(frame_rows)
 
                 star_observations_processed = writeSessionBatch(
                     conn,
@@ -1426,10 +1432,10 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
             remote_file_end_time = time.perf_counter()
             time_elapsed = remote_file_end_time - remote_file_start_time
 
+
             if star_observations_processed != 0 and fits_in_this_session != 0:
                 stars_observations_second = star_observations_processed / time_elapsed
 
-                fits_in_this_session = len(frame_rows)
                 fits_files_processed_this_station += fits_in_this_session
 
                 fits_processed_per_second = fits_in_this_session / time_elapsed
