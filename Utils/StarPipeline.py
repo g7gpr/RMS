@@ -810,32 +810,23 @@ def dropTable(conn, table_name):
         cur.execute(sql_command)
     conn.commit()
 
+
 def recordCalstarFileIngested(conn, file_name):
-    """Into CALSTAR_FILES_TABLE_NAME insert file_name and the time of ingestion
+    ingestion_time = int(time.time() * 1_000_000)
 
-    Arguemnts:
-        conn: [object] Connection to database.
-        file_name: [string] Name of the file.
-
-    Returns:
-        Nothing.
+    sql = """
+        INSERT INTO calstar_files (file_name, ingestion_time)
+        VALUES (%s, %s)
+        ON CONFLICT (file_name)
+        DO UPDATE SET ingestion_time = EXCLUDED.ingestion_time;
     """
 
-    ingestion_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    sql_command = ""
-    sql_command += f"INSERT INTO {CALSTAR_FILES_TABLE_NAME} (file_name, ingestion_time)\n"
-    sql_command += "VALUES (%s, %s)\n"
-    sql_command += "ON CONFLICT (file_name)\n"
-    sql_command += "DO UPDATE SET ingestion_time = EXCLUDED.ingestion_time;"
-
-    #log.info(f"Recording {file_name} as ingested in database")
-    #log.info(f"Executing sql command {sql_command}")
-
     with conn.cursor() as cur:
-        cur.execute(sql_command, (file_name, ingestion_time))
-        conn.commit()
+        cur.execute(sql, (file_name, ingestion_time))
+    conn.commit()
 
-def markIngested(directory_path):
+
+def markIngested(conn, directory_path):
     """Save the ingested marker file into the folder_path.
 
     Arguments:
@@ -844,6 +835,9 @@ def markIngested(directory_path):
     Returns:
         Nothing.
     """
+
+    calstar_filename = buildCalstarFilename(directory_path)
+    recordCalstarFileIngested(conn, calstar_filename)
     directory_path = Path(directory_path)
     marker_file = directory_path / ".ingested"
     log.info(f"Marked {os.path.basename(directory_path)} as ingested")
