@@ -139,7 +139,7 @@ Notes
 
 
 
-
+import inspect
 import traceback
 import os
 import tempfile
@@ -202,6 +202,10 @@ CALSTAR_FILES_TABLE_NAME = "calstar_files"
 STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
 CHARTS = "charts"
 PORT = 22
+
+
+
+
 
 def createStationTable(conn):
     sql = """
@@ -1829,6 +1833,7 @@ def resetIngestion(local_calstars_path, ingestion_marker):
                 os.unlink(os.path.join(calstar_path, ingestion_marker))
             archiveCalstarDirectories(local_calstars_path, [os.path.basename(calstar_path)], ingested_only=False)
             pass
+
 
 if __name__ == "__main__":
 

@@ -116,12 +116,22 @@ ingestion_rate() {
     echo "$NOW" > /tmp/ingest_prev
 }
 
+total_obs() {
+    echo "${BLUE}=== Total Observations ===${RESET}"
+    run "
+        SELECT COUNT(*) AS total_observations
+        FROM observation;
+    "
+}
+
+
 # --- Dashboard ---
 dashboard() {
     clear
     latest_sessions
     frame_counts
-    obs_counts
+    #obs_counts
+    total_obs
     latest_detail
     anomalies
     ingestion_rate
