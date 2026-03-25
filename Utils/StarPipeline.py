@@ -17,7 +17,6 @@
 
 from __future__ import print_function, division, absolute_import
 
-
 """
 Database configuration instructions
 
@@ -46,10 +45,10 @@ CREATE SCHEMA public AUTHORIZATION postgres;
 
 GRANT CREATE ON SCHEMA public TO ingest_user;
 GRANT CREATE ON DATABASE star_data TO ingest_user;
+GRANT USAGE  ON SCHEMA public TO ingest_user;
 
 \q
 """
-
 
 """
 CALSTARS Database Schema (PostgreSQL)
@@ -312,23 +311,36 @@ def createAllTables(conn):
 
 
 def scale1e6(value):
+    # Pass through None
+    if value is None:
+        return None
+
+    # Pass through NaN or infinities
+    try:
+        if not np.isfinite(value):
+            return None
+    except Exception:
+        # Non-numeric types → pass through unchanged
+        return None
+
+    # Normal numeric case
     return int(round(value * 1_000_000))
 
 def buildFrameRows(observation_dict, session_name):
     frame_rows = []
 
-    for fits_file, frame_dict in observation_dict.items():
+    for fits_file, frame_list in observation_dict.items():
         frame_name = extractFrameName(fits_file)
         frame_index = extractFrameIndex(fits_file)
 
         # If there are no stars, then do no more work here
-        if not frame_dict:
+        if not frame_list:
             log.info(f"{fits_file} had no stars, skipping")
             continue
 
         # Get JD from any star entry (all stars in frame share same JD)
-        first_star = next(iter(frame_dict.values()))
-        jd_mid = scale1e6(first_star["jd"])
+        first_obs = frame_list[0]
+        jd_mid = scale1e6(first_obs["jd"])
 
         quality_flags = 0  # placeholder for now
 
@@ -342,46 +354,54 @@ def buildFrameRows(observation_dict, session_name):
 
     return frame_rows
 
+
+
 def buildStarRows(observation_dict):
     star_set = set()
 
-    for frame_dict in observation_dict.values():
-        for star_name, d in frame_dict.items():
+    for frame_list in observation_dict.values():
+        for obs in frame_list:
+            if obs["name"] is None:
+                # This is an unmatched detection — do NOT insert into star table
+                continue
             star_set.add((
-                star_name,
-                scale1e6(d["cat_ra"]),
-                scale1e6(d["cat_deg"]),
-                scale1e6(d["cat_mag"]),
+                obs["name"],
+                scale1e6(obs["cat_ra"]),
+                scale1e6(obs["cat_dec"]),
+                scale1e6(obs["cat_mag"]),
                 "RMS",
                 None
             ))
 
     return list(star_set)
 
+
 def buildObservationRows(observation_dict):
     observation_rows = []
 
-    for fits_file, frame_dict in observation_dict.items():
+    for fits_file, frame_list in observation_dict.items():
         frame_name = extractFrameName(fits_file)
 
-        for star_name, d in frame_dict.items():
+        # frame_list is now a list of observation dicts
+        for obs in frame_list:
             observation_rows.append((
                 frame_name,
-                star_name,
-                scale1e6(d["obs_y"]),
-                scale1e6(d["obs_x"]),
-                d["intens_sum"],
-                d["ampltd"],
-                scale1e6(d["fwhm"]),
-                d["bg_lvl"],
-                scale1e6(d["snr"]),
-                d["nsatpx"],
-                scale1e6(d["obs_mag"]),
-                scale1e6(d["err_mag"]),
+                obs["name"],
+                scale1e6(obs["obs_y"]),
+                scale1e6(obs["obs_x"]),
+                obs["intens_sum"],
+                obs["ampltd"],
+                scale1e6(obs["fwhm"]),
+                obs["bg_lvl"],
+                scale1e6(obs["snr"]),
+                obs["nsatpx"],
+                scale1e6(obs["obs_mag"]),
+                scale1e6(obs["err_mag"]),
                 0  # flags
             ))
 
     return observation_rows
+
 
 def buildAllRows(observation_dict, session_name):
     frame_rows = buildFrameRows(observation_dict, session_name)
@@ -1431,7 +1451,7 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
 
         if not isIngested(local_target):
             star_observations_processed = 0
-            observation_session_dict = {}
+
 
             if not write_db:
                 log.info(f"Data from {local_dir_name} not being written to database as writes not enabled.")
@@ -1546,7 +1566,7 @@ def extractMedianPixelScale(observation_dict):
     pixel_scale_v_values = []
 
     for frame in observation_dict.values():
-        for obs in frame.values():
+        for obs in frame:
             pixel_scale_h_values.append(obs["pixel_scale_h"])
             pixel_scale_v_values.append(obs["pixel_scale_v"])
 
@@ -1561,8 +1581,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     """
       Parses a calstar data structures in archived directories path,
       converts to RaDec, corrects magnitude data and writes newer data to database
-
-      """
+    """
 
     observation_config = cr.parse(local_config_path)
     calstars_name = os.path.basename(local_calstars_path)
@@ -1570,7 +1589,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     calstar, chunk = readCALSTARS(os.path.dirname(local_calstars_path), calstars_name)
 
     if os.path.exists(local_recal_path):
-
         with open(local_recal_path, 'r') as fh:
             pp_recal_json = json.load(fh)
             log.info(f"Read {os.path.basename(local_recal_path)}")
@@ -1580,8 +1598,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     pp = Platepar()
     star_dict = starListToDict(observation_config, [calstar, chunk])
 
-
-    # If the star dict is empty then this was a poor observation session
     if not len(star_dict):
         return {}, None, None
 
@@ -1591,8 +1607,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     fits_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
 
-
-
     dt = FFfile.getMiddleTimeFF(calstar[0][0], observation_config.fps, ret_milliseconds=True, ff_frames=256)
     start_jd = date2JD(*dt)
 
@@ -1601,7 +1615,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     for fits_file, star_list in calstar:
         fits_station_id = fits_file.split('_')[1]
-        frame_dict = {}
+
 
         dt = FFfile.getMiddleTimeFF(fits_file, observation_config.fps, ret_milliseconds=True, ff_frames=256)
         jd = date2JD(*dt)
@@ -1610,8 +1624,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             log.warning("Platepar mismatch")
 
         if fits_file in pp_recal_json:
-            # log.info(f"Reading in new platepar for {fits_file}")
-            # If we have a platepar in pp_recal then use it, else just use the uncalibrated platepar
             pp.loadFromDict(pp_recal_json[fits_file])
 
         pixel_scale_h = pp.fov_h / pp.X_res
@@ -1619,17 +1631,14 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         pixel_scale = max(pixel_scale_h, pixel_scale_v)
         radius_deg = pixel_scale * 3
 
-        # Extract stars for the given Julian date
         if jd in star_dict:
             stars_list = star_dict[jd]
             stars_list = np.array(stars_list)
         else:
             continue
 
-        # If the type is not float, it means something went wrong, so skip this
         if not (stars_list.dtype == np.float64):
             continue
-
 
         stars = np.array(stars_list)
 
@@ -1638,64 +1647,95 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
         arr_jd = np.full_like(arr_obs_x, jd, dtype=float)
 
-        _arr_jd, arr_obs_ra, arr_obs_dec, arr_obs_mag = \
-                                xyToRaDecPP(arr_jd, arr_obs_x, arr_obs_y, arr_obs_intensity_sum, pp,
-                                            jd_time=True,  measurement=True, precompute_pointing_corr=True, extinction_correction=True)
+        _arr_jd, arr_obs_ra, arr_obs_dec, arr_obs_mag = xyToRaDecPP(
+            arr_jd, arr_obs_x, arr_obs_y, arr_obs_intensity_sum, pp,
+            jd_time=True, measurement=True, precompute_pointing_corr=True, extinction_correction=True
+        )
 
-        results_list = cat.queryRaDec(arr_obs_ra, arr_obs_dec, n_brightest=1, radius_deg=radius_deg)
+        results_list = cat.queryRaDec(
+            arr_obs_ra,
+            arr_obs_dec,
+            n_brightest=1,
+            radius_deg=radius_deg
+        )
 
 
-        arr_obs_az, arr_obs_alt = raDec2AltAz(arr_obs_ra, arr_obs_dec, arr_jd, observation_config.latitude, observation_config.longitude)
-        for r in zip(results_list, arr_obs_ra, arr_obs_dec, arr_obs_mag, arr_obs_x, arr_obs_y, arr_obs_intensity_sum, arr_obs_az, arr_obs_alt,
-                                            arr_ampltd, arr_fwhm, arr_bg_lvl, arr_snr, arr_nsatpx):
+        """
+        # Debugging hook
+        for i, entry in enumerate(results_list):
+            if entry is None:
+                #print(f"Unmatched detection at index {i}")
+                pass
+        """
 
-            query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum, o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx = r
-            name, c_ra, c_deg, c_mag, theta = query_results
+
+        arr_obs_az, arr_obs_alt = raDec2AltAz(
+            arr_obs_ra,
+            arr_obs_dec,
+            arr_jd,
+            observation_config.latitude,
+            observation_config.longitude
+        )
+        frame_list = []
+
+        for i, (query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum,
+                o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx) in enumerate(zip(
+            results_list,
+            arr_obs_ra,
+            arr_obs_dec,
+            arr_obs_mag,
+            arr_obs_x,
+            arr_obs_y,
+            arr_obs_intensity_sum,
+            arr_obs_az,
+            arr_obs_alt,
+            arr_ampltd,
+            arr_fwhm,
+            arr_bg_lvl,
+            arr_snr,
+            arr_nsatpx
+        )):
 
             if o_intens_sum <= 0:
-                log.info(f"Observation from session {calstars_name} on {fits_file} at {o_x:.2f} {o_y:.2f} had an unrealistic intensity sum.")
+                log.info(
+                    f"Observation from session {calstars_name} on {fits_file} "
+                    f"at {o_x:.2f} {o_y:.2f} had an unrealistic intensity sum."
+                )
                 continue
 
-            if query_results == []:
-                continue
+            # Matched vs unmatched
+            if query_results is None:
+                name = None
+                c_ra = None
+                c_dec = None
+                c_mag = None
+                theta = None
+            else:
+                name, c_ra, c_dec, c_mag, theta = query_results[0]
 
-            # Detect the same star appearing in two places
-            duplicate_counter = 1
-            while name in frame_dict:
-                #log.error(f"Duplicate catalogue star {name} in {fits_file} at image coordinates x:{o_x:.1f}, r:{o_y:.1f} sky coordinates RA:{o_ra:.2f} DEC:{o_dec:.2f}")
-                #log.error(f"Initial / this observations {frame_dict[name]['obs_mag']:.2f} / {o_mag:.2f}")
-                name = f"{name}_duplicate_{duplicate_counter:03d}"
-                #log.error(f"Storing as {name}")
-                duplicate_counter += 1
+            mag_err = None if c_mag is None else (o_mag - c_mag)
 
-            # Compute magnitude error
-            mag_err = o_mag - c_mag
-
-            frame_dict[name] = {
+            frame_list.append({
+                "name": name,
                 "jd": float(jd),
                 "stationID": fits_station_id.upper(),
 
-                # catalogue
                 "cat_ra": c_ra,
-                "cat_deg": c_deg,
+                "cat_dec": c_dec,
                 "cat_mag": c_mag,
 
-                # observed astrometry (not stored in DB)
                 "obs_ra": o_ra,
                 "obs_dec": o_dec,
                 "theta": theta,
                 "obs_az": o_az,
                 "obs_alt": o_alt,
 
-                # observed photometry
                 "obs_mag": o_mag,
                 "err_mag": mag_err,
 
-                # pixel coordinates
                 "obs_x": o_x,
                 "obs_y": o_y,
 
-                # CALSTARS raw fields (renamed to match DB schema)
                 "intens_sum": o_intens_sum,
                 "ampltd": o_ampltd,
                 "fwhm": o_fwhm,
@@ -1703,24 +1743,19 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
                 "snr": o_snr,
                 "nsatpx": o_nsatpx,
 
-                # Pixel scaling
                 "pixel_scale_h": pixel_scale_h,
                 "pixel_scale_v": pixel_scale_v
-            }
+            })
 
-        observation_dict[fits_file] = frame_dict
-        pass
-
-
-
+        observation_dict[fits_file] = frame_list
 
     fits_end_time = datetime.datetime.now(tz=datetime.timezone.utc)
     elapsed_seconds = (fits_end_time - fits_start_time).total_seconds()
     fits_count = len(observation_dict)
     log.info(f"Read {calstars_name} at {fits_count / elapsed_seconds:.1f} fits / second")
 
-
     return observation_dict, start_jd, end_jd
+
 
 def resetIngestion(local_calstars_path, ingestion_marker):
 

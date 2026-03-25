@@ -96,6 +96,60 @@ class Catalog:
 
     def queryRaDec(self, ra_deg, dec_deg, radius_deg=0.1, n_brightest=1):
         """
+        KD-tree search for RA/Dec coordinates.
+
+        Always returns a list of length N (one per detection):
+            None  -> no match
+            [ [name, ra, dec, mag, theta], ... ]  -> matches
+        """
+
+        # Normalize inputs to arrays of radians
+        ra_deg, dec_deg = np.atleast_1d(ra_deg), np.atleast_1d(dec_deg)
+        ra, dec = np.radians(ra_deg), np.radians(dec_deg)
+
+        # Build query vectors
+        query_vectors = np.column_stack((
+            np.cos(dec) * np.cos(ra),
+            np.cos(dec) * np.sin(ra),
+            np.sin(dec)
+        ))
+
+        # Euclidean chord distance for spherical radius
+        ecd = 2 * np.sin(np.radians(radius_deg) / 2)
+
+        results = []
+
+        for qvec, ra0, dec0 in zip(query_vectors, ra_deg, dec_deg):
+
+            idx = np.array(self.tree.query_ball_point(qvec, ecd), dtype=int)
+
+            if len(idx) == 0:
+                results.append(None)
+                continue
+
+            mags = self.cat[idx, self.mag_col]
+            chosen = idx[np.argsort(mags)[:n_brightest]]
+
+            names = [x.decode("utf-8", errors="replace").strip() for x in self.names[chosen]]
+            ras = [float(x) for x in self.cat[chosen, self.ra_col]]
+            decs = [float(x) for x in self.cat[chosen, self.dec_col]]
+            mags = [float(x) for x in self.cat[chosen, self.mag_col]]
+
+            thetas = angularSeparationDeg(ra0, dec0, ras, decs)
+            thetas = [float(t) for t in thetas]
+
+            matched = [
+                [names[i], ras[i], decs[i], mags[i], thetas[i]]
+                for i in range(len(names))
+            ]
+
+            results.append(matched)
+
+        # ⭐ Always return a list, even for scalar input
+        return results
+
+    def queryRaDecOld(self, ra_deg, dec_deg, radius_deg=0.1, n_brightest=1):
+        """
         Tree search for RA/Dec coordinates, search is in a Euclidean space.
 
         Returns:
@@ -155,11 +209,7 @@ class Catalog:
         if len(ra_deg) == 1:
             return results[0]
 
-        # Multi-input -> flatten one level
-        flat = []
-        for block in results:
-            flat.extend(block)
-        return flat
+        return results
 
 
 
