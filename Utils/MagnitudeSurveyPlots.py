@@ -3,8 +3,9 @@ import matplotlib.pyplot as plt
 import psycopg
 
 # Your integer scaling factor
-SCALE_OUT = 1.0 / 1_000_000.0
 
+SCALE_IN = 1_000_000.0
+SCALE_OUT = 1.0 / SCALE_IN
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -65,32 +66,33 @@ def plotGlobalHeatmap(ra_array, dec_array):
 
 def fetchCoincidenceFilteredSkyPoints(conn):
     sql = """
-        WITH obs AS (
-            SELECT 
-                o.ra,
-                o.dec,
-                s.station_id,
-                (f.jd_mid * 86400.0) AS t
-            FROM observation o
-            JOIN frame f ON o.frame_name = f.frame_name
-            JOIN session ss ON f.session_name = ss.session_name
-            JOIN station s ON ss.station_id = s.station_id
-        ),
-        coinc AS (
-            SELECT 
-                o1.ra,
-                o1.dec,
-                COUNT(DISTINCT o2.station_id) AS stations_seen
-            FROM obs o1
-            JOIN obs o2
-              ON ABS(o1.t - o2.t) <= 10.24
-             AND ABS(o1.ra - o2.ra) <= 100000
-             AND ABS(o1.dec - o2.dec) <= 100000
-            GROUP BY o1.ra, o1.dec
-        )
-        SELECT ra, dec
-        FROM coinc
-        WHERE stations_seen >= 3;
+            WITH obs AS (
+                SELECT 
+                    st.ra,
+                    st.dec,
+                    ss.station_id,
+                    (f.jd_mid * 86400.0) AS t
+                FROM observation o
+                JOIN star st ON o.star_name = st.star_name
+                JOIN frame f ON o.frame_name = f.frame_name
+                JOIN session ss ON f.session_name = ss.session_name
+            ),
+            coinc AS (
+                SELECT 
+                    o1.ra,
+                    o1.dec,
+                    COUNT(DISTINCT o2.station_id) AS stations_seen
+                FROM obs o1
+                JOIN obs o2
+                  ON ABS(o1.t - o2.t) <= 10.24
+                 AND ABS(o1.ra - o2.ra) <= 100000      -- 0.1° scaled by 1e6
+                 AND ABS(o1.dec - o2.dec) <= 100000    -- 0.1° scaled by 1e6
+                GROUP BY o1.ra, o1.dec
+            )
+            SELECT ra, dec
+            FROM coinc
+            WHERE stations_seen >= 3;
+
     """
 
     with conn.cursor() as cur:
@@ -101,8 +103,8 @@ def fetchCoincidenceFilteredSkyPoints(conn):
         return np.array([]), np.array([])
 
     # Convert from scaled integers to degrees
-    ra_array = np.array([row[0] / 1_000_000 for row in rows], dtype=float)
-    dec_array = np.array([row[1] / 1_000_000 for row in rows], dtype=float)
+    ra_array = np.array([row[0] * SCALE_OUT for row in rows], dtype=float)
+    dec_array = np.array([row[1] * SCALE_OUT for row in rows], dtype=float)
 
     return ra_array, dec_array
 
@@ -257,7 +259,8 @@ if __name__ == "__main__":
 
     )
     with psycopg.connect(conn_str) as conn:
-        runBrightStarDiagnostic(conn, mag_limit=4.0)
-
+        #runBrightStarDiagnostic(conn, mag_limit=4.0)
+        ra_array, dec_array = fetchCoincidenceFilteredSkyPoints(conn)
+        plotGlobalHeatmap(ra_array, dec_array)
 
 

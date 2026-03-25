@@ -217,6 +217,18 @@ def createStationTable(conn):
     conn.commit()
 
 
+def createCalstarFilesTable(conn):
+    sql = """
+        CREATE TABLE IF NOT EXISTS calstar_files (
+            file_name       TEXT PRIMARY KEY,
+            ingestion_time  BIGINT
+        );
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql)
+    conn.commit()
+
+
 def createSessionTable(conn):
 
 
@@ -308,7 +320,7 @@ def createAllTables(conn):
     createFrameTable(conn)
     createStarTable(conn)
     createObservationTable(conn)
-
+    createCalstarFilesTable(conn)
 
 def scale1e6(value):
     # Pass through None
@@ -837,7 +849,7 @@ def markIngested(directory_path):
     log.info(f"Marked {os.path.basename(directory_path)} as ingested")
     marker_file.touch()
 
-def isIngested(directory_path):
+def isIngestedFromFileSystem(directory_path):
     """If the folder_path contains the ingested file marker, return True.
 
     Arguments:
@@ -853,6 +865,42 @@ def isIngested(directory_path):
         return True
     else:
         return False
+
+
+def isIngestedFromDB(conn,file_name):
+
+    sql = "SELECT 1 FROM calstar_files WHERE file_name = %s;"
+
+    with conn.cursor() as cur:
+        cur.execute(sql, (file_name,))
+        return cur.fetchone() is not None
+
+
+def buildCalstarFilename(calstar_directory_path):
+    base = os.path.basename(calstar_directory_path)
+    parts = base.split("_")
+
+    # Expecting: YYYYMMDD_HHMMSS_STATIONID_SEQUENCE
+    # Produces:  CALSTARS_YYYYMMDD_HHMMSS_STATIONID_SEQUENCE
+    return f"CALSTARS_{parts[0]}_{parts[1]}_{parts[2]}_{parts[3]}"
+
+
+
+def isIngested(conn, calstar_directory_path):
+    calstar_filename = buildCalstarFilename(calstar_directory_path)
+    log.info(f"Checking ingestion status for {calstar_filename}")
+
+    # Primary guard: database
+    if isIngestedFromDB(conn, calstar_filename):
+        log.info(f"Ingested in DB record: {calstar_filename}")
+        return True
+
+    # Secondary guard: filesystem marker
+    if isIngestedFromFileSystem(calstar_directory_path):
+        log.warning(f"Ingested in filesystem marker but not in DB: {calstar_filename}")
+        return True
+
+    return False
 
 def dictInvert(d):
     """Given a nested dictionary with keys [a][b] return the nested dictionary with keys [b][a].
@@ -1467,7 +1515,7 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
                 log.info(f"Skipping {remote_file} because config file not available")
                 continue
 
-        if not isIngested(local_target):
+        if not isIngestedFromFileSystem(local_target):
             star_observations_processed = 0
 
 
