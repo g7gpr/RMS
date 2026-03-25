@@ -1449,7 +1449,7 @@ def extractSessionNameFromCalstar(calstars_path):
     return f"{station_id}_{date}_{time}"
 
 
-def processStation(station, remote_station_processed_dir, username, host, port, history_days, calstars_data_full_path, write_db=True):
+def processStation(conn, station, remote_station_processed_dir, username, host, port, history_days, calstars_data_full_path, write_db=True):
 
 
     remote_dir = remote_station_processed_dir.replace("stationID", station.lower())
@@ -1531,7 +1531,7 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
                 )
                 star_observations_processed_this_station += star_observations_processed
 
-                markIngested(local_target)
+                markIngested(conn, local_target)
 
             remote_file_end_time = time.perf_counter()
             time_elapsed = remote_file_end_time - remote_file_start_time
@@ -1598,7 +1598,7 @@ def ingest(config, station_list, conn, country_code=None, calstars_data_dir=CALS
     for station in station_list:
 
         star_observations_processed_this_station, fits_files_processed_this_station = \
-            processStation(station, remote_station_processed_dir, username, host, port, history_days, calstars_data_full_path, write_db=write_db)
+            processStation(conn, station, remote_station_processed_dir, username, host, port, history_days, calstars_data_full_path, write_db=write_db)
         total_fits_processed += fits_files_processed_this_station
         routine_elapsed_time = time.perf_counter() - routine_start_time
         total_fits_processed_per_second = total_fits_processed / routine_elapsed_time

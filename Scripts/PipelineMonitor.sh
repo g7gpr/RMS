@@ -124,7 +124,7 @@ dashboard() {
     obs_counts
     latest_detail
     anomalies
-    #ingestion_rate
+    ingestion_rate
 }
 
 # --- Dispatch ---
