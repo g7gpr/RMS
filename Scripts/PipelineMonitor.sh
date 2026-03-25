@@ -131,7 +131,7 @@ dashboard() {
     latest_sessions
     frame_counts
     #obs_counts
-    total_obs
+    #total_obs
     latest_detail
     anomalies
     ingestion_rate

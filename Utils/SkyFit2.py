@@ -2738,7 +2738,7 @@ class PlateTool(QtWidgets.QMainWindow):
         # top left label
         self.show_key_help = 2
 
-        # Create font and metrics for overlay labels
+        # Create font and PipelineMetrics for overlay labels
         label_font = QtGui.QFont('monospace', 8)
         label_fm = QtGui.QFontMetrics(label_font)
 
@@ -5767,7 +5767,7 @@ class PlateTool(QtWidgets.QMainWindow):
         for i, test_lm in enumerate(coarse_lm_values):
             n_matched, n_catalog = count_matches_at_lm(test_lm)
 
-            # Calculate diminishing returns metrics
+            # Calculate diminishing returns PipelineMetrics
             match_gain = n_matched - prev_matched
             catalog_gain = n_catalog - prev_catalog
             coverage = n_matched / target_matches if target_matches > 0 else 0

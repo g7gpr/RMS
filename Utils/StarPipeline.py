@@ -1379,9 +1379,9 @@ def getFromRemote(host, username, port, station_name, remote_dir, remote_file, c
 
         # Download from remote
         if downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=port):
-            log(f"Downloaded {full_remote_path_to_bz2} to {local_target}")
+            log.info(f"Downloaded {full_remote_path_to_bz2} to {local_target}")
         else:
-            log(f"Failed to download {full_remote_path_to_bz2} to {local_target}")
+            log.warning(f"Failed to download {full_remote_path_to_bz2} to {local_target}")
             return None, None, None, None
         # Create a directory
         extraction_dir = os.path.join(t, "extracted")

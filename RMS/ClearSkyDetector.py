@@ -30,7 +30,7 @@ class ClearSkyResult:
         self.jd = None
         self.frame_num = None
 
-        # Overall metrics
+        # Overall PipelineMetrics
         self.clear_sky_ratio = 0.0
         self.area_weighted_ratio = 0.0
         self.detected_count = 0

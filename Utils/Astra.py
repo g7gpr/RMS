@@ -2252,7 +2252,7 @@ class ASTRA:
         return seed_picks, seed_pick_frame_indices
 
     def computeIntensitySum(self, photom_pixels, global_centroid, corr_frame, uncorr_frame, unsub_frame):
-        """ Calculate total intensity, background metrics, and saturation for a photometric crop.
+        """ Calculate total intensity, background PipelineMetrics, and saturation for a photometric crop.
 
         Arguments:
             photom_pixels: [ndarray] (N, 2) array of (x, y) pixel coordinates.
