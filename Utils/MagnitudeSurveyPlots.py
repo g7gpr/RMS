@@ -6,6 +6,108 @@ import psycopg
 SCALE_OUT = 1.0 / 1_000_000.0
 
 
+import numpy as np
+import matplotlib.pyplot as plt
+
+def plotGlobalHeatmap(ra_array, dec_array):
+    # Convert to radians
+    ra_rad = np.radians(ra_array)
+    dec_rad = np.radians(dec_array)
+
+    # Split hemispheres
+    north_mask = dec_rad >= 0
+    south_mask = dec_rad < 0
+
+    # Projection radius: r = 90° - |dec|
+    r_north = np.radians(90) - dec_rad[north_mask]
+    r_south = np.radians(90) - np.abs(dec_rad[south_mask])
+
+    theta_north = ra_rad[north_mask]
+    theta_south = ra_rad[south_mask]
+
+    fig, axes = plt.subplots(
+        1, 2,
+        subplot_kw={'projection': 'polar'},
+        figsize=(14, 7)
+    )
+
+    # Helper to draw one hemisphere
+    def drawHemisphere(ax, r_values, theta_values, title_text):
+        # 2D histogram
+        heatmap, r_edges, t_edges = np.histogram2d(
+            r_values,
+            theta_values,
+            bins=[300, 720]
+        )
+
+        ax.set_facecolor("white")
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
+        ax.set_title(title_text, color="blue")
+
+        # Heatmap
+        ax.pcolormesh(
+            t_edges,
+            r_edges,
+            np.log1p(heatmap),
+            cmap="inferno"
+        )
+
+        # Blue tick labels
+        ax.tick_params(colors="blue")
+
+    drawHemisphere(axes[0], r_north, theta_north, "North Celestial Pole")
+    drawHemisphere(axes[1], r_south, theta_south, "South Celestial Pole")
+
+    plt.show()
+
+
+
+def fetchCoincidenceFilteredSkyPoints(conn):
+    sql = """
+        WITH obs AS (
+            SELECT 
+                o.ra,
+                o.dec,
+                s.station_id,
+                (f.jd_mid * 86400.0) AS t
+            FROM observation o
+            JOIN frame f ON o.frame_name = f.frame_name
+            JOIN session ss ON f.session_name = ss.session_name
+            JOIN station s ON ss.station_id = s.station_id
+        ),
+        coinc AS (
+            SELECT 
+                o1.ra,
+                o1.dec,
+                COUNT(DISTINCT o2.station_id) AS stations_seen
+            FROM obs o1
+            JOIN obs o2
+              ON ABS(o1.t - o2.t) <= 10.24
+             AND ABS(o1.ra - o2.ra) <= 100000
+             AND ABS(o1.dec - o2.dec) <= 100000
+            GROUP BY o1.ra, o1.dec
+        )
+        SELECT ra, dec
+        FROM coinc
+        WHERE stations_seen >= 3;
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        rows = cur.fetchall()
+
+    if not rows:
+        return np.array([]), np.array([])
+
+    # Convert from scaled integers to degrees
+    ra_array = np.array([row[0] / 1_000_000 for row in rows], dtype=float)
+    dec_array = np.array([row[1] / 1_000_000 for row in rows], dtype=float)
+
+    return ra_array, dec_array
+
+
+
 # ------------------------------------------------------------
 #  FETCH FUNCTIONS
 # ------------------------------------------------------------

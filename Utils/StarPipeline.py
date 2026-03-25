@@ -1287,12 +1287,20 @@ def downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=22, max
 
     remote_file = os.path.basename(full_remote_path_to_bz2)
     download_start_time = datetime.datetime.now(datetime.timezone.utc)
-    # log.info(f"Downloading {remote_file}")
+    log.info(f"Downloading {remote_file}")
     download_count = 0
-    while not os.path.exists(
-            os.path.join(t, os.path.basename(full_remote_path_to_bz2))) and download_count < max_tries:
+    target_path = os.path.join(t, os.path.basename(full_remote_path_to_bz2))
+
+    while not os.path.exists(target_path) and download_count < max_tries:
         downloadFile(host, username, t, full_remote_path_to_bz2, port=port)
         download_count += 1
+        # If the file is now present, break immediately
+        if os.path.exists(target_path):
+            break
+        delay = random.randint(600, 900)
+        log.info(f"Waiting {delay/60:.1f} minutes for {target_path}")
+        time.sleep(delay)
+    return True
 
     if os.path.exists(os.path.join(t, os.path.basename(full_remote_path_to_bz2))):
         download_end_time = datetime.datetime.now(datetime.timezone.utc)
@@ -1300,8 +1308,8 @@ def downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=22, max
         rate_mb_s = downloaded_size / (download_end_time - download_start_time).total_seconds()
         log.info(f"Downloaded {remote_file} of size {downloaded_size:.2f}MB at {rate_mb_s:.2f} MB/s after {download_count} try")
     else:
-        log.warning(f"Failed to download {remote_file}")
-
+        log.warning(f"Failed to download {remote_file} after {download_count} tries")
+    return False
 
 def moveFiles(local_target, path_source_list, path_local_list):
 
@@ -1338,8 +1346,11 @@ def getFromRemote(host, username, port, station_name, remote_dir, remote_file, c
     with tempfile.TemporaryDirectory() as t:
 
         # Download from remote
-        downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=port)
-
+        if downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=port):
+            log(f"Downloaded {full_remote_path_to_bz2} to {local_target}")
+        else:
+            log(f"Failed to download {full_remote_path_to_bz2} to {local_target}")
+            return None, None, None, None
         # Create a directory
         extraction_dir = os.path.join(t, "extracted")
         mkdirP(extraction_dir)
@@ -1440,6 +1451,9 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
         extractCalstarArchives(calstars_data_full_path, [os.path.basename(local_calstars_archive_path)], remove_archives=True)
         calstars_name = f"CALSTARS_{local_dir_name}.txt"
         local_config_path = os.path.join(local_target, os.path.basename(config.config_file_name))
+        if os.path.basename(config.config_file_name) != ".config":
+            log.warning(f"Unusual .config filename {config.config_file_name}")
+            pass
         local_platepar_path = os.path.join(local_target, config.platepar_name)
         local_calstars_path = os.path.join(local_target, calstars_name)
         local_recalibrated_path = os.path.join(local_target, PLATEPARS_ALL_RECALIBRATED_JSON)
@@ -1448,6 +1462,10 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
         if not os.path.exists(os.path.join(calstars_data_full_path, local_dir_name)):
             log.info(f"Retrieving {remote_file} from {host}")
             local_config_path, local_platepar_path, local_recalibrated_path, calstars_name = getFromRemote(host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path)
+
+            if local_config_path is None:
+                log.info(f"Skipping {remote_file} because config file not available")
+                continue
 
         if not isIngested(local_target):
             star_observations_processed = 0
@@ -1459,6 +1477,9 @@ def processStation(station, remote_station_processed_dir, username, host, port, 
 
             if write_db:
                 log.info(f"Ingesting {calstars_name}")
+                if local_config_path is None:
+                    pass
+
                 observation_session_config = cr.parse(local_config_path)
                 observation_session_dict, start_jd, end_jd = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
 
