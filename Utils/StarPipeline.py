@@ -1732,7 +1732,10 @@ if __name__ == "__main__":
     config = cr.parse(os.path.join(os.getcwd(),".config"))
     country_code = cml_args.country
 
+    calstars_directory_path = os.path.join(config.data_dir, CALSTARS_DATA_DIR)
 
+    if not os.path.exists(calstars_directory_path):
+        Path(calstars_directory_path).mkdir(parents=True, exist_ok=True)
 
     # Initialize the logger
     log_manager = LoggingManager()
@@ -1775,10 +1778,6 @@ if __name__ == "__main__":
 
     # initialiseDatabase(postgresql_host = postgresql_host)
 
-    calstars_directory_path = os.path.join(config.data_dir, CALSTARS_DATA_DIR)
-
-    if not os.path.exists(calstars_directory_path):
-        Path(calstars_directory_path).mkdir(parents=True, exist_ok=True)
 
     directories_list = os.listdir(calstars_directory_path)
 
