@@ -21,6 +21,7 @@ CALSTARS Database Schema (PostgreSQL)
 
 All scaled numeric fields in this schema are scaled by 1e6.
 
+
 station
 -------
 station_id        CHAR(6) PRIMARY KEY
@@ -30,29 +31,39 @@ notes             TEXT
 
 session - one session per calstars file
 ---------------------------------------
-session_name      TEXT PRIMARY KEY - this is a reduced form of the CALSTARS file name
+session_name      TEXT PRIMARY KEY   -- reduced form of the CALSTARS file name
 station_id        CHAR(6) REFERENCES station(station_id)
-start_jd          BIGINT        -- scaled ×1e6
-end_jd            BIGINT        -- scaled ×1e6
-config_hash       CHAR(32)      -- pipeline/configuration hash
-comment           TEXT          -- free-form session notes
+
+start_jd          BIGINT             -- scaled x1e6
+end_jd            BIGINT             -- scaled x1e6
+
+pixel_scale_h     INTEGER            -- scaled x1e6 (arcsec per pixel)
+pixel_scale_v     INTEGER            -- scaled x1e6 (arcsec per pixel)
+
+lat               INTEGER            -- latitude scaled x1e6
+lon               INTEGER            -- longitude scaled x1e6
+elevation         INTEGER            -- elevation (meters) scaled x1e6
+
+config_hash       CHAR(32)           -- pipeline/configuration hash
+comment           TEXT               -- free-form session notes
 
 
-frame - one frame per fits file
+frame - one frame per FITS file
 -------------------------------
-frame_name        TEXT PRIMARY KEY - the fits file name
+frame_name        TEXT PRIMARY KEY   -- the FITS file name
 session_name      TEXT REFERENCES session(session_name)
-jd_mid            BIGINT        -- scaled ×1e6
+
+jd_mid            BIGINT             -- mid-exposure JD scaled x1e6
 frame_index       INTEGER
-quality_flags     SMALLINT      -- bitwise quality flags
+quality_flags     SMALLINT           -- bitwise quality flags
 
 
 star
 ----
-star_name         TEXT PRIMARY KEY - taken from the GMN star catalog
-ra                INTEGER       -- scaled ×1e6
-dec               INTEGER       -- scaled ×1e6
-mag               INTEGER       -- scaled ×1e6 (catalog magnitude)
+star_name         TEXT PRIMARY KEY   -- taken from the GMN star catalog
+ra                INTEGER            -- scaled x1e6
+dec               INTEGER            -- scaled x1e6
+mag               INTEGER            -- scaled x1e6 (catalog magnitude)
 catalog_source    TEXT
 canonical_name    TEXT
 
@@ -60,29 +71,34 @@ canonical_name    TEXT
 observation
 -----------
 obs_id            BIGSERIAL PRIMARY KEY
+
 frame_name        TEXT REFERENCES frame(frame_name)
 star_name         TEXT REFERENCES star(star_name)
 
-y                 INTEGER       -- pixel Y
-x                 INTEGER       -- pixel X
-intens_sum        INTEGER       -- scaled ×1e6
-ampltd            INTEGER       -- scaled ×1e6
-fwhm              INTEGER       -- scaled ×1e6
-bg_lvl            INTEGER       -- scaled ×1e6
-snr               INTEGER       -- scaled ×1e6
+y                 INTEGER            -- pixel Y
+x                 INTEGER            -- pixel X
+
+intens_sum        INTEGER            -- scaled x1e6
+ampltd            INTEGER            -- scaled x1e6
+fwhm              INTEGER            -- scaled x1e6
+bg_lvl            INTEGER            -- scaled x1e6
+snr               INTEGER            -- scaled x1e6
 nsatpx            SMALLINT
 
-mag               INTEGER       -- scaled ×1e6 (instrumental magnitude)
-mag_err           INTEGER       -- scaled ×1e6
+mag               INTEGER            -- scaled x1e6 (instrumental magnitude)
+mag_err           INTEGER            -- scaled x1e6
 
-flags             SMALLINT      -- bitwise flags
+flags             SMALLINT           -- bitwise flags
 
 
 Notes
 -----
-- Only `obs_id` is a surrogate key; all other relationships use natural keys.
+- Only obs_id is a surrogate key; all other relationships use natural keys.
 - Ingestion uses ON CONFLICT DO NOTHING for idempotency.
 - Schema is intentionally minimal and integer-heavy for performance and scale.
+- Session-level metadata (pixel scale, lat, lon, elevation) ensures reproducibility.
+
+
 """
 
 
@@ -126,7 +142,7 @@ from pathlib import Path
 
 JD_OFFSET = J2000_JD
 
-#Most floats are multipled by this scale factor and stored as INTEGER
+#Most floats are multiplied by this scale factor and stored as INTEGER
 DB_SCALE_FACTOR = 1e6
 
 #List and types for any columns which are not INTEGER
