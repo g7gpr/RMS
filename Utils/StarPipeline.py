@@ -406,9 +406,9 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
     if session_config is None:
         lat, lon, elevation = None, None, None
     else:
-        lat = session_config.lat
-        lon = session_config.lon
-        elevation = session_config.elevation
+        lat = session_config.latitude
+        lon = session_config.longitude
+        ele = session_config.elevation
 
 
     if not observation_count:
