@@ -14,6 +14,38 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+"""
+Database configuration instructions
+
+1. Optional - drop the whole database, for a fresh start
+
+psql -h 192.168.1.174 -U postgres -d postgres
+
+DROP DATABASE IF EXISTS star_data;
+
+\q
+
+2. Create the database
+
+psql -h 192.168.1.174 -U postgres -d postgres
+
+CREATE DATABASE star_data OWNER postgres;
+
+\q
+
+3. Connect to the new database
+
+psql -h 192.168.1.174 -U postgres -d star_data
+
+DROP SCHEMA IF EXISTS public CASCADE;
+CREATE SCHEMA public AUTHORIZATION postgres;
+
+GRANT CREATE ON SCHEMA public TO ingest_user;
+GRANT CREATE ON DATABASE star_data TO ingest_user;
+
+\q
+"""
+
 
 """
 CALSTARS Database Schema (PostgreSQL)
@@ -1796,9 +1828,9 @@ if __name__ == "__main__":
         with conn.cursor() as cur:
 
             cur.execute("SHOW search_path;")
-            print("PYTHON search_path:", cur.fetchone())
+            log.info("PYTHON search_path:", cur.fetchone())
             cur.execute("SELECT current_database();")
-            print("PYTHON database:", cur.fetchone())
+            log.info("PYTHON database:", cur.fetchone())
         createAllTables(conn)
         ingest(config, station_list, conn, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template, history_days=days_history, write_db=write_db)
 
