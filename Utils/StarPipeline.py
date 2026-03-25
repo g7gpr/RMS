@@ -742,24 +742,6 @@ def connectionProblem(host, port=22, timeout=3):
         # Can't connect at all return True
         return True
 
-def createCalstarFilesTable(conn):
-    """Create the calstar files table.
-
-    Args:
-        conn: [object] Database connection.
-
-    Returns:
-        Nothing.
-    """
-
-    sql_command = ""
-    sql_command += f"CREATE TABLE IF NOT EXISTS {CALSTAR_FILES_TABLE_NAME}\n"
-    sql_command += "(file_name TEXT PRIMARY KEY, ingestion_time TIMESTAMPTZ NOT NULL);"
-
-    with conn.cursor() as cur:
-        cur.execute(sql_command)
-    conn.commit()
-
 def createTableStarObservations(conn):
     """If the star_observations table does not exist, then create.
     Arguments:
@@ -1936,6 +1918,8 @@ if __name__ == "__main__":
             log.info("PYTHON search_path:", cur.fetchone())
             cur.execute("SELECT current_database();")
             log.info("PYTHON database:", cur.fetchone())
+            cur.execute("SELECT current_database(), current_user, inet_server_addr(), inet_server_port();")
+            print(cur.fetchone())
         createAllTables(conn)
         ingest(config, station_list, conn, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template, history_days=days_history, write_db=write_db)
 
