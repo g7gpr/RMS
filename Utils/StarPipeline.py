@@ -178,6 +178,7 @@ def createStationTable(conn):
     );
     """
     with conn.cursor() as cur:
+
         cur.execute(sql)
     conn.commit()
 
@@ -450,7 +451,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
             # Insert frames
             cur.executemany("""
                 INSERT INTO frame (frame_name, session_name, jd_mid, frame_index, quality_flags)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING;
             """, frame_rows)
 
@@ -1785,6 +1786,13 @@ if __name__ == "__main__":
     archiveCalstarDirectories(os.path.join(config.data_dir, CALSTARS_DATA_DIR), directories_list, ingested_only=True)
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
+
+        with conn.cursor() as cur:
+
+            cur.execute("SHOW search_path;")
+            print("PYTHON search_path:", cur.fetchone())
+            cur.execute("SELECT current_database();")
+            print("PYTHON database:", cur.fetchone())
         createAllTables(conn)
         ingest(config, station_list, conn, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template, history_days=days_history, write_db=write_db)
 
