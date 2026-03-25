@@ -191,8 +191,8 @@ def createSessionTable(conn):
                 session_name    TEXT NOT NULL UNIQUE,
                 station_id      TEXT NOT NULL,
         
-                start_jd        INTEGER,
-                end_jd          INTEGER,
+                start_jd        BIGINT,
+                end_jd          BIGINT,
         
                 pixel_scale_h   INTEGER,
                 pixel_scale_v   INTEGER,
