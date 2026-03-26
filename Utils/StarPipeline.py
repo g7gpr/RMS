@@ -313,8 +313,8 @@ def createObservationTable(conn):
         mag_err         INTEGER,
 
         -- Astrometric solution (scaled RA/Dec)
-        obs_ra          INTEGER,
-        obs_dec         INTEGER,
+        ra              INTEGER,
+        dec             INTEGER,
 
         flags           SMALLINT
     );

@@ -8,7 +8,7 @@ from Utils.PipelineMetrics.Frames import frameCounts
 from Utils.PipelineMetrics.Observations import observationCounts, totalObservations
 from Utils.PipelineMetrics.IngestionRate import calstarsPerDay
 
-INTERVAL = datetime.timedelta(minutes=10)
+INTERVAL = datetime.timedelta(minutes=1)
 
 BLUE = "\033[34m"
 GREEN = "\033[32m"
