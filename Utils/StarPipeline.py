@@ -690,11 +690,9 @@ def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True):
         if not os.path.isdir(source_dir):
             continue
         # Check for ingestion marker inside the directory
-        if isIngested(conn, source_dir):
-            dir_list = os.listdir(source_dir)
-            if DIRECTORY_INGESTED_MARKER not in dir_list:
-                log.info(f"Not archiving {os.path.basename(source_dir)} not yet ingested")
-                continue
+        if not isIngested(conn, source_dir) and ingested_only:
+            log.info(f"Not archiving {os.path.basename(source_dir)} not yet ingested")
+            continue
 
 
 
