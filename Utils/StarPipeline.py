@@ -668,7 +668,7 @@ def getDirectorySize(path):
                 pass
     return total
 
-def archiveCalstarDirectories(root, directories_list, ingested_only=True):
+def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True):
     """Given a list of directories, archive them named e.g. AU0004_20260317_111157_992974_CALSTAR.tar.bz2,
     and remove the source directory.
 
@@ -1556,7 +1556,7 @@ def processStation(conn, station, remote_station_processed_dir, username, host, 
                 log.info(f"From this iteration pipeline can support up to {no_of_cameras:.0f} cameras")
 
         # Put back in an archive if it has been ingested
-        archiveCalstarDirectories(calstars_data_full_path, [local_dir_name], ingested_only=True)
+        archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
 
     return star_observations_processed_this_station, fits_files_processed_this_station
 
@@ -1831,7 +1831,7 @@ def resetIngestion(local_calstars_path, ingestion_marker):
             calstar_dir_contents = os.listdir(calstar_path)
             if ingestion_marker in calstar_dir_contents:
                 os.unlink(os.path.join(calstar_path, ingestion_marker))
-            archiveCalstarDirectories(local_calstars_path, [os.path.basename(calstar_path)], ingested_only=False)
+            archiveCalstarDirectories(conn, local_calstars_path, [os.path.basename(calstar_path)], ingested_only=False)
             pass
 
 
@@ -1913,7 +1913,7 @@ if __name__ == "__main__":
     directories_list = os.listdir(calstars_directory_path)
 
 
-    archiveCalstarDirectories(os.path.join(config.data_dir, CALSTARS_DATA_DIR), directories_list, ingested_only=True)
+    archiveCalstarDirectories(conn, os.path.join(config.data_dir, CALSTARS_DATA_DIR), directories_list, ingested_only=True)
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 
