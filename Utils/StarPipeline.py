@@ -1913,9 +1913,10 @@ if __name__ == "__main__":
     directories_list = os.listdir(calstars_directory_path)
 
 
-    archiveCalstarDirectories(conn, os.path.join(config.data_dir, CALSTARS_DATA_DIR), directories_list, ingested_only=True)
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
+        archiveCalstarDirectories(conn, os.path.join(config.data_dir, CALSTARS_DATA_DIR), directories_list,
+                                  ingested_only=True)
 
         with conn.cursor() as cur:
 
