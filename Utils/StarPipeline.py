@@ -549,8 +549,8 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                     star_name,
                     y, x,
                     intens_sum, ampltd, fwhm, bg_lvl, snr, nsatpx,
-                    mag, mag_err,
-                    flags, ra, dec
+                    mag, mag_err, ra, dec,
+                    flags
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING;
@@ -573,6 +573,31 @@ def ensureList(value):
     if isinstance(value, str):
         return [value]
     raise TypeError(f"Expected str or list, got {type(value).__name__}")
+
+def discoverRemoteFiles(stations, username, host, port, remote_processed_dir_template):
+    """
+    Scan all stations on the remote server and return a unified list of files.
+
+    Returns:
+        files: list of (station_name, file_name)
+    """
+    all_files = []
+
+    for station in stations:
+        remote_dir = remote_processed_dir_template.replace("stationID", station.lower())
+
+        try:
+            station_files = lsRemote(host, username, port, remote_dir)
+        except Exception as e:
+            log.warning(f"Failed to list remote files for {station}: {e}")
+            continue
+
+        for file_name in station_files:
+            all_files.append((station, file_name))
+
+    return all_files
+
+
 
 def makeTarBz2(source_dir, output_file):
     """ Archive a directory to a tar.bz2 file.
@@ -752,39 +777,6 @@ def connectionProblem(host, port=22, timeout=3):
         # Can't connect at all return True
         return True
 
-def createTableStarObservations(conn):
-    """If the star_observations table does not exist, then create.
-    Arguments:
-        conn: [object] Connection to database.
-
-    Returns:
-        Nothing
-    """
-
-    # If a table does not exist, create with a composite primary key of catalogue_id and ff_name.
-    # A single observation (i.e. ff_file) should never have the same catalogue id twice
-    command_list = []
-
-    sql_command = ""
-    sql_command += f"CREATE TABLE IF NOT EXISTS {STAR_OBSERVATIONS_TABLE_NAME}\n"
-    sql_command += f"        (catalogue_id TEXT, ff_name TEXT, PRIMARY KEY(catalogue_id, ff_name));\n"
-
-    command_list.append(sql_command)
-
-    # Add an index on catalogue_id
-    sql_command = ""
-    sql_command += f"CREATE INDEX IF NOT EXISTS idx_star_obs_catalogue_id\n"
-    sql_command += f"           ON {STAR_OBSERVATIONS_TABLE_NAME} (catalogue_id);\n"
-
-    command_list.append(sql_command)
-
-    #log.info("Executing...")
-    #log.info(f"{sql_command}")
-
-    with conn.cursor() as cur:
-        for c in command_list:
-            cur.execute(c)
-    conn.commit()
 
 def dropTable(conn, table_name):
     """If a table exists, drop it.
@@ -878,7 +870,7 @@ def isIngested(conn, calstar_directory_path):
 
     # Primary guard: database
     if isIngestedFromDB(conn, calstar_filename):
-        log.info(f"Ingested in DB record: {calstar_filename}")
+        log.info(f"{calstar_filename} is recorded as ingested in the database")
         return True
 
     # Secondary guard: filesystem marker
@@ -937,7 +929,7 @@ def lsRemote(host, username, port, remote_path):
         parts = line.split()
         if parts:
             files.append(parts[-1])
-
+    log.info(f"Remote directory {remote_path} contained {len(files)} files")
     return files
 
 def extractBz2(input_directory, working_directory, host, username, local_target_list=None):
@@ -1094,7 +1086,7 @@ def getStationList(url=STATION_COORDINATES_JSON, country_code=None):
 
     return sorted(station_list)
 
-def filterByDate(files_list, earliest_date=None, latest_date=None, station=None):
+def filterByDate(files_list, earliest_date=None, latest_date=None, station=None, always_return_one=True):
     """
     Filter a list of bz2 files by date.
     Arguments:
@@ -1103,7 +1095,7 @@ def filterByDate(files_list, earliest_date=None, latest_date=None, station=None)
     Keyword arguments:
         earliest_date: [datetime] optional, default None, earliest date to pick, if None, 3 days before now.
         latest_date: [datetime] optional, default None, latest date to pick, if None, 3 days after now.
-
+        always_return_one: [bool] Optional, default True, return at least one file, if any are available after earliest date
     Returns:
         filtered_files_list: [list] list of bz2 files filtered by date
     """
@@ -1115,7 +1107,7 @@ def filterByDate(files_list, earliest_date=None, latest_date=None, station=None)
     if latest_date is None:
         latest_date = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3)
 
-
+    files_list.sort()
 
     filtered_files_list = []
     for file in files_list:
@@ -1145,6 +1137,10 @@ def filterByDate(files_list, earliest_date=None, latest_date=None, station=None)
 
         if earliest_date < file_date < latest_date:
             filtered_files_list.append(file)
+
+    if always_return_one and not len(filtered_files_list):
+        #If we have no files in the date range, then return the last file from the sorted list
+        filtered_files_list.append(files_list[-1])
 
     return filtered_files_list
 
@@ -1444,117 +1440,84 @@ def extractSessionNameFromCalstar(calstars_path):
 
     return f"{station_id}_{date}_{time}"
 
+def processServerFile(conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True):
 
-def processStation(conn, station, remote_station_processed_dir, username, host, port, history_days, calstars_data_full_path, write_db=True):
+    station_name = remote_file.split("_")[0]
+    remote_dir = remote_station_processed_dir.replace("stationID", station_name.lower())
 
+    file_type = getFileType(remote_file)
+    if file_type != "metadata" and file_type != "detected":
+        return
 
-    remote_dir = remote_station_processed_dir.replace("stationID", station.lower())
-    remote_files = getRemoteFiles(username, host, port, remote_dir, delay_retry=False)
-    remote_files = filterByDate(remote_files, earliest_date=datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=history_days), station=station)
-    fits_files_processed_this_station, star_observations_processed_this_station = 0, 0
-    log.info(f"For station:{station} {len(remote_files)} files to process")
+    local_dir_name = "_".join(remote_file.split("_")[0:4])
+    log.info(f"Working on {local_dir_name}")
+    local_target = os.path.join(calstars_data_full_path, local_dir_name)
 
-    # This loop processes files held locally - the remote files is used to create the local file names
-    for remote_file in remote_files:
+    # If we already have a .bz2 file, extract it so we can work on it
+    local_calstars_archive_path = f"{local_target}_CALSTAR.tar.bz2"
+    extractCalstarArchives(calstars_data_full_path, [os.path.basename(local_calstars_archive_path)], remove_archives=True)
+    calstars_name = f"CALSTARS_{local_dir_name}.txt"
+    local_config_path = os.path.join(local_target, os.path.basename(config.config_file_name))
+    if os.path.basename(config.config_file_name) != ".config":
+        log.warning(f"Unusual .config filename {config.config_file_name}")
+        pass
 
-        fits_in_this_session = 0
+    local_platepar_path = os.path.join(local_target, config.platepar_name)
+    local_calstars_path = os.path.join(local_target, calstars_name)
+    local_recalibrated_path = os.path.join(local_target, PLATEPARS_ALL_RECALIBRATED_JSON)
 
-        remote_file_start_time = time.perf_counter()
-        file_type = getFileType(remote_file)
-        if file_type != "metadata" and file_type != "detected":
-            continue
+    # If we don't have a directory, then get from remote working in a temporary directory
+    if not os.path.exists(os.path.join(calstars_data_full_path, local_dir_name)):
+        log.info(f"Retrieving {remote_file} from {username}@{host}:/{remote_dir}")
+        local_config_path, local_platepar_path, local_recalibrated_path, calstars_name = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path)
 
+    if local_config_path is None:
+        log.info(f"Skipping {remote_file} because config file not available")
+        return
 
-        station_name = remote_file.split("_")[0]
-        local_dir_name = "_".join(remote_file.split("_")[0:4])
-        log.info(f"Working on {local_dir_name}")
-        local_target = os.path.join(calstars_data_full_path, local_dir_name)
+    if not isIngested(conn, local_target):
 
-        # If we have a .bz2 file, extract it so we can work on it
-        local_calstars_archive_path = f"{local_target}_CALSTAR.tar.bz2"
-        extractCalstarArchives(calstars_data_full_path, [os.path.basename(local_calstars_archive_path)], remove_archives=True)
-        calstars_name = f"CALSTARS_{local_dir_name}.txt"
-        local_config_path = os.path.join(local_target, os.path.basename(config.config_file_name))
-        if os.path.basename(config.config_file_name) != ".config":
-            log.warning(f"Unusual .config filename {config.config_file_name}")
-            pass
-        local_platepar_path = os.path.join(local_target, config.platepar_name)
-        local_calstars_path = os.path.join(local_target, calstars_name)
-        local_recalibrated_path = os.path.join(local_target, PLATEPARS_ALL_RECALIBRATED_JSON)
+        if not write_db:
+            log.info(f"Data from {local_dir_name} not being written to database as writes not enabled.")
+            return
 
-        # If we don't have a directory, then get from remote working in a temporary directory
-        if not os.path.exists(os.path.join(calstars_data_full_path, local_dir_name)):
-            log.info(f"Retrieving {remote_file} from {host}")
-            local_config_path, local_platepar_path, local_recalibrated_path, calstars_name = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path)
+        if write_db:
+            log.info(f"Ingesting {calstars_name}")
 
-            if local_config_path is None:
-                log.info(f"Skipping {remote_file} because config file not available")
-                continue
+            observation_session_config = cr.parse(local_config_path)
+            observation_session_dict, start_jd, end_jd = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
 
-        if not isIngested(conn, local_target):
-            star_observations_processed = 0
+            pixel_scale_h, pixel_scale_v = extractMedianPixelScale(observation_session_dict)
+            session_name = extractSessionNameFromCalstar(local_calstars_path)
+            frame_rows, star_rows, observation_rows = buildAllRows(observation_session_dict, session_name)
 
+            writeSessionBatch(
+                conn,
+                session_name=session_name,
+                station_id=station_name,
+                start_jd=start_jd,
+                end_jd=end_jd,
+                pixel_scale_h=pixel_scale_h,
+                pixel_scale_v=pixel_scale_v,
+                frame_rows=frame_rows,
+                star_rows=star_rows,
+                observation_rows=observation_rows,
+                session_config=observation_session_config
+            )
 
-            if not write_db:
-                log.info(f"Data from {local_dir_name} not being written to database as writes not enabled.")
-                continue
+            markIngested(conn, local_target)
 
-            if write_db:
-                log.info(f"Ingesting {calstars_name}")
-                if local_config_path is None:
-                    pass
+    else:
+        log.info(f"Not ingesting {calstars_name} as it has already been ingested.")
 
-                observation_session_config = cr.parse(local_config_path)
-                observation_session_dict, start_jd, end_jd = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
+    # Put back in an archive in all cases
+    archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
 
-                pixel_scale_h, pixel_scale_v = extractMedianPixelScale(observation_session_dict)
-                session_name = extractSessionNameFromCalstar(local_calstars_path)
-                frame_rows, star_rows, observation_rows = buildAllRows(observation_session_dict, session_name)
-                fits_in_this_session = len(frame_rows)
+    return
 
-                star_observations_processed = writeSessionBatch(
-                    conn,
-                    session_name=session_name,
-                    station_id=station_name,
-                    start_jd=start_jd,
-                    end_jd=end_jd,
-                    pixel_scale_h=pixel_scale_h,
-                    pixel_scale_v=pixel_scale_v,
-                    frame_rows=frame_rows,
-                    star_rows=star_rows,
-                    observation_rows=observation_rows,
-                    session_config=observation_session_config
-                )
-                star_observations_processed_this_station += star_observations_processed
-
-                markIngested(conn, local_target)
-
-            remote_file_end_time = time.perf_counter()
-            time_elapsed = remote_file_end_time - remote_file_start_time
-
-
-            if star_observations_processed != 0 and fits_in_this_session != 0:
-                stars_observations_second = star_observations_processed / time_elapsed
-
-                fits_files_processed_this_station += fits_in_this_session
-
-                fits_processed_per_second = fits_in_this_session / time_elapsed
-                # About one fits every 10 seconds at  - only observing for half of 24 hours so one every 20 seconds
-                fits_generated_per_second = 0.05
-
-                log.info(f"For {remote_file} processed {stars_observations_second:.0f} obs/sec {fits_processed_per_second:.0f} fits/sec")
-
-                no_of_cameras = fits_processed_per_second / fits_generated_per_second
-                log.info(f"From this iteration pipeline can support up to {no_of_cameras:.0f} cameras")
-
-        # Put back in an archive if it has been ingested
-        archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
-
-    return star_observations_processed_this_station, fits_files_processed_this_station
-
-def ingest(config, station_list, conn, country_code=None, calstars_data_dir=CALSTARS_DATA_DIR,
+def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
            remote_station_processed_dir=None, write_db=True,
-           host=None, username=None, port=PORT, history_days=None):
+           host=None, username=None, port=PORT):
 
     """
     In a subdirectoy of station_data_dir create a directory for each station containing mask
@@ -1562,7 +1525,7 @@ def ingest(config, station_list, conn, country_code=None, calstars_data_dir=CALS
 
     Arguments:
         config: [config] RMS config instance - used to get data_dir.
-        station_list: [list] list of stations.
+        file_list: [list] list of files to retrieve and ingest.
         conn: [object] database connetion object.
 
     Keyword arguments:
@@ -1578,33 +1541,74 @@ def ingest(config, station_list, conn, country_code=None, calstars_data_dir=CALS
         Nothing.
     """
 
-    if country_code is None:
-        country_code = ""
-
-    if history_days is None:
-        history_days = 365
-
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
     log.info("Starting to download files")
-    total_fits_processed = 0
-    routine_start_time = time.perf_counter()
+    for f in file_list:
+        processServerFile(conn, f, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db)
 
+def getLatestCalstarFile(conn, station_id):
+    sql = """
+        SELECT file_name
+        FROM calstar_files
+        WHERE file_name LIKE %s
+        ORDER BY ingestion_time DESC
+        LIMIT 1;
+    """
+    pattern = f"CALSTARS_{station_id}_%"
 
-    for station in station_list:
+    with conn.cursor() as cur:
+        cur.execute(sql, (pattern,))
+        row = cur.fetchone()
 
-        star_observations_processed_this_station, fits_files_processed_this_station = \
-            processStation(conn, station, remote_station_processed_dir, username, host, port, history_days, calstars_data_full_path, write_db=write_db)
-        total_fits_processed += fits_files_processed_this_station
-        routine_elapsed_time = time.perf_counter() - routine_start_time
-        total_fits_processed_per_second = total_fits_processed / routine_elapsed_time
-        fits_generated_per_second = 0.06
-        log.info(f"Cumulative rate is {total_fits_processed_per_second:.0f} fits per second")
+    return row
 
-        faster_than_real_time = total_fits_processed_per_second / fits_generated_per_second
-        log.info(f"Pipeline can support up to {faster_than_real_time:.0f} cameras")
+def discoverRemoteFiles(stations, username, host, port, remote_processed_dir_template):
+    all_files = []
 
+    for station in stations:
+        remote_dir = remote_processed_dir_template.replace("stationID", station.lower())
+        try:
+            station_files = lsRemote(host, username, port, remote_dir)
+        except Exception as e:
+            log.warning(f"Failed to list remote files for {station}: {e}")
+            continue
 
+        for file_name in station_files:
+            if file_name.endswith("tar.bz2") and len(file_name.split("_")) == 5 and file_name.startswith(station.upper()):
+                if "imgdata" in file_name:
+                    continue
+                all_files.append(file_name)
+
+    return all_files
+
+def parseServerFileTimestamp(file_name):
+    parts = file_name.split("_")
+    if len(parts) < 4:
+        return None
+
+    date_str = parts[1]
+    time_str = parts[2]
+
+    try:
+        dt = datetime.datetime.strptime(date_str + time_str, "%Y%m%d%H%M%S")
+        return dt.replace(tzinfo=datetime.timezone.utc)
+    except Exception:
+        return None
+
+def sortFilesByTime(files):
+    return sorted(files, key=parseServerFileTimestamp)
+
+def saveRemoteFiles(remote_files, json_path):
+    serialisable = [{"file_name": file_name} for file_name in remote_files]
+
+    with open(json_path, "w") as f:
+        json.dump(serialisable, f, indent=2)
+
+def loadRemoteFiles(json_path):
+    with open(json_path, "r") as f:
+        data = json.load(f)
+    return [item["file_name"] for item in data]
 
 def extractMedianPixelScale(observation_dict):
     pixel_scale_h_values = []
@@ -1619,8 +1623,6 @@ def extractMedianPixelScale(observation_dict):
     median_v = float(np.median(pixel_scale_v_values))
 
     return median_h, median_v
-
-
 
 def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path):
     """
@@ -1703,16 +1705,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             n_brightest=1,
             radius_deg=radius_deg
         )
-
-
-        """
-        # Debugging hook
-        for i, entry in enumerate(results_list):
-            if entry is None:
-                #print(f"Unmatched detection at index {i}")
-                pass
-        """
-
 
         arr_obs_az, arr_obs_alt = raDec2AltAz(
             arr_obs_ra,
@@ -1802,7 +1794,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     return observation_dict, start_jd, end_jd
 
-
 def resetIngestion(local_calstars_path, ingestion_marker):
 
     dir_contents = sorted(os.listdir(local_calstars_path))
@@ -1881,11 +1872,6 @@ if __name__ == "__main__":
 
     cwd = os.getcwd()
 
-
-
-
-
-
     local_calstars_path = Path(os.path.expanduser(config.data_dir)) / CALSTARS_DATA_DIR
     if cml_args.reset_ingestion:
 
@@ -1895,28 +1881,24 @@ if __name__ == "__main__":
 
     write_db = cml_args.write_db
 
-    # initialiseDatabase(postgresql_host = postgresql_host)
-
-
     directories_list = os.listdir(calstars_directory_path)
 
+    station_list = getStationList(country_code=country_code)
+    #remote_files = discoverRemoteFiles(station_list, user, hostname, 22, remote_processed_dir_template=path_template)
+    #saveRemoteFiles(remote_files, os.path.expanduser("~/RMS_data/remotefiles.json"))
+    remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))
+    remote_files_sorted = sortFilesByTime(remote_files)
 
+    print(len(remote_files))
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
-
-        # If the database does not exist, this will fail.
-
-        # archiveCalstarDirectories(conn, os.path.join(config.data_dir, CALSTARS_DATA_DIR), directories_list,
-        #                                  ingested_only=True)
-
-
 
         createAllTables(conn)
         log.info("Loading star catalog")
         cat = Catalog(config, lim_mag=10)
         log.info(f"Loaded catalog of {cat.entry_count} entries")
-        station_list = getStationList(country_code=country_code)
-        ingest(config, station_list, conn, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template, history_days=days_history, write_db=write_db)
+
+        ingest(config, remote_files_sorted, conn, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db)
 
 
 
