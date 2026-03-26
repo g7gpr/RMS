@@ -225,7 +225,7 @@ def fetchObservedRadec(conn):
                        catalogue_id,
                        obs_ra,
                        obs_dec
-                FROM star_observations
+                FROM observation
                 WHERE obs_ra IS NOT NULL
                   AND obs_dec IS NOT NULL
                 ORDER BY catalogue_id;

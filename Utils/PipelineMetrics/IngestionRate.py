@@ -47,7 +47,16 @@ def calstarsPerDay():
         saveState(state)
         return 0.0, False
 
-    # --- Cumulative FPS ---
+    # --- Reset condition: counter dropped (DB wipe or pipeline restart) ---
+    if nowCount < state["initial_count"]:
+        state["initial_count"] = nowCount
+        state["initial_time"] = nowTime
+        state["last_count"] = nowCount
+        state["stall_count"] = 0
+        saveState(state)
+        return 0.0, False
+
+    # --- Cumulative CPD ---
     initialCount = state["initial_count"]
     initialTime = state["initial_time"]
 
@@ -69,3 +78,4 @@ def calstarsPerDay():
     saveState(state)
 
     return cpd, stalled
+

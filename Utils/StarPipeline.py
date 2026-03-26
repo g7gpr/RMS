@@ -210,7 +210,7 @@ PORT = 22
 def createStationTable(conn):
     sql = """
     CREATE TABLE IF NOT EXISTS station (
-        station_id      CHAR(6) PRIMARY KEY,
+        station_name    CHAR(6) PRIMARY KEY,
         name            TEXT,
         notes           TEXT
     );
@@ -240,7 +240,7 @@ def createSessionTable(conn):
     sql = """CREATE TABLE IF NOT EXISTS session (
                 session_id      SERIAL PRIMARY KEY,
                 session_name    TEXT NOT NULL UNIQUE,
-                station_id      TEXT NOT NULL,
+                station_name    TEXT NOT NULL,
         
                 start_jd        BIGINT,
                 end_jd          BIGINT,
@@ -275,12 +275,14 @@ def createFrameTable(conn):
 def createStarTable(conn):
     sql = """
     CREATE TABLE IF NOT EXISTS star (
-        star_name       TEXT PRIMARY KEY,
+        station_name    TEXT NOT NULL REFERENCES station(station_name),
+        star_name       TEXT NOT NULL,
         ra              INTEGER,
         dec             INTEGER,
         mag             INTEGER,
         catalog_source  TEXT,
-        canonical_name  TEXT
+        canonical_name  TEXT,
+        PRIMARY KEY (station_name, star_name)
     );
     """
     with conn.cursor() as cur:
@@ -288,13 +290,13 @@ def createStarTable(conn):
     conn.commit()
 
 
+
 def createObservationTable(conn):
     sql = """
     CREATE TABLE IF NOT EXISTS observation (
         obs_id          BIGSERIAL PRIMARY KEY,
-
         frame_name      TEXT REFERENCES frame(frame_name),
-        star_name       TEXT REFERENCES star(star_name),
+        star_name       TEXT,
 
         -- CALSTARS fields (scaled where needed)
         y               INTEGER,
@@ -309,6 +311,10 @@ def createObservationTable(conn):
         -- Derived fields
         mag             INTEGER,
         mag_err         INTEGER,
+
+        -- Astrometric solution (scaled RA/Dec)
+        obs_ra          INTEGER,
+        obs_dec         INTEGER,
 
         flags           SMALLINT
     );
@@ -364,7 +370,7 @@ def buildFrameRows(observation_dict, session_name):
             frame_name,
             session_name,
             jd_mid,
-            frame_index,
+                frame_index,
             quality_flags
         ))
 
@@ -378,10 +384,11 @@ def buildStarRows(observation_dict):
     for frame_list in observation_dict.values():
         for obs in frame_list:
             if obs["name"] is None:
-                # This is an unmatched detection — do NOT insert into star table
                 continue
+
             star_set.add((
                 obs["name"],
+                obs["station_name"],
                 scale1e6(obs["cat_ra"]),
                 scale1e6(obs["cat_dec"]),
                 scale1e6(obs["cat_mag"]),
@@ -413,6 +420,8 @@ def buildObservationRows(observation_dict):
                 obs["nsatpx"],
                 scale1e6(obs["obs_mag"]),
                 scale1e6(obs["err_mag"]),
+                scale1e6(obs["obs_ra"]),
+                scale1e6(obs["obs_dec"]),
                 0  # flags
             ))
 
@@ -491,14 +500,14 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
 
             # Ensure station exists
             cur.execute(
-                "INSERT INTO station (station_id) VALUES (%s) ON CONFLICT DO NOTHING",
+                "INSERT INTO station (station_name) VALUES (%s) ON CONFLICT DO NOTHING",
                 (station_id,)
             )
 
             # Insert session
             cur.execute("""
                         INSERT INTO session (session_name,
-                                             station_id,
+                                             station_name,
                                              start_jd,
                                              end_jd,
                                              pixel_scale_h,
@@ -528,8 +537,8 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
 
             # Insert stars
             cur.executemany("""
-                INSERT INTO star (star_name, ra, dec, mag, catalog_source, canonical_name)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO star (star_name, station_name, ra, dec, mag, catalog_source, canonical_name)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING;
             """, star_rows)
 
@@ -541,9 +550,9 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                     y, x,
                     intens_sum, ampltd, fwhm, bg_lvl, snr, nsatpx,
                     mag, mag_err,
-                    flags
+                    flags, ra, dec
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING;
             """, observation_rows)
 
@@ -1267,21 +1276,6 @@ def dbScaleOut(v):
 
     return float(v / DB_SCALE_FACTOR)
 
-def initialiseDatabase(postgresql_host):
-    """
-    Get the connection to the stellar magnitude database, if tables do not exist, then create.
-
-    Arguments:
-        host: [str] Hostname
-
-    Returns:
-        conn:[object] connection object instance.
-    """
-    with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
-        createTableStarObservations(conn)
-        createCalstarFilesTable(conn)
-    return
-
 def getRemoteFiles(username, host, port, remote_dir, delay_retry=True):
 
     remote_files = []
@@ -1768,6 +1762,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
             frame_list.append({
                 "name": name,
+                "station_name": observation_config.stationID.upper(),
                 "jd": float(jd),
                 "stationID": fits_station_id.upper(),
 
@@ -1888,11 +1883,6 @@ if __name__ == "__main__":
 
 
 
-    station_list = getStationList(country_code=country_code)
-
-    log.info("Loading star catalog")
-    cat = Catalog(config, lim_mag=10)
-    log.info(f"Loaded catalog of {cat.entry_count} entries")
 
 
 
@@ -1913,18 +1903,19 @@ if __name__ == "__main__":
 
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
-        archiveCalstarDirectories(conn, os.path.join(config.data_dir, CALSTARS_DATA_DIR), directories_list,
-                                  ingested_only=True)
 
-        with conn.cursor() as cur:
+        # If the database does not exist, this will fail.
 
-            cur.execute("SHOW search_path;")
-            log.info("PYTHON search_path:", cur.fetchone())
-            cur.execute("SELECT current_database();")
-            log.info("PYTHON database:", cur.fetchone())
-            cur.execute("SELECT current_database(), current_user, inet_server_addr(), inet_server_port();")
-            print(cur.fetchone())
+        # archiveCalstarDirectories(conn, os.path.join(config.data_dir, CALSTARS_DATA_DIR), directories_list,
+        #                                  ingested_only=True)
+
+
+
         createAllTables(conn)
+        log.info("Loading star catalog")
+        cat = Catalog(config, lim_mag=10)
+        log.info(f"Loaded catalog of {cat.entry_count} entries")
+        station_list = getStationList(country_code=country_code)
         ingest(config, station_list, conn, username=user, host=hostname, country_code=country_code, remote_station_processed_dir=path_template, history_days=days_history, write_db=write_db)
 
 

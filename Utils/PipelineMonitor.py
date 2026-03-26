@@ -56,18 +56,26 @@ def showIngestionRate():
     return banner + f"=== Ingestion Rate (calstars/day) ===\n{fps:.2f}"
 
 def dashboard():
-
-    sections = [
-        showLatestSessions(),
-        showFrameCounts(),
-        showObservationCounts(),
-        showTotalObservations(),
-        showIngestionRate(),
-    ]
+    try:
+        sections = [
+            datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+            showLatestSessions(),
+            showFrameCounts(),
+            showObservationCounts(),
+            showTotalObservations(),
+            showIngestionRate(),
+        ]
+    except Exception as e:
+        # Database not ready or query failed
+        sections = [
+            f"Database not ready at {datetime.datetime.now(tz=datetime.timezone.utc).isoformat()}",
+            f"Reason: {type(e).__name__}"
+        ]
 
     output = "\n\n".join(sections)
     os.system("clear")
     print(output)
+
 
 
 
