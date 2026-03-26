@@ -1,205 +1,126 @@
-import os
-import RMS.ConfigReader as cr
 import numpy as np
-import psycopg
 import matplotlib.pyplot as plt
+import psycopg
 
-from RMS.Logger import LoggingManager, getLogger
+DB_SCALE_FACTOR = 1e6
 
 
-def radecToPolar(ra_deg, dec_deg):
+def fetchHemisphereRadec(conn, hemisphere="south", limit_rows=5000000):
     """
-    Convert RA/Dec to polar coordinates for sky plots.
-    Returns (theta_rad, r_rad, hemisphere)
+    Efficiently fetch RA/Dec for a single hemisphere.
+    Returns arrays of ra_deg, dec_deg.
     """
 
-    ra_rad = np.deg2rad(ra_deg)
-
-    if dec_deg >= 0:
-        r_rad = np.deg2rad(90 - dec_deg)
-        hemisphere = "north"
+    if hemisphere == "south":
+        dec_filter = "dec < 0"
     else:
-        r_rad = np.deg2rad(90 + dec_deg)
-        hemisphere = "south"
+        dec_filter = "dec >= 0"
 
-    return ra_rad, r_rad, hemisphere
-
-
-def plotHemisphereDensity(rows, hemisphere, gridsize=200):
-    """
-    Plot density for either the northern or southern celestial hemisphere.
-
-    rows: iterable of (ra_deg, dec_deg)
-    hemisphere: 'north' or 'south'
+    query = f"""
+        SELECT ra, dec
+        FROM observation
+        WHERE ra IS NOT NULL
+          AND dec IS NOT NULL
+          AND {dec_filter}
+          LIMIT {limit_rows};
     """
 
-    theta_vals = []
-    r_vals = []
-
-    for ra_deg, dec_deg in rows:
-        theta_rad, r_rad, hemi = radecToPolar(ra_deg, dec_deg)
-        if hemi == hemisphere:
-            theta_vals.append(theta_rad)
-            r_vals.append(r_rad)
-
-    theta_vals = np.array(theta_vals)
-    r_vals = np.array(r_vals)
-
-    fig = plt.figure(figsize=(8, 8))
-    ax = fig.add_subplot(111, projection="polar")
-    ax.set_facecolor("white")
-    ax.set_title(
-        f"{hemisphere.capitalize()} Celestial Hemisphere\nObservation Density",
-        color="blue"
-    )
-
-    hb = ax.hexbin(
-        theta_vals,
-        r_vals,
-        gridsize=gridsize,
-        cmap="viridis",
-        mincnt=1,
-        linewidths=0
-    )
-
-    plt.colorbar(hb, ax=ax, label="Observation density")
-    ax.set_ylim(0, np.deg2rad(90))
-
-    ax.tick_params(colors="blue")
-    for label in ax.get_xticklabels() + ax.get_yticklabels():
-        label.set_color("blue")
-
-    plt.show()
-
-
-def plotGlobalDensity(rows):
-    plotHemisphereDensity(rows, "north")
-    plotHemisphereDensity(rows, "south")
-
-
-def plotObservedRadec(rows):
-    """
-    rows: iterable of (ra_deg, dec_deg)
-    """
-
-    # Extract arrays
-    ra_rad = np.array([r[0] for r in rows]) * np.pi / 180.0
-    dec_deg = np.array([r[1] for r in rows])
-
-    # Masks
-    north_mask = dec_deg >= 0
-    south_mask = dec_deg < 0
-
-    # Convert to polar radii
-    # North: r = 90 - dec
-    # South: r = 90 + dec
-    r_north = np.deg2rad(90 - dec_deg[north_mask])
-    r_south = np.deg2rad(90 + dec_deg[south_mask])
-
-    # --- Plotting ---
-    fig, (ax_north, ax_south) = plt.subplots(
-        1, 2,
-        subplot_kw={'projection': 'polar'},
-        figsize=(12, 6)
-    )
-
-    # Northern hemisphere
-    ax_north.scatter(ra_rad[north_mask], r_north, s=2, color='white')
-    ax_north.set_title("Northern Hemisphere")
-    ax_north.set_facecolor("black")
-    ax_north.set_ylim(0, np.deg2rad(90))
-
-    # Southern hemisphere
-    ax_south.scatter(ra_rad[south_mask], r_south, s=2, color='white')
-    ax_south.set_title("Southern Hemisphere")
-    ax_south.set_facecolor("black")
-    ax_south.set_ylim(0, np.deg2rad(90))
-
-    plt.show()
-
-
-def fetchObservedRadec(conn):
-    """
-    Fetch observed RA/Dec pairs from PostgreSQL.
-
-    Arguments:
-        conn: psycopg.Connection object
-
-    Returns:
-        list of (ra_deg, dec_deg)
-    """
-
-    query = """
-                SELECT DISTINCT ON (catalogue_id)
-                       catalogue_id,
-                       obs_ra,
-                       obs_dec
-                FROM observation
-                WHERE obs_ra IS NOT NULL
-                  AND obs_dec IS NOT NULL
-                ORDER BY catalogue_id;
-            """
+    ra_list = []
+    dec_list = []
 
     with conn.cursor() as cur:
         cur.execute(query)
-        rows = cur.fetchall()
+        for ra_scaled, dec_scaled in cur:
+            ra_list.append(ra_scaled / DB_SCALE_FACTOR)
+            dec_list.append(dec_scaled / DB_SCALE_FACTOR)
 
-    return rows
-
-
-
-if __name__ == "__main__":
-
-    import argparse
-
-    arg_parser = argparse.ArgumentParser(description="""Plot data \
-        """, formatter_class=argparse.RawTextHelpFormatter)
+    return np.array(ra_list), np.array(dec_list)
 
 
 
+def radecToPolarVectorised(ra_deg_array, dec_deg_array):
+    """
+    Convert arrays of RA/Dec to polar coordinates.
+    Vectorised for speed with millions of rows.
+    Returns (theta_rad_array, r_rad_array)
+    """
+
+    # Convert RA to radians
+    theta_rad = np.deg2rad(ra_deg_array)
+
+    # Clamp Dec to [-90, +90] to avoid invalid radii
+    dec_clamped = np.clip(dec_deg_array, -90.0, 90.0)
+
+    # Southern hemisphere radius:
+    # r = deg2rad(90 - |dec|)
+    r_rad = np.deg2rad(90.0 - np.abs(dec_clamped))
+
+    return theta_rad, r_rad
 
 
 
-    cml_args = arg_parser.parse_args()
-    config = cr.parse(os.path.join(os.getcwd(),".config"))
+def plotHemisphereDensity(rows_ra, rows_dec, gridsize=200):
+    """
+    Plot a hemisphere density map using hexbin.
+    rows_ra, rows_dec: numpy arrays of degrees.
+    """
 
+    # Convert to polar coordinates (vectorised)
+    theta_vals, r_vals = radecToPolarVectorised(rows_ra, rows_dec)
 
+    # Diagnostic print (optional)
+    print("r min:", np.min(r_vals))
+    print("r max:", np.max(r_vals))
 
-    # Initialize the logger
-    log_manager = LoggingManager()
-    log_manager.initLogging(config)
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111, projection="polar")
 
-    # Get the logger handle
-    log = getLogger("rmslogger")
+    # Black background for heatmap
+    ax.set_facecolor("black")
 
+    ax.set_title(
+        "Southern Celestial Hemisphere\nObservation Density",
+        color="white"
+    )
 
+    print("theta_vals shape:", theta_vals.shape)
+    print("r_vals shape:", r_vals.shape)
 
-    cwd = os.getcwd()
+    print("theta min/max:", np.min(theta_vals), np.max(theta_vals))
+    print("r min/max:", np.min(r_vals), np.max(r_vals))
 
-    conn_params = {
-        "host": "192.168.1.174",
-        "dbname": "star_data",
-        "user": "ingest_user"
-    }
+    # Check for NaNs or infs
+    print("theta NaNs:", np.isnan(theta_vals).sum())
+    print("r NaNs:", np.isnan(r_vals).sum())
+    print("theta infs:", np.isinf(theta_vals).sum())
+    print("r infs:", np.isinf(r_vals).sum())
 
-    with psycopg.connect(**conn_params) as conn:
+    # Check a few samples
+    print("Sample theta:", theta_vals[:10])
+    print("Sample r:", r_vals[:10])
 
-        rows = fetchObservedRadec(conn)
-        plotObservedRadec(rows)
+    ax.scatter(
+        theta_vals,
+        r_vals,
+        s=1,
+        c=r_vals,  # or a constant color
+        cmap="inferno",
+        alpha=0.3
+    )
 
-        catalogue_id = 'HD 92305'
-        jd_start = 2461114.0
-        jd_end = 2461118.0
+    #plt.colorbar(hb, ax=ax, label="Observation density")
+    ax.set_ylim(0, np.deg2rad(90))
 
-        plotStarLightcurve(conn, catalogue_id, jd_start, jd_end)
+    # White tick labels for contrast
+    ax.tick_params(colors="white")
+    for label in ax.get_xticklabels() + ax.get_yticklabels():
+        label.set_color("white")
 
-
-        catalogue_id = 'HD 74956'
-        jd_start = 2461114.0
-        jd_end = 2461118.0
-
-        plotStarLightcurve(conn, catalogue_id, jd_start, jd_end)
-
-
-
+    plt.show()
     pass
+
+
+with psycopg.connect(host="192.168.1.174", dbname="star_data", user="ingest_user") as conn:
+
+    ra_deg, dec_deg = fetchHemisphereRadec(conn, "south")
+    plotHemisphereDensity(ra_deg, dec_deg)
