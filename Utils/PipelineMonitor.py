@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 import os
 import time
+import datetime
 
 from Utils.PipelineMetrics.Sessions import latestSessions
 from Utils.PipelineMetrics.Frames import frameCounts
 from Utils.PipelineMetrics.Observations import observationCounts, totalObservations
-from Utils.PipelineMetrics.IngestionRate import framesPerSecond
+from Utils.PipelineMetrics.IngestionRate import calstarsPerDay
+
+INTERVAL = datetime.timedelta(minutes=10)
 
 BLUE = "\033[34m"
 GREEN = "\033[32m"
@@ -44,8 +47,13 @@ def showTotalObservations():
 
 def showIngestionRate():
 
-    lines = ["Ingestion Rate (frames/sec)"]
-    return f"=== Ingestion Rate (frames/sec) ===\n{framesPerSecond():.2f}"
+    fps, stalled = calstarsPerDay()
+
+    banner = ""
+    if stalled:
+        banner = f"{RED}!!! INGESTION STALLED — NO NEW CALSTARS !!!{RESET}\n"
+
+    return banner + f"=== Ingestion Rate (calstars/day) ===\n{fps:.2f}"
 
 def dashboard():
 
@@ -61,7 +69,23 @@ def dashboard():
     os.system("clear")
     print(output)
 
+
+
 if __name__ == "__main__":
+
+
+
+    next_iteration_start = datetime.datetime.now(tz=datetime.timezone.utc)
+
     while True:
+        now = datetime.datetime.now(tz=datetime.timezone.utc)
+
+        # Sleep until the scheduled time (if we're early)
+        if now < next_iteration_start:
+            time.sleep((next_iteration_start - now).total_seconds())
+
+        # Run the dashboard
         dashboard()
-        time.sleep(120)
+
+        # Schedule the next iteration
+        next_iteration_start += INTERVAL

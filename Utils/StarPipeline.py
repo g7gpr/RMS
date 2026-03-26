@@ -1328,19 +1328,20 @@ def downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=22, max
         download_count += 1
         # If the file is now present, break immediately
         if os.path.exists(target_path):
-            break
+            download_end_time = datetime.datetime.now(datetime.timezone.utc)
+            downloaded_size = os.path.getsize(os.path.join(t, remote_file)) / (1000 ** 2)
+            rate_mb_s = downloaded_size / (download_end_time - download_start_time).total_seconds()
+            log.info(
+                f"Downloaded {remote_file} of size {downloaded_size:.2f}MB at {rate_mb_s:.2f} MB/s after {download_count} try")
+            return True
         delay = random.randint(600, 900)
         log.info(f"Waiting {delay/60:.1f} minutes for {target_path}")
         time.sleep(delay)
-    return True
 
-    if os.path.exists(os.path.join(t, os.path.basename(full_remote_path_to_bz2))):
-        download_end_time = datetime.datetime.now(datetime.timezone.utc)
-        downloaded_size = os.path.getsize(os.path.join(t, remote_file)) / (1000 ** 2)
-        rate_mb_s = downloaded_size / (download_end_time - download_start_time).total_seconds()
-        log.info(f"Downloaded {remote_file} of size {downloaded_size:.2f}MB at {rate_mb_s:.2f} MB/s after {download_count} try")
-    else:
-        log.warning(f"Failed to download {remote_file} after {download_count} tries")
+
+
+    log.warning(f"Failed to download {remote_file} after {download_count} tries")
+
     return False
 
 def moveFiles(local_target, path_source_list, path_local_list):
