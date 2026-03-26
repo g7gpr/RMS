@@ -1442,17 +1442,25 @@ def extractSessionNameFromCalstar(calstars_path):
 
 def processServerFile(conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True):
 
+
+
     station_name = remote_file.split("_")[0]
     remote_dir = remote_station_processed_dir.replace("stationID", station_name.lower())
 
     file_type = getFileType(remote_file)
     if file_type != "metadata" and file_type != "detected":
+        log.info(f"File of type {file_type} not required")
         return
 
     local_dir_name = "_".join(remote_file.split("_")[0:4])
-    log.info(f"Working on {local_dir_name}")
+
     local_target = os.path.join(calstars_data_full_path, local_dir_name)
 
+    if isIngested(conn, local_target):
+        log.info(f"{local_dir_name} already processed")
+        return
+
+    log.info(f"Working on {local_dir_name}")
     # If we already have a .bz2 file, extract it so we can work on it
     local_calstars_archive_path = f"{local_target}_CALSTAR.tar.bz2"
     extractCalstarArchives(calstars_data_full_path, [os.path.basename(local_calstars_archive_path)], remove_archives=True)
@@ -1475,40 +1483,37 @@ def processServerFile(conn, remote_file, remote_station_processed_dir, username,
         log.info(f"Skipping {remote_file} because config file not available")
         return
 
-    if not isIngested(conn, local_target):
 
-        if not write_db:
-            log.info(f"Data from {local_dir_name} not being written to database as writes not enabled.")
-            return
+    if not write_db:
+        log.info(f"Data from {local_dir_name} not being written to database as writes not enabled.")
+        return
 
-        if write_db:
-            log.info(f"Ingesting {calstars_name}")
+    if write_db:
+        log.info(f"Ingesting {calstars_name}")
 
-            observation_session_config = cr.parse(local_config_path)
-            observation_session_dict, start_jd, end_jd = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
+        observation_session_config = cr.parse(local_config_path)
+        observation_session_dict, start_jd, end_jd = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
 
-            pixel_scale_h, pixel_scale_v = extractMedianPixelScale(observation_session_dict)
-            session_name = extractSessionNameFromCalstar(local_calstars_path)
-            frame_rows, star_rows, observation_rows = buildAllRows(observation_session_dict, session_name)
+        pixel_scale_h, pixel_scale_v = extractMedianPixelScale(observation_session_dict)
+        session_name = extractSessionNameFromCalstar(local_calstars_path)
+        frame_rows, star_rows, observation_rows = buildAllRows(observation_session_dict, session_name)
 
-            writeSessionBatch(
-                conn,
-                session_name=session_name,
-                station_id=station_name,
-                start_jd=start_jd,
-                end_jd=end_jd,
-                pixel_scale_h=pixel_scale_h,
-                pixel_scale_v=pixel_scale_v,
-                frame_rows=frame_rows,
-                star_rows=star_rows,
-                observation_rows=observation_rows,
-                session_config=observation_session_config
-            )
+        writeSessionBatch(
+            conn,
+            session_name=session_name,
+            station_id=station_name,
+            start_jd=start_jd,
+            end_jd=end_jd,
+            pixel_scale_h=pixel_scale_h,
+            pixel_scale_v=pixel_scale_v,
+            frame_rows=frame_rows,
+            star_rows=star_rows,
+            observation_rows=observation_rows,
+            session_config=observation_session_config
+        )
 
-            markIngested(conn, local_target)
+        markIngested(conn, local_target)
 
-    else:
-        log.info(f"Not ingesting {calstars_name} as it has already been ingested.")
 
     # Put back in an archive in all cases
     archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)

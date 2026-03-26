@@ -5,11 +5,13 @@ import psycopg
 DB_SCALE_FACTOR = 1e6
 
 
-def fetchHemisphereRadec(conn, hemisphere="south", limit_rows=5000000):
+def fetchHemisphereRadec(conn, hemisphere="south", limit_rows=5000000, mag_limit=4.0):
     """
     Efficiently fetch RA/Dec for a single hemisphere.
     Returns arrays of ra_deg, dec_deg.
     """
+
+    mag_scaled_limit = int(mag_limit * DB_SCALE_FACTOR)
 
     if hemisphere == "south":
         dec_filter = "dec < 0"
@@ -21,6 +23,7 @@ def fetchHemisphereRadec(conn, hemisphere="south", limit_rows=5000000):
         FROM observation
         WHERE ra IS NOT NULL
           AND dec IS NOT NULL
+          AND mag < {mag_scaled_limit}
           AND {dec_filter}
           LIMIT {limit_rows};
     """
@@ -120,7 +123,7 @@ def plotHemisphereDensity(rows_ra, rows_dec, gridsize=200):
     pass
 
 
-with psycopg.connect(host="192.168.1.174", dbname="star_data", user="ingest_user") as conn:
+with psycopg.connect(host="192.168.1.190", dbname="star_data", user="ingest_user") as conn:
 
     ra_deg, dec_deg = fetchHemisphereRadec(conn, "south")
     plotHemisphereDensity(ra_deg, dec_deg)
