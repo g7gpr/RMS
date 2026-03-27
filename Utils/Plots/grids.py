@@ -51,12 +51,20 @@ def addDecTicks(ax):
     r_minor = np.deg2rad(90.0 - np.abs(dec_minor))
 
     ax.set_yticks(r_major)
-    ax.set_yticklabels([f"{d}°" for d in dec_major], color="#6699cc")
 
     ax.set_yticks(r_minor, minor=True)
+    # Declination ticks you want to show (omit +90°)
+    dec_labels = ["60°", "30°", "0°", "30°", "60°"]
 
-    ax.tick_params(axis="y", which="major", length=8, width=1.0, color="#0044aa")
-    ax.tick_params(axis="y", which="minor", length=4, width=0.6, color="#88aadd")
+    # Corresponding declinations in degrees (north → south)
+    dec_degs = np.array([+60, +30, 0, -30, -60])
+
+    # Convert to polar radii
+    dec_r = np.deg2rad(90 - np.abs(dec_degs))
+
+    ax.set_yticks(dec_r)
+    ax.set_yticklabels(dec_labels, color="#0044aa")
+    ax.tick_params(axis="y", which="minor", length=4, width=0.6, color="#0044aa")
 
 
 def addRaGrid(ax):
@@ -81,4 +89,4 @@ def addEcliptic(ax, hemisphere="south"):
     """Draw the true ecliptic in soft red."""
     ra_deg, dec_deg = computeEclipticEquatorial()
     theta, r = radecToPolarNoClip(ra_deg, dec_deg, hemisphere=hemisphere)
-    ax.plot(theta, r, color="#cc4444", lw=1.2, alpha=0.7)
+    ax.plot(theta, r, color="#cc4444", lw=0.6, alpha=0.3)

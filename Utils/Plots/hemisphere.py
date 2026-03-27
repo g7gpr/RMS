@@ -23,15 +23,12 @@ def plotHemisphere(fig, ax, ra_deg, dec_deg, constellations, mag=None, names_lis
 
 
     theta, r = radecToPolar(ra_deg, dec_deg, hemisphere=hemisphere)
-    print("theta size:", theta.size)
-    print("r size:", r.size)
-    print("theta range:", theta.min(), theta.max())
-    print("r range:", r.min(), r.max())
 
 
+    names_list = None
     plotStars(ax, theta, r, ra_deg=ra_deg, dec_deg=dec_deg, mag=mag, names_list=names_list, size=1.2, alpha=0.5)
 
-    plotConstellationLines(ax, constellations)
+    plotConstellationLines(ax, constellations, hemisphere=hemisphere)
 
 
     addRaTicks(ax, hemisphere=hemisphere)
@@ -42,6 +39,7 @@ def plotHemisphere(fig, ax, ra_deg, dec_deg, constellations, mag=None, names_lis
     addEcliptic(ax, hemisphere=hemisphere)
 
     ax.set_ylim(0.0, np.deg2rad(90.0))
+    ax.set_rmax(np.deg2rad(90.0))
 
     ax.set_facecolor("white")
     fig.patch.set_facecolor("white")
@@ -49,7 +47,8 @@ def plotHemisphere(fig, ax, ra_deg, dec_deg, constellations, mag=None, names_lis
     fig.suptitle(
         f"Global Meteor Network — {hemisphere.capitalize()} Hemisphere",
         y=0.05,
-        color="#0044aa",
+        color="#444444",
+        fontweight="light"
     )
 
     return fig, ax

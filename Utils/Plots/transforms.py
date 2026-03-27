@@ -19,10 +19,8 @@ def radecToPolar(ra_deg, dec_deg, hemisphere="south"):
 
     dec_clamped = np.clip(dec_deg, -90.0, 90.0)
 
-    if hemisphere == "south":
-        r = np.deg2rad(90.0 - np.abs(dec_clamped))
-    else:
-        r = np.deg2rad(90.0 - dec_clamped)
+
+    r = np.deg2rad(90.0 - np.abs(dec_clamped))
 
     return theta, r
 

@@ -82,7 +82,7 @@ def readIAUCSN(catalog_path, catalog_name, additional_fields = []):
         for line in catalog_file:
             if line.startswith('#') or line.startswith('$'):
                 continue
-            if not isalnum(line[0]):
+            if not line[0].isalnum():
                 continue
             f = []
             for col in range(0,len(positions)):
@@ -111,6 +111,56 @@ def readIAUCSN(catalog_path, catalog_name, additional_fields = []):
     return star_data, mag_band, mag_band_ratios, extra_values_dict
 
 
+def addCurvedHemisphereTitle(ax, text, hemisphere, radius_deg=98, spread_deg=45):
+    """
+    Draw a fully curved title around the rim of a polar hemisphere plot.
+    Each character is positioned and rotated individually.
+    """
+
+    # Convert radius to radians for polar coordinates
+    r = np.deg2rad(radius_deg)
+
+    # Base angles:
+    #   north = π (top)
+    #   south = 0 (bottom)
+    #
+    # Apply required 90° shifts:
+    #   south: move clockwise  by 90° → -π/2
+    #   north: move anticlockwise by 90° → +π/2
+    if hemisphere == "north":
+        theta_center = np.pi + np.pi/2      # top → rotate anticlockwise 90°
+    else:
+        theta_center = 0 - np.pi/2          # bottom → rotate clockwise 90°
+
+    # Angular positions for each character
+    n = len(text)
+    if n > 1:
+        dtheta = np.deg2rad(spread_deg) / (n - 1)
+    else:
+        dtheta = 0
+
+    theta_start = theta_center - 0.5 * (n - 1) * dtheta
+
+    for i, char in enumerate(text):
+        theta = theta_start + i * dtheta
+
+        # Tangent rotation
+        rotation = np.rad2deg(theta) + 90
+
+        ax.text(
+            theta,
+            r,
+            char,
+            ha="center",
+            va="center",
+            rotation=rotation,
+            rotation_mode="anchor",
+            fontsize=14,
+            color="#444444",
+            fontweight="light"
+        )
+
+
 def plotAtlasTwoPanel(
     ra_south_deg,
     dec_south_deg,
@@ -135,26 +185,14 @@ def plotAtlasTwoPanel(
     plotHemisphere(fig, ax_south, ra_south_deg, dec_south_deg, constellations_south, mag=mag_south, names_list=names_list_south, hemisphere="south")
     plotHemisphere(fig, ax_north, ra_north_deg, dec_north_deg, constellations_north, mag=mag_north,names_list=names_list_north, hemisphere="north")
 
-    ax_north.set_title(
-        "Northern Hemisphere",
-        fontsize=14,
-        color="#444444",
-        pad=20,
-        fontweight="light"
-    )
-
-    ax_south.set_title(
-        "Southern Hemisphere",
-        fontsize=14,
-        color="#444444",
-        pad=20,
-        fontweight="light"
-    )
+    addCurvedHemisphereTitle(ax_south, "SOUTHERN HEMISPHERE", "south")
+    addCurvedHemisphereTitle(ax_north, "NORTHERN HEMISPHERE", "north")
 
     fig.suptitle(
-        "Global Meteor Network — Full Sky Atlas",
-        y=0.02,
+        "The Global Meteor Network All Sky Survey",
+        y=0.92,
         color="#444444",
+        fontweight="light"
     )
 
     return fig

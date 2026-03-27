@@ -1,8 +1,8 @@
 import csv
 import os
+import numpy as np
 
 from transforms import radecToPolar
-
 
 def loadConstellationLines(csv_path):
     """Load constellation line segments from a 4-column CSV."""
@@ -41,11 +41,21 @@ def filterNorthernConstellations(lines):
     return north_lines
 
 
-def plotConstellationLines(ax, lines, color="#0044aa", alpha=0.22, lw=0.35):
+def plotConstellationLines(ax, lines, color="#0044aa", alpha=0.22, lw=0.35, hemisphere="north"):
     """Draw constellation line segments."""
     for ra1, dec1, ra2, dec2 in lines:
         theta1, r1 = radecToPolar(ra1, dec1)
         theta2, r2 = radecToPolar(ra2, dec2)
+
+
+        if dec1 < 0.0 and dec2 < 0.0:
+            theta1, r1 = theta1, r1
+            theta2, r2 = theta2, r2
+        elif dec1 > 0.0 and dec2 > 0.0:
+            theta1, r1 = np.mod(np.pi - theta1, 2*np.pi), r1
+            theta2, r2 = np.mod(np.pi - theta2, 2*np.pi), r2
+
+
         ax.plot([theta1, theta2], [r1, r2], color=color, alpha=alpha, lw=lw)
 
 
