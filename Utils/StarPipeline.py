@@ -295,6 +295,9 @@ def createObservationTable(conn):
     sql = """
     CREATE TABLE IF NOT EXISTS observation (
         obs_id          BIGSERIAL PRIMARY KEY,
+        session_name    TEXT REFERENCES session(session_name),
+        station_name    TEXT,
+
         frame_name      TEXT REFERENCES frame(frame_name),
         star_name       TEXT,
 
@@ -316,7 +319,9 @@ def createObservationTable(conn):
         ra              INTEGER,
         dec             INTEGER,
 
+        -- Flags
         flags           SMALLINT
+        
     );
     """
     with conn.cursor() as cur:
@@ -399,7 +404,7 @@ def buildStarRows(observation_dict):
     return list(star_set)
 
 
-def buildObservationRows(observation_dict):
+def buildObservationRows(observation_dict, session_name, station_name):
     observation_rows = []
 
     for fits_file, frame_list in observation_dict.items():
@@ -422,6 +427,8 @@ def buildObservationRows(observation_dict):
                 scale1e6(obs["err_mag"]),
                 scale1e6(obs["obs_ra"]),
                 scale1e6(obs["obs_dec"]),
+                session_name,
+                station_name,
                 0  # flags
             ))
 
@@ -431,7 +438,8 @@ def buildObservationRows(observation_dict):
 def buildAllRows(observation_dict, session_name):
     frame_rows = buildFrameRows(observation_dict, session_name)
     star_rows = buildStarRows(observation_dict)
-    observation_rows = buildObservationRows(observation_dict)
+    station_name = session_name[:6]
+    observation_rows = buildObservationRows(observation_dict, station_name=station_name, session_name=session_name)
 
     return frame_rows, star_rows, observation_rows
 
@@ -491,7 +499,6 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
         lon = session_config.longitude
         ele = session_config.elevation
 
-
     if not observation_count:
         return observation_count
 
@@ -515,8 +522,10 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                                              lat,
                                              lon,
                                              elevation)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
-                        """, (
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT DO NOTHING;
+                        """,
+                        (
                             session_name,
                             station_id,
                             scale1e6(start_jd),
@@ -542,7 +551,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                 ON CONFLICT DO NOTHING;
             """, star_rows)
 
-            # Insert observations
+            # Insert observations (UPDATED)
             cur.executemany("""
                 INSERT INTO observation (
                     frame_name,
@@ -550,21 +559,30 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                     y, x,
                     intens_sum, ampltd, fwhm, bg_lvl, snr, nsatpx,
                     mag, mag_err, ra, dec,
+                    session_name,
+                    station_name,
                     flags
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s,
+                        %s, %s,
+                        %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s,        -- session_name
+                        %s,        -- station_name
+                        %s)
                 ON CONFLICT DO NOTHING;
             """, observation_rows)
 
-        # If everything succeeded, commit once
         conn.commit()
 
-    except Exception as e:
-        # Roll back the entire session atomically
+    except Exception:
         conn.rollback()
         raise
 
     return observation_count
+
+
+
 
 def ensureList(value):
     """Return: list containing value, or value itself if already a list."""
@@ -1481,6 +1499,8 @@ def processServerFile(conn, remote_file, remote_station_processed_dir, username,
 
     if local_config_path is None:
         log.info(f"Skipping {remote_file} because config file not available")
+        # Mark ingested, because we don't want to look at this again
+        markIngested(conn, local_target)
         return
 
 

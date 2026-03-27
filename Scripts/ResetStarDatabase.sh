@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-PGHOST="192.168.1.174"
+PGHOST="192.168.1.190"
 PGUSER="postgres"
 
 echo "Dropping existing star_data database (if it exists)..."
