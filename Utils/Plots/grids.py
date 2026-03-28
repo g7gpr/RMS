@@ -54,7 +54,7 @@ def addDecTicks(ax):
 
     ax.set_yticks(r_minor, minor=True)
     # Declination ticks you want to show (omit +90°)
-    dec_labels = ["60°", "30°", "0°", "30°", "60°"]
+    dec_labels = ["60", "30", "", "30", "60"]
 
     # Corresponding declinations in degrees (north → south)
     dec_degs = np.array([+60, +30, 0, -30, -60])
@@ -63,7 +63,7 @@ def addDecTicks(ax):
     dec_r = np.deg2rad(90 - np.abs(dec_degs))
 
     ax.set_yticks(dec_r)
-    ax.set_yticklabels(dec_labels, color="#0044aa")
+    ax.set_yticklabels(dec_labels, color="#6699cc")
     ax.tick_params(axis="y", which="minor", length=4, width=0.6, color="#0044aa")
 
 

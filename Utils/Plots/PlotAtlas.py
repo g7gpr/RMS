@@ -12,7 +12,7 @@ from atlas import plotAtlasTwoPanel, readIAUCSN
 DB_SCALE_FACTOR = 1e6
 
 
-def fetchHemisphereRadec(conn, hemisphere="south", limit_rows=5000, mag_limit=3, test_mode=False):
+def fetchHemisphereRadec(conn, hemisphere="south", limit_rows=30000, mag_limit=3, test_mode=False):
 
 
 
@@ -87,7 +87,6 @@ def fetchHemisphereRadec(conn, hemisphere="south", limit_rows=5000, mag_limit=3,
             WHERE ra IS NOT NULL
               AND dec IS NOT NULL
               AND mag < {mag_scaled_limit}
-              AND station_name = 'AU000K' or station_name = 'AU0007'
               AND {dec_filter}
             LIMIT {limit_rows};
         """

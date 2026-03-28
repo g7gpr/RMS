@@ -295,6 +295,7 @@ def createObservationTable(conn):
     sql = """
     CREATE TABLE IF NOT EXISTS observation (
         obs_id          BIGSERIAL PRIMARY KEY,
+        jd_mid          BIGINT, 
         session_name    TEXT REFERENCES session(session_name),
         station_name    TEXT,
 
@@ -328,6 +329,22 @@ def createObservationTable(conn):
         cur.execute(sql)
     conn.commit()
 
+def createObservationIndexes(conn):
+
+
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_observation_jd_mid
+            ON observation (jd_mid);
+        """)
+
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_observation_jd_ra_dec
+            ON observation (jd_mid, ra, dec);
+        """)
+
+        conn.commit()
+
 
 def createAllTables(conn):
     createStationTable(conn)
@@ -336,6 +353,10 @@ def createAllTables(conn):
     createStarTable(conn)
     createObservationTable(conn)
     createCalstarFilesTable(conn)
+
+def createAllIndexes(conn):
+
+    createObservationIndexes(conn)
 
 def scale1e6(value):
     # Pass through None
@@ -409,6 +430,7 @@ def buildObservationRows(observation_dict, session_name, station_name):
 
     for fits_file, frame_list in observation_dict.items():
         frame_name = extractFrameName(fits_file)
+        frame_jd_mid = scale1e6(frame_list[0]["jd"])
 
         # frame_list is now a list of observation dicts
         for obs in frame_list:
@@ -429,6 +451,7 @@ def buildObservationRows(observation_dict, session_name, station_name):
                 scale1e6(obs["obs_dec"]),
                 session_name,
                 station_name,
+                frame_jd_mid,
                 0  # flags
             ))
 
@@ -551,7 +574,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                 ON CONFLICT DO NOTHING;
             """, star_rows)
 
-            # Insert observations (UPDATED)
+            # Insert observations
             cur.executemany("""
                 INSERT INTO observation (
                     frame_name,
@@ -561,6 +584,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                     mag, mag_err, ra, dec,
                     session_name,
                     station_name,
+                    jd_mid,
                     flags
                 )
                 VALUES (%s, %s,
@@ -569,9 +593,10 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                         %s, %s, %s, %s,
                         %s,        -- session_name
                         %s,        -- station_name
+                        %s,
                         %s)
                 ON CONFLICT DO NOTHING;
-            """, observation_rows)
+                """, observation_rows)
 
         conn.commit()
 
@@ -1844,6 +1869,12 @@ def resetIngestion(local_calstars_path, ingestion_marker):
             pass
 
 
+def initialiseDatabase(conn):
+
+    createAllTables(conn)
+    createAllIndexes(conn)
+
+
 if __name__ == "__main__":
 
     import argparse
@@ -1918,7 +1949,7 @@ if __name__ == "__main__":
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 
-        createAllTables(conn)
+        initialiseDatabase(conn)
         log.info("Loading star catalog")
         cat = Catalog(config, lim_mag=10)
         log.info(f"Loaded catalog of {cat.entry_count} entries")

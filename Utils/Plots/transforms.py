@@ -15,7 +15,7 @@ def radecToPolar(ra_deg, dec_deg, hemisphere="south"):
         # 0° at bottom, increasing anticlockwise
         theta = theta - np.deg2rad(90.0)
 
-    #theta = np.mod(theta, 2 * np.pi)
+    theta = np.mod(theta, 2 * np.pi)
 
     dec_clamped = np.clip(dec_deg, -90.0, 90.0)
 

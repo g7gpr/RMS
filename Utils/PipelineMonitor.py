@@ -6,7 +6,7 @@ import datetime
 from Utils.PipelineMetrics.Sessions import latestSessions
 from Utils.PipelineMetrics.Frames import frameCounts
 from Utils.PipelineMetrics.Observations import observationCounts, totalObservations
-from Utils.PipelineMetrics.IngestionRate import calstarsPerDay
+from Utils.PipelineMetrics.IngestionRate import calstarsPerDay, activeStationCount, ingestionStalled
 
 INTERVAL = datetime.timedelta(minutes=1)
 
@@ -44,27 +44,73 @@ def showTotalObservations():
 
     return f"=== Total Observations ===\n{totalObservations()}"
 
+def jdRange():
+    """
+    Return earliest and latest JD from the observation table.
+    """
+    from Utils.PipelineMetrics.db import getConn
+    conn = getConn()
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT MIN(jd_mid), MAX(jd_mid) FROM frame;")
+        row = cur.fetchone()
+
+    if row is None:
+        return None, None
+
+    # Convert microdays → days
+    jd_min = row[0] / 1e6 if row[0] is not None else None
+    jd_max = row[1] / 1e6 if row[1] is not None else None
+
+    return jd_min, jd_max
+
+def showJdRange():
+
+    jd_min, jd_max = jdRange()
+    jd_range = jd_max - jd_min
+
+    if jd_min is None:
+        return "=== JD Range ===\nNo data"
+
+    return (
+        "=== JD Range ===\n"
+        f"Earliest JD:  {jd_min:011.3f}\n"
+        f"Range JD:     {jd_range:011.3f}\n"
+        f"Latest JD:    {jd_max:011.3f}"
+    )
+
+def showActiveStations():
+
+    n = activeStationCount(hours=48)
+    return f"=== Active Stations (48h) ===\n{n}"
+
+def showIngestionHealth():
+    stalled = ingestionStalled()
+    if stalled:
+        return "=== Ingestion Health ===\nWARNING: Ingestion stalled"
+    else:
+        return "=== Ingestion Health ===\nOK"
 
 def showIngestionRate():
-
-    fps, stalled = calstarsPerDay()
-
-    banner = ""
-    if stalled:
-        banner = f"{RED}!!! INGESTION STALLED — NO NEW CALSTARS !!!{RESET}\n"
-
-    return banner + f"=== Ingestion Rate (calstars/day) ===\n{fps:.2f}"
+    rate = calstarsPerDay(window_days=7)
+    return (
+        "=== Ingestion Rate (7‑day rolling) ===\n"
+        f"{rate:.2f} calstars/day"
+    )
 
 def dashboard():
     try:
         sections = [
             datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+            showIngestionHealth(),
             showLatestSessions(),
             showFrameCounts(),
-            showObservationCounts(),
-            showTotalObservations(),
+            #showObservationCounts(),
+            #showTotalObservations(),
+            showJdRange(),
             showIngestionRate(),
-        ]
+            showActiveStations()]
+
     except Exception as e:
         # Database not ready or query failed
         sections = [
