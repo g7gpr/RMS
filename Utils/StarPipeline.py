@@ -347,6 +347,7 @@ def createObservationIndexes(conn):
 
 
 def createAllTables(conn):
+
     createStationTable(conn)
     createSessionTable(conn)
     createFrameTable(conn)
@@ -357,6 +358,56 @@ def createAllTables(conn):
 def createAllIndexes(conn):
 
     createObservationIndexes(conn)
+
+def revokeCreatesIngestUser(conn):
+
+    with conn.cursor() as cur:
+        cur.execute("REVOKE CREATE ON DATABASE star_data FROM ingest_user;")
+        cur.execute("REVOKE CREATE ON SCHEMA public FROM ingest_user;")
+    conn.commit()
+
+def createIngestUserIfMissing(conn):
+    with conn.cursor() as cur:
+        # Check if role exists
+        cur.execute("SELECT 1 FROM pg_roles WHERE rolname='ingest_user';")
+        exists = cur.fetchone()
+
+        if not exists:
+            # Create the role WITHOUT a password
+            # Operator sets the password manually once
+            cur.execute("CREATE ROLE ingest_user LOGIN;")
+
+    conn.commit()
+
+def grantIngestUserPrivileges(conn):
+    with conn.cursor() as cur:
+        # Database + schema access
+        cur.execute("GRANT CONNECT ON DATABASE star_data TO ingest_user;")
+        cur.execute("GRANT USAGE ON SCHEMA public TO ingest_user;")
+
+        # Table privileges
+        cur.execute("""
+            GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA public TO ingest_user;
+        """)
+
+        # Future tables
+        cur.execute("""
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public
+            GRANT SELECT, INSERT ON TABLES TO ingest_user;
+        """)
+
+    conn.commit()
+
+
+def initialiseDatabase(conn):
+
+
+    createIngestUserIfMissing(conn)
+    setIngestUserSearchPath(conn)
+    createAllTables(conn)
+    createAllIndexes(conn)
+    grantIngestUserPrivileges(conn)
+    revokeCreatesIngestUser(conn)
 
 def scale1e6(value):
     # Pass through None
@@ -1591,6 +1642,12 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
         Nothing.
     """
 
+    with conn.cursor() as cur:
+        cur.execute("SELECT current_user;")
+        log.info(f"Python is connecting as:{cur.fetchone()[0]}")
+        cur.execute("SELECT inet_server_addr(), inet_server_port();")
+        log.info(f"Python is connected to:{cur.fetchone()}")
+
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
     log.info("Starting to download files")
@@ -1868,18 +1925,26 @@ def resetIngestion(local_calstars_path, ingestion_marker):
             archiveCalstarDirectories(conn, local_calstars_path, [os.path.basename(calstar_path)], ingested_only=False)
             pass
 
-def revokeCreatesIngestUser(conn):
-
+def setIngestUserSearchPath(conn):
     with conn.cursor() as cur:
-        cur.execute("REVOKE CREATE ON DATABASE star_data FROM ingest_user;")
-        cur.execute("REVOKE CREATE ON SCHEMA public FROM ingest_user;")
+        cur.execute("ALTER ROLE ingest_user SET search_path = public;")
     conn.commit()
 
-def initialiseDatabase(conn):
 
-    createAllTables(conn)
-    createAllIndexes(conn)
-    revokeCreatesIngestUser(conn)
+def createDatabaseIfMissing(conn):
+    # Connect to the default database
+
+    conn.autocommit = True  # REQUIRED for CREATE DATABASE
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM pg_database WHERE datname='star_data';")
+        exists = cur.fetchone()
+
+        if not exists:
+            cur.execute("CREATE DATABASE star_data;")
+
+
+
 
 
 if __name__ == "__main__":
@@ -1954,12 +2019,18 @@ if __name__ == "__main__":
 
     print(len(remote_files))
 
+    with psycopg.connect(host=postgresql_host, dbname="star_data", user="postgres") as conn:
+
+        createDatabaseIfMissing(conn)
+        initialiseDatabase(conn)
+
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 
-        initialiseDatabase(conn)
+
         log.info("Loading star catalog")
         cat = Catalog(config, lim_mag=10)
         log.info(f"Loaded catalog of {cat.entry_count} entries")
+
 
         ingest(config, remote_files_sorted, conn, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db)
 
