@@ -175,6 +175,7 @@ from RMS.Logger import LoggingManager, getLogger
 from pathlib import Path
 
 JD_OFFSET = J2000_JD
+DEBUG_CALSTAR_INSERT = False
 
 #Most floats are multiplied by this scale factor and stored as INTEGER
 DB_SCALE_FACTOR = 1e6
@@ -468,7 +469,18 @@ def auditIngestUserPrivileges(conn):
         except Exception as e:
             print("  INSERT FAILED:", e)
 
+        cur.execute("SELECT inet_server_addr(), inet_server_port();")
+        log.warning("SERVER: %s", cur.fetchone())
+
     print("=== END AUDIT ===\n")
+
+def ensureCalstarFilePrivileges(conn):
+    """Ensure ingest_user has the privileges required for ON CONFLICT DO UPDATE."""
+    with conn.cursor() as cur:
+        cur.execute("GRANT INSERT ON public.calstar_files TO ingest_user;")
+        cur.execute("GRANT SELECT ON public.calstar_files TO ingest_user;")
+        cur.execute("GRANT UPDATE (ingestion_time) ON public.calstar_files TO ingest_user;")
+    conn.commit()
 
 
 
@@ -480,6 +492,7 @@ def initialiseDatabase(conn):
     createAllTables(conn)
     createAllIndexes(conn)
     grantIngestUserPrivileges(conn)
+    ensureCalstarFilePrivileges(conn)
     revokeCreatesIngestUser(conn)
 
     pass
@@ -968,14 +981,29 @@ def recordCalstarFileIngested(conn, file_name):
     ingestion_time = int(time.time() * 1_000_000)
 
     sql = """
-        INSERT INTO calstar_files (file_name, ingestion_time)
-        VALUES (%s, %s)
-        ON CONFLICT (file_name)
-        DO UPDATE SET ingestion_time = EXCLUDED.ingestion_time;
-    """
+          INSERT INTO calstar_files (file_name, ingestion_time)
+          VALUES (%s, %s) ON CONFLICT (file_name)
+            DO \
+          UPDATE SET ingestion_time = EXCLUDED.ingestion_time; \
+          """
 
     with conn.cursor() as cur:
+
+        # postgresql debugging code
+        if DEBUG_CALSTAR_INSERT:
+            cur.execute("SELECT current_user, current_database(), current_schema();")
+            user, db, schema = cur.fetchone()
+            log.warning("DB CONTEXT BEFORE INSERT: user=%s db=%s schema=%s", user, db, schema)
+            cur.execute("SELECT table_schema FROM information_schema.tables WHERE table_name = 'calstar_files';")
+            log.warning("SCHEMAS WHERE calstar_files EXISTS: %s", [row[0] for row in cur.fetchall()])
+            cur.execute("SHOW search_path;")
+            log.warning("SEARCH PATH BEFORE INSERT: %s", cur.fetchone()[0])
+
+            log.warning(f"About to execute {sql}")
         cur.execute(sql, (file_name, ingestion_time))
+
+        if DEBUG_CALSTAR_INSERT:
+            log.warning(f"Executed {sql}")
     conn.commit()
 
 
