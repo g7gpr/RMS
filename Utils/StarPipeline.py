@@ -399,6 +399,79 @@ def grantIngestUserPrivileges(conn):
     conn.commit()
 
 
+def auditIngestUserPrivileges(conn):
+    print("\n=== INGEST USER PRIVILEGE AUDIT ===")
+
+    with conn.cursor() as cur:
+        # 1. Who am I?
+        cur.execute("SELECT current_user;")
+        print("Current user:", cur.fetchone()[0])
+
+        # 2. What server am I connected to?
+        cur.execute("SELECT inet_server_addr(), inet_server_port();")
+        print("Connected to:", cur.fetchone())
+
+        # 3. What is my search_path?
+        cur.execute("SHOW search_path;")
+        print("search_path:", cur.fetchone()[0])
+
+        # 4. What schemas exist?
+        cur.execute("""
+            SELECT schema_name
+            FROM information_schema.schemata
+            ORDER BY schema_name;
+        """)
+        schemas = [row[0] for row in cur.fetchall()]
+        print("Schemas on server:", schemas)
+
+        # 5. Does a schema named after the user exist?
+        cur.execute("""
+            SELECT schema_name
+            FROM information_schema.schemata
+            WHERE schema_name = current_user;
+        """)
+        user_schema = cur.fetchone()
+        print("User-named schema exists:", bool(user_schema))
+
+        # 6. What privileges does ingest_user have on each table?
+        print("\nTable privileges:")
+        cur.execute("""
+            SELECT table_schema, table_name, privilege_type
+            FROM information_schema.table_privileges
+            WHERE grantee = current_user
+            ORDER BY table_schema, table_name, privilege_type;
+        """)
+        rows = cur.fetchall()
+        if not rows:
+            print("  (No table privileges found!)")
+        else:
+            for schema, table, priv in rows:
+                print(f"  {schema}.{table}: {priv}")
+
+        # 7. Can ingest_user SELECT from calstar_files?
+        print("\nTesting SELECT on public.calstar_files...")
+        try:
+            cur.execute("SELECT COUNT(*) FROM public.calstar_files;")
+            print("  SELECT OK:", cur.fetchone()[0], "rows")
+        except Exception as e:
+            print("  SELECT FAILED:", e)
+
+        # 8. Can ingest_user INSERT into calstar_files?
+        print("\nTesting INSERT on public.calstar_files...")
+        try:
+            cur.execute("""
+                INSERT INTO public.calstar_files (file_name, ingestion_time)
+                VALUES ('audit_test', 0)
+            """)
+            conn.rollback()  # Don't leave junk
+            print("  INSERT OK")
+        except Exception as e:
+            print("  INSERT FAILED:", e)
+
+    print("=== END AUDIT ===\n")
+
+
+
 def initialiseDatabase(conn):
 
 
@@ -408,6 +481,8 @@ def initialiseDatabase(conn):
     createAllIndexes(conn)
     grantIngestUserPrivileges(conn)
     revokeCreatesIngestUser(conn)
+
+    pass
 
 def scale1e6(value):
     # Pass through None
@@ -2026,7 +2101,7 @@ if __name__ == "__main__":
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 
-
+        auditIngestUserPrivileges(conn)
         log.info("Loading star catalog")
         cat = Catalog(config, lim_mag=10)
         log.info(f"Loaded catalog of {cat.entry_count} entries")
