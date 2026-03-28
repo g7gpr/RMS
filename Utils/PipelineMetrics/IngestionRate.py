@@ -49,7 +49,7 @@ def activeStationCount(hours=48):
 def calstarsPerDay(window_days=7):
     # --- Find earliest ingestion ---
     sql_min = "SELECT MIN(ingestion_time) FROM calstar_files;"
-    min_ing = runQueryScalar(sql_min)
+    min_ing = runQueryScalar(sql_min) / 1e6
 
     if not min_ing:
         return 0.0

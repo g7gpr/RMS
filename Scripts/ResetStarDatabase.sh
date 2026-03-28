@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-PGHOST="192.168.1.195"
+PGHOST="192.168.1.190"
 PGUSER="postgres"
 
 echo "Dropping existing star_data database (if it exists)..."
@@ -18,6 +18,29 @@ CREATE SCHEMA public AUTHORIZATION postgres;
 GRANT USAGE, CREATE ON SCHEMA public TO ingest_user;
 GRANT CREATE ON DATABASE star_data TO ingest_user;
 EOF
+
+echo "Ensuring ingest_user exists and has correct privileges..."
+
+psql -h "$PGHOST" -U "$PGUSER" -v ON_ERROR_STOP=1 <<'EOF'
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT FROM pg_roles WHERE rolname = 'ingest_user'
+    ) THEN
+        CREATE ROLE ingest_user LOGIN PASSWORD 'ingest_password';
+    END IF;
+END
+$$;
+
+GRANT CONNECT ON DATABASE star_data TO ingest_user;
+GRANT USAGE ON SCHEMA public TO ingest_user;
+
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO ingest_user;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE ON TABLES TO ingest_user;
+EOF
+
 
 echo "Creating readonly user..."
 

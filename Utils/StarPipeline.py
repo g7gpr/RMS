@@ -1868,11 +1868,18 @@ def resetIngestion(local_calstars_path, ingestion_marker):
             archiveCalstarDirectories(conn, local_calstars_path, [os.path.basename(calstar_path)], ingested_only=False)
             pass
 
+def revokeCreatesIngestUser(conn):
+
+    with conn.cursor() as cur:
+        cur.execute("REVOKE CREATE ON DATABASE star_data FROM ingest_user;")
+        cur.execute("REVOKE CREATE ON SCHEMA public FROM ingest_user;")
+    conn.commit()
 
 def initialiseDatabase(conn):
 
     createAllTables(conn)
     createAllIndexes(conn)
+    revokeCreatesIngestUser(conn)
 
 
 if __name__ == "__main__":

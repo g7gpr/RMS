@@ -437,7 +437,7 @@ def generateStarLightCurve(conn,
 
     return lc_binned
 
-with psycopg.connect(host="192.168.1.195", dbname="star_data", user="ingest_user") as conn:
+with psycopg.connect(host="192.168.1.190", dbname="star_data", user="ingest_user") as conn:
 
 
     lc = generateStarLightCurve(
