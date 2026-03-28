@@ -199,6 +199,7 @@ STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_sta
 CALSTARS_DATA_DIR = "CALSTARS"
 PLATEPARS_ALL_RECALIBRATED_JSON = "platepars_all_recalibrated.json"
 DIRECTORY_INGESTED_MARKER = ".processed"
+FILE_SYSTEM_MARKERS_ENABLED = False
 CALSTAR_FILES_TABLE_NAME = "calstar_files"
 STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
 CHARTS = "charts"
@@ -1076,7 +1077,7 @@ def isIngested(conn, calstar_directory_path):
         return True
 
     # Secondary guard: filesystem marker
-    if isIngestedFromFileSystem(calstar_directory_path):
+    if isIngestedFromFileSystem(calstar_directory_path) and FILE_SYSTEM_MARKERS_ENABLED:
         log.warning(f"Ingested in filesystem marker but not in DB: {calstar_filename}")
         recordCalstarFileIngested(conn, calstar_filename)
         return True
