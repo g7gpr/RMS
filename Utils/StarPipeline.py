@@ -482,6 +482,10 @@ def ensureCalstarFilePrivileges(conn):
         cur.execute("GRANT UPDATE (ingestion_time) ON public.calstar_files TO ingest_user;")
     conn.commit()
 
+def grantSequencePrivileges(conn):
+    with conn.cursor() as cur:
+        cur.execute("GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ingest_user;")
+    conn.commit()
 
 
 def initialiseDatabase(conn):
@@ -493,6 +497,7 @@ def initialiseDatabase(conn):
     createAllIndexes(conn)
     grantIngestUserPrivileges(conn)
     ensureCalstarFilePrivileges(conn)
+    grantSequencePrivileges(conn)
     revokeCreatesIngestUser(conn)
 
     pass
