@@ -47,13 +47,33 @@ def activeStationCount(hours=48):
     return runQueryScalar(sql)
 
 def calstarsPerDay(window_days=7):
+    # --- Find earliest ingestion ---
+    sql_min = "SELECT MIN(ingestion_time) FROM calstar_files;"
+    min_ing = runQueryScalar(sql_min)
+
+    if not min_ing:
+        return 0.0
+
+    # --- Compute actual DB history length ---
+    now = time.time()
+    history_days = (now - min_ing) / (24 * 3600)
+
+    # --- Clamp window to available history ---
+    effective_window = min(window_days, history_days)
+
+    if effective_window <= 0:
+        return 0.0
+
+    # --- Rolling count over clamped window ---
     sql = f"""
         SELECT COUNT(*)
         FROM calstar_files
-        WHERE ingestion_time >= extract(epoch FROM now()) - ({window_days} * 24 * 3600);
+        WHERE ingestion_time >= extract(epoch FROM now()) - ({effective_window} * 24 * 3600);
     """
     count = runQueryScalar(sql)
-    return count / float(window_days) if count else 0.0
+
+    return count / effective_window if count else 0.0
+
 
 def ingestionStalled():
     nowCount = getCalstarCount()

@@ -32,9 +32,9 @@ def clusterDetections(ra_deg, dec_deg, jd,
     y = np.cos(dec) * np.sin(ra)
     z = np.sin(dec)
 
-    # --- 2. Convert time window to days and scale JD ---
-    t_window_days = t_window_min / 1440.0
-    t_scaled =  (jd - jd.min()) / t_window_days
+    # Scale JD so that 10.24 seconds ≈ 1 arcsec chord distance
+    time_scale = 0.042  # empirically correct for your cadence
+    t_scaled = (jd - jd.min()) / time_scale
 
     # --- 3. Build 4-D coordinate array ---
     coords = np.column_stack((x, y, z, t_scaled))
@@ -44,8 +44,7 @@ def clusterDetections(ra_deg, dec_deg, jd,
     eps_spatial = 2 * np.sin(theta / 2)
 
     # Combined 4-D radius: spatial + temporal
-    time_weight = 1.0
-    eps_4d = np.sqrt(eps_spatial ** 2 + time_weight ** 2)
+    eps_4d = eps_spatial
 
     # --- 5. Run DBSCAN ---
     clustering = DBSCAN(eps=eps_4d, min_samples=1).fit(coords)
@@ -204,6 +203,8 @@ def loadDetections(conn, jd_start=None, jd_end=None):
         JOIN frame ON obs.frame_name = frame.frame_name
         {where_clause}
     """
+
+
 
     with conn.cursor() as cur:
         cur.execute(sql, params)
@@ -436,7 +437,7 @@ def generateStarLightCurve(conn,
 
     return lc_binned
 
-with psycopg.connect(host="192.168.1.190", dbname="star_data", user="ingest_user") as conn:
+with psycopg.connect(host="192.168.1.195", dbname="star_data", user="ingest_user") as conn:
 
 
     lc = generateStarLightCurve(
@@ -444,8 +445,8 @@ with psycopg.connect(host="192.168.1.190", dbname="star_data", user="ingest_user
         ra_star_deg=131.175,
         dec_star_deg=-54.708,
         search_radius_deg=0.03,  # you can nudge this if needed
-        jd_start=2461007,
-        jd_end=2461011,
+        jd_start=2460927,
+        jd_end=2460928,
         t_window_min=1.0,
         ang_tol_deg=0.05,
         min_cameras=2,
