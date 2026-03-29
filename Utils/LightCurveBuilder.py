@@ -4,8 +4,13 @@ from scipy.interpolate import RegularGridInterpolator
 import psycopg
 import json
 import matplotlib.pyplot as plt
+import tqdm
+import os
 
 BIN_BY_CADENCE = True
+CHARTS_DIR = os.path.expanduser("~/RMS_data/Plots")
+os.makedirs(CHARTS_DIR, exist_ok=True)
+
 
 # =========================
 # Frame-level + spatial corrections
@@ -102,7 +107,7 @@ def applyDetectionCorrections(conn, det):
     unique_frames = np.unique(frame_names)
     frame_cache = {}
 
-    for fname in unique_frames:
+    for fname in tqdm.tqdm(unique_frames):
         frame_data = loadFramePhotometry(conn, fname)
         if frame_data is None:
             frame_cache[fname] = (0.0, None)
@@ -276,10 +281,11 @@ def binByCadence(lc, cadence_sec=10.24):
 # =========================
 
 def buildLightCurvePoints(ra_deg, dec_deg, jd,
-                          mag, snr, camera_id,
+                          mag, snr, camera_id, cat_mag=None,
                           ang_tol_deg=0.05,
                           min_cameras=2,
                           mode="star",
+                          star_name=None,
                           t_window_min=1.0):
 
     if True:
@@ -288,7 +294,9 @@ def buildLightCurvePoints(ra_deg, dec_deg, jd,
             jd, ra_deg, dec_deg, mag, snr, camera_id
         )
 
-        plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin, ra_bin, dec_bin, n_stations=len(set(camera_id)), n_observations=len(jd))
+        plot_filename = plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin, ra_bin, dec_bin,
+                                 n_stations=len(set(camera_id)), n_observations=len(jd), cat_mag=cat_mag,
+                                 star_name=star_name)
 
         labels = clusterDetectionsStar5D(
             ra_bin, dec_bin, jd_bin, mag_bin,
@@ -330,7 +338,7 @@ def buildLightCurvePoints(ra_deg, dec_deg, jd,
         if point['n_cam'] >= min_cameras:
             points.append(point)
 
-    return points
+    return points, plot_filename
 
 
 # =========================
@@ -370,19 +378,25 @@ def loadDetections(conn, jd_start=None, jd_end=None,
         where_clause = "WHERE " + " AND ".join(where)
 
     sql = f"""
-        SELECT
-            obs.ra,
-            obs.dec,
-            frame.jd_mid,
-            obs.mag,
-            obs.snr,
-            obs.station_name,
-            obs.frame_name,
-            obs.x,
-            obs.y
-        FROM observation AS obs
-        JOIN frame ON obs.frame_name = frame.frame_name
-        {where_clause}
+                SELECT
+                    obs.ra,
+                    obs.dec,
+                    frame.jd_mid,
+                    obs.mag,
+                    obs.snr,
+                    obs.station_name,
+                    obs.frame_name,
+                    obs.x,
+                    obs.y,
+                    star.mag AS cat_mag
+                FROM observation AS obs
+                JOIN frame
+                  ON obs.frame_name = frame.frame_name
+                JOIN star
+                  ON star.station_name = obs.station_name
+                 AND star.star_name    = obs.star_name
+                {where_clause}
+
     """
 
     with conn.cursor() as cur:
@@ -401,6 +415,7 @@ def loadDetections(conn, jd_start=None, jd_end=None,
     frame_name = np.array([r[6] for r in rows], dtype=str)
     x         = np.array([r[7] for r in rows], dtype=float)
     y         = np.array([r[8] for r in rows], dtype=float)
+    cat_mag = np.array([r[9] for r in rows], dtype=float) / 1e6
 
     return {
         'ra_deg': ra_deg,
@@ -411,7 +426,8 @@ def loadDetections(conn, jd_start=None, jd_end=None,
         'camera_id': camera_id,
         'frame_name': frame_name,
         'x': x,
-        'y': y
+        'y': y,
+        'cat_mag': cat_mag
     }
 
 
@@ -600,10 +616,13 @@ def generateStarLightCurve(conn,
 
     det = applyDetectionCorrections(conn, det)
 
-    points = buildLightCurvePoints(
+    star_name = str(det['star_name'][0])
+    cat_mag = float(np.nanmedian(det['cat_mag']))
+
+    points, plot_filename = buildLightCurvePoints(
         det['ra_deg'], det['dec_deg'], det['jd'],
-        det['mag'], det['snr'], det['camera_id'],
-        ang_tol_deg=ang_tol_deg,
+        det['mag'], det['snr'], det['camera_id'], cat_mag=cat_mag,
+        ang_tol_deg=ang_tol_deg, star_name=star_name,
         min_cameras=min_cameras,
         mode="star",
         t_window_min=cadence_sec / 60.0
@@ -612,6 +631,8 @@ def generateStarLightCurve(conn,
     if not points:
         return None
 
+
+
     lc = {
         'jd':      np.array([p['jd'] for p in points]),
         'mag':     np.array([p['mag'] for p in points]),
@@ -619,7 +640,8 @@ def generateStarLightCurve(conn,
         'ra_deg':  np.array([p['ra_deg'] for p in points]),
         'dec_deg': np.array([p['dec_deg'] for p in points]),
         'n_det':   np.array([p['n_det'] for p in points]),
-        'n_cam':   np.array([p['n_cam'] for p in points])
+        'n_cam':   np.array([p['n_cam'] for p in points]),
+
     }
 
 
@@ -633,6 +655,7 @@ def generateStarLightCurve(conn,
     # Metadata
     stations = set(det['camera_id'])
     n_observations = len(det['jd'])
+
 
     # Filename
     ra_str  = f"{ra_star_deg:.3f}"
@@ -651,10 +674,78 @@ def generateStarLightCurve(conn,
         ra_star_deg=ra_star_deg,
         dec_star_deg=dec_star_deg,
         jd_start=jd_start,
-        jd_end=jd_end
+        jd_end=jd_end,
+        cat_mag=cat_mag
+    )
+
+    json_filename = filename
+    png_filename = plot_filename  # from plotTimeBinnedLightCurve
+
+    saveLightCurveSidecarTxt(
+        star_name,
+        ra_star_deg,
+        dec_star_deg,
+        jd_start,
+        jd_end,
+        cat_mag,
+        n_observations,
+        len(stations),
+        lc,
+        json_filename,
+        plot_filename
     )
 
     return lc
+
+
+def saveLightCurveSidecarTxt(
+    star_name,
+    ra_star_deg,
+    dec_star_deg,
+    jd_start,
+    jd_end,
+    cat_mag,
+    n_observations,
+    n_stations,
+    lc,
+    json_filename,
+    png_filename
+):
+    txt_filename = json_filename.replace(".json", ".txt")
+    txt_path = os.path.join(CHARTS_DIR, txt_filename)
+
+
+
+    ra_mean = float(np.mean(lc['ra_deg']))
+    dec_mean = float(np.mean(lc['dec_deg']))
+
+    mag_med = float(np.nanmedian(lc['mag']))
+    mag_min = float(np.nanmin(lc['mag']))
+    mag_max = float(np.nanmax(lc['mag']))
+    mag_err_med = float(np.nanmedian(lc['mag_err']))
+
+    with open(txt_path, "w") as f:
+        f.write(f"Star: {star_name}\n")
+        f.write(f"Catalogue magnitude: {cat_mag:.3f}\n\n")
+
+        f.write(f"RA (target):  {ra_star_deg:.6f} deg\n")
+        f.write(f"Dec (target): {dec_star_deg:.6f} deg\n")
+        f.write(f"RA (mean):    {ra_mean:.6f} deg\n")
+        f.write(f"Dec (mean):   {dec_mean:.6f} deg\n\n")
+
+        f.write(f"JD start: {jd_start}\n")
+        f.write(f"JD end:   {jd_end}\n")
+        f.write(f"Detections: {n_observations}\n")
+        f.write(f"Stations:   {n_stations}\n")
+        f.write(f"Binned points: {len(lc['jd'])}\n\n")
+
+        f.write(f"Mag median: {mag_med:.3f}\n")
+        f.write(f"Mag min:    {mag_min:.3f}\n")
+        f.write(f"Mag max:    {mag_max:.3f}\n")
+        f.write(f"Mag_err median: {mag_err_med:.3f}\n\n")
+
+        f.write(f"JSON: {json_filename}\n")
+        f.write(f"Plot: {png_filename}\n")
 
 
 # =========================
@@ -667,9 +758,12 @@ def saveLightCurveAsJson(lc, filename,
                          ra_star_deg=None,
                          dec_star_deg=None,
                          jd_start=None,
-                         jd_end=None):
+                         jd_end=None,
+                         cat_mag=None):
+
 
     serializable = {k: v.tolist() for k, v in lc.items()}
+    file_path = os.path.join(CHARTS_DIR, filename)
 
     if stations is not None:
         serializable["stations"] = list(stations)
@@ -689,13 +783,17 @@ def saveLightCurveAsJson(lc, filename,
     if jd_end is not None:
         serializable["jd_end"] = float(jd_end)
 
-    with open(filename, "w") as f:
+    if cat_mag is not None:
+        serializable["cat_mag"] = float(cat_mag)
+
+
+    with open(file_path, "w") as f:
         json.dump(serializable, f, indent=2)
 
 
 def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin,
                              ra_bin, dec_bin,
-                             n_stations, n_observations):
+                             n_stations, n_observations, cat_mag, star_name=None):
 
     jd0 = jd_bin[0]
     jd_rel = jd_bin - jd0
@@ -711,9 +809,11 @@ def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin,
     )
 
     ax_mag.set_title(
-        f"Time-Binned Light Curve (RA={ra_mean:.3f}°, Dec={dec_mean:.3f}°)\n"
+        f"{star_name} — Time-Binned Light Curve\n"
+        f"RA={ra_mean:.3f}°, Dec={dec_mean:.3f}°\n"
         f"{n_stations} stations, {n_observations} detections"
     )
+
 
     for x, y, dy in zip(jd_rel, mag_bin, mag_err_bin):
         ax_mag.fill_between(
@@ -728,6 +828,17 @@ def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin,
     ax_mag.scatter(jd_rel, mag_bin, s=14, color='tab:blue', alpha=0.9)
     ax_mag.set_ylabel("Magnitude")
     ax_mag.invert_yaxis()
+    ax_mag.set_ylim(7, -1)
+
+    if cat_mag is not None:
+        ax_mag.axhline(
+            y=cat_mag,
+            color='grey',
+            linestyle=':',
+            linewidth=1.0,
+            alpha=0.6,
+            label=f"Catalogue mag {cat_mag:.3f}"
+        )
 
     ax_cam.bar(
         jd_rel,
@@ -737,13 +848,25 @@ def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin,
         alpha=0.7
     )
 
+
+
     ax_cam.set_ylabel("Cameras")
     ax_cam.set_xlabel(f"Time since JD {jd0:.5f} (days)")
 
     fig.tight_layout()
-    plt.show()
+    #plt.show()
+
+    plot_filename = (
+        f"{star_name.replace(' ', '_')}"
+        f"_jd{jd_bin[0]:.5f}-{jd_bin[-1]:.5f}"
+        f"_ra{ra_mean:.3f}_dec{dec_mean:.3f}.png"
+    ).replace(" ", "_").replace("/", "_")
 
 
+    plot_filepath = os.path.join(CHARTS_DIR, plot_filename)
+    fig.savefig(plot_filepath, dpi=150)
+
+    return plot_filename
 
 if __name__ == "__main__":
     with psycopg.connect(
@@ -754,11 +877,11 @@ if __name__ == "__main__":
 
         lc = generateStarLightCurve(
             conn,
-            ra_star_deg=186.66,
-            dec_star_deg=-63.10,
+            ra_star_deg=190.72,
+            dec_star_deg=-63.05,
             search_radius_deg=0.5,
-            jd_start=2460938.9,
-            jd_end=2460939.05,
+            jd_start=2460935,
+            jd_end=2460936,
             ang_tol_deg=0.2,
             min_cameras=1,
             cadence_sec=10.24 * 5

@@ -517,6 +517,24 @@ def scale1e6(value):
     # Normal numeric case
     return int(round(value * 1_000_000))
 
+def scale1e3(value):
+    # Pass through None
+    if value is None:
+        return None
+
+    # Pass through NaN or infinities
+    try:
+        if not np.isfinite(value):
+            return None
+    except Exception:
+        # Non-numeric types → pass through unchanged
+        return None
+
+    # Normal numeric case
+    return int(round(value * 1000))
+
+
+
 def buildFrameRows(observation_dict, session_name):
     frame_rows = []
 
@@ -700,7 +718,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                             scale1e6(pixel_scale_v),
                             scale1e6(lat),
                             scale1e6(lon),
-                            scale1e6(ele)
+                            scale1e3(ele)
                         ))
 
             # Insert frames
@@ -2132,8 +2150,8 @@ if __name__ == "__main__":
     directories_list = os.listdir(calstars_directory_path)
 
     station_list = getStationList(country_code=country_code)
-    remote_files = discoverRemoteFiles(station_list, user, hostname, 22, remote_processed_dir_template=path_template)
-    saveRemoteFiles(remote_files, os.path.expanduser("~/RMS_data/remotefiles.json"))
+    #remote_files = discoverRemoteFiles(station_list, user, hostname, 22, remote_processed_dir_template=path_template)
+    #saveRemoteFiles(remote_files, os.path.expanduser("~/RMS_data/remotefiles.json"))
     remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))
     remote_files_sorted = sortFilesByTime(remote_files)
 
