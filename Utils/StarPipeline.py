@@ -1785,11 +1785,11 @@ import random
 
 def discoverRemoteFiles(stations, username, host, port,
                         remote_processed_dir_template,
-                        min_interval_sec=1, target_interval_sec=5 ):
+                        min_interval_sec=1, target_interval_sec=10):
 
     filtered_files = []
 
-    # Global cadence anchor
+    # Initialise cadence
     next_allowed = datetime.datetime.now(datetime.timezone.utc)
 
     for station in stations:
