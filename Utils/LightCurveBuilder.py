@@ -288,7 +288,7 @@ def buildLightCurvePoints(ra_deg, dec_deg, jd,
             jd, ra_deg, dec_deg, mag, snr, camera_id
         )
 
-        plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin)
+        plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin, ra_bin, dec_bin, n_stations=len(set(camera_id)), n_observations=len(jd))
 
         labels = clusterDetectionsStar5D(
             ra_bin, dec_bin, jd_bin, mag_bin,
@@ -622,12 +622,37 @@ def generateStarLightCurve(conn,
         'n_cam':   np.array([p['n_cam'] for p in points])
     }
 
+
     if BIN_BY_CADENCE:
         lc = binByCadence(lc, cadence_sec=cadence_sec)
 
     order = np.argsort(lc['jd'])
     for k in lc:
         lc[k] = lc[k][order]
+
+    # Metadata
+    stations = set(det['camera_id'])
+    n_observations = len(det['jd'])
+
+    # Filename
+    ra_str  = f"{ra_star_deg:.3f}"
+    dec_str = f"{dec_star_deg:.3f}"
+    jd0_str = f"{jd_start:.5f}"
+    jd1_str = f"{jd_end:.5f}"
+
+    filename = f"lc_jd{jd0_str}-{jd1_str}_ra{ra_str}_dec{dec_str}.json"
+
+    # Save JSON with metadata
+    saveLightCurveAsJson(
+        lc,
+        filename,
+        stations=stations,
+        n_observations=n_observations,
+        ra_star_deg=ra_star_deg,
+        dec_star_deg=dec_star_deg,
+        jd_start=jd_start,
+        jd_end=jd_end
+    )
 
     return lc
 
@@ -636,21 +661,48 @@ def generateStarLightCurve(conn,
 # JSON export
 # =========================
 
-def saveLightCurveAsJson(lc, filename):
-    if lc is None:
-        raise ValueError("Light curve is None; nothing to save.")
+def saveLightCurveAsJson(lc, filename,
+                         stations=None,
+                         n_observations=None,
+                         ra_star_deg=None,
+                         dec_star_deg=None,
+                         jd_start=None,
+                         jd_end=None):
 
     serializable = {k: v.tolist() for k, v in lc.items()}
+
+    if stations is not None:
+        serializable["stations"] = list(stations)
+
+    if n_observations is not None:
+        serializable["n_observations"] = int(n_observations)
+
+    if ra_star_deg is not None:
+        serializable["ra_star_deg"] = float(ra_star_deg)
+
+    if dec_star_deg is not None:
+        serializable["dec_star_deg"] = float(dec_star_deg)
+
+    if jd_start is not None:
+        serializable["jd_start"] = float(jd_start)
+
+    if jd_end is not None:
+        serializable["jd_end"] = float(jd_end)
 
     with open(filename, "w") as f:
         json.dump(serializable, f, indent=2)
 
 
-# =========================
-# Plotting
-# =========================
+def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin,
+                             ra_bin, dec_bin,
+                             n_stations, n_observations):
 
-def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin):
+    jd0 = jd_bin[0]
+    jd_rel = jd_bin - jd0
+
+    ra_mean  = np.mean(ra_bin)
+    dec_mean = np.mean(dec_bin)
+
     fig, (ax_mag, ax_cam) = plt.subplots(
         2, 1,
         figsize=(12, 8),
@@ -658,7 +710,12 @@ def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin):
         gridspec_kw={'height_ratios': [3, 1]}
     )
 
-    for x, y, dy in zip(jd_bin, mag_bin, mag_err_bin):
+    ax_mag.set_title(
+        f"Time-Binned Light Curve (RA={ra_mean:.3f}°, Dec={dec_mean:.3f}°)\n"
+        f"{n_stations} stations, {n_observations} detections"
+    )
+
+    for x, y, dy in zip(jd_rel, mag_bin, mag_err_bin):
         ax_mag.fill_between(
             [x - 0.0001, x + 0.0001],
             y - dy,
@@ -668,40 +725,25 @@ def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin):
             linewidth=0
         )
 
-    ax_mag.scatter(
-        jd_bin,
-        mag_bin,
-        s=14,
-        color='tab:blue',
-        alpha=0.9
-    )
-
-    ax_mag.set_ylabel("Magnitude", color='tab:blue')
+    ax_mag.scatter(jd_rel, mag_bin, s=14, color='tab:blue', alpha=0.9)
+    ax_mag.set_ylabel("Magnitude")
     ax_mag.invert_yaxis()
-    ax_mag.tick_params(axis='y', labelcolor='tab:blue')
-
-    ax_mag.set_ylim(8, -1)
-
-    ax_mag.set_title("Time-Binned Light Curve (SNR-weighted)")
 
     ax_cam.bar(
-        jd_bin,
+        jd_rel,
         n_cam_bin,
-        width=(jd_bin[1] - jd_bin[0]) * 0.8 if len(jd_bin) > 1 else 0.001,
+        width=(jd_rel[1] - jd_rel[0]) * 0.8 if len(jd_rel) > 1 else 0.001,
         color='tab:red',
         alpha=0.7
     )
 
     ax_cam.set_ylabel("Cameras")
-    ax_cam.set_xlabel("JD")
+    ax_cam.set_xlabel(f"Time since JD {jd0:.5f} (days)")
 
     fig.tight_layout()
     plt.show()
 
 
-# =========================
-# Main
-# =========================
 
 if __name__ == "__main__":
     with psycopg.connect(
@@ -725,5 +767,5 @@ if __name__ == "__main__":
         if lc is None:
             print("No light curve generated.")
         else:
-            saveLightCurveAsJson(lc, "debug_lightcurve.json")
+
             print("Saved debug_lightcurve.json")

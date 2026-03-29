@@ -1,0 +1,153 @@
+⭐ Notes for Future Work: Station FOV Mask & Bin Scoring System
+1. Goal
+
+Build a per‑station Field‑of‑View (FOV) mask that identifies:
+
+    Good bins (open sky, real star tracks pass through)
+
+    Obstructed bins (stars should project here but are never detected)
+
+    Suspicious bins (hot pixels, reflections, false positives)
+
+    Dead bins (never see anything)
+
+This uses both actual detections and predicted star positions via the station’s WCS.
+2. Core Inputs
+
+    A reliable RA/Dec → (x, y) projection for each station and time.
+
+    A catalog of stars covering the station’s nominal FOV.
+
+    Observed detections: (x, y, ra, dec, jd, star_name).
+
+3. Global Sanity Check (must pass before scoring)
+
+Before computing any mask:
+
+    Estimate how many catalog stars should be visible on the sensor over the JD range
+    using WCS projection.
+
+    Count how many distinct stars were actually detected.
+
+    Compute
+
+ratio=NdetectedNexpected
+
+    If the ratio is too low (e.g., < 0.3), skip mask computation entirely.
+    This avoids generating masks from nights with clouds, dew, lens caps, etc.
+
+4. Track Construction (from detections)
+
+For each star that was detected:
+
+    Group detections by star.
+
+    Sort by JD.
+
+    Build a simple track in detector space: (x(t),y(t)).
+
+    Only keep tracks with ≥5 points.
+
+Tracks define where stars were and where they should have been between detections.
+5. Predictive Star Projection (using WCS)
+
+For each catalog star:
+
+    Sample times across the JD range.
+
+    Project RA/Dec → (x, y) using the station’s WCS.
+
+    If the projection falls on the sensor, map to a bin.
+
+    This defines “star should be here at time t” events.
+
+This is the key to detecting obstructions:
+even if the star is never observed, we know where it should have appeared.
+6. Bin Scoring Rules
+
+Each bin starts with score = 0.
+Rule A — When a star should be in this bin
+
+(From WCS projection)
+
+    If the bin contains a matching detection at that time → +1
+
+    If the bin does not detect the star → −1
+    (obstruction, dead region, sensitivity issue)
+
+Rule B — When no star should be in this bin
+
+(From WCS projection)
+
+    If the bin is quiet → +1
+
+    If the bin fires anyway → −1
+    (hot pixel, reflection, junk)
+
+Rule C — Detections that don’t match any predicted star
+
+(From actual detections)
+
+    If a detection occurs at time t in a bin where no star should project → −1
+    (false positive)
+
+This combination distinguishes:
+
+    real sky
+
+    obstructions
+
+    hot pixels
+
+    reflections
+
+    mis‑associations
+
+    dead zones
+
+7. Classification
+
+After accumulating scores over many stars and times:
+
+    score >> 0 → good bin
+
+    score ≈ 0 → low‑coverage / uncertain
+
+    score << 0 → suspicious (hot pixel, reflection, junk)
+
+    score very negative → persistent false positives
+
+    score very positive → reliable sky region
+
+Thresholds can be tuned per station.
+8. Output
+
+For each station:
+
+    A 2D grid of:
+
+        score[i,j]
+
+        class[i,j] ∈ {−1, 0, +1}
+
+        hits[i,j]
+
+        expected[i,j]
+
+        misses[i,j]
+
+        false_positives[i,j]
+
+This becomes a reusable FOV mask for:
+
+    filtering detections
+
+    weighting photometry
+
+    rejecting bad regions
+
+    diagnosing hardware issues
+
+If you want, I can also produce a ready‑to‑paste code skeleton that implements this entire pipeline end‑to‑end, but I figured you might want to save that for the next session when you’re ready to build it out.
+
+Just let me know when you want the coding version.
