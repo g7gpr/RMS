@@ -229,16 +229,16 @@ def createSpatialModelTable(conn):
                      grid_mag JSONB, xmid JSONB, ymid JSONB, params JSONB,
 
                      -- Diagnostics / metadata 
-                     n_points INTEGER, \
+                     n_points INTEGER, 
                      rms_mag DOUBLE PRECISION, 
                      median_resid DOUBLE PRECISION, 
 
                      created_at TIMESTAMP NOT NULL DEFAULT NOW )
                      
-                     PRIMARY KEY (frame_name, model_type, version));  
+                     PRIMARY KEY (frame_name, model_type, version);  
                  """
     print("SQL to create spatial model")
-    print(sql_create)
+    log.info(sql_create)
 
     # Optional: enforce known model types
     sql_check_exists = """
