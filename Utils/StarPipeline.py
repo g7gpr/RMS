@@ -1790,7 +1790,7 @@ def discoverRemoteFiles(stations, username, host, port,
     filtered_files = []
 
     for station in stations:
-        iteration_start = datetime.datetime.utcnow()
+        iteration_start = datetime.datetime.now(datetime.timezone.utc)
 
         remote_dir = remote_processed_dir_template.replace(
             "stationID", station.lower()
