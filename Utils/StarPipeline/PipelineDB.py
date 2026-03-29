@@ -207,59 +207,26 @@ def createSpatialModelTable(conn):
     """
 
     sql_create = """
-                 CREATE TABLE IF NOT EXISTS spatial_model \
-                 ( \
-                     frame_name \
-                     TEXT \
-                     NOT \
-                     NULL, \
-                     model_type \
-                     TEXT \
-                     NOT \
-                     NULL, -- 'binned', 'gaussian', 'none', etc. \
-                     version \
-                     INTEGER \
-                     NOT \
-                     NULL \
-                     DEFAULT \
-                     1,
+                 CREATE TABLE IF NOT EXISTS spatial_model
+                 (   frame_name TEXT NOT NULL
+                     model_type TEXT NOT NULL, -- 'binned', 'gaussian', 'none', etc. 
+                     version INTEGER NOT NULL DEFAULT 1,
 
-                     -- Model payload (optional depending on model_type) \
-                     grid_mag \
-                     JSONB, \
-                     xmid \
-                     JSONB, \
-                     ymid \
-                     JSONB, \
-                     params \
-                     JSONB,
+                     -- Model payload (optional depending on model_type) 
+                     grid_mag JSONB, xmid JSONB, ymid JSONB, params JSONB,
 
-                     -- Diagnostics / metadata \
-                     n_points \
-                     INTEGER, \
-                     rms_mag \
-                     DOUBLE \
-                     PRECISION, \
-                     median_resid \
-                     DOUBLE \
-                     PRECISION, \
+                     -- Diagnostics / metadata 
+                     n_points INTEGER, \
+                     rms_mag DOUBLE PRECISION, 
+                     median_resid DOUBLE PRECISION, 
 
                      created_at \
-                     TIMESTAMP \
-                     NOT \
-                     NULL \
-                     DEFAULT \
-                     NOW \
-                 ( \
-                 ), \
-                     PRIMARY KEY \
-                 ( \
-                     frame_name, \
-                     model_type, \
-                     version \
-                 )
-                     ); \
+                     TIMESTAMP NOT NULL DEFAULT NOW)
+                     
+                     PRIMARY KEY (frame_name, model_type, version));  
                  """
+    print("SQL to create spatial model")
+    print(sql_create)
 
     # Optional: enforce known model types
     sql_check_exists = """
