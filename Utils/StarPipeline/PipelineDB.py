@@ -208,7 +208,7 @@ def createSpatialModelTable(conn):
 
     sql_create = """
                  CREATE TABLE IF NOT EXISTS spatial_model
-                 (   frame_name TEXT NOT NULL
+                 (   frame_name TEXT NOT NULL,
                      model_type TEXT NOT NULL, -- 'binned', 'gaussian', 'none', etc. 
                      version INTEGER NOT NULL DEFAULT 1,
 
