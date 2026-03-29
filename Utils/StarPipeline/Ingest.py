@@ -177,7 +177,7 @@ from RMS.Formats.CALSTARS import readCALSTARS, maxCalstarsToPNG, calstarsToMP4
 from RMS.Misc import mkdirP
 from RMS.Logger import LoggingManager, getLogger
 from pathlib import Path
-from PipelineDB import createDatabaseIfMissing, initialiseDatabase, auditIngestUserPrivileges
+from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, auditIngestUserPrivileges
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
