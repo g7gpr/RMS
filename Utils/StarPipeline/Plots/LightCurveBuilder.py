@@ -11,8 +11,6 @@ BIN_BY_CADENCE = True
 CHARTS_DIR = os.path.expanduser("~/RMS_data/Plots")
 os.makedirs(CHARTS_DIR, exist_ok=True)
 
-SPATIAL_METHOD = "gaussian"
-
 # =========================
 # Frame-level + spatial corrections
 # =========================
@@ -137,8 +135,24 @@ def fitGaussianSpatialModel(x, y, residuals):
 
     return GaussianSpatialModel(x0, y0, amp, sigma_x, sigma_y, rho, offset)
 
+def makeLightcurveFilename(ra_deg, dec_deg, jd_start, jd_end,
+                           star_name=None, spatial_method=None):
 
+    ra_str  = f"{ra_deg:.3f}"
+    dec_str = f"{dec_deg:.3f}"
+    jd0_str = f"{jd_start:.5f}"
+    jd1_str = f"{jd_end:.5f}"
 
+    if star_name:
+        safe_name = star_name.replace(" ", "_").replace("/", "_")
+        base = f"{safe_name}_jd{jd0_str}-{jd1_str}_ra{ra_str}_dec{dec_str}"
+    else:
+        base = f"lc_jd{jd0_str}-{jd1_str}_ra{ra_str}_dec{dec_str}"
+
+    if spatial_method:
+        base += f"_model{spatial_method}"
+
+    return base
 
 
 def loadCachedSpatialMap(conn, frame_name, method='binned', version=1):
@@ -178,34 +192,146 @@ def loadCachedSpatialMap(conn, frame_name, method='binned', version=1):
 
     raise ValueError(f"Unknown spatial correction method: {method}")
 
+def loadSpatialModel(conn, frame_name, spatial_model=None, version=1):
+    """
+    Load a spatial correction model from the spatial_model table.
 
-def saveCachedSpatialMap(conn, frame_name, method, version,
-                         grid_mag=None, xmid=None, ymid=None,
-                         params=None):
+    Returns
+    -------
+    - RegularGridInterpolator instance (for binned)
+    - GaussianSpatialModel instance (for gaussian)
+    - None (if no model found or model_type == 'none')
+    """
 
     sql = """
-        INSERT INTO spatial_correction
-            (frame_name, method, version, grid_mag, xmid, ymid, params)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (frame_name, method, version) DO UPDATE
-        SET grid_mag = EXCLUDED.grid_mag,
-            xmid     = EXCLUDED.xmid,
-            ymid     = EXCLUDED.ymid,
-            params   = EXCLUDED.params,
-            created_at = NOW();
+        SELECT grid_mag, xmid, ymid, params
+        FROM spatial_model
+        WHERE frame_name = %s AND model_type = %s AND version = %s;
     """
 
     with conn.cursor() as cur:
-        cur.execute(sql, (
-            frame_name,
-            method,
-            version,
-            json.dumps(grid_mag.tolist()) if grid_mag is not None else None,
-            json.dumps(xmid.tolist()) if xmid is not None else None,
-            json.dumps(ymid.tolist()) if ymid is not None else None,
-            json.dumps(params) if params is not None else None
-        ))
+        cur.execute(sql, (frame_name, spatial_model, version))
+        row = cur.fetchone()
+
+    if not row:
+        return None
+
+    grid_mag_json, xmid_json, ymid_json, params_json = row
+
+    # -------------------------
+    # Model type: NONE
+    # -------------------------
+    if spatial_model == "none":
+        return None
+
+    # -------------------------
+    # Model type: BINNED
+    # -------------------------
+    if spatial_model == "binned":
+        if grid_mag_json is None or xmid_json is None or ymid_json is None:
+            return None
+
+        grid_mag = np.array(json.loads(grid_mag_json))
+        xmid     = np.array(json.loads(xmid_json))
+        ymid     = np.array(json.loads(ymid_json))
+
+        return RegularGridInterpolator(
+            (xmid, ymid),
+            grid_mag,
+            bounds_error=False,
+            fill_value=0.0
+        )
+
+    # -------------------------
+    # Model type: GAUSSIAN
+    # -------------------------
+    if spatial_model == "gaussian":
+        if params_json is None:
+            return None
+
+        params = json.loads(params_json)
+        return GaussianSpatialModel.from_params(params)
+
+    # -------------------------
+    # Future model types
+    # -------------------------
+    raise ValueError(f"Unknown spatial model type: {spatial_model}")
+
+
+def saveSpatialModel(
+    conn,
+    frame_name,
+    spatial_model=None,
+    version=1,
+    grid_mag=None,
+    xmid=None,
+    ymid=None,
+    params=None,
+    n_points=None,
+    rms_mag=None,
+    median_resid=None):
+    """
+    Persist a spatial correction model into the spatial_model table.
+
+    All model payload fields are optional. Only the fields relevant to the
+    model_type need to be provided.
+
+    Parameters
+    ----------
+    frame_name : str
+    model_type : str      # 'binned', 'gaussian', 'none', etc.
+    version    : int
+    grid_mag   : np.ndarray or None
+    xmid       : np.ndarray or None
+    ymid       : np.ndarray or None
+    params     : dict or None
+    n_points   : int or None
+    rms_mag    : float or None
+    median_resid : float or None
+    """
+
+    # Convert numpy arrays to JSON-serializable lists
+    grid_mag_json = json.dumps(grid_mag.tolist()) if grid_mag is not None else None
+    xmid_json     = json.dumps(xmid.tolist())     if xmid is not None else None
+    ymid_json     = json.dumps(ymid.tolist())     if ymid is not None else None
+    params_json   = json.dumps(params)            if params is not None else None
+
+    sql = """
+        INSERT INTO spatial_model
+            (frame_name, model_type, version,
+             grid_mag, xmid, ymid, params,
+             n_points, rms_mag, median_resid)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (frame_name, model_type, version) DO UPDATE
+        SET grid_mag     = EXCLUDED.grid_mag,
+            xmid         = EXCLUDED.xmid,
+            ymid         = EXCLUDED.ymid,
+            params       = EXCLUDED.params,
+            n_points     = EXCLUDED.n_points,
+            rms_mag      = EXCLUDED.rms_mag,
+            median_resid = EXCLUDED.median_resid,
+            created_at   = NOW();
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(
+            sql,
+            (
+                frame_name,
+                spatial_model,
+                version,
+                grid_mag_json,
+                xmid_json,
+                ymid_json,
+                params_json,
+                n_points,
+                rms_mag,
+                median_resid
+            )
+        )
+
     conn.commit()
+
 
 
 def lookupBrightestStar(conn, ra_deg, dec_deg, radius_deg=0.05):
@@ -320,7 +446,7 @@ def buildSpatialCorrectionMap(x, y, residuals_mag, bins=40):
 
 
 
-def applyDetectionCorrections(conn, det):
+def applyDetectionCorrections(conn, det, spatial_method):
     """
     Apply frame-level and spatial (x,y) corrections to each detection.
 
@@ -337,16 +463,14 @@ def applyDetectionCorrections(conn, det):
 
     for fname in tqdm.tqdm(unique_frames):
 
-        method = SPATIAL_METHOD
+
         version = 1
-
-
-        cached_map = loadCachedSpatialMap(conn, fname, method, version)
+        cached_map = loadCachedSpatialMap(conn, fname, spatial_method, version)
 
         # 1. Try cache first
         if cached_map is not None:
             print(f"[cache hit]  spatial map for frame {fname}")
-            frame_data = loadFramePhotometry(conn, fname)
+            frame_data = loadFramePhotometry(conn, fname, spatial_method)
             frame_offset = computeFrameOffset(frame_data) if frame_data else 0.0
             frame_cache[fname] = (frame_offset, cached_map)
             continue
@@ -354,7 +478,7 @@ def applyDetectionCorrections(conn, det):
         print(f"[cache miss] building spatial map for frame {fname}")
 
         # 2. Otherwise compute
-        frame_data = loadFramePhotometry(conn, fname)
+        frame_data = loadFramePhotometry(conn, fname, spatial_method)
         if frame_data is None:
             frame_cache[fname] = (0.0, None)
             continue
@@ -362,15 +486,16 @@ def applyDetectionCorrections(conn, det):
         frame_offset = computeFrameOffset(frame_data)
         residuals = frame_data['obs_mag'] - frame_data['cat_mag'] - frame_offset
 
-        if SPATIAL_METHOD == 'binned':
+        if spatial_method == 'binned':
 
             spatial_map, grid_mag, xmid, ymid = buildSpatialCorrectionMap(
                 frame_data['x'], frame_data['y'], residuals)
 
             # Save binned map
-            saveCachedSpatialMap(
+            saveSpatialModel(
                 conn,
                 frame_name=fname,
+                spatial_method=spatial_method,
                 method="binned",
                 version=1,
                 grid_mag=grid_mag,
@@ -380,13 +505,14 @@ def applyDetectionCorrections(conn, det):
 
             frame_cache[fname] = (frame_offset, spatial_map)
 
-        else:
+        elif spatial_method == 'gaussian':
 
             gauss_model = fitGaussianSpatialModel(
                 frame_data['x'], frame_data['y'], residuals)
 
-            saveCachedSpatialMap(
+            loadSpatialModel(conn, fname, spatial_method,
                 conn,
+                spatial_method="gaussian",
                 frame_name=fname,
                 method="gaussian",
                 version=1,
@@ -395,6 +521,10 @@ def applyDetectionCorrections(conn, det):
 
             frame_cache[fname] = (frame_offset, gauss_model)
 
+        else:
+
+            # This is the "do not apply a compensation branch - do nothing for now"
+            pass
 
     mag_corr = np.empty_like(mag_det)
 
@@ -567,7 +697,7 @@ def buildLightCurvePoints(ra_deg, dec_deg, jd,
                           min_cameras=2,
                           mode="star",
                           star_name=None,
-                          t_window_min=1.0):
+                          t_window_min=1.0, base_name=None):
 
     if True:
         (jd_bin, ra_bin, dec_bin, mag_bin, mag_err_bin,
@@ -575,9 +705,9 @@ def buildLightCurvePoints(ra_deg, dec_deg, jd,
             jd, ra_deg, dec_deg, mag, snr, camera_id
         )
 
-        plot_filename = plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin, ra_bin, dec_bin,
+        plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin, ra_bin, dec_bin,
                                  n_stations=len(set(camera_id)), n_observations=len(jd), cat_mag=cat_mag,
-                                                 star_name=star_name)
+                                                 star_name=star_name, base_name=base_name)
 
         labels = clusterDetectionsStar5D(
             ra_bin, dec_bin, jd_bin, mag_bin,
@@ -619,8 +749,21 @@ def buildLightCurvePoints(ra_deg, dec_deg, jd,
         if point['n_cam'] >= min_cameras:
             points.append(point)
 
-    return points, plot_filename
+    return points
 
+
+def getJSONFilepath(base_name):
+
+    return os.path.join(CHARTS_DIR, f"{base_name}.json")
+
+
+def getTXTFilepath(base_name):
+
+    return os.path.join(CHARTS_DIR, f"{base_name}.txt")
+
+def getPNGFilepath(base_name):
+
+    return os.path.join(CHARTS_DIR, f"{base_name}.png")
 
 # =========================
 # DB access
@@ -931,11 +1074,14 @@ def generateStarLightCurve(conn,
                            jd_end=None,
                            ang_tol_deg=0.05,
                            min_cameras=1,
-                           cadence_sec=10.24):
+                           cadence_sec=10.24,
+                           spatial_method=None):
 
     star_name_from_db, mag_from_db = lookupBrightestStar(conn, ra_star_deg, dec_star_deg, radius_deg=0.05)
 
     print(f"Working on star {star_name_from_db}, RA: {ra_star_deg}, DEC: {dec_star_deg} MAG:{mag_from_db/1e6}")
+    base_name = makeLightcurveFilename(ra_star_deg, dec_star_deg, jd_start, jd_end, star_name_from_db, spatial_method=spatial_method)
+
 
     det = loadDetections(
         conn,
@@ -956,14 +1102,15 @@ def generateStarLightCurve(conn,
 
     cat_mag = float(np.nanmedian(det['cat_mag']))
 
-    points, plot_filename = buildLightCurvePoints(
+    points = buildLightCurvePoints(
         det['ra_deg'], det['dec_deg'], det['jd'],
         det['mag'], det['snr'], det['camera_id'], cat_mag=cat_mag,
         ang_tol_deg=ang_tol_deg,
         min_cameras=min_cameras,
         mode="star",
         star_name=star_name_from_db,
-        t_window_min=cadence_sec / 60.0
+        t_window_min=cadence_sec / 60.0,
+        base_name=base_name
     )
 
     if not points:
@@ -994,19 +1141,10 @@ def generateStarLightCurve(conn,
     stations = set(det['camera_id'])
     n_observations = len(det['jd'])
 
-
-    # Filename
-    ra_str  = f"{ra_star_deg:.3f}"
-    dec_str = f"{dec_star_deg:.3f}"
-    jd0_str = f"{jd_start:.5f}"
-    jd1_str = f"{jd_end:.5f}"
-
-    filename = f"lc_jd{jd0_str}-{jd1_str}_ra{ra_str}_dec{dec_str}.json"
-
     # Save JSON with metadata
     saveLightCurveAsJson(
         lc,
-        filename,
+        base_name,
         stations=stations,
         n_observations=n_observations,
         ra_star_deg=ra_star_deg,
@@ -1015,9 +1153,6 @@ def generateStarLightCurve(conn,
         jd_end=jd_end,
         cat_mag=cat_mag
     )
-
-    json_filename = filename
-    png_filename = plot_filename  # from plotTimeBinnedLightCurve
 
     saveLightCurveSidecarTxt(
         star_name_from_db,
@@ -1029,9 +1164,8 @@ def generateStarLightCurve(conn,
         n_observations,
         len(stations),
         lc,
-        json_filename,
-        plot_filename
-    )
+        base_name,
+        spatial_method=spatial_method)
 
     return lc
 
@@ -1046,13 +1180,8 @@ def saveLightCurveSidecarTxt(
     n_observations,
     n_stations,
     lc,
-    json_filename,
-    png_filename
-):
-    txt_filename = json_filename.replace(".json", ".txt")
-    txt_path = os.path.join(CHARTS_DIR, txt_filename)
-
-
+    base_name=None,
+    spatial_method=None):
 
     ra_mean = float(np.mean(lc['ra_deg']))
     dec_mean = float(np.mean(lc['dec_deg']))
@@ -1062,7 +1191,7 @@ def saveLightCurveSidecarTxt(
     mag_max = float(np.nanmax(lc['mag']))
     mag_err_med = float(np.nanmedian(lc['mag_err']))
 
-    with open(txt_path, "w") as f:
+    with open(getTXTFilepath(base_name), "w") as f:
         f.write(f"Star: {star_name}\n")
         f.write(f"Catalogue magnitude: {cat_mag:.3f}\n\n")
 
@@ -1076,21 +1205,23 @@ def saveLightCurveSidecarTxt(
         f.write(f"Detections: {n_observations}\n")
         f.write(f"Stations:   {n_stations}\n")
         f.write(f"Binned points: {len(lc['jd'])}\n\n")
+        f.write(f"Spatial method: {spatial_method}\n\n")
 
         f.write(f"Mag median: {mag_med:.3f}\n")
         f.write(f"Mag min:    {mag_min:.3f}\n")
         f.write(f"Mag max:    {mag_max:.3f}\n")
         f.write(f"Mag_err median: {mag_err_med:.3f}\n\n")
 
-        f.write(f"JSON: {json_filename}\n")
-        f.write(f"Plot: {png_filename}\n")
+        f.write(f"JSON: {os.path.basename(getJSONFilepath(base_name))}\n")
+        f.write(f"Plot: {os.path.basename(getPNGFilepath(base_name))}\n")
 
+    return getTXTFilepath(base_name)
 
 # =========================
 # JSON export
 # =========================
 
-def saveLightCurveAsJson(lc, filename,
+def saveLightCurveAsJson(lc, base_name,
                          stations=None,
                          n_observations=None,
                          ra_star_deg=None,
@@ -1101,7 +1232,6 @@ def saveLightCurveAsJson(lc, filename,
 
 
     serializable = {k: v.tolist() for k, v in lc.items()}
-    file_path = os.path.join(CHARTS_DIR, filename)
 
     if stations is not None:
         serializable["stations"] = list(stations)
@@ -1125,13 +1255,13 @@ def saveLightCurveAsJson(lc, filename,
         serializable["cat_mag"] = float(cat_mag)
 
 
-    with open(file_path, "w") as f:
+    with open(getJSONFilepath(base_name)) as f:
         json.dump(serializable, f, indent=2)
 
 
 def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin,
                              ra_bin, dec_bin,
-                             n_stations, n_observations, cat_mag, star_name=None):
+                             n_stations, n_observations, cat_mag, star_name=None, base_name=None):
 
     jd0 = jd_bin[0]
     jd_rel = jd_bin - jd0
@@ -1186,25 +1316,14 @@ def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin,
         alpha=0.7
     )
 
-
-
     ax_cam.set_ylabel("Cameras")
     ax_cam.set_xlabel(f"Time since JD {jd0:.5f} (days)")
 
     fig.tight_layout()
     #plt.show()
+    fig.savefig(getPNGFilepath(base_name), dpi=150)
 
-    plot_filename = (
-        f"{star_name.replace(' ', '_')}"
-        f"_jd{jd_bin[0]:.5f}-{jd_bin[-1]:.5f}"
-        f"_ra{ra_mean:.3f}_dec{dec_mean:.3f}.png"
-    ).replace(" ", "_").replace("/", "_")
-
-
-    plot_filepath = os.path.join(CHARTS_DIR, plot_filename)
-    fig.savefig(plot_filepath, dpi=150)
-
-    return plot_filename
+    return
 
 if __name__ == "__main__":
     with psycopg.connect(
@@ -1222,7 +1341,8 @@ if __name__ == "__main__":
             jd_end=2460311,
             ang_tol_deg=0.2,
             min_cameras=1,
-            cadence_sec=10.24 * 5
+            cadence_sec=10.24 * 5,
+            spatial_method = "normalised"
         )
 
         if lc is None:

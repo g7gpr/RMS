@@ -59,7 +59,7 @@ def fetchHemisphereRadec(conn, hemisphere="south", limit_rows=30000, mag_limit=3
 
         print(hemisphere, ra_list, dec_list)
 
-        star_data, _, _, extra_values_dict = readIAUCSN(os.path.expanduser("~/source/RMS/Catalogs"),"IAU-CSN.txt", additional_fields=['Name/ASCII'])
+        star_data, _, _, extra_values_dict = readIAUCSN(os.path.expanduser("/Catalogs"), "IAU-CSN.txt", additional_fields=['Name/ASCII'])
 
         ra_list, dec_list, mag_list, names_list = [], [], [], []
         for r, n in zip(star_data, extra_values_dict['Name/ASCII']):
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     test_mode = cml_args.test_mode
 
     constellations_all = loadConstellationLines(
-        "~/source/RMS/share/constellation_lines.csv"
+        "/share/constellation_lines.csv"
     )
     constellations_south = filterSouthernConstellations(constellations_all)
     constellations_north = filterNorthernConstellations(constellations_all)

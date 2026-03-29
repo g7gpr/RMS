@@ -15,6 +15,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+
+
 from __future__ import print_function, division, absolute_import
 
 """
@@ -139,6 +141,8 @@ Notes
 
 
 
+
+
 import inspect
 import traceback
 import os
@@ -173,6 +177,7 @@ from RMS.Formats.CALSTARS import readCALSTARS, maxCalstarsToPNG, calstarsToMP4
 from RMS.Misc import mkdirP
 from RMS.Logger import LoggingManager, getLogger
 from pathlib import Path
+from PipelineDB import createDatabaseIfMissing, initialiseDatabase, auditIngestUserPrivileges
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
@@ -185,10 +190,6 @@ TYPE_MAP = {
     "stationID": "TEXT",
     "jd": "BIGINT",
 }
-
-
-
-
 
 # Constants
 
@@ -207,370 +208,7 @@ PORT = 22
 
 
 
-def createStationTable(conn):
-    sql = """
-    CREATE TABLE IF NOT EXISTS station (
-        station_name    CHAR(6) PRIMARY KEY,
-        name            TEXT,
-        notes           TEXT
-    );
-    """
-    with conn.cursor() as cur:
 
-        cur.execute(sql)
-    conn.commit()
-
-def createCalstarFilesTable(conn):
-    sql = """
-        CREATE TABLE IF NOT EXISTS calstar_files (
-            file_name       TEXT PRIMARY KEY,
-            ingestion_time  BIGINT
-        );
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql)
-    conn.commit()
-
-def createSessionTable(conn):
-
-
-
-    sql = """CREATE TABLE IF NOT EXISTS session (
-                session_id      SERIAL PRIMARY KEY,
-                session_name    TEXT NOT NULL UNIQUE,
-                station_name    TEXT NOT NULL,
-        
-                start_jd        BIGINT,
-                end_jd          BIGINT,
-        
-                pixel_scale_h   INTEGER,
-                pixel_scale_v   INTEGER,
-        
-                lat             INTEGER,
-                lon             INTEGER,
-                elevation       INTEGER);"""
-
-    with conn.cursor() as cur:
-        cur.execute(sql)
-    conn.commit()
-
-def createFrameTable(conn):
-    sql = """
-    CREATE TABLE IF NOT EXISTS frame (
-        frame_name      TEXT PRIMARY KEY,
-        session_name    TEXT REFERENCES session(session_name),
-        jd_mid          BIGINT,
-        frame_index     INTEGER,
-        quality_flags   SMALLINT
-    );
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql)
-    conn.commit()
-
-def createStarTable(conn):
-    sql = """
-    CREATE TABLE IF NOT EXISTS star (
-        station_name    TEXT NOT NULL REFERENCES station(station_name),
-        star_name       TEXT NOT NULL,
-        ra              INTEGER,
-        dec             INTEGER,
-        mag             INTEGER,
-        catalog_source  TEXT,
-        canonical_name  TEXT,
-        PRIMARY KEY (station_name, star_name)
-    );
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql)
-    conn.commit()
-
-def createObservationTable(conn):
-    sql = """
-    CREATE TABLE IF NOT EXISTS observation (
-        obs_id          BIGSERIAL PRIMARY KEY,
-        jd_mid          BIGINT,
-        session_name    TEXT REFERENCES session(session_name),
-        station_name    TEXT,
-
-        frame_name      TEXT REFERENCES frame(frame_name),
-        star_name       TEXT,
-
-        -- CALSTARS fields (scaled where needed)
-        y               INTEGER,
-        x               INTEGER,
-        intens_sum      INTEGER,
-        ampltd          INTEGER,
-        fwhm            INTEGER,
-        bg_lvl          INTEGER,
-        snr             INTEGER,
-        nsatpx          SMALLINT,
-
-        -- Derived fields
-        mag             INTEGER,
-        cat_mag         INTEGER,
-        mag_err         INTEGER,
-
-        -- Astrometric solution (scaled RA/Dec)
-        ra              INTEGER,
-        dec             INTEGER,
-
-        -- Flags
-        flags           SMALLINT
-    );
-    """
-
-    with conn.cursor() as cur:
-        cur.execute(sql)
-
-    conn.commit()
-
-def createSpatialCorrectionTable(conn):
-    sql_create = """
-    CREATE TABLE IF NOT EXISTS spatial_correction (
-        frame_name  TEXT NOT NULL,
-        method      TEXT NOT NULL,
-        version     INTEGER NOT NULL,
-        grid_mag    JSONB,
-        xmid        JSONB,
-        ymid        JSONB,
-        params      JSONB,
-        created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (frame_name, method, version)
-    );
-    """
-
-    sql_check = """
-                SELECT 1
-                FROM pg_constraint
-                WHERE conname = 'spatial_method_fields'; \
-                """
-
-
-    sql_alter = """
-    ALTER TABLE spatial_correction
-    ADD CONSTRAINT spatial_method_fields CHECK (
-        (method = 'binned' AND grid_mag IS NOT NULL AND xmid IS NOT NULL AND ymid IS NOT NULL)
-        OR
-        (method = 'gaussian' AND params IS NOT NULL)
-    );
-    """
-
-    with conn.cursor() as cur:
-        cur.execute(sql_create)
-        cur.execute(sql_check)
-        exists = cur.fetchone()
-
-        if not exists:
-            cur.execute(sql_alter)
-
-    conn.commit()
-
-def createObservationIndexes(conn):
-    with conn.cursor() as cur:
-
-        # JD-only index (already have)
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_observation_jd_mid
-            ON observation (jd_mid);
-        """)
-
-        # JD + RA + DEC (already have)
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_observation_jd_ra_dec
-            ON observation (jd_mid, ra, dec);
-        """)
-
-        # Frame-level lookups (CRITICAL)
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_observation_frame_name
-            ON observation (frame_name);
-        """)
-
-        # Station-level lookups
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_observation_station_name
-            ON observation (station_name);
-        """)
-
-        # Star-level lookups (optional but useful)
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_observation_star_name
-            ON observation (star_name);
-        """)
-
-        conn.commit()
-
-def createAllTables(conn):
-
-    createStationTable(conn)
-    createSessionTable(conn)
-    createFrameTable(conn)
-    createStarTable(conn)
-    createObservationTable(conn)
-    createCalstarFilesTable(conn)
-    createSpatialCorrectionTable(conn)
-
-def createAllIndexes(conn):
-
-    createObservationIndexes(conn)
-
-def revokeCreatesIngestUser(conn):
-
-    with conn.cursor() as cur:
-        cur.execute("REVOKE CREATE ON DATABASE star_data FROM ingest_user;")
-        cur.execute("REVOKE CREATE ON SCHEMA public FROM ingest_user;")
-    conn.commit()
-
-def createIngestUserIfMissing(conn):
-    with conn.cursor() as cur:
-        # Check if role exists
-        cur.execute("SELECT 1 FROM pg_roles WHERE rolname='ingest_user';")
-        exists = cur.fetchone()
-
-        if not exists:
-            # Create the role WITHOUT a password
-            # Operator sets the password manually once
-            cur.execute("CREATE ROLE ingest_user LOGIN;")
-
-    conn.commit()
-
-def grantIngestUserPrivileges(conn):
-    with conn.cursor() as cur:
-        # Database + schema access
-        cur.execute("GRANT CONNECT ON DATABASE star_data TO ingest_user;")
-        cur.execute("GRANT USAGE ON SCHEMA public TO ingest_user;")
-
-        # Table privileges
-        cur.execute("""
-            GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO ingest_user;
-        """)
-
-        # Future tables
-        cur.execute("""
-            ALTER DEFAULT PRIVILEGES IN SCHEMA public
-            GRANT SELECT, INSERT, UPDATE ON TABLES TO ingest_user;
-        """)
-
-    conn.commit()
-
-def auditIngestUserPrivileges(conn):
-    print("\n=== INGEST USER PRIVILEGE AUDIT ===")
-
-    with conn.cursor() as cur:
-        # 1. Who am I?
-        cur.execute("SELECT current_user;")
-        print("Current user:", cur.fetchone()[0])
-
-        # 2. What server am I connected to?
-        cur.execute("SELECT inet_server_addr(), inet_server_port();")
-        print("Connected to:", cur.fetchone())
-
-        # 3. What is my search_path?
-        cur.execute("SHOW search_path;")
-        print("search_path:", cur.fetchone()[0])
-
-        # 4. What schemas exist?
-        cur.execute("""
-            SELECT schema_name
-            FROM information_schema.schemata
-            ORDER BY schema_name;
-        """)
-        schemas = [row[0] for row in cur.fetchall()]
-        print("Schemas on server:", schemas)
-
-        # 5. Does a schema named after the user exist?
-        cur.execute("""
-            SELECT schema_name
-            FROM information_schema.schemata
-            WHERE schema_name = current_user;
-        """)
-        user_schema = cur.fetchone()
-        print("User-named schema exists:", bool(user_schema))
-
-        # 6. What privileges does ingest_user have on each table?
-        print("\nTable privileges:")
-        cur.execute("""
-            SELECT table_schema, table_name, privilege_type
-            FROM information_schema.table_privileges
-            WHERE grantee = current_user
-            ORDER BY table_schema, table_name, privilege_type;
-        """)
-        rows = cur.fetchall()
-        if not rows:
-            print("  (No table privileges found!)")
-        else:
-            for schema, table, priv in rows:
-                print(f"  {schema}.{table}: {priv}")
-
-        # 7. Can ingest_user SELECT from calstar_files?
-        print("\nTesting SELECT on public.calstar_files...")
-        try:
-            cur.execute("SELECT COUNT(*) FROM public.calstar_files;")
-            print("  SELECT OK:", cur.fetchone()[0], "rows")
-        except Exception as e:
-            print("  SELECT FAILED:", e)
-
-        # 8. Can ingest_user INSERT into calstar_files?
-        print("\nTesting INSERT on public.calstar_files...")
-        try:
-            cur.execute("""
-                INSERT INTO public.calstar_files (file_name, ingestion_time)
-                VALUES ('audit_test', 0)
-            """)
-            conn.rollback()  # Don't leave junk
-            print("  INSERT OK")
-        except Exception as e:
-            print("  INSERT FAILED:", e)
-
-        cur.execute("SELECT inet_server_addr(), inet_server_port();")
-        log.warning("SERVER: %s", cur.fetchone())
-
-    print("=== END AUDIT ===\n")
-
-def ensureCalstarFilePrivileges(conn):
-    """Ensure ingest_user has the privileges required for ON CONFLICT DO UPDATE."""
-    with conn.cursor() as cur:
-        cur.execute("GRANT INSERT ON public.calstar_files TO ingest_user;")
-        cur.execute("GRANT SELECT ON public.calstar_files TO ingest_user;")
-        cur.execute("GRANT UPDATE (ingestion_time) ON public.calstar_files TO ingest_user;")
-    conn.commit()
-
-def grantSequencePrivileges(conn):
-    with conn.cursor() as cur:
-        cur.execute("GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ingest_user;")
-    conn.commit()
-
-def setIngestUserSearchPath(conn):
-    with conn.cursor() as cur:
-        cur.execute("ALTER ROLE ingest_user SET search_path = public;")
-    conn.commit()
-
-def createDatabaseIfMissing(conn):
-    # Connect to the default database
-
-    conn.autocommit = True  # REQUIRED for CREATE DATABASE
-
-    with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM pg_database WHERE datname='star_data';")
-        exists = cur.fetchone()
-
-        if not exists:
-            cur.execute("CREATE DATABASE star_data;")
-
-def initialiseDatabase(conn):
-
-
-    createIngestUserIfMissing(conn)
-    setIngestUserSearchPath(conn)
-    createAllTables(conn)
-    createAllIndexes(conn)
-    grantIngestUserPrivileges(conn)
-    ensureCalstarFilePrivileges(conn)
-    grantSequencePrivileges(conn)
-    revokeCreatesIngestUser(conn)
-
-    pass
 
 def scale1e6(value):
     # Pass through None

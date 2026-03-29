@@ -3,10 +3,10 @@ import os
 import time
 import datetime
 
-from Utils.PipelineMetrics.Sessions import latestSessions
-from Utils.PipelineMetrics.Frames import frameCounts
-from Utils.PipelineMetrics.Observations import observationCounts, totalObservations
-from Utils.PipelineMetrics.IngestionRate import calstarsPerDay, activeStationCount, ingestionStalled
+from Utils.StarPipeline.PipelineMetrics.Sessions import latestSessions
+from Utils.StarPipeline.PipelineMetrics.Frames import frameCounts
+from Utils.StarPipeline.PipelineMetrics.Observations import observationCounts, totalObservations
+from Utils.StarPipeline.PipelineMetrics.IngestionRate import calstarsPerDay, activeStationCount, ingestionStalled
 
 INTERVAL = datetime.timedelta(minutes=1)
 
@@ -48,7 +48,7 @@ def jdRange():
     """
     Return earliest and latest JD from the observation table.
     """
-    from Utils.PipelineMetrics.db import getConn
+    from Utils.StarPipeline.PipelineMetrics.db import getConn
     conn = getConn()
 
     with conn.cursor() as cur:
