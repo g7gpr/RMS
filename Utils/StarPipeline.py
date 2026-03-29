@@ -207,8 +207,6 @@ PORT = 22
 
 
 
-
-
 def createStationTable(conn):
     sql = """
     CREATE TABLE IF NOT EXISTS station (
@@ -751,9 +749,6 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
 
     return observation_count
 
-
-
-
 def ensureList(value):
     """Return: list containing value, or value itself if already a list."""
     if isinstance(value, list):
@@ -761,31 +756,6 @@ def ensureList(value):
     if isinstance(value, str):
         return [value]
     raise TypeError(f"Expected str or list, got {type(value).__name__}")
-
-def discoverRemoteFiles(stations, username, host, port, remote_processed_dir_template):
-    """
-    Scan all stations on the remote server and return a unified list of files.
-
-    Returns:
-        files: list of (station_name, file_name)
-    """
-    all_files = []
-
-    for station in stations:
-        remote_dir = remote_processed_dir_template.replace("stationID", station.lower())
-
-        try:
-            station_files = lsRemote(host, username, port, remote_dir)
-        except Exception as e:
-            log.warning(f"Failed to list remote files for {station}: {e}")
-            continue
-
-        for file_name in station_files:
-            all_files.append((station, file_name))
-
-    return all_files
-
-
 
 def makeTarBz2(source_dir, output_file):
     """ Archive a directory to a tar.bz2 file.
@@ -965,7 +935,6 @@ def connectionProblem(host, port=22, timeout=3):
         # Can't connect at all return True
         return True
 
-
 def dropTable(conn, table_name):
     """If a table exists, drop it.
     Arguments:
@@ -981,7 +950,6 @@ def dropTable(conn, table_name):
     with conn.cursor() as cur:
         cur.execute(sql_command)
     conn.commit()
-
 
 def recordCalstarFileIngested(conn, file_name):
     ingestion_time = int(time.time() * 1_000_000)
@@ -1011,7 +979,6 @@ def recordCalstarFileIngested(conn, file_name):
         if DEBUG_CALSTAR_INSERT:
             log.warning(f"Executed {sql}")
     conn.commit()
-
 
 def markIngested(conn, directory_path):
     """Save the ingested marker file into the folder_path.
@@ -1047,7 +1014,6 @@ def isIngestedFromFileSystem(directory_path):
     else:
         return False
 
-
 def isIngestedFromDB(conn,file_name):
 
     sql = "SELECT 1 FROM calstar_files WHERE file_name = %s;"
@@ -1056,7 +1022,6 @@ def isIngestedFromDB(conn,file_name):
         cur.execute(sql, (file_name,))
         return cur.fetchone() is not None
 
-
 def buildCalstarFilename(calstar_directory_path):
     base = os.path.basename(calstar_directory_path)
     parts = base.split("_")
@@ -1064,8 +1029,6 @@ def buildCalstarFilename(calstar_directory_path):
     # Expecting: YYYYMMDD_HHMMSS_STATIONID_SEQUENCE
     # Produces:  CALSTARS_YYYYMMDD_HHMMSS_STATIONID_SEQUENCE
     return f"CALSTARS_{parts[0]}_{parts[1]}_{parts[2]}_{parts[3]}"
-
-
 
 def isIngested(conn, calstar_directory_path):
     calstar_filename = buildCalstarFilename(calstar_directory_path)
@@ -1132,7 +1095,10 @@ def lsRemote(host, username, port, remote_path):
         parts = line.split()
         if parts:
             files.append(parts[-1])
-    log.info(f"Remote directory {remote_path} contained {len(files)} files")
+    remote_file_count = len(files)
+    word = "file" if remote_file_count == 1 else "files"
+    log.info(f"Remote directory {remote_path} contained {remote_file_count} {word}")
+
     return files
 
 def extractBz2(input_directory, working_directory, host, username, local_target_list=None):
@@ -1792,8 +1758,9 @@ def discoverRemoteFiles(stations, username, host, port,
     # Initialise cadence
     next_allowed = datetime.datetime.now(datetime.timezone.utc)
 
-    for station in stations:
+    for idx, station in enumerate(stations, start=1):
         # Start of this iteration is the scheduled cadence time
+        log.info(f"Processing station {idx}/{len(stations)}: {station}")
         iteration_start = next_allowed
 
         remote_dir = remote_processed_dir_template.replace(
@@ -2088,7 +2055,6 @@ def setIngestUserSearchPath(conn):
         cur.execute("ALTER ROLE ingest_user SET search_path = public;")
     conn.commit()
 
-
 def createDatabaseIfMissing(conn):
     # Connect to the default database
 
@@ -2100,10 +2066,6 @@ def createDatabaseIfMissing(conn):
 
         if not exists:
             cur.execute("CREATE DATABASE star_data;")
-
-
-
-
 
 if __name__ == "__main__":
 
