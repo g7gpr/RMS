@@ -1785,18 +1785,23 @@ import random
 
 def discoverRemoteFiles(stations, username, host, port,
                         remote_processed_dir_template,
-                        min_interval_sec=5):
+                        min_interval_sec=1, target_interval_sec=5 ):
 
     filtered_files = []
 
+    # Global cadence anchor
+    next_allowed = datetime.datetime.now(datetime.timezone.utc)
+
     for station in stations:
-        iteration_start = datetime.datetime.now(datetime.timezone.utc)
+        # Start of this iteration is the scheduled cadence time
+        iteration_start = next_allowed
 
         remote_dir = remote_processed_dir_template.replace(
             "stationID", station.lower()
         )
 
         retry = 3
+
         # --- Retry loop for Fail2ban-style blocks ---
         while retry > 0:
             retry -= 1
@@ -1832,10 +1837,12 @@ def discoverRemoteFiles(stations, username, host, port,
             ):
                 filtered_files.append(file_name)
 
-        # --- Enforce minimum interval between station polls ---
-        next_allowed = iteration_start + datetime.timedelta(seconds=min_interval_sec)
+        # --- Advance cadence anchor ---
+        next_allowed = iteration_start + datetime.timedelta(seconds=target_interval_sec)
+
+        # --- Sleep until the next scheduled time ---
         delay = (next_allowed - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
-        time.sleep(max(0, delay))
+        time.sleep(max(min_interval_sec, delay))
 
     return filtered_files
 
