@@ -1590,6 +1590,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             log.info(f"Read {os.path.basename(local_recal_path)}")
     else:
         log.info(f"No file {os.path.basename(local_recal_path)}`")
+        pp_recal_json = None
 
     pp = Platepar()
     star_dict = starListToDict(observation_config, [calstar, chunk])
@@ -1611,16 +1612,15 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     for fits_file, star_list in calstar:
         fits_station_id = fits_file.split('_')[1]
-
-
         dt = FFfile.getMiddleTimeFF(fits_file, observation_config.fps, ret_milliseconds=True, ff_frames=256)
         jd = date2JD(*dt)
 
         if pp.station_code != observation_config.stationID:
             log.warning("Platepar mismatch")
 
-        if fits_file in pp_recal_json:
-            pp.loadFromDict(pp_recal_json[fits_file])
+        if pp_recal_json is not None:
+            if fits_file in pp_recal_json:
+                pp.loadFromDict(pp_recal_json[fits_file])
 
         pixel_scale_h = pp.fov_h / pp.X_res
         pixel_scale_v = pp.fov_v / pp.Y_res
