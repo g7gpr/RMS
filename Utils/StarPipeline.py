@@ -1779,24 +1779,66 @@ def getLatestCalstarFile(conn, station_id):
 
     return row
 
-def discoverRemoteFiles(stations, username, host, port, remote_processed_dir_template):
-    all_files = []
+import datetime
+import time
+import random
+
+def discoverRemoteFiles(stations, username, host, port,
+                        remote_processed_dir_template,
+                        min_interval_sec=5):
+
+    filtered_files = []
 
     for station in stations:
-        remote_dir = remote_processed_dir_template.replace("stationID", station.lower())
-        try:
-            station_files = lsRemote(host, username, port, remote_dir)
-        except Exception as e:
-            log.warning(f"Failed to list remote files for {station}: {e}")
-            continue
+        iteration_start = datetime.datetime.utcnow()
 
-        for file_name in station_files:
-            if file_name.endswith("tar.bz2") and len(file_name.split("_")) == 5 and file_name.startswith(station.upper()):
-                if "imgdata" in file_name:
+        remote_dir = remote_processed_dir_template.replace(
+            "stationID", station.lower()
+        )
+
+        retry = 3
+        # --- Retry loop for Fail2ban-style blocks ---
+        while retry > 0:
+            retry -= 1
+            try:
+                station_files = lsRemote(host, username, port, remote_dir)
+                break   # success → exit retry loop
+
+            except Exception as e:
+                msg = str(e).lower()
+
+                # Detect Fail2ban / SSH refusal
+                if "connection refused" in msg or "unexpectedly closed" in msg:
+                    pause = random.uniform(600, 900)
+                    log.warning(
+                        f"Fail2ban likely active for {station}. "
+                        f"Sleeping {pause:.1f} seconds before retrying."
+                    )
+                    time.sleep(pause)
                     continue
-                all_files.append(file_name)
 
-    return all_files
+                # Other errors → log and skip this station
+                log.warning(f"Failed to list remote files for {station}: {e}")
+                station_files = []
+                break
+
+        # --- Filter valid tarballs ---
+        for file_name in station_files:
+            if (
+                file_name.endswith("tar.bz2")
+                and len(file_name.split("_")) == 5
+                and file_name.startswith(station.upper())
+                and "imgdata" not in file_name
+            ):
+                filtered_files.append(file_name)
+
+        # --- Enforce minimum interval between station polls ---
+        next_allowed = iteration_start + datetime.timedelta(seconds=min_interval_sec)
+        delay = (next_allowed - datetime.datetime.utcnow()).total_seconds()
+        time.sleep(max(0, delay))
+
+    return filtered_files
+
 
 def parseServerFileTimestamp(file_name):
     parts = file_name.split("_")

@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 import psycopg
 import json
+import matplotlib.pyplot as plt
 
 BIN_BY_CADENCE = True
 
@@ -180,8 +181,12 @@ def buildLightCurvePoints(ra_deg, dec_deg, jd,
 
     if True:
 
-        (jd_bin, ra_bin, dec_bin, mag_bin,
-         n_det_bin, n_cam_bin, cam_sets) = binNetworkDetections(jd, ra_deg, dec_deg, mag, camera_id)
+        (jd_bin, ra_bin, dec_bin, mag_bin, mag_err_bin,
+         n_det_bin, n_cam_bin, cam_sets) = binNetworkDetections(
+            jd, ra_deg, dec_deg, mag, snr, camera_id
+        )
+
+        plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin)
 
         labels = clusterDetectionsStar5D(
             ra_bin, dec_bin, jd_bin, mag_bin,
@@ -305,73 +310,92 @@ def loadDetections(conn, jd_start=None, jd_end=None,
 # Cadence binning
 # =========================
 
-def binNetworkDetections(jd, ra_deg, dec_deg, mag, camera_id,
+def binNetworkDetectionsOld(jd, ra_deg, dec_deg, mag, snr, camera_id,
                          bin_minutes=1.0):
     """
-    Bin detections in time across the whole network.
-
-    Returns per-bin:
-      jd_bin, ra_bin, dec_bin, mag_bin, n_det, n_cam, cam_sets
+    Network-wide time binning with SNR-weighted flux averaging.
     """
+
     jd = np.asarray(jd)
     ra_deg = np.asarray(ra_deg)
     dec_deg = np.asarray(dec_deg)
     mag = np.asarray(mag)
+    snr = np.asarray(snr)
     camera_id = np.asarray(camera_id)
 
     dt_days = bin_minutes / (24.0 * 60.0)
     jd0 = jd.min()
     bin_index = np.floor((jd - jd0) / dt_days).astype(int)
 
-    # --- declare all output lists ---
     jd_bins = []
     ra_bins = []
     dec_bins = []
     mag_bins = []
+    mag_err_bins = []
     n_det_bins = []
     n_cam_bins = []
-    cam_sets = []   # NEW: track which cameras contributed
+    cam_sets = []
 
-    # --- fill bins ---
     for b in np.unique(bin_index):
         idx = np.where(bin_index == b)[0]
 
+        # time & position
         jd_bins.append(np.mean(jd[idx]))
         ra_bins.append(np.mean(ra_deg[idx]))
         dec_bins.append(np.mean(dec_deg[idx]))
-        mag_bins.append(np.mean(mag[idx]))
 
-        n_det_bins.append(len(idx))
+        # SNR-weighted flux averaging
+        flux = 10**(-0.4 * mag[idx])
+        w = snr[idx]**2
+        w_sum = np.sum(w)
 
-        cams = set().union(*[cam_sets[i] for i in idx])
-        n_cam_bins.append(len(cams))
+        flux_mean = np.sum(w * flux) / w_sum
+        mag_mean = -2.5 * np.log10(flux_mean)
+
+        sigma_flux = np.sqrt(1.0 / w_sum)
+        mag_err = (2.5 / np.log(10)) * (sigma_flux / flux_mean)
+
+        mag_bins.append(mag_mean)
+        mag_err_bins.append(mag_err)
+
+        # metadata
+        cams = set(camera_id[idx])
         cam_sets.append(cams)
 
-    # --- convert to arrays ---
-    return (np.array(jd_bins),
-            np.array(ra_bins),
-            np.array(dec_bins),
-            np.array(mag_bins),
-            np.array(n_det_bins),
-            np.array(n_cam_bins),
-            cam_sets)
+        n_det_bins.append(len(idx))
+        n_cam_bins.append(len(cams))
+
+    return (
+        np.array(jd_bins),
+        np.array(ra_bins),
+        np.array(dec_bins),
+        np.array(mag_bins),
+        np.array(mag_err_bins),
+        np.array(n_det_bins),
+        np.array(n_cam_bins),
+        cam_sets
+    )
+
 
 
 from sklearn.cluster import DBSCAN
 import numpy as np
 
-def binNetworkDetections(jd, ra_deg, dec_deg, mag, camera_id,
+def binNetworkDetections(jd, ra_deg, dec_deg, mag, snr, camera_id,
                          bin_minutes=1.0):
     """
-    Bin detections in time across the whole network.
+    Network-wide time binning with SNR-weighted flux averaging.
 
     Returns per-bin:
-      jd_bin, ra_bin, dec_bin, mag_bin, n_det, n_cam, cam_sets
+      jd_bin, ra_bin, dec_bin, mag_bin, mag_err_bin,
+      n_det_bin, n_cam_bin, cam_sets
     """
+
     jd = np.asarray(jd)
     ra_deg = np.asarray(ra_deg)
     dec_deg = np.asarray(dec_deg)
     mag = np.asarray(mag)
+    snr = np.asarray(snr)
     camera_id = np.asarray(camera_id)
 
     dt_days = bin_minutes / (24.0 * 60.0)
@@ -383,33 +407,53 @@ def binNetworkDetections(jd, ra_deg, dec_deg, mag, camera_id,
     ra_bins = []
     dec_bins = []
     mag_bins = []
+    mag_err_bins = []
     n_det_bins = []
     n_cam_bins = []
-    cam_sets = []   # NEW: track which cameras contributed
+    cam_sets = []
 
     # --- fill bins ---
     for b in np.unique(bin_index):
         idx = np.where(bin_index == b)[0]
 
+        # time & position
         jd_bins.append(np.mean(jd[idx]))
         ra_bins.append(np.mean(ra_deg[idx]))
         dec_bins.append(np.mean(dec_deg[idx]))
-        mag_bins.append(np.mean(mag[idx]))
 
-        n_det_bins.append(len(idx))
+        # SNR-weighted flux averaging
+        flux = 10**(-0.4 * mag[idx])
+        w = snr[idx]**2
+        w_sum = np.sum(w)
 
+        flux_mean = np.sum(w * flux) / w_sum
+        mag_mean = -2.5 * np.log10(flux_mean)
+
+        # SNR-weighted uncertainty
+        sigma_flux = np.sqrt(1.0 / w_sum)
+        mag_err = (2.5 / np.log(10)) * (sigma_flux / flux_mean)
+
+        mag_bins.append(mag_mean)
+        mag_err_bins.append(mag_err)
+
+        # metadata
         cams = set(camera_id[idx])
-        n_cam_bins.append(len(cams))
         cam_sets.append(cams)
 
+        n_det_bins.append(len(idx))
+        n_cam_bins.append(len(cams))
+
     # --- convert to arrays ---
-    return (np.array(jd_bins),
-            np.array(ra_bins),
-            np.array(dec_bins),
-            np.array(mag_bins),
-            np.array(n_det_bins),
-            np.array(n_cam_bins),
-            cam_sets)
+    return (
+        np.array(jd_bins),
+        np.array(ra_bins),
+        np.array(dec_bins),
+        np.array(mag_bins),
+        np.array(mag_err_bins),
+        np.array(n_det_bins),
+        np.array(n_cam_bins),
+        cam_sets
+    )
 
 
 
@@ -530,6 +574,76 @@ def saveLightCurveAsJson(lc, filename):
 
     with open(filename, "w") as f:
         json.dump(serializable, f, indent=2)
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin):
+    fig, (ax_mag, ax_cam) = plt.subplots(
+        2, 1,
+        figsize=(12, 8),
+        sharex=True,
+        gridspec_kw={'height_ratios': [3, 1]}
+    )
+
+    # ============================================================
+    #  TOP PANEL — Magnitude with discrete uncertainty patches
+    # ============================================================
+
+    for x, y, dy in zip(jd_bin, mag_bin, mag_err_bin):
+        ax_mag.fill_between(
+            [x - 0.0001, x + 0.0001],
+            y - dy,
+            y + dy,
+            color='lightblue',
+            alpha=0.35,
+            linewidth=0
+        )
+
+    ax_mag.scatter(
+        jd_bin,
+        mag_bin,
+        s=14,
+        color='tab:blue',
+        alpha=0.9
+    )
+
+    ax_mag.set_ylabel("Magnitude", color='tab:blue')
+    ax_mag.invert_yaxis()
+    ax_mag.tick_params(axis='y', labelcolor='tab:blue')
+
+    # Clamp y-axis to magnitude range only
+    y_min = np.max(mag_bin)
+    y_max = np.min(mag_bin)
+    ax_mag.set_ylim(8, -1)   # faintest at top, brightest at bottom
+
+
+    ax_mag.set_title("Time-Binned Light Curve (SNR-weighted)")
+
+    # ============================================================
+    #  LOWER PANEL — Camera count histogram
+    # ============================================================
+
+    # Use bar plot for discrete camera counts
+    ax_cam.bar(
+        jd_bin,
+        n_cam_bin,
+        width=(jd_bin[1] - jd_bin[0]) * 0.8 if len(jd_bin) > 1 else 0.001,
+        color='tab:red',
+        alpha=0.7
+    )
+
+    ax_cam.set_ylabel("Cameras")
+    ax_cam.set_xlabel("JD")
+
+    fig.tight_layout()
+    plt.show()
+
+
+
+
+
 
 
 
