@@ -220,7 +220,6 @@ def createStationTable(conn):
         cur.execute(sql)
     conn.commit()
 
-
 def createCalstarFilesTable(conn):
     sql = """
         CREATE TABLE IF NOT EXISTS calstar_files (
@@ -231,7 +230,6 @@ def createCalstarFilesTable(conn):
     with conn.cursor() as cur:
         cur.execute(sql)
     conn.commit()
-
 
 def createSessionTable(conn):
 
@@ -256,7 +254,6 @@ def createSessionTable(conn):
         cur.execute(sql)
     conn.commit()
 
-
 def createFrameTable(conn):
     sql = """
     CREATE TABLE IF NOT EXISTS frame (
@@ -270,7 +267,6 @@ def createFrameTable(conn):
     with conn.cursor() as cur:
         cur.execute(sql)
     conn.commit()
-
 
 def createStarTable(conn):
     sql = """
@@ -289,13 +285,11 @@ def createStarTable(conn):
         cur.execute(sql)
     conn.commit()
 
-
-
 def createObservationTable(conn):
     sql = """
     CREATE TABLE IF NOT EXISTS observation (
         obs_id          BIGSERIAL PRIMARY KEY,
-        jd_mid          BIGINT, 
+        jd_mid          BIGINT,
         session_name    TEXT REFERENCES session(session_name),
         station_name    TEXT,
 
@@ -314,6 +308,7 @@ def createObservationTable(conn):
 
         -- Derived fields
         mag             INTEGER,
+        cat_mag         INTEGER,
         mag_err         INTEGER,
 
         -- Astrometric solution (scaled RA/Dec)
@@ -322,29 +317,89 @@ def createObservationTable(conn):
 
         -- Flags
         flags           SMALLINT
-        
     );
     """
+
     with conn.cursor() as cur:
         cur.execute(sql)
+
+    conn.commit()
+
+def createSpatialCorrectionTable(conn):
+    sql_create = """
+    CREATE TABLE IF NOT EXISTS spatial_correction (
+        frame_name  TEXT NOT NULL,
+        method      TEXT NOT NULL,
+        version     INTEGER NOT NULL,
+        grid_mag    JSONB,
+        xmid        JSONB,
+        ymid        JSONB,
+        params      JSONB,
+        created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (frame_name, method, version)
+    );
+    """
+
+    sql_check = """
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = 'spatial_method_fields'; \
+                """
+
+
+    sql_alter = """
+    ALTER TABLE spatial_correction
+    ADD CONSTRAINT spatial_method_fields CHECK (
+        (method = 'binned' AND grid_mag IS NOT NULL AND xmid IS NOT NULL AND ymid IS NOT NULL)
+        OR
+        (method = 'gaussian' AND params IS NOT NULL)
+    );
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql_create)
+        cur.execute(sql_check)
+        exists = cur.fetchone()
+
+        if not exists:
+            cur.execute(sql_alter)
+
     conn.commit()
 
 def createObservationIndexes(conn):
-
-
     with conn.cursor() as cur:
+
+        # JD-only index (already have)
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_observation_jd_mid
             ON observation (jd_mid);
         """)
 
+        # JD + RA + DEC (already have)
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_observation_jd_ra_dec
             ON observation (jd_mid, ra, dec);
         """)
 
-        conn.commit()
+        # Frame-level lookups (CRITICAL)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_observation_frame_name
+            ON observation (frame_name);
+        """)
 
+        # Station-level lookups
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_observation_station_name
+            ON observation (station_name);
+        """)
+
+        # Star-level lookups (optional but useful)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_observation_star_name
+            ON observation (star_name);
+        """)
+
+        conn.commit()
 
 def createAllTables(conn):
 
@@ -354,6 +409,7 @@ def createAllTables(conn):
     createStarTable(conn)
     createObservationTable(conn)
     createCalstarFilesTable(conn)
+    createSpatialCorrectionTable(conn)
 
 def createAllIndexes(conn):
 
@@ -387,17 +443,16 @@ def grantIngestUserPrivileges(conn):
 
         # Table privileges
         cur.execute("""
-            GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA public TO ingest_user;
+            GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO ingest_user;
         """)
 
         # Future tables
         cur.execute("""
             ALTER DEFAULT PRIVILEGES IN SCHEMA public
-            GRANT SELECT, INSERT ON TABLES TO ingest_user;
+            GRANT SELECT, INSERT, UPDATE ON TABLES TO ingest_user;
         """)
 
     conn.commit()
-
 
 def auditIngestUserPrivileges(conn):
     print("\n=== INGEST USER PRIVILEGE AUDIT ===")
@@ -486,6 +541,22 @@ def grantSequencePrivileges(conn):
         cur.execute("GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ingest_user;")
     conn.commit()
 
+def setIngestUserSearchPath(conn):
+    with conn.cursor() as cur:
+        cur.execute("ALTER ROLE ingest_user SET search_path = public;")
+    conn.commit()
+
+def createDatabaseIfMissing(conn):
+    # Connect to the default database
+
+    conn.autocommit = True  # REQUIRED for CREATE DATABASE
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM pg_database WHERE datname='star_data';")
+        exists = cur.fetchone()
+
+        if not exists:
+            cur.execute("CREATE DATABASE star_data;")
 
 def initialiseDatabase(conn):
 
@@ -533,8 +604,6 @@ def scale1e3(value):
     # Normal numeric case
     return int(round(value * 1000))
 
-
-
 def buildFrameRows(observation_dict, session_name):
     frame_rows = []
 
@@ -563,8 +632,6 @@ def buildFrameRows(observation_dict, session_name):
 
     return frame_rows
 
-
-
 def buildStarRows(observation_dict):
     star_set = set()
 
@@ -584,7 +651,6 @@ def buildStarRows(observation_dict):
             ))
 
     return list(star_set)
-
 
 def buildObservationRows(observation_dict, session_name, station_name):
     observation_rows = []
@@ -607,6 +673,7 @@ def buildObservationRows(observation_dict, session_name, station_name):
                 scale1e6(obs["snr"]),
                 obs["nsatpx"],
                 scale1e6(obs["obs_mag"]),
+                scale1e6(obs["cat_mag"]),
                 scale1e6(obs["err_mag"]),
                 scale1e6(obs["obs_ra"]),
                 scale1e6(obs["obs_dec"]),
@@ -617,7 +684,6 @@ def buildObservationRows(observation_dict, session_name, station_name):
             ))
 
     return observation_rows
-
 
 def buildAllRows(observation_dict, session_name):
     frame_rows = buildFrameRows(observation_dict, session_name)
@@ -742,7 +808,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                     star_name,
                     y, x,
                     intens_sum, ampltd, fwhm, bg_lvl, snr, nsatpx,
-                    mag, mag_err, ra, dec,
+                    mag, cat_mag, mag_err, ra, dec,
                     session_name,
                     station_name,
                     jd_mid,
@@ -751,7 +817,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                 VALUES (%s, %s,
                         %s, %s,
                         %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s,
                         %s,        -- session_name
                         %s,        -- station_name
                         %s,
@@ -1763,10 +1829,6 @@ def getLatestCalstarFile(conn, station_id):
 
     return row
 
-import datetime
-import time
-import random
-
 def discoverRemoteFiles(stations, username, host, port,
                         remote_processed_dir_template,
                         min_interval_sec=1, target_interval_sec=10):
@@ -1830,7 +1892,6 @@ def discoverRemoteFiles(stations, username, host, port,
         time.sleep(max(min_interval_sec, delay))
 
     return filtered_files
-
 
 def parseServerFileTimestamp(file_name):
     parts = file_name.split("_")
@@ -2067,23 +2128,6 @@ def resetIngestion(local_calstars_path, ingestion_marker):
                 os.unlink(os.path.join(calstar_path, ingestion_marker))
             archiveCalstarDirectories(conn, local_calstars_path, [os.path.basename(calstar_path)], ingested_only=False)
             pass
-
-def setIngestUserSearchPath(conn):
-    with conn.cursor() as cur:
-        cur.execute("ALTER ROLE ingest_user SET search_path = public;")
-    conn.commit()
-
-def createDatabaseIfMissing(conn):
-    # Connect to the default database
-
-    conn.autocommit = True  # REQUIRED for CREATE DATABASE
-
-    with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM pg_database WHERE datname='star_data';")
-        exists = cur.fetchone()
-
-        if not exists:
-            cur.execute("CREATE DATABASE star_data;")
 
 if __name__ == "__main__":
 
