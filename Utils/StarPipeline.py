@@ -1834,7 +1834,7 @@ def discoverRemoteFiles(stations, username, host, port,
 
         # --- Enforce minimum interval between station polls ---
         next_allowed = iteration_start + datetime.timedelta(seconds=min_interval_sec)
-        delay = (next_allowed - datetime.datetime.utcnow()).total_seconds()
+        delay = (next_allowed - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
         time.sleep(max(0, delay))
 
     return filtered_files
