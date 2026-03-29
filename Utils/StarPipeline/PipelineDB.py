@@ -1,3 +1,7 @@
+from RMS.Logger import LoggingManager, getLogger
+import RMS.ConfigReader as cr
+import os
+
 # Constants
 
 # urls
@@ -12,6 +16,15 @@ CALSTAR_FILES_TABLE_NAME = "calstar_files"
 STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
 CHARTS = "charts"
 PORT = 22
+
+config = cr.parse(os.path.join(os.getcwd(), ".config"))
+
+# Initialize the logger
+log_manager = LoggingManager()
+log_manager.initLogging(config)
+
+# Get the logger handle
+log = getLogger("rmslogger")
 
 
 def createStationTable(conn):
@@ -220,8 +233,7 @@ def createSpatialModelTable(conn):
                      rms_mag DOUBLE PRECISION, 
                      median_resid DOUBLE PRECISION, 
 
-                     created_at \
-                     TIMESTAMP NOT NULL DEFAULT NOW)
+                     created_at TIMESTAMP NOT NULL DEFAULT NOW )
                      
                      PRIMARY KEY (frame_name, model_type, version));  
                  """
