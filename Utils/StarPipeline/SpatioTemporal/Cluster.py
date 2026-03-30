@@ -442,9 +442,9 @@ with psycopg.connect(host="192.168.1.190", dbname="star_data", user="ingest_user
 
     lc = generateStarLightCurve(
         conn,
-        ra_star_deg=131.175,
-        dec_star_deg=-54.708,
-        search_radius_deg=0.03,  # you can nudge this if needed
+        ra_star_deg=303.868,
+        dec_star_deg=67.618,
+        search_radius_deg=0.05,  # you can nudge this if needed
         jd_start=2460927,
         jd_end=2460928,
         t_window_min=1.0,

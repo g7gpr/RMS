@@ -132,9 +132,7 @@ if __name__ == "__main__":
 
     test_mode = cml_args.test_mode
 
-    constellations_all = loadConstellationLines(
-        "/share/constellation_lines.csv"
-    )
+    constellations_all = loadConstellationLines("share/constellation_lines.csv")
     constellations_south = filterSouthernConstellations(constellations_all)
     constellations_north = filterNorthernConstellations(constellations_all)
 

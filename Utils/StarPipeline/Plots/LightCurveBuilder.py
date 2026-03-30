@@ -1,11 +1,15 @@
+import datetime
+from tkinter.constants import NONE
+
 import numpy as np
 from sklearn.cluster import DBSCAN
 from scipy.interpolate import RegularGridInterpolator
 import psycopg
 import json
 import matplotlib.pyplot as plt
-import tqdm
+import math
 import os
+
 
 BIN_BY_CADENCE = True
 CHARTS_DIR = os.path.expanduser("~/RMS_data/Plots")
@@ -150,7 +154,7 @@ def makeLightcurveFilename(ra_deg, dec_deg, jd_start, jd_end,
         base = f"lc_jd{jd0_str}-{jd1_str}_ra{ra_str}_dec{dec_str}"
 
     if spatial_method:
-        base += f"_model{spatial_method}"
+        base += f"_model_{spatial_method}"
 
     return base
 
@@ -158,8 +162,8 @@ def makeLightcurveFilename(ra_deg, dec_deg, jd_start, jd_end,
 def loadCachedSpatialMap(conn, frame_name, method='binned', version=1):
     sql = """
         SELECT grid_mag, xmid, ymid, params
-        FROM spatial_correction
-        WHERE frame_name = %s AND method = %s AND version = %s;
+        FROM spatial_model
+        WHERE frame_name = %s AND model_type = %s AND version = %s;
     """
     with conn.cursor() as cur:
         cur.execute(sql, (frame_name, method, version))
@@ -368,15 +372,14 @@ def loadFramePhotometry(conn, frame_name):
     sql = """
         SELECT
             obs.mag      AS obs_mag,
-            star.mag     AS cat_mag,
+            obs.cat_mag  AS cat_mag,
             obs.x,
             obs.y
         FROM observation AS obs
-        JOIN star
-          ON star.station_name = obs.station_name
         WHERE obs.frame_name = %s
           AND obs.mag IS NOT NULL
-          AND star.mag IS NOT NULL;
+          AND obs.cat_mag IS NOT NULL;
+
     """
 
     with conn.cursor() as cur:
@@ -461,24 +464,41 @@ def applyDetectionCorrections(conn, det, spatial_method):
     unique_frames = np.unique(frame_names)
     frame_cache = {}
 
-    for fname in tqdm.tqdm(unique_frames):
+    start_time = datetime.datetime.now(tz=datetime.timezone.utc)
+    total = len(unique_frames)
+    cache_hit = 0
 
+    for i, fname in enumerate(unique_frames, start=1):
+
+        if i % 500 == 0 or i == 10:
+            now = datetime.datetime.now(tz=datetime.timezone.utc)
+            elapsed_s = (now - start_time).total_seconds()
+
+            # Forecast total duration
+            forecast_total_s = elapsed_s * total / i
+            forecast_completion_time = start_time + datetime.timedelta(seconds=forecast_total_s)
+            cache_hit_pc = 100 * cache_hit / i
+            cache_hit_txt = f"Cache hit {cache_hit_pc:.1f}%" if spatial_method != 'none' else ""
+            print(f"[{i}/{total}] Forecast completion: {forecast_completion_time.isoformat()} {cache_hit_txt}")
 
         version = 1
         cached_map = loadCachedSpatialMap(conn, fname, spatial_method, version)
 
         # 1. Try cache first
         if cached_map is not None:
-            print(f"[cache hit]  spatial map for frame {fname}")
-            frame_data = loadFramePhotometry(conn, fname, spatial_method)
+            #print(f"[cache hit] spatial map type {spatial_method} for frame {fname}")
+            cache_hit += 1
+            frame_data = loadFramePhotometry(conn, fname)
             frame_offset = computeFrameOffset(frame_data) if frame_data else 0.0
             frame_cache[fname] = (frame_offset, cached_map)
             continue
 
-        print(f"[cache miss] building spatial map for frame {fname}")
+        if spatial_method != "none":
+            pass
+            #print(f"[cache miss] building spatial map type {spatial_method} for frame {fname}")
 
         # 2. Otherwise compute
-        frame_data = loadFramePhotometry(conn, fname, spatial_method)
+        frame_data = loadFramePhotometry(conn, fname)
         if frame_data is None:
             frame_cache[fname] = (0.0, None)
             continue
@@ -492,17 +512,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
                 frame_data['x'], frame_data['y'], residuals)
 
             # Save binned map
-            saveSpatialModel(
-                conn,
-                frame_name=fname,
-                spatial_method=spatial_method,
-                method="binned",
-                version=1,
-                grid_mag=grid_mag,
-                xmid=xmid,
-                ymid=ymid
-            )
-
+            saveSpatialModel(conn, frame_name=fname, spatial_model=spatial_method, version=1, grid_mag=grid_mag, xmid=xmid, ymid=ymid)
             frame_cache[fname] = (frame_offset, spatial_map)
 
         elif spatial_method == 'gaussian':
@@ -510,15 +520,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
             gauss_model = fitGaussianSpatialModel(
                 frame_data['x'], frame_data['y'], residuals)
 
-            loadSpatialModel(conn, fname, spatial_method,
-                conn,
-                spatial_method="gaussian",
-                frame_name=fname,
-                method="gaussian",
-                version=1,
-                params=gauss_model.to_params()
-            )
-
+            saveSpatialModel(conn, spatial_model="gaussian", frame_name=fname, version=1, params=gauss_model.to_params())
             frame_cache[fname] = (frame_offset, gauss_model)
 
         else:
@@ -657,6 +659,7 @@ def buildPhotometricPoint(idx, ra_deg, dec_deg, jd,
 
 
 def binByCadence(lc, cadence_sec=10.24):
+
     dt_days = cadence_sec / 86400.0
 
     jd = lc['jd']
@@ -691,41 +694,18 @@ def binByCadence(lc, cadence_sec=10.24):
 # High-level cluster wrapper
 # =========================
 
-def buildLightCurvePoints(ra_deg, dec_deg, jd,
-                          mag, snr, camera_id, cat_mag=None,
-                          ang_tol_deg=0.05,
-                          min_cameras=2,
-                          mode="star",
-                          star_name=None,
-                          t_window_min=1.0, base_name=None):
+def buildLightCurvePoints(det, cat_mag=None, ang_tol_deg=0.05, min_cameras=2, star_name=None, t_window_min=1.0, base_name=None, cadence_sec=10.24):
 
-    if True:
-        (jd_bin, ra_bin, dec_bin, mag_bin, mag_err_bin,
-         n_det_bin, n_cam_bin, cam_sets) = binNetworkDetections(
-            jd, ra_deg, dec_deg, mag, snr, camera_id
-        )
+    ra_bin, dec_bin, jd_bin = det['ra_deg'], det['dec_deg'], det['jd']
+    mag_bin, mag_err_bin, snr, camera_id = det['mag'], det['mag_err'], det['snr'], det['camera_id']
 
-        plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin, ra_bin, dec_bin,
-                                 n_stations=len(set(camera_id)), n_observations=len(jd), cat_mag=cat_mag,
-                                                 star_name=star_name, base_name=base_name)
+    labels = clusterDetectionsStar5D(
+        ra_bin, dec_bin, jd_bin, mag_bin,
+        t_window_min=10.0,
+        ang_tol_deg=0.05,
+        mag_tol_mag=0.1)
 
-        labels = clusterDetectionsStar5D(
-            ra_bin, dec_bin, jd_bin, mag_bin,
-            t_window_min=10.0,
-            ang_tol_deg=0.05,
-            mag_tol_mag=0.1
-        )
-
-    else:
-        labels = clusterDetectionsEvent(
-            ra_deg, dec_deg, jd,
-            t_window_min=t_window_min,
-            ang_tol_deg=ang_tol_deg
-        )
-
-        jd_bin, ra_bin, dec_bin, mag_bin, mag_err_bin = jd, ra_deg, dec_deg, mag, np.zeros_like(mag)
-        n_det_bin = np.ones_like(mag, dtype=int)
-        n_cam_bin = np.ones_like(mag, dtype=int)
+    n_cam_bin = np.ones_like(mag_bin, dtype=int)
 
     points = []
     unique_labels = np.unique(labels)
@@ -739,8 +719,7 @@ def buildLightCurvePoints(ra_deg, dec_deg, jd,
         print(
             "Cluster", lab,
             "JD range:", float(np.min(jd_bin[idx])), float(np.max(jd_bin[idx])),
-            "Cameras:", "N/A"
-        )
+            "Cameras:", "N/A")
 
         point = buildPhotometricPoint(
             idx, ra_bin, dec_bin, jd_bin, mag_bin, mag_err_bin, n_cam_bin
@@ -771,7 +750,7 @@ def getPNGFilepath(base_name):
 
 def loadDetections(conn, jd_start=None, jd_end=None,
                    ra_center=None, dec_center=None, radius_deg=None,
-                   prove=True, prove_n=100):
+                   prove=False, prove_n=100):
 
     where = []
     params = []
@@ -820,6 +799,7 @@ def loadDetections(conn, jd_start=None, jd_end=None,
         return None
 
     # Extract columns
+
     ra_deg     = np.array([r[0] for r in rows], dtype=float) / 1e6
     dec_deg    = np.array([r[1] for r in rows], dtype=float) / 1e6
     mag        = np.array([r[2] for r in rows], dtype=float) / 1e6
@@ -911,8 +891,17 @@ def loadDetections(conn, jd_start=None, jd_end=None,
         'mag_err': mag_err}
 
 
-def binNetworkDetectionsOld(jd, ra_deg, dec_deg, mag, snr, camera_id,
-                            bin_minutes=1.0):
+
+
+def binNetworkDetections(det, bin_seconds=10.24):
+
+    jd = det['jd']
+    ra_deg, dec_deg = det['ra_deg'], det['dec_deg']
+    mag, snr = det['mag'], det['snr']
+    camera_id = det['camera_id']
+
+    if jd.size == 0:
+        return
 
     jd = np.asarray(jd)
     ra_deg = np.asarray(ra_deg)
@@ -921,7 +910,7 @@ def binNetworkDetectionsOld(jd, ra_deg, dec_deg, mag, snr, camera_id,
     snr = np.asarray(snr)
     camera_id = np.asarray(camera_id)
 
-    dt_days = bin_minutes / (24.0 * 60.0)
+    dt_days = bin_seconds / (24.0 * 60.0 * 60.0)
     jd0 = jd.min()
     bin_index = np.floor((jd - jd0) / dt_days).astype(int)
 
@@ -945,71 +934,19 @@ def binNetworkDetectionsOld(jd, ra_deg, dec_deg, mag, snr, camera_id,
         w = snr[idx]**2
         w_sum = np.sum(w)
 
-        flux_mean = np.sum(w * flux) / w_sum
+
+        if np.any(snr == -1):
+            #todo: find out if this is acceptable
+            flux_mean = np.mean(flux)
+            sigma_flux = np.std(flux, ddof=1)
+
+        else:
+            # This is a new style calstar with SNR
+            flux_mean = np.sum(w * flux) / w_sum
+            sigma_flux = np.sqrt(1.0 / w_sum)
+
+        # Compute mag_err from https://www.eso.org/~ohainaut/ccd/sn.html
         mag_mean = -2.5 * np.log10(flux_mean)
-
-        sigma_flux = np.sqrt(1.0 / w_sum)
-        mag_err = (2.5 / np.log(10)) * (sigma_flux / flux_mean)
-
-        mag_bins.append(mag_mean)
-        mag_err_bins.append(mag_err)
-
-        cams = set(camera_id[idx])
-        cam_sets.append(cams)
-
-        n_det_bins.append(len(idx))
-        n_cam_bins.append(len(cams))
-
-    return (
-        np.array(jd_bins),
-        np.array(ra_bins),
-        np.array(dec_bins),
-        np.array(mag_bins),
-        np.array(mag_err_bins),
-        np.array(n_det_bins),
-        np.array(n_cam_bins),
-        cam_sets
-    )
-
-
-def binNetworkDetections(jd, ra_deg, dec_deg, mag, snr, camera_id,
-                         bin_minutes=1.0):
-
-    jd = np.asarray(jd)
-    ra_deg = np.asarray(ra_deg)
-    dec_deg = np.asarray(dec_deg)
-    mag = np.asarray(mag)
-    snr = np.asarray(snr)
-    camera_id = np.asarray(camera_id)
-
-    dt_days = bin_minutes / (24.0 * 60.0)
-    jd0 = jd.min()
-    bin_index = np.floor((jd - jd0) / dt_days).astype(int)
-
-    jd_bins = []
-    ra_bins = []
-    dec_bins = []
-    mag_bins = []
-    mag_err_bins = []
-    n_det_bins = []
-    n_cam_bins = []
-    cam_sets = []
-
-    for b in np.unique(bin_index):
-        idx = np.where(bin_index == b)[0]
-
-        jd_bins.append(np.mean(jd[idx]))
-        ra_bins.append(np.mean(ra_deg[idx]))
-        dec_bins.append(np.mean(dec_deg[idx]))
-
-        flux = 10**(-0.4 * mag[idx])
-        w = snr[idx]**2
-        w_sum = np.sum(w)
-
-        flux_mean = np.sum(w * flux) / w_sum
-        mag_mean = -2.5 * np.log10(flux_mean)
-
-        sigma_flux = np.sqrt(1.0 / w_sum)
         mag_err = (2.5 / np.log(10)) * (sigma_flux / flux_mean)
 
         mag_bins.append(mag_mean)
@@ -1079,7 +1016,7 @@ def generateStarLightCurve(conn,
 
     star_name_from_db, mag_from_db = lookupBrightestStar(conn, ra_star_deg, dec_star_deg, radius_deg=0.05)
 
-    print(f"Working on star {star_name_from_db}, RA: {ra_star_deg}, DEC: {dec_star_deg} MAG:{mag_from_db/1e6}")
+    print(f"Working on star {star_name_from_db}, RA: {ra_star_deg:.2f}, DEC: {dec_star_deg:.2f} MAG:{mag_from_db/1e6:.2f}")
     base_name = makeLightcurveFilename(ra_star_deg, dec_star_deg, jd_start, jd_end, star_name_from_db, spatial_method=spatial_method)
 
 
@@ -1095,24 +1032,29 @@ def generateStarLightCurve(conn,
     if det is None:
         return None
 
+    if len(det['camera_id']) == 0:
+        print("No station made an observation")
+        return None
+
     print(f"Unique cameras: {set(det['camera_id'])}")
 
-    det = applyDetectionCorrections(conn, det)
+    det = applyDetectionCorrections(conn, det, spatial_method=spatial_method)
 
+    if det is None:
+        return []
 
     cat_mag = float(np.nanmedian(det['cat_mag']))
+    print(f"Detections {len(det['jd'])}")
+    binned_detections = binNetworkDetections(det, bin_seconds=cadence_sec)
 
-    points = buildLightCurvePoints(
-        det['ra_deg'], det['dec_deg'], det['jd'],
-        det['mag'], det['snr'], det['camera_id'], cat_mag=cat_mag,
-        ang_tol_deg=ang_tol_deg,
-        min_cameras=min_cameras,
-        mode="star",
-        star_name=star_name_from_db,
-        t_window_min=cadence_sec / 60.0,
-        base_name=base_name
-    )
 
+    arr_jd_bins, arr_ra_bins, arr_dec_bins, arr_mag_bins, arr_mag_err_bins, arr_n_det_bins, arr_n_cam_bins, cam_sets = binned_detections
+    print(f"Bins {len(arr_jd_bins)}")
+
+    plotTimeBinnedLightCurve(binned_detections, n_stations=len(set(det['camera_id'])), n_observations=len(det['jd']), cat_mag=mag_from_db, bin_length=cadence_sec, star_name=star_name_from_db, base_name=base_name)
+
+    points = buildLightCurvePoints(det, cat_mag=cat_mag, ang_tol_deg=ang_tol_deg, min_cameras=min_cameras,
+                                   star_name=star_name_from_db, t_window_min=cadence_sec / 60.0, base_name=base_name, cadence_sec=cadence_sec)
     if not points:
         return None
 
@@ -1130,8 +1072,8 @@ def generateStarLightCurve(conn,
     }
 
 
-    if BIN_BY_CADENCE:
-        lc = binByCadence(lc, cadence_sec=cadence_sec)
+
+    lc = binByCadence(lc, cadence_sec=cadence_sec)
 
     order = np.argsort(lc['jd'])
     for k in lc:
@@ -1162,7 +1104,7 @@ def generateStarLightCurve(conn,
         jd_end,
         cat_mag,
         n_observations,
-        len(stations),
+        stations,
         lc,
         base_name,
         spatial_method=spatial_method)
@@ -1178,11 +1120,13 @@ def saveLightCurveSidecarTxt(
     jd_end,
     cat_mag,
     n_observations,
-    n_stations,
+    stations,
     lc,
     base_name=None,
     spatial_method=None):
 
+
+    n_stations = len(stations)
     ra_mean = float(np.mean(lc['ra_deg']))
     dec_mean = float(np.mean(lc['dec_deg']))
 
@@ -1214,6 +1158,11 @@ def saveLightCurveSidecarTxt(
 
         f.write(f"JSON: {os.path.basename(getJSONFilepath(base_name))}\n")
         f.write(f"Plot: {os.path.basename(getPNGFilepath(base_name))}\n")
+
+        f.write("\n\nContributing stations:\n")
+        for s in sorted(stations):
+            f.write(f"  - {s}\n")
+        f.write("\n")
 
     return getTXTFilepath(base_name)
 
@@ -1255,19 +1204,20 @@ def saveLightCurveAsJson(lc, base_name,
         serializable["cat_mag"] = float(cat_mag)
 
 
-    with open(getJSONFilepath(base_name)) as f:
+    with open(getJSONFilepath(base_name), 'w') as f:
         json.dump(serializable, f, indent=2)
 
 
-def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin,
-                             ra_bin, dec_bin,
-                             n_stations, n_observations, cat_mag, star_name=None, base_name=None):
+def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_mag, bin_length=None, star_name=None, base_name=None):
 
-    jd0 = jd_bin[0]
-    jd_rel = jd_bin - jd0
+    arr_jd_bins, arr_ra_bins, arr_dec_bins, arr_mag_bins, arr_mag_err_bins, arr_n_det_bins, arr_n_cam_bins, cam_sets = binned_detections
 
-    ra_mean  = np.mean(ra_bin)
-    dec_mean = np.mean(dec_bin)
+
+    jd0 = arr_jd_bins[0]
+    jd_rel = arr_jd_bins - jd0
+
+    ra_mean  = np.mean(arr_ra_bins)
+    dec_mean = np.mean(arr_dec_bins)
 
     fig, (ax_mag, ax_cam) = plt.subplots(
         2, 1,
@@ -1278,12 +1228,12 @@ def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin,
 
     ax_mag.set_title(
         f"{star_name} — Time-Binned Light Curve\n"
-        f"RA={ra_mean:.3f}°, Dec={dec_mean:.3f}°\n"
-        f"{n_stations} stations, {n_observations} detections"
+        f"RA={ra_mean:.2f} deg, Dec={dec_mean:.2f} deg MAG={cat_mag:.2f}\n"
+        f"{n_stations} stations, {n_observations} detections, {len(binned_detections[0])} bins of length {bin_length:.1f} seconds"
     )
 
 
-    for x, y, dy in zip(jd_rel, mag_bin, mag_err_bin):
+    for x, y, dy in zip(jd_rel, arr_mag_bins, arr_mag_err_bins):
         ax_mag.fill_between(
             [x - 0.0001, x + 0.0001],
             y - dy,
@@ -1293,10 +1243,22 @@ def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin,
             linewidth=0
         )
 
-    ax_mag.scatter(jd_rel, mag_bin, s=14, color='tab:blue', alpha=0.9)
+    ax_mag.scatter(jd_rel, arr_mag_bins, s=14, color='tab:blue', alpha=0.9)
     ax_mag.set_ylabel("Magnitude")
     ax_mag.invert_yaxis()
-    ax_mag.set_ylim(10, -2)
+    # --- Dynamic scaling: 75% of points in middle 3/5 of axis ---
+    q25, q75 = np.percentile(arr_mag_bins, [25, 75])
+    middle_span = q75 - q25
+
+    # Full axis span so that middle 75% occupies middle 3/5
+    full_span = (5 / 3) * middle_span
+
+
+    # Axis limits (remember: magnitude axis is inverted)
+    y_top = math.floor(q25 - max(1, full_span))  # brighter
+    y_bottom = math.ceil(q75 + max(1, full_span))  # fainter
+
+    ax_mag.set_ylim(y_bottom, y_top)
 
     if cat_mag is not None:
         ax_mag.axhline(
@@ -1308,15 +1270,25 @@ def plotTimeBinnedLightCurve(jd_bin, mag_bin, mag_err_bin, n_cam_bin,
             label=f"Catalogue mag {cat_mag:.3f}"
         )
 
-    ax_cam.bar(
-        jd_rel,
-        n_cam_bin,
-        width=(jd_rel[1] - jd_rel[0]) * 0.8 if len(jd_rel) > 1 else 0.001,
-        color='tab:red',
-        alpha=0.7
-    )
+    # --- Robust bar width calculation ---
+    if len(jd_rel) > 1:
+        # Compute all spacings
+        spacings = np.diff(jd_rel)
 
-    ax_cam.set_ylabel("Cameras")
+        # Use median spacing for robustness
+        median_spacing = np.median(spacings)
+
+        # Scale to leave a small gap between bars
+        bar_width = median_spacing * 0.8
+
+        # Enforce reasonable bounds (in days)
+        bar_width = np.clip(bar_width, 0.0001, 0.1)
+    else:
+        bar_width = 0.001  # fallback for single-bin case
+
+    ax_cam.bar(jd_rel, arr_n_cam_bins, width=bar_width, color='tab:red', alpha=0.7)
+
+    ax_cam.set_ylabel("Stations")
     ax_cam.set_xlabel(f"Time since JD {jd0:.5f} (days)")
 
     fig.tight_layout()
@@ -1334,15 +1306,15 @@ if __name__ == "__main__":
 
         lc = generateStarLightCurve(
             conn,
-            ra_star_deg=84.06,
-            dec_star_deg=-1.2024,
+            ra_star_deg=79.39972,
+            dec_star_deg=-6.8473,
             search_radius_deg=0.5,
-            jd_start=2460310,
-            jd_end=2460311,
+            jd_start=2460310.5,
+            jd_end=2460311.8,
             ang_tol_deg=0.2,
-            min_cameras=1,
-            cadence_sec=10.24 * 5,
-            spatial_method = "normalised"
+            min_cameras=3,
+            cadence_sec=10.24 * 60,
+            spatial_method = 'none'
         )
 
         if lc is None:
