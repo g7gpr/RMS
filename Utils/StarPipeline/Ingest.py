@@ -178,6 +178,8 @@ from RMS.Misc import mkdirP
 from RMS.Logger import LoggingManager, getLogger
 from pathlib import Path
 from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, auditIngestUserPrivileges
+from RMS.Astrometry.AutoPlatepar import autoFitPlatepar, loadCatalogStars
+
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
@@ -318,7 +320,7 @@ def buildObservationRows(observation_dict, session_name, station_name):
                 session_name,
                 station_name,
                 frame_jd_mid,
-                0  # flags
+                obs["flag"]
             ))
 
     return observation_rows
@@ -1331,7 +1333,7 @@ def extractSessionNameFromCalstar(calstars_path):
 
     return f"{station_id}_{date}_{time}"
 
-def processServerFile(conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True):
+def processServerFile(conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None):
 
 
 
@@ -1385,7 +1387,7 @@ def processServerFile(conn, remote_file, remote_station_processed_dir, username,
         log.info(f"Ingesting {calstars_name}")
 
         observation_session_config = cr.parse(local_config_path)
-        observation_session_dict, start_jd, end_jd = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path)
+        observation_session_dict, start_jd, end_jd = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path, catalog_stars=catalog_stars)
 
         pixel_scale_h, pixel_scale_v = extractMedianPixelScale(observation_session_dict)
         session_name = extractSessionNameFromCalstar(local_calstars_path)
@@ -1447,9 +1449,10 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
 
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
+    catalog_stars = loadCatalogStars(config, config.catalog_mag_limit)
     log.info("Starting to download files")
     for f in file_list:
-        processServerFile(conn, f, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db)
+        processServerFile(conn, f, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
 
 def getLatestCalstarFile(conn, station_id):
     sql = """
@@ -1573,7 +1576,7 @@ def extractMedianPixelScale(observation_dict):
 
     return median_h, median_v
 
-def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path):
+def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None):
     """
       Parses a calstar data structures in archived directories path,
       converts to RaDec, corrects magnitude data and writes newer data to database
@@ -1611,6 +1614,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     end_jd = date2JD(*dt)
 
     for fits_file, star_list in calstar:
+        flag = 0
         fits_station_id = fits_file.split('_')[1]
         dt = FFfile.getMiddleTimeFF(fits_file, observation_config.fps, ret_milliseconds=True, ff_frames=256)
         jd = date2JD(*dt)
@@ -1621,6 +1625,17 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         if pp_recal_json is not None:
             if fits_file in pp_recal_json:
                 pp.loadFromDict(pp_recal_json[fits_file])
+
+        dir_path = os.path.dirname(local_calstars_path)
+
+        auto_pp, matched_star_pairs, used_ff = autoFitPlatepar(dir_path, observation_config, catalog_stars=catalog_stars, platepar_template=pp, ff_name=fits_file, verbose=False)
+
+        if auto_pp is None:
+            # This is a poor quality observation
+            flag += 1
+            pass
+        else:
+            pp = auto_pp
 
         pixel_scale_h = pp.fov_h / pp.X_res
         pixel_scale_v = pp.fov_v / pp.Y_res
@@ -1731,7 +1746,8 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
                 "nsatpx": o_nsatpx,
 
                 "pixel_scale_h": pixel_scale_h,
-                "pixel_scale_v": pixel_scale_v
+                "pixel_scale_v": pixel_scale_v,
+                "flag": flag
             })
 
         observation_dict[fits_file] = frame_list
@@ -1802,7 +1818,7 @@ if __name__ == "__main__":
 
     # Initialize the logger
     log_manager = LoggingManager()
-    log_manager.initLogging(config)
+
 
     # Get the logger handle
     log = getLogger("rmslogger")
