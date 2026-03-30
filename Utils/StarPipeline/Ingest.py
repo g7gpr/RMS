@@ -260,8 +260,8 @@ def buildFrameRows(observation_dict, session_name):
         first_obs = frame_list[0]
         jd_mid = scale1e6(first_obs["jd"])
 
-        quality_flags = observation_dict['flag']
-        median_absolute_deviation = observation_dict['mad']
+        quality_flags = observation_dict[fits_file][0]['flag']
+        median_absolute_deviation = scale1e6(observation_dict[fits_file][0]['mad'])
 
         frame_rows.append((
             frame_name,
@@ -433,7 +433,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
             # Insert frames
             cur.executemany("""
                 INSERT INTO frame (frame_name, session_name, jd_mid, frame_index, quality_flags, mad)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING;
             """, frame_rows)
 

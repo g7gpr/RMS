@@ -119,7 +119,8 @@ def createFrameTable(conn):
           ),
               jd_mid BIGINT,
               frame_index INTEGER,
-              quality_flags SMALLINT
+              quality_flags SMALLINT,
+              mad INTEGER
               ); \
           """
     with conn.cursor() as cur:
@@ -203,7 +204,7 @@ def createObservationTable(conn):
               dec INTEGER,
 
               -- Flags
-              flags SMALLINT
+              flags SMALLINT,
               
               -- Median absolute deviation
               mad INTEGER
