@@ -1685,7 +1685,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         frame_list = []
 
         cat_mag_list = []
-        for res, obs_mag in results_list, arr_obs_mag:
+        for res, obs_mag in zip(results_list, arr_obs_mag):
             if res is not None:
                 cat_mag_list.append(res[0][3])
             else:
