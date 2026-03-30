@@ -204,6 +204,9 @@ def createObservationTable(conn):
 
               -- Flags
               flags SMALLINT
+              
+              -- Median absolute deviation
+              mad INTEGER
               ); \
           """
 

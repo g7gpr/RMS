@@ -260,14 +260,16 @@ def buildFrameRows(observation_dict, session_name):
         first_obs = frame_list[0]
         jd_mid = scale1e6(first_obs["jd"])
 
-        quality_flags = 0  # placeholder for now
+        quality_flags = observation_dict['flag']
+        median_absolute_deviation = observation_dict['mad']
 
         frame_rows.append((
             frame_name,
             session_name,
             jd_mid,
                 frame_index,
-            quality_flags
+            quality_flags,
+            median_absolute_deviation
         ))
 
     return frame_rows
@@ -320,7 +322,8 @@ def buildObservationRows(observation_dict, session_name, station_name):
                 session_name,
                 station_name,
                 frame_jd_mid,
-                obs["flag"]
+                obs["flag"],
+                scale1e6(obs["mad"])
             ))
 
     return observation_rows
@@ -429,8 +432,8 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
 
             # Insert frames
             cur.executemany("""
-                INSERT INTO frame (frame_name, session_name, jd_mid, frame_index, quality_flags)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO frame (frame_name, session_name, jd_mid, frame_index, quality_flags, mad)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING;
             """, frame_rows)
 
@@ -452,7 +455,8 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                     session_name,
                     station_name,
                     jd_mid,
-                    flags
+                    flags, 
+                    mad
                 )
                 VALUES (%s, %s,
                         %s, %s,
@@ -460,6 +464,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                         %s, %s, %s, %s, %s,
                         %s,        -- session_name
                         %s,        -- station_name
+                        %s,
                         %s,
                         %s)
                 ON CONFLICT DO NOTHING;
@@ -1582,7 +1587,13 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
       converts to RaDec, corrects magnitude data and writes newer data to database
     """
 
-    observation_config = cr.parse(local_config_path)
+    flag = 0
+    flag_bad_auto_pp    =   1 << 0
+    flag_bad_mad        =   1 << 1
+    flag_few_stars      =   1 << 2
+
+
+    obs_con = cr.parse(local_config_path)
     calstars_name = os.path.basename(local_calstars_path)
 
     calstar, chunk = readCALSTARS(os.path.dirname(local_calstars_path), calstars_name)
@@ -1596,7 +1607,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         pp_recal_json = None
 
     pp = Platepar()
-    star_dict = starListToDict(observation_config, [calstar, chunk])
+    star_dict = starListToDict(obs_con, [calstar, chunk])
 
     if not len(star_dict):
         return {}, None, None
@@ -1607,35 +1618,40 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     fits_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
 
-    dt = FFfile.getMiddleTimeFF(calstar[0][0], observation_config.fps, ret_milliseconds=True, ff_frames=256)
+    dt = FFfile.getMiddleTimeFF(calstar[0][0], obs_con.fps, ret_milliseconds=True, ff_frames=256)
     start_jd = date2JD(*dt)
 
-    dt = FFfile.getMiddleTimeFF(calstar[-1][0], observation_config.fps, ret_milliseconds=True, ff_frames=256)
+    dt = FFfile.getMiddleTimeFF(calstar[-1][0], obs_con.fps, ret_milliseconds=True, ff_frames=256)
     end_jd = date2JD(*dt)
 
+    dir_path = os.path.dirname(local_calstars_path)
+    auto_pp, matched_star_pairs, used_ff = autoFitPlatepar(dir_path, obs_con, catalog_stars=catalog_stars,
+                                                           platepar_template=pp, verbose=False)
+
+    if auto_pp is None:
+        # if autoFitPlatepar can't make sense of the best observation, then set the bad autoFitPlatepar bit and never unset it for this calstar
+        flag |= flag_bad_auto_pp
+    else:
+        flag &= ~flag_bad_auto_pp
+        pp = auto_pp
+
+
     for fits_file, star_list in calstar:
-        flag = 0
+        if len(star_list) < 40:
+            flag |= flag_few_stars
+        else:
+            flag &= ~flag_few_stars
+
         fits_station_id = fits_file.split('_')[1]
-        dt = FFfile.getMiddleTimeFF(fits_file, observation_config.fps, ret_milliseconds=True, ff_frames=256)
+        dt = FFfile.getMiddleTimeFF(fits_file, obs_con.fps, ret_milliseconds=True, ff_frames=256)
         jd = date2JD(*dt)
 
-        if pp.station_code != observation_config.stationID:
+        if pp.station_code != obs_con.stationID:
             log.warning("Platepar mismatch")
 
         if pp_recal_json is not None:
             if fits_file in pp_recal_json:
                 pp.loadFromDict(pp_recal_json[fits_file])
-
-        dir_path = os.path.dirname(local_calstars_path)
-
-        auto_pp, matched_star_pairs, used_ff = autoFitPlatepar(dir_path, observation_config, catalog_stars=catalog_stars, platepar_template=pp, ff_name=fits_file, verbose=False)
-
-        if auto_pp is None:
-            # This is a poor quality observation
-            flag += 1
-            pass
-        else:
-            pp = auto_pp
 
         pixel_scale_h = pp.fov_h / pp.X_res
         pixel_scale_v = pp.fov_v / pp.Y_res
@@ -1663,22 +1679,16 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             jd_time=True, measurement=True, precompute_pointing_corr=True, extinction_correction=True
         )
 
-        results_list = cat.queryRaDec(
-            arr_obs_ra,
-            arr_obs_dec,
-            n_brightest=1,
-            radius_deg=radius_deg
-        )
+        results_list = cat.queryRaDec(arr_obs_ra, arr_obs_dec, n_brightest=1, radius_deg=radius_deg)
 
-        arr_obs_az, arr_obs_alt = raDec2AltAz(
-            arr_obs_ra,
-            arr_obs_dec,
-            arr_jd,
-            observation_config.latitude,
-            observation_config.longitude
-        )
+        arr_obs_az, arr_obs_alt = raDec2AltAz(arr_obs_ra, arr_obs_dec, arr_jd, obs_con.latitude, obs_con.longitude)
         frame_list = []
-
+        arr_cat_mag = np.array([res[0][3] for res in results_list])
+        mean_absolute_deviation = np.median(np.abs(arr_cat_mag - arr_obs_mag))
+        if mean_absolute_deviation > 0.2:
+            flag |= flag_bad_mad
+        else:
+            flag &= ~flag_bad_mad
         for i, (query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum,
                 o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx) in enumerate(zip(
             results_list,
@@ -1716,9 +1726,11 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
             mag_err = None if c_mag is None else (o_mag - c_mag)
 
+
+
             frame_list.append({
                 "name": name,
-                "station_name": observation_config.stationID.upper(),
+                "station_name": obs_con.stationID.upper(),
                 "jd": float(jd),
                 "stationID": fits_station_id.upper(),
 
@@ -1747,6 +1759,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
                 "pixel_scale_h": pixel_scale_h,
                 "pixel_scale_v": pixel_scale_v,
+                "mad": mean_absolute_deviation,
                 "flag": flag
             })
 
