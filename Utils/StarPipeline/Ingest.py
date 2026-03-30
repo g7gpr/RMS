@@ -1683,11 +1683,18 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
         arr_obs_az, arr_obs_alt = raDec2AltAz(arr_obs_ra, arr_obs_dec, arr_jd, obs_con.latitude, obs_con.longitude)
         frame_list = []
-        if results_list is not None:
-            arr_cat_mag = np.array([res[0][3] for res in results_list])
-            mean_absolute_deviation = np.median(np.abs(arr_cat_mag - arr_obs_mag))
-        else:
-            mean_absolute_deviation = 100
+
+        cat_mag_list = []
+        for res, obs_mag in results_list, arr_obs_mag:
+            if res is not None:
+                cat_mag_list.append(res[0][3])
+            else:
+                cat_mag_list.append(obs_mag)
+
+
+        arr_cat_mag = np.array(cat_mag_list)
+        mean_absolute_deviation = np.median(np.abs(arr_cat_mag - arr_obs_mag))
+
         if mean_absolute_deviation > 0.2:
             flag |= flag_bad_mad
         else:
