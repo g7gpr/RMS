@@ -336,6 +336,7 @@ def createIngestWorkTable(conn):
     ddl = """
     CREATE TABLE IF NOT EXISTS ingest_work (
         remote_path     TEXT PRIMARY KEY,
+        jd_int          BIGINT NOT NULL,
         status          TEXT NOT NULL DEFAULT 'pending',
         updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -344,6 +345,34 @@ def createIngestWorkTable(conn):
         cur.execute(ddl)
     conn.commit()
 
+def claimNextJob(conn):
+    """
+    Atomically claim the next pending job.
+    Returns remote_path or None if no work is available.
+    """
+    sql = """
+    UPDATE ingest_work
+    SET status = 'claimed',
+        updated_at = now()
+    WHERE remote_path = (
+        SELECT remote_path
+        FROM ingest_work
+        WHERE status = 'pending'
+        ORDER BY remote_path
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+    )
+    RETURNING remote_path;
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        row = cur.fetchone()
+        conn.commit()
+
+    if row:
+        return row[0]   # remote_path
+    return None
 
 
 

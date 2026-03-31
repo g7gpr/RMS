@@ -1347,21 +1347,78 @@ def extractSessionNameFromCalstar(calstars_path):
 
     return f"{station_id}_{date}_{time}"
 
+def claimNextJob(conn):
+    sql = """
+    UPDATE ingest_work
+    SET status = 'claimed',
+        updated_at = now()
+    WHERE remote_path = (
+        SELECT remote_path
+        FROM ingest_work
+        WHERE status = 'pending'
+        ORDER BY jd_int ASC, remote_path ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+    )
+    RETURNING remote_path, jd_int;
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        row = cur.fetchone()
+        conn.commit()
+
+    return row if row else None
+
+
+def markJobDone(conn, remote_path):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ingest_work
+            SET status = 'done', updated_at = now()
+            WHERE remote_path = %s
+            """,
+            (remote_path,)
+        )
+    conn.commit()
+
+
+def markJobError(conn, remote_path, msg):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ingest_work
+            SET status = 'error', updated_at = now()
+            WHERE remote_path = %s
+            """,
+            (remote_path,)
+        )
+    conn.commit()
+
+
+
 def worker(remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None):
 
     # Each worker must open its own DB connection
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as worker_conn:
-        return processServerFile(
-            worker_conn,
-            remote_file,
-            remote_station_processed_dir,
-            username,
-            host,
-            port,
-            calstars_data_full_path,
-            write_db,
-            catalog_stars
-        )
+        while True:
+            remote_path = claimNextJob(conn)
+            if remote_path is None:
+                time.sleep(120)
+                continue
+
+            return processServerFile(
+                worker_conn,
+                remote_file,
+                remote_station_processed_dir,
+                username,
+                host,
+                port,
+                calstars_data_full_path,
+                write_db,
+                catalog_stars
+            )
 
 def chunkByHour(file_list, day_divider=24):
 
@@ -1940,6 +1997,35 @@ def resetIngestion(local_calstars_path, ingestion_marker):
             archiveCalstarDirectories(conn, local_calstars_path, [os.path.basename(calstar_path)], ingested_only=False)
             pass
 
+def populateWorkQueue(conn, json_path):
+    with open(json_path, "r") as f:
+        data = json.load(f)
+
+    rows = []
+    for item in data:
+        file_name = item["file_name"]
+        dt = FFfile.getMiddleTimeFF(file_name,fps=25,ret_milliseconds=True,ff_frames=256)
+        jd = date2JD(*dt)
+        jd_int = scale1e6(jd)
+
+        if jd_int is None:
+            continue
+
+        rows.append((file_name, jd_int))
+
+    with conn.cursor() as cur:
+        cur.executemany(
+            """
+            INSERT INTO ingest_work (remote_path, jd_int)
+            VALUES (%s, %s)
+            ON CONFLICT (remote_path) DO NOTHING;
+            """,
+            rows
+        )
+    conn.commit()
+
+
+
 if __name__ == "__main__":
 
     import argparse
@@ -1960,7 +2046,8 @@ if __name__ == "__main__":
     arg_parser.add_argument('-r', '--reset_ingestion', dest='reset_ingestion', default=False, action="store_true",
                             help="Reset all ingestion markers")
 
-
+    arg_parser.add_argument('-p', '--populate_ingestion_table', dest='populate_ingestion_table', default=False, action="store_true",
+                            help="Populate ingestion table and then quit immediately")
 
     arg_parser.add_argument('--country', metavar='COUNTRY', help="""Country code to work on""")
 
@@ -1992,6 +2079,14 @@ if __name__ == "__main__":
     log.info(f"Using a history of {days_history} days")
 
     cwd = os.getcwd()
+
+    if cml_args.populate_ingestion_table:
+
+        with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
+            log.info("Populating the ingestion table")
+            populateWorkQueue(conn, os.path.expanduser("~/source/RMS/remotefiles.json"))
+        sys.exit()
+
 
     local_calstars_path = Path(os.path.expanduser(config.data_dir)) / CALSTARS_DATA_DIR
     if cml_args.reset_ingestion:
