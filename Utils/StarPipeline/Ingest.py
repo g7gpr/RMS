@@ -1400,7 +1400,7 @@ def markJobError(conn, remote_path, msg):
 
 
 
-def worker(remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None):
+def worker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None):
 
     # Each worker must open its own DB connection
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as worker_conn:
@@ -1427,24 +1427,23 @@ def chunkByHour(file_list, day_divider=24):
     return dict(days)
 
 
-def runParallel(file_list, remote_station_processed_dir=None, username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, nproc=2):
+def runParallel(remote_station_processed_dir=None, username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, nproc=1):
 
 
     with Pool(nproc) as pool:
         args_list = []
-        for remote_file in file_list:
-            args_list.append(
-                (
-                    remote_file,
-                    remote_station_processed_dir,
-                    username,
-                    host,
-                    port,
-                    calstars_data_full_path,
-                    write_db,
-                    catalog_stars
-                )
+
+        args_list.append(
+            (
+                remote_station_processed_dir,
+                username,
+                host,
+                port,
+                calstars_data_full_path,
+                write_db,
+                catalog_stars
             )
+        )
 
         results = pool.starmap(worker, args_list)
     return results
@@ -1568,6 +1567,12 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
     catalog_stars = loadCatalogStars(config, config.catalog_mag_limit)
+
+
+    runParallel(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
+
+    #Single threading approach - not in use
+    """
     log.info("Starting to download files")
 
     hour_chunks = chunkByHour(file_list, day_divider=48)
@@ -1579,12 +1584,11 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
         log.info(f"Working on jd {hour} - following files to be processed")
         for f in sortFilesByTime(hour_files):
             log.info(f"\t{f}")
-
-        runParallel(hour_files, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
-
-    # Single threading approach - not in use
+    
     #for f in file_list:
     #    processServerFile(conn, f, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
+    """
+
 
 def getLatestCalstarFile(conn, station_id):
     sql = """
@@ -1737,6 +1741,9 @@ def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
         # Astronomical night: Sun below threshold (e.g., -18°)
         if sun_alt_deg < sun_angle:
             astronomical_night_list.append(fits_file)
+        else:
+            log.info(f"{fits_file} was not in astronomical night - sun angle was {sun_alt_deg:.1f}")
+            pass
 
     return astronomical_night_list, np.array(angle_list)
 
@@ -1783,7 +1790,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
 
     # Find out which fits files are not in astronomical night
-    astronomical_night_list, sun_below_horizon_angle_list = minSunBelowHorizon(fits_files_from_calstar_list, config, sun_angle=18)
+    astronomical_night_list, sun_below_horizon_angle_list = minSunBelowHorizon(fits_files_from_calstar_list, config, sun_angle=-18)
     dropped_files_count = len(fits_files_from_calstar_list) - len(astronomical_night_list)
     plural = "" if dropped_files_count == 1 else "s"
     log.info(f"Flagging {dropped_files_count} fits file{plural} as in astronomical dusk or dawn approx {100*dropped_files_count/total_calstar_fits:3.2f}%")
@@ -1801,6 +1808,8 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     end_jd = date2JD(*dt)
 
     dir_path = os.path.dirname(local_calstars_path)
+
+
     auto_pp, matched_star_pairs, used_ff = autoFitPlatepar(dir_path, obs_con, catalog_stars=catalog_stars,
                                                            platepar_template=pp, verbose=False)
 
@@ -1816,7 +1825,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     for fits_file, star_list in calstar:
 
         if fits_file not in fits_files_without_moon_list:
-            # No moon in ths field of view
+            # Moon in field of view
             flags |= ob_flag.MOON_IN_FOV
         else:
             flags &= ~ob_flag.MOON_IN_FOV
@@ -2082,11 +2091,12 @@ if __name__ == "__main__":
 
     print(len(remote_files))
 
+    """
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="postgres") as conn:
 
         createDatabaseIfMissing(conn)
         initialiseDatabase(conn)
-
+    """
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 

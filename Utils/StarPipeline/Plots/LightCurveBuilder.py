@@ -378,7 +378,8 @@ def loadFramePhotometry(conn, frame_name):
         FROM observation AS obs
         WHERE obs.frame_name = %s
           AND obs.mag IS NOT NULL
-          AND obs.cat_mag IS NOT NULL;
+          AND obs.cat_mag IS NOT NULL
+          AND flags = 0;
 
     """
 
@@ -1036,7 +1037,7 @@ def generateStarLightCurve(conn,
         print("No station made an observation")
         return None
 
-    print(f"Unique cameras: {set(det['camera_id'])}")
+    print(f"Unique stations: {set(det['camera_id'])}")
 
     det = applyDetectionCorrections(conn, det, spatial_method=spatial_method)
 
@@ -1051,7 +1052,7 @@ def generateStarLightCurve(conn,
     arr_jd_bins, arr_ra_bins, arr_dec_bins, arr_mag_bins, arr_mag_err_bins, arr_n_det_bins, arr_n_cam_bins, cam_sets = binned_detections
     print(f"Bins {len(arr_jd_bins)}")
 
-    plotTimeBinnedLightCurve(binned_detections, n_stations=len(set(det['camera_id'])), n_observations=len(det['jd']), cat_mag=mag_from_db, bin_length=cadence_sec, star_name=star_name_from_db, base_name=base_name)
+    plotTimeBinnedLightCurve(binned_detections, n_stations=len(set(det['camera_id'])), n_observations=len(det['jd']), cat_mag=mag_from_db/1e6, bin_length=cadence_sec, star_name=star_name_from_db, base_name=base_name)
 
     points = buildLightCurvePoints(det, cat_mag=cat_mag, ang_tol_deg=ang_tol_deg, min_cameras=min_cameras,
                                    star_name=star_name_from_db, t_window_min=cadence_sec / 60.0, base_name=base_name, cadence_sec=cadence_sec)

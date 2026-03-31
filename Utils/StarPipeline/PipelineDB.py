@@ -37,7 +37,7 @@ class Flags:
     NAMES = {
         BAD_AUTO_PP: "bad auto platepar",
         BAD_MAD: "bad median absolute stellar difference",
-        FEW_STARS: "too fewstars",
+        FEW_STARS: "too few stars",
         MOON_IN_FOV: "illuminated moon close to fov",
         SKY_NOT_FULLY_DARK: " dusk or dawn"}
 
