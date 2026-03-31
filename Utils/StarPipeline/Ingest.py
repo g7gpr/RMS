@@ -183,11 +183,11 @@ from RMS.Formats.CALSTARS import readCALSTARS, maxCalstarsToPNG, calstarsToMP4
 from RMS.Misc import mkdirP
 from RMS.Logger import LoggingManager, getLogger
 from pathlib import Path
-from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, auditIngestUserPrivileges, Flags
 from RMS.Astrometry.AutoPlatepar import autoFitPlatepar, loadCatalogStars
 from Utils.Flux import detectMoon
 from multiprocessing import Pool
 from collections import defaultdict
+from PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
@@ -1427,10 +1427,10 @@ def chunkByHour(file_list, day_divider=24):
     return dict(days)
 
 
-def runParallel(remote_station_processed_dir=None, username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, nproc=1):
+def runParallel(remote_station_processed_dir=None, username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, concurrent_threads=2):
 
 
-    with Pool(nproc) as pool:
+    with Pool(concurrent_threads) as pool:
         args_list = []
 
         args_list.append(
@@ -1534,7 +1534,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
 
 def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
            remote_station_processed_dir=None, write_db=True,
-           host=None, username=None, port=PORT):
+           host=None, username=None, port=PORT, concurrent_threads=2):
 
     """
     In a subdirectoy of station_data_dir create a directory for each station containing mask
@@ -1569,7 +1569,7 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
     catalog_stars = loadCatalogStars(config, config.catalog_mag_limit)
 
 
-    runParallel(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
+    runParallel(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars, concurrrent_threads=concurrent_threads)
 
     #Single threading approach - not in use
     """
@@ -2026,7 +2026,7 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('postgresql_host', help="""PostgreSQL server host """)
 
-    arg_parser.add_argument('-d', '--days_history', type=int,  default=7, help="""Number of days of history """)
+    arg_parser.add_argument('-t', '--threads', type=int,  default=2, help="""Number of concurrent threads to run """)
 
 
     arg_parser.add_argument('--write_db', dest='write_db', default=False, action="store_true",
@@ -2060,12 +2060,12 @@ if __name__ == "__main__":
     hostname, _, path_template = remainder.partition(":")
 
     postgresql_host = cml_args.postgresql_host
+    concurrent_threads = cml_args.threads
 
-    log.info(f"Starting ingestion from {user}@{hostname} with path template {path_template}")
+    log.info(f"Starting ingestion from {user}@{hostname} with path template {path_template} and {concurrent_threads} concurrent threads")
     log.info(f"Postgresql host {postgresql_host}")
 
-    days_history = cml_args.days_history
-    log.info(f"Using a history of {days_history} days")
+
 
     cwd = os.getcwd()
 
@@ -2091,12 +2091,12 @@ if __name__ == "__main__":
 
     print(len(remote_files))
 
-    """
+
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="postgres") as conn:
 
         createDatabaseIfMissing(conn)
         initialiseDatabase(conn)
-    """
+
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 
@@ -2112,7 +2112,7 @@ if __name__ == "__main__":
             log.info("Table populated")
         else:
 
-            ingest(config, remote_files_sorted, conn, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db)
+            ingest(config, remote_files_sorted, conn, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db, concurrent_threads=concurrent_threads)
 
 
 
