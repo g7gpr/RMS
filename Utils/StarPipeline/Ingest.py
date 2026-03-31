@@ -1708,42 +1708,38 @@ def extractMedianPixelScale(observation_dict):
 
     return median_h, median_v
 
-def minSunBelowHorizon(fits_file_list, c, sun_angle=18, chunk_size=1):
-
-
-
-
+def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
 
     if not fits_file_list:
         return [], np.array([])
 
-    # Initialize the observer
+    # Initialize observer
     o = ephem.Observer()
-    o.lat, o.lon, o.elevation = str(c.latitude), str(c.longitude), float(c.elevation)
+    o.lat  = str(c.latitude)
+    o.lon  = str(c.longitude)
+    o.elevation = float(c.elevation)
 
-    # Assign at least once
-    sun = ephem.Sun(o)
-    o.date = getMiddleTimeFF(fits_file_list[0], c.fps)[0]
-    sun.compute(o)
-    sun_alt_deg = float(sun.alt) * 180.0 / ephem.pi
+    sun = ephem.Sun()
 
     angle_list = []
     astronomical_night_list = []
+
     for i, fits_file in enumerate(fits_file_list):
 
-        # Recompute Sun altitude only every chunk_size frames
+        # Recompute Sun altitude every chunk_size frames
         if i % chunk_size == 0:
             o.date = getMiddleTimeFF(fits_file, c.fps, dt_obj=True)
             sun.compute(o)
             sun_alt_deg = float(sun.alt) * 180.0 / ephem.pi
-        # Otherwise reuse the last computed value
 
         angle_list.append(sun_alt_deg)
 
-        if sun_alt_deg > sun_angle:
+        # Astronomical night: Sun below threshold (e.g., -18°)
+        if sun_alt_deg < sun_angle:
             astronomical_night_list.append(fits_file)
 
     return astronomical_night_list, np.array(angle_list)
+
 
 
 def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None):
