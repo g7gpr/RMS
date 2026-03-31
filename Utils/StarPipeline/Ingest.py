@@ -187,7 +187,7 @@ from RMS.Astrometry.AutoPlatepar import autoFitPlatepar, loadCatalogStars
 from Utils.Flux import detectMoon
 from multiprocessing import Pool
 from collections import defaultdict
-from PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges
+from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
