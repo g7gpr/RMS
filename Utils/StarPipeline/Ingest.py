@@ -184,6 +184,7 @@ from pathlib import Path
 from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, auditIngestUserPrivileges, Flags
 from RMS.Astrometry.AutoPlatepar import autoFitPlatepar, loadCatalogStars
 from Utils.Flux import detectMoon
+from multiprocessing import Pool
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
@@ -1345,10 +1346,50 @@ def extractSessionNameFromCalstar(calstars_path):
 
     return f"{station_id}_{date}_{time}"
 
-def processServerFile(conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None):
+def worker(remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None):
+
+    # Each worker must open its own DB connection
+    with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as worker_conn:
+        return processServerFile(
+            worker_conn,
+            remote_file,
+            remote_station_processed_dir,
+            username,
+            host,
+            port,
+            calstars_data_full_path,
+            write_db,
+            catalog_stars
+        )
+
+def runParallel(file_list, remote_station_processed_dir=None,
+                username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, nproc=4):
+
+    with Pool(nproc) as pool:
+        args_list = []
+        for remote_file in file_list:
+            args_list.append(
+                (
+                    remote_file,
+                    remote_station_processed_dir,
+                    username,
+                    host,
+                    port,
+                    calstars_data_full_path,
+                    write_db,
+                    catalog_stars
+                )
+            )
+
+        results = pool.starmap(worker, args_list)
+    return results
 
 
 
+def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=None, username=None, host=None, port=None,
+                      calstars_data_full_path=None, write_db=True, catalog_stars=None):
+
+    print(f"Entering Process Server File with {remote_file}")
     station_name = remote_file.split("_")[0]
     remote_dir = remote_station_processed_dir.replace("stationID", station_name.lower())
 
@@ -1463,8 +1504,12 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
 
     catalog_stars = loadCatalogStars(config, config.catalog_mag_limit)
     log.info("Starting to download files")
-    for f in file_list:
-        processServerFile(conn, f, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
+
+    runParallel(file_list, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
+
+    # Single threading approach - not in use
+    #for f in file_list:
+    #    processServerFile(conn, f, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
 
 def getLatestCalstarFile(conn, station_id):
     sql = """
