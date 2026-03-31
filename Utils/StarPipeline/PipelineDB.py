@@ -330,34 +330,20 @@ def createObservationIndexes(conn):
 
         conn.commit()
 
-import psycopg
+
 
 def createIngestWorkTable(conn):
-    """
-    Create the ingest_work table if it does not already exist.
-    Safe to call from any worker at startup.
-    """
     ddl = """
     CREATE TABLE IF NOT EXISTS ingest_work (
-        id              BIGSERIAL PRIMARY KEY,
-        station_id      TEXT NOT NULL,
-        remote_path     TEXT NOT NULL,
-        jd              DOUBLE PRECISION NOT NULL,
-        jd_hour         BIGINT NOT NULL,
+        remote_path     TEXT PRIMARY KEY,
         status          TEXT NOT NULL DEFAULT 'pending',
-        claimed_by      TEXT,
-        claimed_at      TIMESTAMPTZ,
-        completed_at    TIMESTAMPTZ,
-        error_message   TEXT
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
     );
-
-    CREATE INDEX IF NOT EXISTS ingest_work_status_hour_idx
-        ON ingest_work (status, jd_hour, station_id);
     """
-
     with conn.cursor() as cur:
         cur.execute(ddl)
     conn.commit()
+
 
 
 
@@ -369,7 +355,7 @@ def createAllTables(conn):
     createObservationTable(conn)
     createCalstarFilesTable(conn)
     createSpatialModelTable(conn)
-    createIngestionWorkTable(conn)
+    createIngestWorkTable(conn)
 
 
 def createAllIndexes(conn):
