@@ -1405,22 +1405,16 @@ def worker(remote_file, remote_station_processed_dir, username, host, port, cals
     # Each worker must open its own DB connection
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as worker_conn:
         while True:
-            remote_path = claimNextJob(conn)
-            if remote_path is None:
+            remote_file, jd_scaled = claimNextJob(worker_conn)
+            if remote_file is None:
                 time.sleep(120)
                 continue
 
-            return processServerFile(
-                worker_conn,
-                remote_file,
-                remote_station_processed_dir,
-                username,
-                host,
-                port,
-                calstars_data_full_path,
-                write_db,
-                catalog_stars
-            )
+            try:
+                processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars)
+                markJobDone(worker_conn, remote_file)
+            except Exception as e:
+                markJobError(worker_conn, remote_file, str(e))
 
 def chunkByHour(file_list, day_divider=24):
 
@@ -1434,7 +1428,7 @@ def chunkByHour(file_list, day_divider=24):
 
 
 def runParallel(file_list, remote_station_processed_dir=None,
-                username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, nproc=4):
+                username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, nproc=1):
 
 
     with Pool(nproc) as pool:
@@ -2001,29 +1995,19 @@ def resetIngestion(local_calstars_path, ingestion_marker):
 
 def populateWorkQueue(conn, file_name_list):
 
-    print("Entered populate work queue")
-
-    rows = []
-    for item in file_name_list:
-        file_name = item["file_name"] if isinstance(item, dict) else item
-        dt = FFfile.getMiddleTimeFF(file_name, fps=25, ret_milliseconds=True, ff_frames=256)
-        jd = date2JD(*dt)
-        jd_int = scale1e6(jd)
-
-        if jd_int is None:
-            continue
-
-        rows.append((file_name, jd_int))
-
-    print(f"Prepared {len(rows)} rows for COPY")
-
     with conn.cursor() as cur:
         with cur.copy("COPY ingest_work (remote_path, jd_int) FROM STDIN") as copy:
-            for row in rows:
-                copy.write_row(row)
 
-    conn.commit()
-    print("Committed")
+            for file_name in file_name_list:
+                dt = FFfile.getMiddleTimeFF(file_name, fps=25, ret_milliseconds=True, ff_frames=256)
+                jd = date2JD(*dt)
+                jd_int = scale1e6(jd)
+
+                if jd_int is None:
+                    continue
+                copy.write_row((file_name, jd_int))
+
+        conn.commit()
 
 
 
