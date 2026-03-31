@@ -1569,7 +1569,7 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
     catalog_stars = loadCatalogStars(config, config.catalog_mag_limit)
 
 
-    runParallel(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars, concurrrent_threads=concurrent_threads)
+    runParallel(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars, concurrent_threads=concurrent_threads)
 
     #Single threading approach - not in use
     """
