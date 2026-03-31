@@ -2114,6 +2114,7 @@ if __name__ == "__main__":
         with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
             log.info("Populating the ingestion table")
             populateWorkQueue(conn, os.path.expanduser("~/RMS_data/remotefiles.json"))
+            log.info("Table populated")
         logging.shutdown()
         sys.exit()
 
