@@ -2002,9 +2002,11 @@ def resetIngestion(local_calstars_path, ingestion_marker):
 def populateWorkQueue(conn, file_name_list):
 
     print("Entered populate work queue")
+
     rows = []
-    for file_name in file_name_list:
-        dt = FFfile.getMiddleTimeFF(file_name,fps=25,ret_milliseconds=True,ff_frames=256)
+    for item in file_name_list:
+        file_name = item["file_name"] if isinstance(item, dict) else item
+        dt = FFfile.getMiddleTimeFF(file_name, fps=25, ret_milliseconds=True, ff_frames=256)
         jd = date2JD(*dt)
         jd_int = scale1e6(jd)
 
@@ -2013,19 +2015,16 @@ def populateWorkQueue(conn, file_name_list):
 
         rows.append((file_name, jd_int))
 
-    print("Getting cursor")
+    print(f"Prepared {len(rows)} rows for COPY")
+
     with conn.cursor() as cur:
-        cur.executemany(
-            """
-            INSERT INTO ingest_work (remote_path, jd_int)
-            VALUES (%s, %s)
-            ON CONFLICT (remote_path) DO NOTHING;
-            """,
-            rows
-        )
-    print("About to commit")
+        with cur.copy("COPY ingest_work (remote_path, jd_int) FROM STDIN") as copy:
+            for row in rows:
+                copy.write_row(row)
+
     conn.commit()
     print("Committed")
+
 
 
 if __name__ == "__main__":
