@@ -1363,7 +1363,7 @@ def worker(remote_file, remote_station_processed_dir, username, host, port, cals
             catalog_stars
         )
 
-def chunkByDay(file_list):
+def chunkByHour(file_list):
 
     days = defaultdict(list)
     for f in file_list:
@@ -1518,17 +1518,17 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
     catalog_stars = loadCatalogStars(config, config.catalog_mag_limit)
     log.info("Starting to download files")
 
-    day_chunks = chunkByDay(file_list)
-    sorted_days = sorted(day_chunks.keys())
+    hour_chunks = chunkByHour(file_list)
+    sorted_hours = sorted(hour_chunks.keys())
 
-    for day in sorted_days:
-        day_files = sorted(day_chunks[day])
+    for hour in sorted_hours:
+        hour_files = sorted(hour_chunks[hour])
 
-        log.info(f"Working on jd {day} - following files to be processed")
-        for f in day_files[0:10]:
+        log.info(f"Working on jd {hour} - following files to be processed")
+        for f in hour_files:
             log.info(f"\t{f}")
 
-        runParallel(day_files, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
+        runParallel(hour_files, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
 
     # Single threading approach - not in use
     #for f in file_list:
