@@ -1656,12 +1656,13 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         return {}, None, None
 
     fits_files_from_calstar_list = [calstar_entry[0] for calstar_entry in calstar]
+    total_calstar_fits = len(fits_files_from_calstar_list)
 
     # Find out which fits_files do not have the illuminated moon in view
     fits_files_without_moon_list = detectMoon(fits_files_from_calstar_list, pp, config)
     dropped_files_count = len(fits_files_from_calstar_list) - len(fits_files_without_moon_list)
     plural = "" if dropped_files_count == 1 else "s"
-    log.info(f"Flagging {dropped_files_count} fits file{plural} as disrupted by moon")
+    log.info(f"Flagging {dropped_files_count} fits file{plural} as disrupted by moon approx {100*dropped_files_count/total_calstar_fits:3.2f}%")
 
 
 
@@ -1669,7 +1670,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     astronomical_night_list, sun_below_horizon_angle_list = minSunBelowHorizon(fits_files_from_calstar_list, config, sun_angle=18)
     dropped_files_count = len(fits_files_from_calstar_list) - len(astronomical_night_list)
     plural = "" if dropped_files_count == 1 else "s"
-    log.info(f"Flagging {dropped_files_count} fits file{plural} as in astronomical dusk or dawn")
+    log.info(f"Flagging {dropped_files_count} fits file{plural} as in astronomical dusk or dawn approx {100*dropped_files_count/total_calstar_fits:3.2f}%")
 
     # Next take the intersection
 
