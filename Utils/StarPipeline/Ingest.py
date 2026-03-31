@@ -2106,12 +2106,6 @@ if __name__ == "__main__":
         createDatabaseIfMissing(conn)
         initialiseDatabase(conn)
 
-    if cml_args.populate_ingestion_table:
-
-        with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
-            log.info("Populating the ingestion table")
-            populateWorkQueue(conn, remote_files_sorted)
-            log.info("Table populated")
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 
@@ -2120,6 +2114,12 @@ if __name__ == "__main__":
         cat = Catalog(config, lim_mag=10)
         log.info(f"Loaded catalog of {cat.entry_count} entries")
 
+    if cml_args.populate_ingestion_table:
+        log.info("Populating the ingestion table")
+        populateWorkQueue(conn, remote_files_sorted)
+        print("Returned from populate work queue")
+        log.info("Table populated")
+    else:
 
         ingest(config, remote_files_sorted, conn, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db)
 
