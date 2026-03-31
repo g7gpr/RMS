@@ -1525,7 +1525,7 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
         hour_files = sorted(hour_chunks[hour])
 
         log.info(f"Working on jd {hour} - following files to be processed")
-        for f in hour_files:
+        for f in sortFilesByTime(hour_files):
             log.info(f"\t{f}")
 
         runParallel(hour_files, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
