@@ -185,6 +185,7 @@ from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDat
 from RMS.Astrometry.AutoPlatepar import autoFitPlatepar, loadCatalogStars
 from Utils.Flux import detectMoon
 from multiprocessing import Pool
+from collections import defaultdict
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
@@ -1362,8 +1363,20 @@ def worker(remote_file, remote_station_processed_dir, username, host, port, cals
             catalog_stars
         )
 
+def chunkByDay(file_list):
+
+    days = defaultdict(list)
+    for f in file_list:
+        dt = FFfile.getMiddleTimeFF(f, fps=25, ret_milliseconds=True, ff_frames=256)
+        jd = date2JD(*dt)
+        day = int(jd)  # or convert to YYYY-MM-DD
+        days[day].append(f)
+    return dict(days)
+
+
 def runParallel(file_list, remote_station_processed_dir=None,
-                username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, nproc=4):
+                username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, nproc=6):
+
 
     with Pool(nproc) as pool:
         args_list = []
@@ -1505,7 +1518,17 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
     catalog_stars = loadCatalogStars(config, config.catalog_mag_limit)
     log.info("Starting to download files")
 
-    runParallel(file_list, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
+    day_chunks = chunkByDay(file_list)
+    sorted_days = sorted(day_chunks.keys())
+
+    for day in sorted_days:
+        day_files = sorted(day_chunks[day])
+
+        log.info(f"Working on jd {day} - following files to be processed")
+        for f in day_files[0:10]:
+            log.info(f"\t{f}")
+
+        runParallel(day_files, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
 
     # Single threading approach - not in use
     #for f in file_list:
