@@ -2115,6 +2115,7 @@ if __name__ == "__main__":
             log.info("Populating the ingestion table")
             populateWorkQueue(conn, os.path.expanduser("~/RMS_data/remotefiles.json"))
             log.info("Table populated")
+            time.sleep(10)
         logging.shutdown()
         sys.exit()
 
