@@ -1363,13 +1363,13 @@ def worker(remote_file, remote_station_processed_dir, username, host, port, cals
             catalog_stars
         )
 
-def chunkByHour(file_list):
+def chunkByHour(file_list, day_divider=24):
 
     days = defaultdict(list)
     for f in file_list:
         dt = FFfile.getMiddleTimeFF(f, fps=25, ret_milliseconds=True, ff_frames=256)
         jd = date2JD(*dt)
-        day = int(jd)  # or convert to YYYY-MM-DD
+        day = int(jd * day_divider)
         days[day].append(f)
     return dict(days)
 
@@ -1518,7 +1518,7 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
     catalog_stars = loadCatalogStars(config, config.catalog_mag_limit)
     log.info("Starting to download files")
 
-    hour_chunks = chunkByHour(file_list)
+    hour_chunks = chunkByHour(file_list, day_divider=48)
     sorted_hours = sorted(hour_chunks.keys())
 
     for hour in sorted_hours:
