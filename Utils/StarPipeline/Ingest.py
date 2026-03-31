@@ -1999,13 +1999,10 @@ def resetIngestion(local_calstars_path, ingestion_marker):
             archiveCalstarDirectories(conn, local_calstars_path, [os.path.basename(calstar_path)], ingested_only=False)
             pass
 
-def populateWorkQueue(conn, json_path):
-    with open(json_path, "r") as f:
-        data = json.load(f)
+def populateWorkQueue(conn, file_name_list):
 
     rows = []
-    for item in data:
-        file_name = item["file_name"]
+    for file_name in file_name_list:
         dt = FFfile.getMiddleTimeFF(file_name,fps=25,ret_milliseconds=True,ff_frames=256)
         jd = date2JD(*dt)
         jd_int = scale1e6(jd)
@@ -2113,11 +2110,8 @@ if __name__ == "__main__":
 
         with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
             log.info("Populating the ingestion table")
-            populateWorkQueue(conn, os.path.expanduser("~/RMS_data/remotefiles.json"))
+            populateWorkQueue(conn, remote_files_sorted)
             log.info("Table populated")
-            time.sleep(10)
-        logging.shutdown()
-        sys.exit()
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 
