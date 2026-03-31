@@ -19,6 +19,8 @@
 
 from __future__ import print_function, division, absolute_import
 
+from RMS.Formats.FFfile import getMiddleTimeFF
+
 """
 Database configuration instructions
 
@@ -164,6 +166,8 @@ import time
 import random
 import socket
 import psycopg
+import ephem
+
 
 from RMS.Formats import FFfile, Platepar
 from RMS.Astrometry.CheckFit import starListToDict
@@ -323,7 +327,8 @@ def buildObservationRows(observation_dict, session_name, station_name):
                 station_name,
                 frame_jd_mid,
                 obs["flag"],
-                scale1e6(obs["mad"])
+                scale1e6(obs["mad"]),
+                scale1e3(obs["sun_angle"])
             ))
 
     return observation_rows
@@ -456,7 +461,8 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                     station_name,
                     jd_mid,
                     flags, 
-                    mad
+                    mad,
+                    sun_angle
                 )
                 VALUES (%s, %s,
                         %s, %s,
@@ -464,6 +470,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                         %s, %s, %s, %s, %s,
                         %s,        -- session_name
                         %s,        -- station_name
+                        %s,
                         %s,
                         %s,
                         %s)
@@ -1581,9 +1588,43 @@ def extractMedianPixelScale(observation_dict):
 
     return median_h, median_v
 
-def minSunBelowHorizon(config, fits_file_list):
+def minSunBelowHorizon(fits_file_list, c, sun_angle=18, chunk_size=1):
 
-    return fits_file_list
+
+
+
+
+    if not fits_file_list:
+        return [], np.array([])
+
+    # Initialize the observer
+    o = ephem.Observer()
+    o.lat, o.lon, o.elevation = str(c.latitude), str(c.longitude), float(c.elevation)
+
+    # Assign at least once
+    sun = ephem.Sun(o)
+    o.date = getMiddleTimeFF(fits_file_list[0], c.fps)[0]
+    sun.compute(o)
+    sun_alt_deg = float(sun.alt) * 180.0 / ephem.pi
+
+    angle_list = []
+    astronomical_night_list = []
+    for i, fits_file in enumerate(fits_file_list):
+
+        # Recompute Sun altitude only every chunk_size frames
+        if i % chunk_size == 0:
+            o.date = getMiddleTimeFF(fits_file, c.fps, dt_obj=True)
+            sun.compute(o)
+            sun_alt_deg = float(sun.alt) * 180.0 / ephem.pi
+        # Otherwise reuse the last computed value
+
+        angle_list.append(sun_alt_deg)
+
+        if sun_alt_deg > sun_angle:
+            astronomical_night_list.append(fits_file)
+
+    return astronomical_night_list, np.array(angle_list)
+
 
 def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None):
     """
@@ -1595,7 +1636,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     obs_con = cr.parse(local_config_path)
     calstars_name = os.path.basename(local_calstars_path)
 
-    calstar, chunk = readCALSTARS(os.path.dirname(local_calstars_path), calstars_name)
 
     if os.path.exists(local_recal_path):
         with open(local_recal_path, 'r') as fh:
@@ -1606,12 +1646,32 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         pp_recal_json = None
 
     pp = Platepar()
+
+    pp.read(local_platepar_path)
+
+    calstar, chunk = readCALSTARS(os.path.dirname(local_calstars_path), calstars_name)
     star_dict = starListToDict(obs_con, [calstar, chunk])
 
     if not len(star_dict):
         return {}, None, None
 
-    pp.read(local_platepar_path)
+    fits_files_from_calstar_list = [calstar_entry[0] for calstar_entry in calstar]
+
+    # Find out which fits_files do not have the illuminated moon in view
+    fits_files_without_moon_list = detectMoon(fits_files_from_calstar_list, pp, config)
+    dropped_files_count = len(fits_files_from_calstar_list) - len(fits_files_without_moon_list)
+    plural = "" if dropped_files_count == 1 else "s"
+    log.info(f"Flagging {dropped_files_count} fits file{plural} as disrupted by moon")
+
+
+
+    # Find out which fits files are not in astronomical night
+    astronomical_night_list, sun_below_horizon_angle_list = minSunBelowHorizon(fits_files_from_calstar_list, config, sun_angle=18)
+    dropped_files_count = len(fits_files_from_calstar_list) - len(astronomical_night_list)
+    plural = "" if dropped_files_count == 1 else "s"
+    log.info(f"Flagging {dropped_files_count} fits file{plural} as in astronomical dusk or dawn")
+
+    # Next take the intersection
 
     observation_dict = {}
 
@@ -1636,30 +1696,25 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         pp = auto_pp
 
 
-    # Find out which, if fits_files do not have the illuminated moon in view
-    fits_files_without_moon_list = detectMoon(calstar[0], pp, config)
-
-    # Find out which fits files are not in astronomical night
-    astronomical_dusk_dawn = minSunBelowHorizon(calstar[0], config, sun_angle=18)
-
     for fits_file, star_list in calstar:
 
-        if fits_file in fits_files_without_moon_list:
+        if fits_file not in fits_files_without_moon_list:
             # No moon in ths field of view
-            flags &= ~ob_flag.MOON_IN_FOV
-        else:
             flags |= ob_flag.MOON_IN_FOV
+        else:
+            flags &= ~ob_flag.MOON_IN_FOV
 
-        if fits_file in astronomical_dusk_dawn:
-            # Set dusk or dawn flag
-            flags |= ~ob_flag.SKY_NOT_FULLY_DARK
+        if fits_file not in astronomical_night_list:
+            # Set sky not fully dark
+            flags |= ob_flag.SKY_NOT_FULLY_DARK
         else:
             flags &= ~ob_flag.SKY_NOT_FULLY_DARK
 
-        if len(star_list) < 40:
-            flags |= ob_flag.FEW_STARS
-        else:
+        if len(star_list) >= 40:
             flags &= ~ob_flag.FEW_STARS
+        else:
+            flags |= ob_flag.FEW_STARS
+
 
         fits_station_id = fits_file.split('_')[1]
         dt = FFfile.getMiddleTimeFF(fits_file, obs_con.fps, ret_milliseconds=True, ff_frames=256)
@@ -1703,6 +1758,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         frame_list = []
 
         cat_mag_list = []
+
         for res, obs_mag in zip(results_list, arr_obs_mag):
             if res is not None:
                 cat_mag_list.append(res[0][3])
@@ -1717,23 +1773,15 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             flags |= ob_flag.BAD_MAD
         else:
             flags &= ~ob_flag.BAD_MAD
+
         for i, (query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum,
-                o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx) in enumerate(zip(
-            results_list,
-            arr_obs_ra,
-            arr_obs_dec,
-            arr_obs_mag,
-            arr_obs_x,
-            arr_obs_y,
-            arr_obs_intensity_sum,
-            arr_obs_az,
-            arr_obs_alt,
-            arr_ampltd,
-            arr_fwhm,
-            arr_bg_lvl,
-            arr_snr,
-            arr_nsatpx
-        )):
+                o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx, sun_below_horizon_angle) in enumerate(zip(
+                results_list,
+            arr_obs_ra,arr_obs_dec, arr_obs_mag,
+            arr_obs_x, arr_obs_y,arr_obs_intensity_sum,
+            arr_obs_az, arr_obs_alt,
+            arr_ampltd, arr_fwhm, arr_bg_lvl, arr_snr, arr_nsatpx,
+            sun_below_horizon_angle_list)):
 
             if o_intens_sum <= 0:
                 log.info(
@@ -1753,8 +1801,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
                 name, c_ra, c_dec, c_mag, theta = query_results[0]
 
             mag_err = None if c_mag is None else (o_mag - c_mag)
-
-
 
             frame_list.append({
                 "name": name,
@@ -1788,6 +1834,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
                 "pixel_scale_h": pixel_scale_h,
                 "pixel_scale_v": pixel_scale_v,
                 "mad": mean_absolute_deviation,
+                "sun_angle": sun_below_horizon_angle,
                 "flag": flags
             })
 
