@@ -2080,12 +2080,7 @@ if __name__ == "__main__":
 
     cwd = os.getcwd()
 
-    if cml_args.populate_ingestion_table:
 
-        with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
-            log.info("Populating the ingestion table")
-            populateWorkQueue(conn, os.path.expanduser("~/source/RMS/remotefiles.json"))
-        sys.exit()
 
 
     local_calstars_path = Path(os.path.expanduser(config.data_dir)) / CALSTARS_DATA_DIR
@@ -2111,6 +2106,13 @@ if __name__ == "__main__":
 
         createDatabaseIfMissing(conn)
         initialiseDatabase(conn)
+
+    if cml_args.populate_ingestion_table:
+
+        with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
+            log.info("Populating the ingestion table")
+            populateWorkQueue(conn, os.path.expanduser("~/source/RMS/remotefiles.json"))
+        sys.exit()
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 
