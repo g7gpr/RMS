@@ -27,6 +27,27 @@ log_manager.initLogging(config)
 log = getLogger("rmslogger")
 
 
+class Flags:
+    BAD_AUTO_PP = 1 << 0
+    BAD_MAD = 1 << 1
+    FEW_STARS = 1 << 2
+    MOON_IN_FOV = 1 << 3
+    SKY_NOT_FULLY_DARK = 1 << 4
+
+    NAMES = {
+        BAD_AUTO_PP: "bad auto platepar",
+        BAD_MAD: "bad median absolute stellar difference",
+        FEW_STARS: "too fewstars",
+        MOON_IN_FOV: "illuminated moon close to fov",
+        SKY_NOT_FULLY_DARK: " dusk or dawn"}
+
+    @classmethod
+    def decode(cls, value):
+        """Return a list of flag names set in the given integer."""
+        return [name for bit, name in cls.NAMES.items() if value & bit]
+
+
+
 def createStationTable(conn):
     sql = """
           CREATE TABLE IF NOT EXISTS station \
@@ -198,6 +219,7 @@ def createObservationTable(conn):
               mag INTEGER,
               cat_mag INTEGER,
               mag_err INTEGER,
+              sun_angle INTEGER,
 
               -- Astrometric solution (scaled RA/Dec)
               ra INTEGER,
@@ -205,6 +227,7 @@ def createObservationTable(conn):
 
               -- Flags
               flags SMALLINT,
+              
               
               -- Median absolute deviation
               mad INTEGER

@@ -177,9 +177,9 @@ from RMS.Formats.CALSTARS import readCALSTARS, maxCalstarsToPNG, calstarsToMP4
 from RMS.Misc import mkdirP
 from RMS.Logger import LoggingManager, getLogger
 from pathlib import Path
-from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, auditIngestUserPrivileges
+from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, auditIngestUserPrivileges, Flags
 from RMS.Astrometry.AutoPlatepar import autoFitPlatepar, loadCatalogStars
-
+from Utils.Flux import detectMoon
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
@@ -1581,18 +1581,17 @@ def extractMedianPixelScale(observation_dict):
 
     return median_h, median_v
 
+def minSunBelowHorizon(config, fits_file_list):
+
+    return fits_file_list
+
 def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None):
     """
       Parses a calstar data structures in archived directories path,
       converts to RaDec, corrects magnitude data and writes newer data to database
     """
 
-    flag = 0
-    flag_bad_auto_pp    =   1 << 0
-    flag_bad_mad        =   1 << 1
-    flag_few_stars      =   1 << 2
-
-
+    ob_flag = Flags()
     obs_con = cr.parse(local_config_path)
     calstars_name = os.path.basename(local_calstars_path)
 
@@ -1628,19 +1627,39 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     auto_pp, matched_star_pairs, used_ff = autoFitPlatepar(dir_path, obs_con, catalog_stars=catalog_stars,
                                                            platepar_template=pp, verbose=False)
 
+    flags = 0
     if auto_pp is None:
         # if autoFitPlatepar can't make sense of the best observation, then set the bad autoFitPlatepar bit and never unset it for this calstar
-        flag |= flag_bad_auto_pp
+        flags |= ob_flag.BAD_AUTO_PP
     else:
-        flag &= ~flag_bad_auto_pp
+        flags &= ~ob_flag.BAD_AUTO_PP
         pp = auto_pp
 
 
+    # Find out which, if fits_files do not have the illuminated moon in view
+    fits_files_without_moon_list = detectMoon(calstar[0], pp, config)
+
+    # Find out which fits files are not in astronomical night
+    astronomical_dusk_dawn = minSunBelowHorizon(calstar[0], config, sun_angle=18)
+
     for fits_file, star_list in calstar:
-        if len(star_list) < 40:
-            flag |= flag_few_stars
+
+        if fits_file in fits_files_without_moon_list:
+            # No moon in ths field of view
+            flags &= ~ob_flag.MOON_IN_FOV
         else:
-            flag &= ~flag_few_stars
+            flags |= ob_flag.MOON_IN_FOV
+
+        if fits_file in astronomical_dusk_dawn:
+            # Set dusk or dawn flag
+            flags |= ~ob_flag.SKY_NOT_FULLY_DARK
+        else:
+            flags &= ~ob_flag.SKY_NOT_FULLY_DARK
+
+        if len(star_list) < 40:
+            flags |= ob_flag.FEW_STARS
+        else:
+            flags &= ~ob_flag.FEW_STARS
 
         fits_station_id = fits_file.split('_')[1]
         dt = FFfile.getMiddleTimeFF(fits_file, obs_con.fps, ret_milliseconds=True, ff_frames=256)
@@ -1657,7 +1676,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         pixel_scale_v = pp.fov_v / pp.Y_res
         pixel_scale = max(pixel_scale_h, pixel_scale_v)
         radius_deg = pixel_scale * 3
-
         if jd in star_dict:
             stars_list = star_dict[jd]
             stars_list = np.array(stars_list)
@@ -1696,9 +1714,9 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         mean_absolute_deviation = np.median(np.abs(arr_cat_mag - arr_obs_mag))
 
         if mean_absolute_deviation > 0.2:
-            flag |= flag_bad_mad
+            flags |= ob_flag.BAD_MAD
         else:
-            flag &= ~flag_bad_mad
+            flags &= ~ob_flag.BAD_MAD
         for i, (query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum,
                 o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx) in enumerate(zip(
             results_list,
@@ -1770,7 +1788,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
                 "pixel_scale_h": pixel_scale_h,
                 "pixel_scale_v": pixel_scale_v,
                 "mad": mean_absolute_deviation,
-                "flag": flag
+                "flag": flags
             })
 
         observation_dict[fits_file] = frame_list
