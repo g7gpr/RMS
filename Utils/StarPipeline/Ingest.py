@@ -19,6 +19,8 @@
 
 from __future__ import print_function, division, absolute_import
 
+import logging
+
 from RMS.Formats.FFfile import getMiddleTimeFF
 
 """
@@ -2112,6 +2114,7 @@ if __name__ == "__main__":
         with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
             log.info("Populating the ingestion table")
             populateWorkQueue(conn, os.path.expanduser("~/RMS_data/remotefiles.json"))
+        logging.shutdown()
         sys.exit()
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
