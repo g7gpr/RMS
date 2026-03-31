@@ -2001,6 +2001,7 @@ def resetIngestion(local_calstars_path, ingestion_marker):
 
 def populateWorkQueue(conn, file_name_list):
 
+    print("Entered populate work queue")
     rows = []
     for file_name in file_name_list:
         dt = FFfile.getMiddleTimeFF(file_name,fps=25,ret_milliseconds=True,ff_frames=256)
@@ -2012,6 +2013,7 @@ def populateWorkQueue(conn, file_name_list):
 
         rows.append((file_name, jd_int))
 
+    print("Getting cursor")
     with conn.cursor() as cur:
         cur.executemany(
             """
@@ -2021,8 +2023,9 @@ def populateWorkQueue(conn, file_name_list):
             """,
             rows
         )
+    print("About to commit")
     conn.commit()
-
+    print("Committed")
 
 
 if __name__ == "__main__":
