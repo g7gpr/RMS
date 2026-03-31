@@ -1375,7 +1375,7 @@ def chunkByHour(file_list, day_divider=24):
 
 
 def runParallel(file_list, remote_station_processed_dir=None,
-                username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, nproc=6):
+                username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, nproc=4):
 
 
     with Pool(nproc) as pool:
