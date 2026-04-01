@@ -1724,7 +1724,8 @@ def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
     o.lat, o.lon, o.elevation  = str(c.latitude), str(c.longitude), float(c.elevation)
     sun = ephem.Sun()
     sun.compute(o)
-
+    sun_alt_deg = math.degrees(float(sun.alt))
+    last_sun_alt_deg = sun_alt_deg
     angle_list, astronomical_night_list = [], []
     setting_count, rising_count = 0, 0
     for i, fits_file in enumerate(fits_file_list):
