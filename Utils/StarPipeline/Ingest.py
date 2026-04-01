@@ -1828,6 +1828,8 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         flags &= ~ob_flag.BAD_AUTO_PP
         pp = auto_pp
 
+    if len(calstar) != len(sun_below_horizon_angle_list):
+        log.warning(f"Calstar list is length {len(calstar)} sun_below_horizon_angle_list is {len(sun_below_horizon_angle_list)}")
 
     for (fits_file, star_list), sun_below_horizon_angle in zip(calstar, sun_below_horizon_angle_list):
 
@@ -1848,6 +1850,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         else:
             flags |= ob_flag.FEW_STARS
 
+        log.info(f"For {fits_file} flags are {flags} - {Flags.decode(flags)}")
 
         fits_station_id = fits_file.split('_')[1]
         dt = FFfile.getMiddleTimeFF(fits_file, obs_con.fps, ret_milliseconds=True, ff_frames=256)

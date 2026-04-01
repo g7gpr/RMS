@@ -39,7 +39,7 @@ class Flags:
         BAD_MAD: "bad median absolute stellar difference",
         FEW_STARS: "too few stars",
         MOON_IN_FOV: "illuminated moon close to fov",
-        SKY_NOT_FULLY_DARK: " dusk or dawn"}
+        SKY_NOT_FULLY_DARK: "dusk or dawn"}
 
     @classmethod
     def decode(cls, value):
