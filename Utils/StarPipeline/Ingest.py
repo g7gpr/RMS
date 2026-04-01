@@ -1792,7 +1792,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     fits_files_without_moon_list = detectMoon(fits_files_from_calstar_list, pp, obs_con)
     dropped_files_count = len(fits_files_from_calstar_list) - len(fits_files_without_moon_list)
     plural = "" if dropped_files_count == 1 else "s"
-    log.info(f"Flagging {dropped_files_count} fits file{plural} as disrupted by moon approx {100*dropped_files_count/total_calstar_fits:3.2f}%")
+    log.info(f"For {calstars_name} flagging {dropped_files_count} fits file{plural} as disrupted by moon approx {100*dropped_files_count/total_calstar_fits:3.2f}%")
 
 
 
@@ -1800,7 +1800,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
     dropped_files_count = len(fits_files_from_calstar_list) - len(astronomical_night_list)
     plural = "" if dropped_files_count == 1 else "s"
-    log.info(f"Flagging setting/rising/% {setting_count}/{rising_count}/{100*dropped_files_count/total_calstar_fits:3.2f}% fits file{plural} as outside astronomical night")
+    log.info(f"For {calstars_name} flagging setting/rising/% {setting_count}/{rising_count}/{100*dropped_files_count/total_calstar_fits:3.2f}% fits file{plural} as outside astronomical night")
 
     # Next take the intersection
 
