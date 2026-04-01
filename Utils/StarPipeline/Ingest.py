@@ -1910,7 +1910,8 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         else:
             flags &= ~ob_flag.BAD_MAD
 
-        log.info(f"For {fits_file} flags are {flags} - {Flags.decode(flags)}")
+        if flags != 0:
+            log.info(f"For {fits_file} flags are {flags} - {Flags.decode(flags)}")
 
         for i, (query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum,
                 o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx) in enumerate(zip(
