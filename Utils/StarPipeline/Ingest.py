@@ -1829,7 +1829,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         pp = auto_pp
 
 
-    for fits_file, star_list in calstar:
+    for fits_file, star_list, sun_below_horizon_angle in zip(calstar, sun_below_horizon_angle_list):
 
         if fits_file not in fits_files_without_moon_list:
             # Moon in field of view
@@ -1908,13 +1908,12 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             flags &= ~ob_flag.BAD_MAD
 
         for i, (query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum,
-                o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx, sun_below_horizon_angle) in enumerate(zip(
+                o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx) in enumerate(zip(
                 results_list,
             arr_obs_ra,arr_obs_dec, arr_obs_mag,
             arr_obs_x, arr_obs_y,arr_obs_intensity_sum,
             arr_obs_az, arr_obs_alt,
-            arr_ampltd, arr_fwhm, arr_bg_lvl, arr_snr, arr_nsatpx,
-            sun_below_horizon_angle_list)):
+            arr_ampltd, arr_fwhm, arr_bg_lvl, arr_snr, arr_nsatpx)):
 
             if o_intens_sum <= 0:
                 log.info(
