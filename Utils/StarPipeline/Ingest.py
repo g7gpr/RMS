@@ -1435,7 +1435,7 @@ def runParallel(remote_station_processed_dir=None, username=None, host=None, por
     with Pool(concurrent_threads) as pool:
         args_list = []
 
-        args_list.append(
+        args_list = [
             (
                 remote_station_processed_dir,
                 username,
@@ -1445,8 +1445,8 @@ def runParallel(remote_station_processed_dir=None, username=None, host=None, por
                 write_db,
                 catalog_stars,
                 concurrent_threads
-            )
-        )
+            ) for _ in range(concurrent_threads)
+        ]
 
         results = pool.starmap(worker, args_list)
     return results
