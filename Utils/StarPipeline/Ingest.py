@@ -2120,9 +2120,10 @@ if __name__ == "__main__":
             populateWorkQueue(conn, remote_files_sorted)
             print("Returned from populate work queue")
             log.info("Table populated")
-        else:
+        
 
-            ingest(config, remote_files_sorted, conn, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db, concurrent_threads=concurrent_threads)
+
+        ingest(config, remote_files_sorted, conn, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db, concurrent_threads=concurrent_threads)
 
 
 
