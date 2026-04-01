@@ -1735,19 +1735,20 @@ def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
             o.date = getMiddleTimeFF(fits_file, c.fps, dt_obj=True)
             sun.compute(o)
             sun_alt_deg = math.degrees(float(sun.alt))
-            if last_sun_alt < sun_alt_deg:
-                setting_count += 1
-            elif last_sun_alt > sun_alt_deg:
-                rising_count += 1
-            else:
-                pass
+
             last_sun_alt = sun_alt_deg
         angle_list.append(sun_alt_deg)
 
         if sun_alt_deg < sun_angle:
             astronomical_night_list.append(fits_file)
         else:
-            pass
+            if last_sun_alt_deg > sun_alt_deg:
+                setting_count += 1
+            elif last_sun_alt_deg < sun_alt_deg:
+                rising_count += 1
+            else:
+                pass
+        last_sun_alt_deg = sun_alt_deg
 
     return astronomical_night_list, np.array(angle_list), setting_count, rising_count
 
@@ -1797,7 +1798,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
     dropped_files_count = len(fits_files_from_calstar_list) - len(astronomical_night_list)
     plural = "" if dropped_files_count == 1 else "s"
-    log.info(f"Flagging {dropped_files_count}  setting/rising {setting_count}/{rising_count} fits file{plural} as in astronomical dusk or dawn approx {100*dropped_files_count/total_calstar_fits:3.2f}%")
+    log.info(f"Flagging setting/rising/% {setting_count}/{rising_count}/{100*dropped_files_count/total_calstar_fits:3.2f}% fits file{plural} as outside astronomical night")
 
     # Next take the intersection
 
