@@ -1401,11 +1401,12 @@ def markJobError(conn, remote_path, msg):
 
 
 
-def worker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None):
+def worker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None, concurrent_threads=None):
 
     # Each worker must open its own DB connection
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as worker_conn:
         while True:
+            log.info(f"Running with {concurrent_threads} threads")
             remote_file, jd_scaled = claimNextJob(worker_conn)
             if remote_file is None:
                 time.sleep(120)
@@ -1430,7 +1431,7 @@ def chunkByHour(file_list, day_divider=24):
 
 def runParallel(remote_station_processed_dir=None, username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, concurrent_threads=2):
 
-
+    log.info(f"Starting pool with {concurrent_threads} threads")
     with Pool(concurrent_threads) as pool:
         args_list = []
 
@@ -1442,7 +1443,8 @@ def runParallel(remote_station_processed_dir=None, username=None, host=None, por
                 port,
                 calstars_data_full_path,
                 write_db,
-                catalog_stars
+                catalog_stars,
+                concurrent_threads
             )
         )
 
