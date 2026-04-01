@@ -1718,7 +1718,7 @@ def extractMedianPixelScale(observation_dict):
 def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
 
     if not len(fits_file_list):
-        return [], np.array([])
+        return [], np.array([]), 0, 0
 
     log.info(f"First/last fits file was {fits_file_list[0]}/{fits_file_list[-1]}")
     # Initialize observer
@@ -1829,7 +1829,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         pp = auto_pp
 
 
-    for fits_file, star_list, sun_below_horizon_angle in zip(calstar, sun_below_horizon_angle_list):
+    for (fits_file, star_list), sun_below_horizon_angle in zip(calstar, sun_below_horizon_angle_list):
 
         if fits_file not in fits_files_without_moon_list:
             # Moon in field of view
