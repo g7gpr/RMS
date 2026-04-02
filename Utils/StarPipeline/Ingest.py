@@ -188,7 +188,7 @@ from RMS.Astrometry.AutoPlatepar import autoFitPlatepar, loadCatalogStars
 from Utils.Flux import detectMoon
 from multiprocessing import Pool
 from collections import defaultdict
-from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges
+from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges, claimNextJob, markJobDone, markJobError
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
@@ -1350,54 +1350,6 @@ def extractSessionNameFromCalstar(calstars_path):
 
     return f"{station_id}_{date}_{time}"
 
-def claimNextJob(conn):
-    sql = """
-    UPDATE ingest_work
-    SET status = 'claimed',
-        updated_at = now()
-    WHERE remote_path = (
-        SELECT remote_path
-        FROM ingest_work
-        WHERE status = 'pending'
-        ORDER BY jd_int ASC, remote_path ASC
-        LIMIT 1
-        FOR UPDATE SKIP LOCKED
-    )
-    RETURNING remote_path, jd_int;
-    """
-
-    with conn.cursor() as cur:
-        cur.execute(sql)
-        row = cur.fetchone()
-        conn.commit()
-
-    return row if row else None
-
-
-def markJobDone(conn, remote_path):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE ingest_work
-            SET status = 'done', updated_at = now()
-            WHERE remote_path = %s
-            """,
-            (remote_path,)
-        )
-    conn.commit()
-
-
-def markJobError(conn, remote_path, msg):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE ingest_work
-            SET status = 'error', updated_at = now()
-            WHERE remote_path = %s
-            """,
-            (remote_path,)
-        )
-    conn.commit()
 
 
 
@@ -1435,8 +1387,9 @@ def runParallel(remote_station_processed_dir=None, username=None, host=None, por
     with Pool(concurrent_threads) as pool:
         args_list = []
 
-        args_list = [
-            (
+        for _ in range(concurrent_threads):
+
+            args_list.append((
                 remote_station_processed_dir,
                 username,
                 host,
@@ -1444,9 +1397,8 @@ def runParallel(remote_station_processed_dir=None, username=None, host=None, por
                 calstars_data_full_path,
                 write_db,
                 catalog_stars,
-                concurrent_threads
-            ) for _ in range(concurrent_threads)
-        ]
+                concurrent_threads))
+
 
         results = pool.starmap(worker, args_list)
     return results
@@ -2011,10 +1963,23 @@ def resetIngestion(local_calstars_path, ingestion_marker):
             pass
 
 def populateWorkQueue(conn, file_name_list):
+    """
+    Stream rows into a temp staging table using COPY, then merge into ingest_work
+    with ON CONFLICT DO NOTHING.
+    """
 
     with conn.cursor() as cur:
-        with cur.copy("COPY ingest_work (remote_path, jd_int) FROM STDIN") as copy:
 
+        # 1. Create temp staging table (auto-dropped at commit)
+        cur.execute("""
+            CREATE TEMP TABLE ingest_work_stage (
+                remote_path TEXT,
+                jd_int      BIGINT
+            ) ON COMMIT DROP;
+        """)
+
+        # 2. COPY into the staging table
+        with cur.copy("COPY ingest_work_stage (remote_path, jd_int) FROM STDIN") as copy:
             for file_name in file_name_list:
                 dt = FFfile.getMiddleTimeFF(file_name, fps=25, ret_milliseconds=True, ff_frames=256)
                 jd = date2JD(*dt)
@@ -2022,9 +1987,20 @@ def populateWorkQueue(conn, file_name_list):
 
                 if jd_int is None:
                     continue
+
                 copy.write_row((file_name, jd_int))
 
-        conn.commit()
+        # 3. Merge into real table with ON CONFLICT DO NOTHING
+        cur.execute("""
+            INSERT INTO ingest_work (remote_path, jd_int)
+            SELECT remote_path, jd_int
+            FROM ingest_work_stage
+            ON CONFLICT (remote_path) DO NOTHING;
+        """)
+
+    # 4. Commit drops the temp table automatically
+    conn.commit()
+
 
 
 

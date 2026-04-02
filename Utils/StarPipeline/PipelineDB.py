@@ -2,7 +2,13 @@ from RMS.Logger import LoggingManager, getLogger
 import RMS.ConfigReader as cr
 import os
 
+
+import socket
+
+
+
 # Constants
+
 
 # urls
 STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
@@ -338,6 +344,8 @@ def createIngestWorkTable(conn):
         remote_path     TEXT PRIMARY KEY,
         jd_int          BIGINT NOT NULL,
         status          TEXT NOT NULL DEFAULT 'pending',
+        claimed_by      TEXT,
+        claimed_at      TIMESTAMPTZ,
         updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     """
@@ -345,14 +353,44 @@ def createIngestWorkTable(conn):
         cur.execute(ddl)
     conn.commit()
 
+def markJobDone(conn, remote_path):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ingest_work
+            SET status = 'done', updated_at = now()
+            WHERE remote_path = %s
+            """,
+            (remote_path,)
+        )
+    conn.commit()
+
+
+def markJobError(conn, remote_path, msg):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE ingest_work
+            SET status = 'error', updated_at = now()
+            WHERE remote_path = %s
+            """,
+            (remote_path,)
+        )
+    conn.commit()
+
+
+
 def claimNextJob(conn):
     """
     Atomically claim the next pending job.
+    Records hostname and timestamp.
     Returns remote_path or None if no work is available.
     """
     sql = """
     UPDATE ingest_work
     SET status = 'claimed',
+        claimed_by = %s,
+        claimed_at = now(),
         updated_at = now()
     WHERE remote_path = (
         SELECT remote_path
@@ -360,19 +398,19 @@ def claimNextJob(conn):
         WHERE status = 'pending'
         ORDER BY remote_path
         LIMIT 1
-        FOR UPDATE SKIP LOCKED
-    )
-    RETURNING remote_path;
+        FOR UPDATE SKIP LOCKED)
+    RETURNING remote_path, jd_int;
     """
 
     with conn.cursor() as cur:
-        cur.execute(sql)
+        host_name = socket.gethostname()
+        log.info(f"{host_name} requesting next job")
+        cur.execute(sql, (host_name, ))
         row = cur.fetchone()
         conn.commit()
 
-    if row:
-        return row[0]   # remote_path
-    return None
+
+    return row if row else None
 
 
 
