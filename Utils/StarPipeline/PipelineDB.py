@@ -339,19 +339,19 @@ def createObservationIndexes(conn):
 
 
 def createIngestWorkTable(conn):
-    ddl = """
-    CREATE TABLE IF NOT EXISTS ingest_work (
-        remote_path     TEXT PRIMARY KEY,
-        jd_int          BIGINT NOT NULL,
-        status          TEXT NOT NULL DEFAULT 'pending',
-        claimed_by      TEXT,
-        claimed_at      TIMESTAMPTZ,
-        updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-    """
-    with conn.cursor() as cur:
-        cur.execute(ddl)
-    conn.commit()
+        ddl = """
+        CREATE TABLE IF NOT EXISTS ingest_work (
+            remote_path     TEXT PRIMARY KEY,
+            jd_int          BIGINT NOT NULL,
+            status          TEXT NOT NULL DEFAULT 'pending',
+            claimed_by      TEXT,
+            claimed_at      TIMESTAMPTZ,
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        """
+        with conn.cursor() as cur:
+            cur.execute(ddl)
+        conn.commit()
 
 def markJobDone(conn, remote_path):
     with conn.cursor() as cur:
@@ -411,6 +411,26 @@ def claimNextJob(conn):
 
 
     return row if row else None
+
+def resetStalledJobs(conn):
+    """
+    Reset any jobs that have been claimed for more than 30 minutes.
+    These are considered stalled and returned to the pending queue.
+    """
+    sql = """
+        UPDATE ingest_work
+        SET status = 'pending',
+            claimed_by = NULL,
+            claimed_at = NULL,
+            updated_at = now()
+        WHERE status = 'claimed'
+          AND claimed_at < now() - interval '30 minutes';
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql)
+    conn.commit()
+
 
 
 
