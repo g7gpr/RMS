@@ -1515,6 +1515,9 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
         Nothing.
     """
 
+    log.info("Reset stalled jobs")
+    resetStalledJobs(conn)
+
     with conn.cursor() as cur:
         cur.execute("SELECT current_user;")
         log.info(f"Python is connecting as:{cur.fetchone()[0]}")
