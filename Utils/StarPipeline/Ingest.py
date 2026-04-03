@@ -1231,8 +1231,10 @@ def downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=22, max
             log.info(
                 f"Downloaded {remote_file} of size {downloaded_size:.2f}MB at {rate_mb_s:.2f} MB/s after {download_count} try")
             return True
+
         delay = random.randint(600, 900)
-        log.info(f"Waiting {delay/60:.1f} minutes for {target_path}")
+        resume_time = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=delay)).isoformat()
+        log.info(f"Waiting {delay/60:.1f} minutes until {resume_time} for {target_path}")
         time.sleep(delay)
 
 
