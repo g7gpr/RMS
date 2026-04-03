@@ -2116,7 +2116,7 @@ if __name__ == "__main__":
         if cml_args.populate_ingestion_table:
             log.info("Populating the ingestion table")
 
-            station_list = getStationList(country_code=country_code)
+            #station_list = getStationList(country_code=country_code)
             #remote_files = discoverRemoteFiles(station_list, user, hostname, 22, remote_processed_dir_template=path_template)
             #saveRemoteFiles(remote_files, os.path.expanduser("~/RMS_data/remotefiles.json"))
             remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))
