@@ -1814,7 +1814,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         jd = date2JD(*dt)
 
         if pp.station_code != obs_con.stationID:
-            log.warning("Platepar mismatch")
+            log.warning(f"Platepar mismatch for {calstars_name} - platepar station code is {pp.station_code}, config station code is {obs_con.stationID}")
 
         if pp_recal_json is not None:
             if fits_file in pp_recal_json:
@@ -2087,13 +2087,11 @@ if __name__ == "__main__":
 
     directories_list = os.listdir(calstars_directory_path)
 
-    station_list = getStationList(country_code=country_code)
-    #remote_files = discoverRemoteFiles(station_list, user, hostname, 22, remote_processed_dir_template=path_template)
-    #saveRemoteFiles(remote_files, os.path.expanduser("~/RMS_data/remotefiles.json"))
-    remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))
-    remote_files_sorted = sortFilesByTime(remote_files)
 
-    print(len(remote_files))
+
+
+
+
 
 
     if create_database:
@@ -2116,6 +2114,12 @@ if __name__ == "__main__":
 
         if cml_args.populate_ingestion_table:
             log.info("Populating the ingestion table")
+
+            station_list = getStationList(country_code=country_code)
+            #remote_files = discoverRemoteFiles(station_list, user, hostname, 22, remote_processed_dir_template=path_template)
+            #saveRemoteFiles(remote_files, os.path.expanduser("~/RMS_data/remotefiles.json"))
+            remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))
+            remote_files_sorted = sortFilesByTime(remote_files)
             populateWorkQueue(conn, remote_files_sorted)
             print("Returned from populate work queue")
             log.info("Table populated")
