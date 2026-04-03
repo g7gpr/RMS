@@ -9,7 +9,7 @@ import json
 import matplotlib.pyplot as plt
 import math
 import os
-
+import argparse
 
 BIN_BY_CADENCE = True
 CHARTS_DIR = os.path.expanduser("~/RMS_data/Plots")
@@ -1298,20 +1298,101 @@ def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_
 
     return
 
+from urllib.parse import urlparse
+
+def parseDBArg(db_arg):
+    """
+    Convert a PostgreSQL URI into a dict suitable for psycopg.connect().
+    Password is intentionally omitted (use .pgpass).
+    """
+    parsed = urlparse(db_arg)
+
+    return {
+        "host": parsed.hostname,
+        "port": parsed.port,
+        "user": parsed.username,
+        "dbname": parsed.path.lstrip("/"),
+        # password intentionally not included — .pgpass handles it
+    }
+
+
+def parseRaDec(value):
+    """
+    Parse RA/Dec in either:
+      - decimal degrees: "123.45,-22.3"
+      - sexagesimal:     "12:34:56 -22:33:44"
+    Returns (raDeg, decDeg).
+    """
+    value = value.strip()
+
+    # Decimal degrees
+    if "," in value:
+        raStr, decStr = value.split(",", 1)
+        return float(raStr), float(decStr)
+
+    # Sexagesimal "HH:MM:SS ±DD:MM:SS"
+    if ":" in value:
+        raStr, decStr = value.split()
+
+        # RA: HH:MM:SS
+        h, m, s = map(float, raStr.split(":"))
+        raDeg = 15 * (h + m/60 + s/3600)
+
+        # Dec: ±DD:MM:SS
+        d, dm, ds = map(float, decStr.split(":"))
+        sign = -1 if d < 0 else 1
+        decDeg = sign * (abs(d) + dm/60 + ds/3600)
+
+        return raDeg, decDeg
+
+    raise ValueError(f"Unrecognized RA/Dec format: {value!r}")
+
+
+
 if __name__ == "__main__":
+
+
+    ### COMMAND LINE ARGUMENTS
+
+    # Init the command line arguments parser
+    arg_parser = argparse.ArgumentParser(description="""Compute the FOV area given the platepar and mask files.
+        """, formatter_class=argparse.RawTextHelpFormatter)
+
+    arg_parser.add_argument('db_connection_string', metavar='db_connection_string', type=str,
+                    help="DB Connection string in the format postgresql://user@host:port/database ")
+
+    arg_parser.add_argument('--radec', metavar='RADEC', type=str,
+                    help="Star coordinates in decimal or sexagesimal degrees, if none is passed then defaults to Betelgeux (88.79 7.41)")
+
+    ###
+
+    # Parse the command line arguments
+    cml_args = arg_parser.parse_args()
+
+
+    db_dict = parseDBArg(cml_args.db_connection_string)
+    radec = cml_args.radec
+
+    if radec is None:
+        target_ra = 88.79187
+        target_dec = 7.4056
+    else:
+        target_ra, target_dec = parseRaDec(radec)
+
     with psycopg.connect(
-        host="192.168.1.212",
-        dbname="star_data",
-        user="ingest_user"
+            host=db_dict['host'],
+            dbname=db_dict['dbname'],
+            user=db_dict['user'],
+            port=db_dict['port']
     ) as conn:
 
         lc = generateStarLightCurve(
             conn,
-            ra_star_deg=79.39972,
-            dec_star_deg=-6.8473,
-            search_radius_deg=0.5,
+            ra_star_deg=target_ra,
+            dec_star_deg=target_dec,
+            search_radius_deg=0.1,
             jd_start=2460310.5,
-            jd_end=2460311.8,
+            jd_end=2460314,
             ang_tol_deg=0.2,
             min_cameras=3,
             cadence_sec=10.24 * 60,

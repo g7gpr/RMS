@@ -396,7 +396,7 @@ def claimNextJob(conn):
         SELECT remote_path
         FROM ingest_work
         WHERE status = 'pending'
-        ORDER BY jd_int, remote_path
+        ORDER BY jd_int DESC, remote_path
         LIMIT 1
         FOR UPDATE SKIP LOCKED)
     RETURNING remote_path, jd_int;

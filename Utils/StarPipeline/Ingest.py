@@ -188,7 +188,7 @@ from RMS.Astrometry.AutoPlatepar import autoFitPlatepar, loadCatalogStars
 from Utils.Flux import detectMoon
 from multiprocessing import Pool
 from collections import defaultdict
-from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges, claimNextJob, markJobDone, markJobError
+from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges, claimNextJob, markJobDone, markJobError, resetStalledJobs
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
@@ -2027,6 +2027,11 @@ if __name__ == "__main__":
     arg_parser.add_argument('-p', '--populate_ingestion_table', dest='populate_ingestion_table', default=False, action="store_true",
                             help="Populate ingestion table and then quit immediately")
 
+    arg_parser.add_argument('-s', '--reset_stalled', dest='reset_stalled', default=False, action="store_true",
+                            help="Reset stalled jobs and then quit immediately")
+
+
+
     arg_parser.add_argument('--create_database', dest='create_database', default=False,
                             action="store_true",
                             help="Populate ingestion table and then quit immediately")
@@ -2099,6 +2104,10 @@ if __name__ == "__main__":
         log.info("Loading star catalog")
         cat = Catalog(config, lim_mag=10)
         log.info(f"Loaded catalog of {cat.entry_count} entries")
+
+        if cml_args.reset_stalled:
+            resetStalledJobs(conn)
+            sys.exit()
 
         if cml_args.populate_ingestion_table:
             log.info("Populating the ingestion table")
