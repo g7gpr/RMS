@@ -2122,7 +2122,6 @@ if __name__ == "__main__":
             remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))
             remote_files_sorted = sortFilesByTime(remote_files)
             populateWorkQueue(conn, remote_files_sorted)
-            print("Returned from populate work queue")
             log.info("Table populated")
 
         remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))

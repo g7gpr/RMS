@@ -769,6 +769,8 @@ def loadDetections(conn, jd_start=None, jd_end=None,
                 1.0)
             ) * 180.0 / PI() <= %s
         """)
+        where.append(""" abs(mag_err) < 1e6 """)
+        where.append(""" flags = 0 """)
         params.extend([dec_center, dec_center, ra_center, radius_deg])
 
     where_clause = ""
@@ -893,17 +895,23 @@ def loadDetections(conn, jd_start=None, jd_end=None,
 
 
 
-
-def binNetworkDetections(det, bin_seconds=10.24):
+def binNetworkDetections(det, bin_seconds=10.24, period_jd=None):
+    """
+    Bin network detections either in time (default) or in phase if period_jd is given.
+    period_jd: period in Julian days (float)
+    """
 
     jd = det['jd']
-    ra_deg, dec_deg = det['ra_deg'], det['dec_deg']
-    mag, snr = det['mag'], det['snr']
+    ra_deg = det['ra_deg']
+    dec_deg = det['dec_deg']
+    mag = det['mag']
+    snr = det['snr']
     camera_id = det['camera_id']
 
     if jd.size == 0:
         return
 
+    # Convert to arrays
     jd = np.asarray(jd)
     ra_deg = np.asarray(ra_deg)
     dec_deg = np.asarray(dec_deg)
@@ -911,10 +919,26 @@ def binNetworkDetections(det, bin_seconds=10.24):
     snr = np.asarray(snr)
     camera_id = np.asarray(camera_id)
 
-    dt_days = bin_seconds / (24.0 * 60.0 * 60.0)
+    # Reference epoch
     jd0 = jd.min()
-    bin_index = np.floor((jd - jd0) / dt_days).astype(int)
 
+    # --- TIME OR PHASE COORDINATE ---
+    if period_jd is not None:
+        # Phase in [0,1)
+        phase = ((jd - jd0) / period_jd) % 1.0
+        time_coord = phase
+
+        # Bin width in phase units
+        bin_width_phase = bin_seconds / (period_jd * 86400.0)
+        bin_index = np.floor(phase / bin_width_phase).astype(int)
+
+    else:
+        # Normal time binning
+        dt_days = bin_seconds / 86400.0
+        time_coord = jd
+        bin_index = np.floor((jd - jd0) / dt_days).astype(int)
+
+    # --- OUTPUT ARRAYS ---
     jd_bins = []
     ra_bins = []
     dec_bins = []
@@ -924,29 +948,29 @@ def binNetworkDetections(det, bin_seconds=10.24):
     n_cam_bins = []
     cam_sets = []
 
+    # --- BINNING LOOP ---
     for b in np.unique(bin_index):
         idx = np.where(bin_index == b)[0]
 
-        jd_bins.append(np.mean(jd[idx]))
+        jd_bins.append(np.mean(time_coord[idx]))
         ra_bins.append(np.mean(ra_deg[idx]))
         dec_bins.append(np.mean(dec_deg[idx]))
 
+        # Convert magnitudes to flux
         flux = 10**(-0.4 * mag[idx])
         w = snr[idx]**2
         w_sum = np.sum(w)
 
-
-        if np.any(snr == -1):
-            #todo: find out if this is acceptable
+        if np.any(snr[idx] == -1):
+            # Old-style detections without SNR
             flux_mean = np.mean(flux)
             sigma_flux = np.std(flux, ddof=1)
-
         else:
-            # This is a new style calstar with SNR
+            # Weighted mean flux
             flux_mean = np.sum(w * flux) / w_sum
             sigma_flux = np.sqrt(1.0 / w_sum)
 
-        # Compute mag_err from https://www.eso.org/~ohainaut/ccd/sn.html
+        # Convert back to magnitude
         mag_mean = -2.5 * np.log10(flux_mean)
         mag_err = (2.5 / np.log(10)) * (sigma_flux / flux_mean)
 
@@ -969,6 +993,7 @@ def binNetworkDetections(det, bin_seconds=10.24):
         np.array(n_cam_bins),
         cam_sets
     )
+
 
 
 def clusterDetectionsStar5D(ra_deg, dec_deg, jd, mag,
@@ -1013,7 +1038,7 @@ def generateStarLightCurve(conn,
                            ang_tol_deg=0.05,
                            min_cameras=1,
                            cadence_sec=10.24,
-                           spatial_method=None):
+                           spatial_method=None, period_jd=None):
 
     star_name_from_db, mag_from_db = lookupBrightestStar(conn, ra_star_deg, dec_star_deg, radius_deg=0.05)
 
@@ -1037,7 +1062,8 @@ def generateStarLightCurve(conn,
         print("No station made an observation")
         return None
 
-    print(f"Unique stations: {set(det['camera_id'])}")
+    contributing_stations = sorted(set(det['camera_id']))
+    print(f"Unique stations: {contributing_stations}")
 
     det = applyDetectionCorrections(conn, det, spatial_method=spatial_method)
 
@@ -1046,13 +1072,13 @@ def generateStarLightCurve(conn,
 
     cat_mag = float(np.nanmedian(det['cat_mag']))
     print(f"Detections {len(det['jd'])}")
-    binned_detections = binNetworkDetections(det, bin_seconds=cadence_sec)
+    binned_detections = binNetworkDetections(det, bin_seconds=cadence_sec, period_jd=period_jd)
 
 
     arr_jd_bins, arr_ra_bins, arr_dec_bins, arr_mag_bins, arr_mag_err_bins, arr_n_det_bins, arr_n_cam_bins, cam_sets = binned_detections
     print(f"Bins {len(arr_jd_bins)}")
 
-    plotTimeBinnedLightCurve(binned_detections, n_stations=len(set(det['camera_id'])), n_observations=len(det['jd']), cat_mag=mag_from_db/1e6, bin_length=cadence_sec, star_name=star_name_from_db, base_name=base_name)
+    plotTimeBinnedLightCurve(binned_detections, n_stations=len(set(det['camera_id'])), n_observations=len(det['jd']), cat_mag=mag_from_db/1e6, bin_length=cadence_sec, star_name=star_name_from_db, base_name=base_name, sub_title=contributing_stations, period_jd=period_jd)
 
     points = buildLightCurvePoints(det, cat_mag=cat_mag, ang_tol_deg=ang_tol_deg, min_cameras=min_cameras,
                                    star_name=star_name_from_db, t_window_min=cadence_sec / 60.0, base_name=base_name, cadence_sec=cadence_sec)
@@ -1209,7 +1235,7 @@ def saveLightCurveAsJson(lc, base_name,
         json.dump(serializable, f, indent=2)
 
 
-def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_mag, bin_length=None, star_name=None, base_name=None):
+def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_mag, bin_length=None, star_name=None, base_name=None, sub_title=None, period_jd=None):
 
     arr_jd_bins, arr_ra_bins, arr_dec_bins, arr_mag_bins, arr_mag_err_bins, arr_n_det_bins, arr_n_cam_bins, cam_sets = binned_detections
 
@@ -1227,11 +1253,18 @@ def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_
         gridspec_kw={'height_ratios': [3, 1]}
     )
 
-    ax_mag.set_title(
-        f"{star_name} — Time-Binned Light Curve\n"
-        f"RA={ra_mean:.2f} deg, Dec={dec_mean:.2f} deg MAG={cat_mag:.2f}\n"
-        f"{n_stations} stations, {n_observations} detections, {len(binned_detections[0])} bins of length {bin_length:.1f} seconds"
-    )
+
+    if period_jd is not None:
+        ax_mag.set_title(
+            f"{star_name} — Time-Binned Light Curve\n"
+            f"RA={ra_mean:.2f} deg, Dec={dec_mean:.2f} deg MAG={cat_mag:.2f} PERIOD={period_jd:.3f}\n"
+            f"{n_stations} stations, {n_observations} detections, {len(binned_detections[0])} bins of length {bin_length:.1f} seconds")
+    else:
+        ax_mag.set_title(
+            f"{star_name} — Time-Binned Light Curve\n"
+            f"RA={ra_mean:.2f} deg, Dec={dec_mean:.2f} deg MAG={cat_mag:.2f}\n"
+            f"{n_stations} stations, {n_observations} detections, {len(binned_detections[0])} bins of length {bin_length:.1f} seconds")
+
 
 
     for x, y, dy in zip(jd_rel, arr_mag_bins, arr_mag_err_bins):
@@ -1256,8 +1289,8 @@ def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_
 
 
     # Axis limits (remember: magnitude axis is inverted)
-    y_top = math.floor(q25 - max(1, full_span))  # brighter
-    y_bottom = math.ceil(q75 + max(1, full_span))  # fainter
+    y_top = cat_mag - 0.5
+    y_bottom = cat_mag + 0.5
 
     ax_mag.set_ylim(y_bottom, y_top)
 
@@ -1288,6 +1321,18 @@ def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_
         bar_width = 0.001  # fallback for single-bin case
 
     ax_cam.bar(jd_rel, arr_n_cam_bins, width=bar_width, color='tab:red', alpha=0.7)
+
+    n = 10
+
+
+    if sub_title is not None:
+        sub_title_as_list = [",".join(sub_title[i:i + n]) for i in range(0, len(sub_title), n)]
+        fig.suptitle(
+            "\n".join(sub_title_as_list),
+            fontsize=6,  # much smaller font
+            y=0.8, x=0.2,
+            alpha=0.7  # faint, unobtrusive
+        )
 
     ax_cam.set_ylabel("Stations")
     ax_cam.set_xlabel(f"Time since JD {jd0:.5f} (days)")
@@ -1362,12 +1407,21 @@ if __name__ == "__main__":
                     help="DB Connection string in the format postgresql://user@host:port/database ")
 
     arg_parser.add_argument('--radec', metavar='RADEC', type=str,
-                    help="Star coordinates in decimal or sexagesimal degrees, if none is passed then defaults to Betelgeux (88.79 7.41)")
+                    help="Star coordinates in decimal or sexagesimal degrees, if none are passed then defaults to Betelgeux (88.79 7.41)")
+
+    arg_parser.add_argument('-b', '--bins_per_jd', metavar='BINS_PER_JD', type=int,
+                            help="Number of bins of intensity in each julian day, default 100")
+
+    arg_parser.add_argument('-p', '--period_jd', metavar='PERIOD_JD', type=float,
+                            help="Period length binning")
 
     ###
 
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
+
+    period_jd = cml_args.period_jd
+
 
 
     db_dict = parseDBArg(cml_args.db_connection_string)
@@ -1378,6 +1432,14 @@ if __name__ == "__main__":
         target_dec = 7.4056
     else:
         target_ra, target_dec = parseRaDec(radec)
+
+    bins_per_day = cml_args.bins_per_jd
+
+    if bins_per_day is None:
+        bins_per_day = 100
+
+    cadence_sec = (24 * 60 * 60) / bins_per_day
+    print(f"Running with a bin length of {cadence_sec} seconds, or {bins_per_day} bins/day")
 
     with psycopg.connect(
             host=db_dict['host'],
@@ -1391,13 +1453,12 @@ if __name__ == "__main__":
             ra_star_deg=target_ra,
             dec_star_deg=target_dec,
             search_radius_deg=0.1,
-            jd_start=2460310.5,
-            jd_end=2460314,
+            jd_start=2461051.3,
+            jd_end=2461134.7,
             ang_tol_deg=0.2,
             min_cameras=3,
-            cadence_sec=10.24 * 60,
-            spatial_method = 'none'
-        )
+            cadence_sec=cadence_sec,
+            spatial_method = 'binned', period_jd=period_jd)
 
         if lc is None:
             print("No light curve generated.")
