@@ -3,7 +3,8 @@ from tkinter.constants import NONE
 
 import numpy as np
 from sklearn.cluster import DBSCAN
-from scipy.interpolate import RegularGridInterpolator
+from scipy.interpolate import RegularGridInterpolator, Rbf
+from scipy.spatial import ConvexHull
 import psycopg
 import json
 import matplotlib.pyplot as plt
@@ -229,6 +230,21 @@ def loadSpatialModel(conn, frame_name, spatial_model=None, version=1):
         return None
 
     # -------------------------
+    # Model type: TPS
+    # -------------------------
+    if spatial_model == "tps":
+        if params_json is None:
+            return None
+
+        params = json.loads(params_json)
+        x = np.array(params["x"], float)
+        y = np.array(params["y"], float)
+        r = np.array(params["residuals"], float)
+        smooth = params.get("smooth", 0.1)
+
+        return Rbf(x, y, r, function='thin_plate', smooth=smooth)
+
+    # -------------------------
     # Model type: BINNED
     # -------------------------
     if spatial_model == "binned":
@@ -414,6 +430,20 @@ def computeFrameOffset(frame_data):
 
     return np.median(residuals)
 
+def buildTPSCorrectionMap(x, y, residuals_mag, smooth=0.1):
+    """
+    Build a thin-plate spline correction model using SciPy Rbf.
+    smooth: smoothing parameter (lambda)
+    Returns an Rbf instance.
+    """
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
+    r = np.asarray(residuals_mag, float)
+
+    rbf = Rbf(x, y, r, function='thin_plate', smooth=smooth)
+    return rbf
+
+
 def buildSpatialCorrectionMap(x, y, residuals_mag, bins=40):
     """
     Build a 2D correction map delta mag(x,y) using mean flux ratios in bins.
@@ -447,6 +477,38 @@ def buildSpatialCorrectionMap(x, y, residuals_mag, bins=40):
     )
 
     return interp, grid_mag, xmid, ymid
+
+def tryBuildTPS(x, y, residuals, smooth=0.1):
+
+    # this is very inefficient, but the best I can do for now.
+
+    mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(residuals)
+    x = x[mask]
+    y = y[mask]
+    residuals = residuals[mask]
+
+    if len(x) < 40:
+        return None
+
+    coords = np.column_stack((x, y))
+    if len(np.unique(coords, axis=0)) < len(coords):
+        return None
+
+    # 2. Collinearity check
+    if len(x) >= 3:
+        hull = ConvexHull(coords)
+        if hull.area < 1e-3:
+            return None
+
+    # 3. Residual structure check
+    if np.nanstd(residuals) < 1e-4:
+        return None
+
+    # 4. Try TPS fit
+    try:
+        return Rbf(x, y, residuals, function='thin_plate', smooth=smooth)
+    except np.linalg.LinAlgError:
+        return None
 
 
 
@@ -524,6 +586,41 @@ def applyDetectionCorrections(conn, det, spatial_method):
             saveSpatialModel(conn, spatial_model="gaussian", frame_name=fname, version=1, params=gauss_model.to_params())
             frame_cache[fname] = (frame_offset, gauss_model)
 
+
+        elif spatial_method == 'tps':
+
+            # Build TPS model
+            smooth = 0.1  # or configurable
+
+            tps_model = tryBuildTPS(frame_data['x'], frame_data['y'], residuals)
+
+            if tps_model is None:
+                # drop frame
+                frame_cache[fname] = (frame_offset, None)
+                print(f"Dropped {fname} as no strong thin plate spline solution would be found.")
+                continue
+
+
+
+            # Save TPS model
+            params = {
+                "x": frame_data['x'].tolist(),
+                "y": frame_data['y'].tolist(),
+                "residuals": residuals.tolist(),
+                "smooth": smooth
+            }
+
+            saveSpatialModel(
+                conn,
+                spatial_model="tps",
+                frame_name=fname,
+                version=1,
+                params=params
+            )
+
+            frame_cache[fname] = (frame_offset, tps_model)
+
+
         else:
 
             # This is the "do not apply a compensation branch - do nothing for now"
@@ -541,8 +638,12 @@ def applyDetectionCorrections(conn, det, spatial_method):
             if np.isnan(x_det[i]) or np.isnan(y_det[i]):
                 spatial_offset = 0.0
             else:
-                spatial_offset = spatial_map([[x_det[i], y_det[i]]])[0]
-
+                if spatial_method == 'tps':
+                    # SciPy Rbf: call as rbf(x, y)
+                    spatial_offset = spatial_map(x_det[i], y_det[i])
+                else:
+                    # Binned or Gaussian: call as interpolator([[x, y]])[0]
+                    spatial_offset = spatial_map([[x_det[i], y_det[i]]])[0]
 
             m -= spatial_offset
 
@@ -750,32 +851,20 @@ def getPNGFilepath(base_name):
 # =========================
 
 def loadDetections(conn, jd_start=None, jd_end=None,
-                   ra_center=None, dec_center=None, radius_deg=None,
-                   prove=False, prove_n=100):
-
+                   prove=False, prove_n=100, star_name=None):
+    # Star-name lookup (fast path)
     where = []
     params = []
 
-    # Optional spatial cone filter (SQL-side)
-    if ra_center is not None and dec_center is not None and radius_deg is not None:
-        where.append("""
-            ACOS(
-                LEAST(
-                    GREATEST(
-                        SIN(RADIANS(%s)) * SIN(RADIANS(obs.dec/1e6)) +
-                        COS(RADIANS(%s)) * COS(RADIANS(obs.dec/1e6)) *
-                        COS(RADIANS(obs.ra/1e6) - RADIANS(%s)),
-                    -1.0),
-                1.0)
-            ) * 180.0 / PI() <= %s
-        """)
-        where.append(""" abs(mag_err) < 1e6 """)
-        where.append(""" flags = 0 """)
-        params.extend([dec_center, dec_center, ra_center, radius_deg])
+    if star_name is not None:
+        where.append("obs.star_name = %s")
+        params.append(star_name)
 
-    where_clause = ""
-    if where:
-        where_clause = "WHERE " + " AND ".join(where)
+    # Quality filters
+    where.append("abs(obs.mag_err) < 1e6")
+    where.append("obs.flags = 0")
+
+    where_clause = "WHERE " + " AND ".join(where)
 
     sql = f"""
         SELECT
@@ -793,10 +882,18 @@ def loadDetections(conn, jd_start=None, jd_end=None,
     """
 
     with conn.cursor() as cur:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+
+    if not rows:
+        return None
+
+    with conn.cursor() as cur:
         #print(f"Executing {sql}")
         cur.execute(sql, params)
         #print("Completed")
         rows = cur.fetchall()
+
 
     if not rows:
         return None
@@ -1046,14 +1143,7 @@ def generateStarLightCurve(conn,
     base_name = makeLightcurveFilename(ra_star_deg, dec_star_deg, jd_start, jd_end, star_name_from_db, spatial_method=spatial_method)
 
 
-    det = loadDetections(
-        conn,
-        jd_start=jd_start,
-        jd_end=jd_end,
-        ra_center=ra_star_deg,
-        dec_center=dec_star_deg,
-        radius_deg=search_radius_deg
-    )
+    det = loadDetections(conn, jd_start=jd_start, jd_end=jd_end, star_name=star_name_from_db)
 
     if det is None:
         return None
@@ -1415,6 +1505,16 @@ if __name__ == "__main__":
     arg_parser.add_argument('-p', '--period_jd', metavar='PERIOD_JD', type=float,
                             help="Period length binning")
 
+    group = arg_parser.add_mutually_exclusive_group()
+
+    group.add_argument("--tps", action="store_true", help="Use thin-plate spline spatial model")
+
+    group.add_argument("--binned", action="store_true", help="Use binned spatial model")
+
+    group.add_argument("--gaussian", action="store_true", help="Use Gaussian spatial model")
+
+
+
     ###
 
     # Parse the command line arguments
@@ -1422,7 +1522,14 @@ if __name__ == "__main__":
 
     period_jd = cml_args.period_jd
 
-
+    if cml_args.tps:
+        spatial_method = "tps"
+    elif cml_args.binned:
+        spatial_method = "binned"
+    elif cml_args.gaussian:
+        spatial_method = "gaussian"
+    else:
+        spatial_method = "none"
 
     db_dict = parseDBArg(cml_args.db_connection_string)
     radec = cml_args.radec
@@ -1458,7 +1565,7 @@ if __name__ == "__main__":
             ang_tol_deg=0.2,
             min_cameras=3,
             cadence_sec=cadence_sec,
-            spatial_method = 'binned', period_jd=period_jd)
+            spatial_method = 'tps', period_jd=period_jd)
 
         if lc is None:
             print("No light curve generated.")

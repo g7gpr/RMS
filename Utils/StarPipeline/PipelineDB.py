@@ -286,7 +286,7 @@ def createSpatialModelTable(conn):
     sql_add_check = """
                     ALTER TABLE spatial_model
                         ADD CONSTRAINT spatial_model_type_check
-                            CHECK (model_type IN ('binned', 'gaussian', 'none', 'both')); \
+                            CHECK (model_type IN ('binned', 'gaussian', 'tps', 'none')); \
                     """
 
     with conn.cursor() as cur:
