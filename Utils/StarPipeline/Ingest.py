@@ -2103,6 +2103,7 @@ if __name__ == "__main__":
 
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 
+
         auditIngestUserPrivileges(conn)
         log.info("Loading star catalog")
         cat = Catalog(config, lim_mag=10)
@@ -2123,9 +2124,9 @@ if __name__ == "__main__":
             populateWorkQueue(conn, remote_files_sorted)
             print("Returned from populate work queue")
             log.info("Table populated")
-        
 
-
+        remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))
+        remote_files_sorted = sortFilesByTime(remote_files)
         ingest(config, remote_files_sorted, conn, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db, concurrent_threads=concurrent_threads)
 
 
