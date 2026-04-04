@@ -588,6 +588,9 @@ def applyDetectionCorrections(conn, det, spatial_method):
             #print(f"[cache hit] spatial map type {spatial_method} for frame {fname}")
             cache_hit += 1
             frame_data = loadFramePhotometry(conn, fname)
+            if len(frame_data) < 40:
+                # Drop this frame, fewer than 40 matched stars
+                continue
             frame_offset = computeFrameOffset(frame_data) if frame_data else 0.0
             frame_cache[fname] = (frame_offset, cached_map)
             continue
