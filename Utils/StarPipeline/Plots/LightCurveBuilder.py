@@ -631,12 +631,26 @@ def applyDetectionCorrections(conn, det, spatial_method):
             tps_model = tryBuildTPS(frame_data['x'], frame_data['y'], residuals)
 
             if tps_model is None:
-                # drop frame
-                frame_cache[fname] = (frame_offset, None)
-                #print(f"Dropped {fname} as no strong thin plate spline solution would be found.")
+                frame_cache[fname] = (frame_offset, None, 0, 0)
                 continue
 
 
+            try:
+                resid_after = residuals - tps_model(frame_data['x'], frame_data['y'])
+                rms_frame = float(np.sqrt(np.mean(resid_after ** 2)))
+            except Exception:
+                rms_frame = 1.0  # fallback
+                n_points = len(residuals)
+
+            # Weight: many stars + low RMS = high weight
+
+            if rms_frame > 0:
+                w_frame = n_points / (rms_frame * rms_frame)
+            else:
+                w_frame = 0.0
+
+                # Clip extreme weights
+                w_frame = float(min(w_frame, 1e6))
 
             # Save TPS model
             params = {
@@ -646,15 +660,9 @@ def applyDetectionCorrections(conn, det, spatial_method):
                 "smooth": smooth
             }
 
-            saveSpatialModel(
-                conn,
-                spatial_model="tps",
-                frame_name=fname,
-                version=1,
-                params=params
-            )
-
-            frame_cache[fname] = (frame_offset, tps_model)
+            saveSpatialModel(conn, patial_model="tps", frame_name=fname, version=1, params=params, n_points=n_points,
+                             rms_mag=rms_frame, median_resid=float(np.median(residuals)))
+            frame_cache[fname] = (frame_offset, tps_model, w_frame)
 
 
         else:
@@ -666,7 +674,8 @@ def applyDetectionCorrections(conn, det, spatial_method):
 
     for i in range(len(mag_det)):
         fname = frame_names[i]
-        frame_offset, spatial_map = frame_cache.get(fname, (0.0, None))
+        frame_offset, spatial_map, w_frame = frame_cache.get(fname, (0.0, None, 0.0))
+
 
         m = mag_det[i] - frame_offset
 
@@ -687,6 +696,8 @@ def applyDetectionCorrections(conn, det, spatial_method):
 
     det_corr = dict(det)
     det_corr['mag'] = mag_corr
+    det_corr['frame_weight'] = np.array([frame_cache[f][2] for f in frame_names])
+
     return det_corr
 
 
@@ -1094,7 +1105,16 @@ def binNetworkDetections(det, bin_seconds=10.24, period_jd=None, period_repeats=
 
         # Convert magnitudes to flux
         flux = 10**(-0.4 * mag[idx])
-        w = snr[idx]**2
+
+        # Photometric weight (inverse variance)
+        w_phot = snr[idx] ** 2
+
+        # Frame-level TPS weight
+        w_frame = det['frame_weight'][idx]
+
+        # Combined weight
+        w = w_phot * w_frame
+
         w_sum = np.sum(w)
 
         if np.any(snr[idx] == -1):
@@ -1534,6 +1554,37 @@ def parseRaDec(value):
 
     raise ValueError(f"Unrecognized RA/Dec format: {value!r}")
 
+def parseJdRange(s):
+    if s is None:
+        return None, None
+
+    # Accept "a,b" or "a:b"
+    if ',' in s:
+        a, b = s.split(',', 1)
+    elif ':' in s:
+        a, b = s.split(':', 1)
+    else:
+        raise ValueError("jd_range must be in form start,end or start:end")
+
+    return float(a), float(b)
+
+def getDbJdRange(conn):
+    sql = """
+        SELECT MIN(jd_mid), MAX(jd_mid)
+        FROM observation
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        row = cur.fetchone()
+
+    if row is None or row[0] is None or row[1] is None:
+        return None, None
+
+    # Convert BIGINT micro-JD → float JD
+    jd_min = row[0] / 1e6
+    jd_max = row[1] / 1e6
+    return jd_min, jd_max
+
 
 
 if __name__ == "__main__":
@@ -1550,6 +1601,9 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('--radec', metavar='RADEC', type=str,
                     help="Star coordinates in decimal or sexagesimal degrees, if none are passed then defaults to Betelgeux (88.79 7.41)")
+
+    arg_parser.add_argument('--jd_range', metavar='JD_RANGE', type=str,
+                            help="Range of jd to use in curve plotting")
 
     arg_parser.add_argument('-b', '--bins_per_jd', metavar='BINS_PER_JD', type=int,
                             help="Number of bins of intensity in each julian day, default 100")
@@ -1614,6 +1668,20 @@ if __name__ == "__main__":
     cadence_sec = (24 * 60 * 60) / bins_per_day
     print(f"Running with a bin length of {cadence_sec:.1f} seconds, or {bins_per_day:.1f} bins/day")
 
+    jd_start, jd_end = parseJdRange(cml_args.jd_range)
+
+    # Current time in JD
+    now_dt = datetime.datetime.now(datetime.timezone.utc)
+    jd_now = datetime2JD(now_dt)
+    print(f"JD now is {jd_now}")
+
+    # Clamp jd_end to now
+    if jd_end is None:
+        jd_end = jd_now
+    else:
+        jd_end = min(jd_end, jd_now)
+
+
     with psycopg.connect(
             host=db_dict['host'],
             dbname=db_dict['dbname'],
@@ -1621,13 +1689,25 @@ if __name__ == "__main__":
             port=db_dict['port']
     ) as conn:
 
+        # If jd_start missing, fill from DB
+        if jd_start is None:
+            db_jd_min, db_jd_max = getDbJdRange(conn)
+            db_jd_max = min(db_jd_max, jd_now)
+            jd_start = db_jd_min
+
+        # Safety: ensure ordering
+        if jd_start > jd_end:
+            jd_start, jd_end = jd_end, jd_start
+
+        print(f"Using JD range: {jd_start:.5f} to {jd_end:.5f}")
+
         lc = generateStarLightCurve(
             conn,
             ra_star_deg=target_ra,
             dec_star_deg=target_dec,
             search_radius_deg=0.1,
-            jd_start=2461051.9,
-            jd_end=2461134.7,
+            jd_start=jd_start,
+            jd_end=jd_end,
             ang_tol_deg=0.2,
             min_cameras=3,
             cadence_sec=cadence_sec,
