@@ -661,7 +661,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
                 "smooth": smooth
             }
 
-            saveSpatialModel(conn, patial_model="tps", frame_name=fname, version=1, params=params, n_points=n_points,
+            saveSpatialModel(conn, spatial_model="tps", frame_name=fname, version=1, params=params, n_points=n_points,
                              rms_mag=rms_frame, median_resid=float(np.median(residuals)))
             frame_cache[fname] = (frame_offset, tps_model, w_frame)
 
