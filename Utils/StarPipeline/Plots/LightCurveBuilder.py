@@ -566,6 +566,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
     start_time = datetime.datetime.now(tz=datetime.timezone.utc)
     total = len(unique_frames)
     cache_hit = 0
+    frame_drop_count = 0
 
     for i, fname in enumerate(unique_frames, start=1):
 
@@ -578,7 +579,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
             forecast_completion_time = start_time + datetime.timedelta(seconds=forecast_total_s)
             cache_hit_pc = 100 * cache_hit / i
             cache_hit_txt = f"Cache hit {cache_hit_pc:.1f}%" if spatial_method != 'none' else ""
-            print(f"[{i}/{total}] Forecast completion: {forecast_completion_time.isoformat().split('.')[0]} {cache_hit_txt}")
+            print(f"[{i}/{total}] Forecast completion: {forecast_completion_time.isoformat().split('.')[0]} {cache_hit_txt} - dropped frame count {frame_drop_count}")
 
         version = 1
         cached_map = loadCachedSpatialMap(conn, fname, spatial_method, version)
@@ -590,6 +591,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
             frame_data = loadFramePhotometry(conn, fname)
             if len(frame_data) < 40:
                 # Drop this frame, fewer than 40 matched stars
+                frame_drop_count += 1
                 continue
             frame_offset = computeFrameOffset(frame_data) if frame_data else 0.0
             frame_cache[fname] = (frame_offset, cached_map)
@@ -1203,7 +1205,7 @@ def generateStarLightCurve(conn,
 
     star_name_from_db, mag_from_db = lookupBrightestStar(conn, ra_star_deg, dec_star_deg, radius_deg=0.05)
 
-    print(f"Working on star {star_name_from_db}, RA: {ra_star_deg:.2f}, DEC: {dec_star_deg:.2f} MAG:{mag_from_db/1e6:.2f}")
+    print(f"Working on star {star_name_from_db}, RA: {ra_star_deg:.2f}, DEC: {dec_star_deg:.2f} MAG:{mag_from_db/1e6:.2f} Period:{period_jd:.4f}" )
     base_name = makeLightcurveFilename(ra_star_deg, dec_star_deg, jd_start, jd_end, star_name_from_db, spatial_method=spatial_method)
 
 
