@@ -640,7 +640,8 @@ def applyDetectionCorrections(conn, det, spatial_method):
                 rms_frame = float(np.sqrt(np.mean(resid_after ** 2)))
             except Exception:
                 rms_frame = 1.0  # fallback
-                n_points = len(residuals)
+
+            n_points = len(residuals)
 
             # Weight: many stars + low RMS = high weight
 
@@ -1007,7 +1008,7 @@ def loadDetections(conn, jd_start=None, jd_end=None,
 
             row = lookupBrightestStar(conn, ra, dec, radius_deg=0.2)
 
-            print(f"[{i}] RA={ra:.6f}, Dec={dec:.6f}")
+            print(f"[{i}] RA={ra:.6f}, DEC={dec:.6f}")
             print(f"     observed mag = {mag[i]:.3f}")
             print(f"     mag_err = {mag_err[i]:.3f}")
             print(f"     reconstructed cat_mag = {cat_mag[i]:.3f}")
@@ -1413,12 +1414,12 @@ def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_
     if period_jd is not None:
         ax_mag.set_title(
             f"{star_name} — Time-Binned Light Curve\n"
-            f"RA={ra_mean:.2f} deg, Dec={dec_mean:.2f} deg MAG={cat_mag:.2f} PERIOD={period_jd:.3f} days\n"
+            f"RA={ra_mean:.2f} deg, DEC={dec_mean:.2f} deg MAG={cat_mag:.2f} PERIOD={period_jd:.3f} days\n"
             f"{n_stations} stations, {n_observations} detections, {len(binned_detections[0])} bins of length {bin_length:.1f} seconds")
     else:
         ax_mag.set_title(
             f"{star_name} — Time-Binned Light Curve\n"
-            f"RA={ra_mean:.2f} deg, Dec={dec_mean:.2f} deg MAG={cat_mag:.2f}\n"
+            f"RA={ra_mean:.2f} deg, DEC={dec_mean:.2f} deg MAG={cat_mag:.2f}\n"
             f"{n_stations} stations, {n_observations} detections, {len(binned_detections[0])} bins of length {bin_length:.1f} seconds")
 
 
