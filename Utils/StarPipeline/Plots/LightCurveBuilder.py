@@ -175,8 +175,13 @@ def loadCachedSpatialMap(conn, frame_name, method='binned', version=1):
 
     grid_mag, xmid, ymid, params = row
 
+    # -------------------------
     # Binned method
+    # -------------------------
     if method == 'binned':
+        if grid_mag is None or xmid is None or ymid is None:
+            return None
+
         grid_mag = np.array(grid_mag)
         xmid = np.array(xmid)
         ymid = np.array(ymid)
@@ -189,13 +194,42 @@ def loadCachedSpatialMap(conn, frame_name, method='binned', version=1):
         )
         return interp
 
+    # -------------------------
     # Gaussian method
+    # -------------------------
     if method == 'gaussian':
         if params is None:
             return None
         return GaussianSpatialModel.from_params(params)
 
+    # -------------------------
+    # TPS method
+    # -------------------------
+    if method == 'tps':
+        if params is None:
+            return None
+
+        # Expecting params = { "x": [...], "y": [...], "residuals": [...], "smooth": value }
+        x = np.array(params.get("x", []))
+        y = np.array(params.get("y", []))
+        residuals = np.array(params.get("residuals", []))
+        smooth = params.get("smooth", 0.1)
+
+        if len(x) == 0 or len(y) == 0 or len(residuals) == 0:
+            return None
+
+        # Rebuild the TPS model
+        try:
+            tps_model = Rbf(x, y, residuals, function='thin_plate', smooth=smooth)
+            return tps_model
+        except Exception:
+            return None
+
+    # -------------------------
+    # Unknown method
+    # -------------------------
     raise ValueError(f"Unknown spatial correction method: {method}")
+
 
 def loadSpatialModel(conn, frame_name, spatial_model=None, version=1):
     """
@@ -395,6 +429,8 @@ def loadFramePhotometry(conn, frame_name):
         WHERE obs.frame_name = %s
           AND obs.mag IS NOT NULL
           AND obs.cat_mag IS NOT NULL
+          AND obs.mag_err < 0.5e6
+          and obs.mad > 0.1e6
           AND flags = 0;
 
     """
@@ -542,7 +578,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
             forecast_completion_time = start_time + datetime.timedelta(seconds=forecast_total_s)
             cache_hit_pc = 100 * cache_hit / i
             cache_hit_txt = f"Cache hit {cache_hit_pc:.1f}%" if spatial_method != 'none' else ""
-            print(f"[{i}/{total}] Forecast completion: {forecast_completion_time.isoformat()} {cache_hit_txt}")
+            print(f"[{i}/{total}] Forecast completion: {forecast_completion_time.isoformat().split('.')[0]} {cache_hit_txt}")
 
         version = 1
         cached_map = loadCachedSpatialMap(conn, fname, spatial_method, version)
@@ -597,7 +633,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
             if tps_model is None:
                 # drop frame
                 frame_cache[fname] = (frame_offset, None)
-                print(f"Dropped {fname} as no strong thin plate spline solution would be found.")
+                #print(f"Dropped {fname} as no strong thin plate spline solution would be found.")
                 continue
 
 
@@ -864,6 +900,11 @@ def loadDetections(conn, jd_start=None, jd_end=None,
     where.append("abs(obs.mag_err) < 1e6")
     where.append("obs.flags = 0")
 
+    # Time filters
+    where.append("jd_mid > %s")
+    params.append(1e6 * jd_start)
+    where.append("jd_mid < %s")
+    params.append(1e6 * jd_end)
     where_clause = "WHERE " + " AND ".join(where)
 
     sql = f"""
@@ -882,18 +923,11 @@ def loadDetections(conn, jd_start=None, jd_end=None,
     """
 
     with conn.cursor() as cur:
+        print("Starting bulk SQL query")
         cur.execute(sql, params)
+        print("SQL query completed, fetching rows")
         rows = cur.fetchall()
-
-    if not rows:
-        return None
-
-    with conn.cursor() as cur:
-        #print(f"Executing {sql}")
-        cur.execute(sql, params)
-        #print("Completed")
-        rows = cur.fetchall()
-
+        print("Row fetch complete")
 
     if not rows:
         return None
@@ -918,13 +952,13 @@ def loadDetections(conn, jd_start=None, jd_end=None,
     # Reconstruct catalogue magnitude
     cat_mag = mag - mag_err
 
-    # Compute JD mid from frame name using your existing function
+    # Compute JD mid from frame name
     jd = np.array([
         datetime2JD(getMiddleTimeFF(f"FF_{fn}_000000",fps=25, dt_obj=True))  # returns JD in natural units
         for fn in frame_name
     ], dtype=float)
 
-    # Optional time filtering AFTER JD reconstruction
+    # Optional time filtering this now gets done in SQL - but leaving here for safety
     if jd_start is not None:
         mask = jd >= jd_start
         jd = jd[mask]
@@ -992,7 +1026,7 @@ def loadDetections(conn, jd_start=None, jd_end=None,
 
 
 
-def binNetworkDetections(det, bin_seconds=10.24, period_jd=None):
+def binNetworkDetections(det, bin_seconds=10.24, period_jd=None, period_repeats=1):
     """
     Bin network detections either in time (default) or in phase if period_jd is given.
     period_jd: period in Julian days (float)
@@ -1023,11 +1057,16 @@ def binNetworkDetections(det, bin_seconds=10.24, period_jd=None):
     if period_jd is not None:
         # Phase in [0,1)
         phase = ((jd - jd0) / period_jd) % 1.0
-        time_coord = phase
+
+        phase_extended = phase + np.floor((jd - jd0) / period_jd)
+
+        phase_extended = phase_extended % period_repeats
+
+        time_coord = phase_extended
 
         # Bin width in phase units
         bin_width_phase = bin_seconds / (period_jd * 86400.0)
-        bin_index = np.floor(phase / bin_width_phase).astype(int)
+        bin_index = np.floor(phase_extended / bin_width_phase).astype(int)
 
     else:
         # Normal time binning
@@ -1088,7 +1127,8 @@ def binNetworkDetections(det, bin_seconds=10.24, period_jd=None):
         np.array(mag_err_bins),
         np.array(n_det_bins),
         np.array(n_cam_bins),
-        cam_sets
+        cam_sets,
+        jd0
     )
 
 
@@ -1135,7 +1175,7 @@ def generateStarLightCurve(conn,
                            ang_tol_deg=0.05,
                            min_cameras=1,
                            cadence_sec=10.24,
-                           spatial_method=None, period_jd=None):
+                           spatial_method=None, period_jd=None, period_repeats=1):
 
     star_name_from_db, mag_from_db = lookupBrightestStar(conn, ra_star_deg, dec_star_deg, radius_deg=0.05)
 
@@ -1162,10 +1202,10 @@ def generateStarLightCurve(conn,
 
     cat_mag = float(np.nanmedian(det['cat_mag']))
     print(f"Detections {len(det['jd'])}")
-    binned_detections = binNetworkDetections(det, bin_seconds=cadence_sec, period_jd=period_jd)
+    binned_detections = binNetworkDetections(det, bin_seconds=cadence_sec, period_jd=period_jd, period_repeats=period_repeats)
 
 
-    arr_jd_bins, arr_ra_bins, arr_dec_bins, arr_mag_bins, arr_mag_err_bins, arr_n_det_bins, arr_n_cam_bins, cam_sets = binned_detections
+    arr_jd_bins, arr_ra_bins, arr_dec_bins, arr_mag_bins, arr_mag_err_bins, arr_n_det_bins, arr_n_cam_bins, cam_sets, jd0 = binned_detections
     print(f"Bins {len(arr_jd_bins)}")
 
     plotTimeBinnedLightCurve(binned_detections, n_stations=len(set(det['camera_id'])), n_observations=len(det['jd']), cat_mag=mag_from_db/1e6, bin_length=cadence_sec, star_name=star_name_from_db, base_name=base_name, sub_title=contributing_stations, period_jd=period_jd)
@@ -1327,7 +1367,7 @@ def saveLightCurveAsJson(lc, base_name,
 
 def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_mag, bin_length=None, star_name=None, base_name=None, sub_title=None, period_jd=None):
 
-    arr_jd_bins, arr_ra_bins, arr_dec_bins, arr_mag_bins, arr_mag_err_bins, arr_n_det_bins, arr_n_cam_bins, cam_sets = binned_detections
+    arr_jd_bins, arr_ra_bins, arr_dec_bins, arr_mag_bins, arr_mag_err_bins, arr_n_det_bins, arr_n_cam_bins, cam_sets, jd_period_start = binned_detections
 
 
     jd0 = arr_jd_bins[0]
@@ -1343,17 +1383,27 @@ def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_
         gridspec_kw={'height_ratios': [3, 1]}
     )
 
+    n = 30
+    if sub_title is not None:
+        sub_title_as_list = [",".join(sub_title[i:i + n]) for i in range(0, len(sub_title), n)]
+        ax_cam.set_title("\n".join(sub_title_as_list), fontsize=6, alpha=0.7)
+
+
 
     if period_jd is not None:
         ax_mag.set_title(
             f"{star_name} — Time-Binned Light Curve\n"
-            f"RA={ra_mean:.2f} deg, Dec={dec_mean:.2f} deg MAG={cat_mag:.2f} PERIOD={period_jd:.3f}\n"
+            f"RA={ra_mean:.2f} deg, Dec={dec_mean:.2f} deg MAG={cat_mag:.2f} PERIOD={period_jd:.3f} days\n"
             f"{n_stations} stations, {n_observations} detections, {len(binned_detections[0])} bins of length {bin_length:.1f} seconds")
     else:
         ax_mag.set_title(
             f"{star_name} — Time-Binned Light Curve\n"
             f"RA={ra_mean:.2f} deg, Dec={dec_mean:.2f} deg MAG={cat_mag:.2f}\n"
             f"{n_stations} stations, {n_observations} detections, {len(binned_detections[0])} bins of length {bin_length:.1f} seconds")
+
+
+
+
 
 
 
@@ -1379,8 +1429,15 @@ def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_
 
 
     # Axis limits (remember: magnitude axis is inverted)
-    y_top = cat_mag - 0.5
-    y_bottom = cat_mag + 0.5
+
+    y_top, y_bottom = min(arr_mag_bins), max(arr_mag_bins)
+
+    # Produce a positive margin
+    margin = (y_bottom - y_top) * 0.01
+
+    # subtract from top, add to bottom
+    y_top -= margin
+    y_bottom += margin
 
     ax_mag.set_ylim(y_bottom, y_top)
 
@@ -1412,20 +1469,15 @@ def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_
 
     ax_cam.bar(jd_rel, arr_n_cam_bins, width=bar_width, color='tab:red', alpha=0.7)
 
-    n = 10
 
 
-    if sub_title is not None:
-        sub_title_as_list = [",".join(sub_title[i:i + n]) for i in range(0, len(sub_title), n)]
-        fig.suptitle(
-            "\n".join(sub_title_as_list),
-            fontsize=6,  # much smaller font
-            y=0.8, x=0.2,
-            alpha=0.7  # faint, unobtrusive
-        )
+
 
     ax_cam.set_ylabel("Stations")
-    ax_cam.set_xlabel(f"Time since JD {jd0:.5f} (days)")
+    if jd0 is None:
+        ax_cam.set_xlabel(f"Time since JD {jd0:.5f} (days)")
+    else:
+        ax_cam.set_xlabel(f"Period starting from jd {jd_period_start}")
 
     fig.tight_layout()
     #plt.show()
@@ -1503,7 +1555,10 @@ if __name__ == "__main__":
                             help="Number of bins of intensity in each julian day, default 100")
 
     arg_parser.add_argument('-p', '--period_jd', metavar='PERIOD_JD', type=float,
-                            help="Period length binning")
+                            help="Period length wrapping")
+
+    arg_parser.add_argument('-r', '--period_repeats', metavar='PERIOD_REPEATS', type=int,
+                            help="Period repeats to show")
 
     group = arg_parser.add_mutually_exclusive_group()
 
@@ -1531,6 +1586,11 @@ if __name__ == "__main__":
     else:
         spatial_method = "none"
 
+    if cml_args.period_repeats is None:
+        period_repeats = 1
+    else:
+        period_repeats = int(cml_args.period_repeats)
+
     db_dict = parseDBArg(cml_args.db_connection_string)
     radec = cml_args.radec
 
@@ -1540,13 +1600,19 @@ if __name__ == "__main__":
     else:
         target_ra, target_dec = parseRaDec(radec)
 
-    bins_per_day = cml_args.bins_per_jd
+    bins_per_day = 100
 
-    if bins_per_day is None:
+    if cml_args.bins_per_jd is None and cml_args.period_jd is None:
         bins_per_day = 100
+    elif cml_args.bins_per_jd is not None and cml_args.period_jd is None:
+        bins_per_day = cml_args.bins_per_jd
+    elif cml_args.bins_per_jd is None and cml_args.period_jd is not None:
+        bins_per_day = 100  / cml_args.period_jd
+    elif cml_args.bins_per_jd is not None and cml_args.period_jd is not None:
+        bins_per_day = cml_args.bins_per_jd  / cml_args.period_jd
 
     cadence_sec = (24 * 60 * 60) / bins_per_day
-    print(f"Running with a bin length of {cadence_sec} seconds, or {bins_per_day} bins/day")
+    print(f"Running with a bin length of {cadence_sec:.1f} seconds, or {bins_per_day:.1f} bins/day")
 
     with psycopg.connect(
             host=db_dict['host'],
@@ -1560,12 +1626,12 @@ if __name__ == "__main__":
             ra_star_deg=target_ra,
             dec_star_deg=target_dec,
             search_radius_deg=0.1,
-            jd_start=2461051.3,
+            jd_start=2461051.9,
             jd_end=2461134.7,
             ang_tol_deg=0.2,
             min_cameras=3,
             cadence_sec=cadence_sec,
-            spatial_method = 'tps', period_jd=period_jd)
+            spatial_method = spatial_method, period_jd=period_jd, period_repeats = period_repeats)
 
         if lc is None:
             print("No light curve generated.")
