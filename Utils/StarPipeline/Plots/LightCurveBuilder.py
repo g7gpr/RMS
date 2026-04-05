@@ -5,6 +5,7 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 from scipy.interpolate import RegularGridInterpolator, Rbf
 from scipy.spatial import ConvexHull
+from collections import Counter
 import psycopg
 import json
 import matplotlib.pyplot as plt
@@ -430,6 +431,7 @@ def loadFramePhotometry(conn, frame_name):
         WHERE obs.frame_name = %s
           AND obs.mag IS NOT NULL
           AND obs.cat_mag IS NOT NULL
+          AND star_name <> ''
           AND obs.mag_err < 0.5e6
           and obs.mad > 0.1e6
           AND flags = 0;
@@ -443,11 +445,36 @@ def loadFramePhotometry(conn, frame_name):
     if not rows:
         return None
 
+    # Extract star names
+    star_name = np.array([r[4] for r in rows], dtype=str)
+
+
+    counts = Counter(star_name)
+    duplicated_star_names = {name for name, c in counts.items() if c > 1}
+
+    # Filter rows BEFORE building arrays
+    if len(duplicated_star_names):
+        print(f"Dropping {len(duplicated_star_names)} duplicated stars")
+        rows = [r for r in rows if r[4] not in duplicated_star_names]
+
+
     obs_mag = np.array([r[0] for r in rows], dtype=float) / 1e6
     cat_mag = np.array([r[1] for r in rows], dtype=float) / 1e6
     x       = np.array([r[2] for r in rows], dtype=float)
     y       = np.array([r[3] for r in rows], dtype=float)
     star_name = np.array([r[4] for r in rows], dtype=str)
+    star_name_set = set(star_name)
+    if len(star_name_set) != len(star_name):
+        print("Duplicate star names detected")
+        counts = Counter(star_name)
+        dupes = [name for name, c, in counts.items() if c>1]
+        print(f"Duplicate names:{dupes}")
+        for d in dupes:
+            idx = np.where(star_name == d)[0]
+            print(f"{d} appears at rows {idx.tolist()}")
+
+
+        pass
 
     return {
         'obs_mag': obs_mag,
@@ -471,9 +498,12 @@ def computeFrameOffset(frame_data):
 
 def buildTPSCorrectionMap(x, y, residuals_mag, smooth=0.1):
     """
-    Build a thin-plate spline correction model using SciPy Rbf.
+    Build a thin-plate spline correction model
     smooth: smoothing parameter (lambda)
     Returns an Rbf instance.
+
+    Work in magnitude (log) space because TPS models additive fields, and magnitude residuals
+    turn multiplicative flux errors into additive ones.
     """
     x = np.asarray(x, float)
     y = np.asarray(y, float)
