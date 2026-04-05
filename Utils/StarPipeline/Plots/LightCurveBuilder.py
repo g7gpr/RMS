@@ -1504,7 +1504,7 @@ def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_
 
     # always include the catalogue magnitude with at least 0.2 Mags to the end of the axis
 
-    y_top, y_bottom = min(y_top, cat_mag + 0.2), max(y_top, cat_mag - 0.2)
+    y_top, y_bottom = min(y_top, cat_mag - 0.2), max(y_top, cat_mag + 0.2)
 
     # Produce a positive margin
     margin = (y_bottom - y_top) * 0.01
