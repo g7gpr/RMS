@@ -454,7 +454,7 @@ def loadFramePhotometry(conn, frame_name):
 
     # Filter rows BEFORE building arrays
     if len(duplicated_star_names):
-        #print(f"Dropping {len(duplicated_star_names)} duplicated stars from {frame_name}")
+        print(f"Dropping {len(duplicated_star_names)} duplicated stars from {frame_name}")
         rows = [r for r in rows if r[4] not in duplicated_star_names]
 
 
@@ -647,6 +647,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
 
         if len(frame_data['cat_mag']) < 40:
             # Drop this frame, fewer than 40 matched stars
+            frame_cache[fname] = (0.0, None, 0.0)
             frame_drop_count += 1
             continue
 
