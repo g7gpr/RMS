@@ -586,146 +586,158 @@ def applyDetectionCorrections(conn, det, spatial_method):
     Apply frame-level and spatial (x,y) corrections to each detection.
 
     det: dict from loadDetections()
-    Returns a new dict with corrected 'mag'.
+    Returns a new dict with corrected 'mag' and 'frame_weight'.
     """
+
+    # --- Extract detection arrays ---
     frame_names = det['frame_name']
     x_det = det['x']
     y_det = det['y']
     mag_det = det['mag']
 
     unique_frames = np.unique(frame_names)
-    frame_cache = {}
 
+    # --- Storage ---
+    frame_cache = {}      # fname -> (frame_offset, spatial_model, weight)
+    bad_frames = set()    # frames to exclude entirely
+
+    # --- Progress tracking ---
     start_time = datetime.datetime.now(tz=datetime.timezone.utc)
     total = len(unique_frames)
     cache_hit = 0
     frame_drop_count = 0
 
+    # ============================================================
+    #  PASS 1: Build frame-level corrections and quality gates
+    # ============================================================
     for i, fname in enumerate(unique_frames, start=1):
 
+        # Progress logging
         if i % 500 == 0 or i == 10:
             now = datetime.datetime.now(tz=datetime.timezone.utc)
             elapsed_s = (now - start_time).total_seconds()
-
-            # Forecast total duration
             forecast_total_s = elapsed_s * total / i
             forecast_completion_time = start_time + datetime.timedelta(seconds=forecast_total_s)
-            cache_hit_pc = 100 * cache_hit / i
+            cache_hit_pc = 100 * cache_hit / i if spatial_method != 'none' else 0
             cache_hit_txt = f"Cache hit {cache_hit_pc:.1f}%" if spatial_method != 'none' else ""
-            print(f"[{i}/{total}] Forecast completion: {forecast_completion_time.isoformat().split('.')[0]} {cache_hit_txt} - dropped frame count {frame_drop_count}")
+            print(f"[{i}/{total}] Forecast completion: {forecast_completion_time.isoformat().split('.')[0]} "
+                  f"{cache_hit_txt} - dropped frame count {frame_drop_count}")
 
         version = 1
         cached_map = loadCachedSpatialMap(conn, fname, spatial_method, version)
 
-        # 1. Try cache first
+        # ------------------------------------------------------------
+        # 1. CACHE HIT PATH
+        # ------------------------------------------------------------
         if cached_map is not None:
-            #print(f"[cache hit] spatial map type {spatial_method} for frame {fname}")
             cache_hit += 1
             frame_data = loadFramePhotometry(conn, fname)
+
             if frame_data is None:
+                bad_frames.add(fname)
                 frame_cache[fname] = (0.0, None, 0.0)
                 continue
 
             if len(frame_data['cat_mag']) < 40:
-                # Drop this frame, fewer than 40 matched stars
                 frame_drop_count += 1
+                bad_frames.add(fname)
+                frame_cache[fname] = (0.0, None, 0.0)
                 continue
-            frame_offset = computeFrameOffset(frame_data) if frame_data else 0.0
+
+            frame_offset = computeFrameOffset(frame_data)
             frame_cache[fname] = (frame_offset, cached_map, 0.0)
             continue
 
-        if spatial_method != "none":
-            pass
-            #print(f"[cache miss] building spatial map type {spatial_method} for frame {fname}")
-
-        # 2. Otherwise compute
+        # ------------------------------------------------------------
+        # 2. CACHE MISS → COMPUTE SPATIAL MODEL
+        # ------------------------------------------------------------
         frame_data = loadFramePhotometry(conn, fname)
 
         if frame_data is None:
+            bad_frames.add(fname)
             frame_cache[fname] = (0.0, None, 0.0)
             continue
 
         if len(frame_data['cat_mag']) < 40:
-            # Drop this frame, fewer than 40 matched stars
-            frame_cache[fname] = (0.0, None, 0.0)
             frame_drop_count += 1
+            bad_frames.add(fname)
+            frame_cache[fname] = (0.0, None, 0.0)
             continue
 
+        # Compute frame offset and residuals
         frame_offset = computeFrameOffset(frame_data)
         residuals = frame_data['obs_mag'] - frame_data['cat_mag'] - frame_offset
 
+        # ------------------------------------------------------------
+        # Spatial method branches
+        # ------------------------------------------------------------
         if spatial_method == 'binned':
-
             spatial_map, grid_mag, xmid, ymid = buildSpatialCorrectionMap(
                 frame_data['x'], frame_data['y'], residuals)
 
-            # Save binned map
-            saveSpatialModel(conn, frame_name=fname, spatial_model=spatial_method, version=1, grid_mag=grid_mag, xmid=xmid, ymid=ymid)
+            saveSpatialModel(conn, frame_name=fname, spatial_model='binned',
+                             version=1, grid_mag=grid_mag, xmid=xmid, ymid=ymid)
+
             frame_cache[fname] = (frame_offset, spatial_map, 0.0)
 
         elif spatial_method == 'gaussian':
-
             gauss_model = fitGaussianSpatialModel(
                 frame_data['x'], frame_data['y'], residuals)
 
-            saveSpatialModel(conn, spatial_model="gaussian", frame_name=fname, version=1, params=gauss_model.to_params())
+            saveSpatialModel(conn, spatial_model='gaussian', frame_name=fname,
+                             version=1, params=gauss_model.to_params())
+
             frame_cache[fname] = (frame_offset, gauss_model, 0.0)
 
-
         elif spatial_method == 'tps':
-
-            # Build TPS model
-            smooth = 0.1  # or configurable
-
             tps_model = tryBuildTPS(frame_data['x'], frame_data['y'], residuals)
 
             if tps_model is None:
-                frame_cache[fname] = (frame_offset, None, 0, 0)
+                bad_frames.add(fname)
+                frame_cache[fname] = (frame_offset, None, 0.0)
                 continue
 
-
+            # Compute RMS for weighting
             try:
                 resid_after = residuals - tps_model(frame_data['x'], frame_data['y'])
                 rms_frame = float(np.sqrt(np.mean(resid_after ** 2)))
             except Exception:
-                rms_frame = 1.0  # fallback
+                rms_frame = 1.0
 
             n_points = len(residuals)
+            w_frame = n_points / (rms_frame * rms_frame) if rms_frame > 0 else 0.0
+            w_frame = float(min(w_frame, 1e6))  # clip
 
-            # Weight: many stars + low RMS = high weight
-
-            if rms_frame > 0:
-                w_frame = n_points / (rms_frame * rms_frame)
-            else:
-                w_frame = 0.0
-
-                # Clip extreme weights
-                w_frame = float(min(w_frame, 1e6))
-
-            # Save TPS model
             params = {
                 "x": frame_data['x'].tolist(),
                 "y": frame_data['y'].tolist(),
                 "residuals": residuals.tolist(),
-                "smooth": smooth
+                "smooth": 0.1
             }
 
-            saveSpatialModel(conn, spatial_model="tps", frame_name=fname, version=1, params=params, n_points=n_points,
+            saveSpatialModel(conn, spatial_model='tps', frame_name=fname, version=1,
+                             params=params, n_points=n_points,
                              rms_mag=rms_frame, median_resid=float(np.median(residuals)))
+
             frame_cache[fname] = (frame_offset, tps_model, w_frame)
 
-
         else:
+            # spatial_method == 'none'
+            frame_cache[fname] = (frame_offset, None, 0.0)
 
-            # This is the "do not apply a compensation branch - do nothing for now"
-            pass
-
+    # ============================================================
+    #  PASS 2: Apply corrections to each detection
+    # ============================================================
     mag_corr = np.empty_like(mag_det)
 
     for i in range(len(mag_det)):
         fname = frame_names[i]
-        frame_offset, spatial_map, w_frame = frame_cache.get(fname, (0.0, None, 0.0))
 
+        if fname in bad_frames:
+            mag_corr[i] = np.nan
+            continue
+
+        frame_offset, spatial_map, _ = frame_cache[fname]
 
         m = mag_det[i] - frame_offset
 
@@ -734,21 +746,31 @@ def applyDetectionCorrections(conn, det, spatial_method):
                 spatial_offset = 0.0
             else:
                 if spatial_method == 'tps':
-                    # SciPy Rbf: call as rbf(x, y)
                     spatial_offset = spatial_map(x_det[i], y_det[i])
                 else:
-                    # Binned or Gaussian: call as interpolator([[x, y]])[0]
                     spatial_offset = spatial_map([[x_det[i], y_det[i]]])[0]
 
             m -= spatial_offset
 
         mag_corr[i] = m
 
+    # ============================================================
+    #  PASS 3: Build frame weights for each detection
+    # ============================================================
+    frame_weight = np.array([
+        0.0 if f in bad_frames else frame_cache[f][2]
+        for f in frame_names
+    ])
+
+    # ============================================================
+    #  Return corrected detection dict
+    # ============================================================
     det_corr = dict(det)
     det_corr['mag'] = mag_corr
-    det_corr['frame_weight'] = np.array([frame_cache[f][2] for f in frame_names])
+    det_corr['frame_weight'] = frame_weight
 
     return det_corr
+
 
 
 # =========================
