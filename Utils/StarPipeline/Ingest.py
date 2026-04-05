@@ -189,6 +189,7 @@ from Utils.Flux import detectMoon
 from multiprocessing import Pool
 from collections import defaultdict
 from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges, claimNextJob, markJobDone, markJobError, resetStalledJobs
+from collections import Counter
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
@@ -1847,6 +1848,16 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
         results_list = cat.queryRaDec(arr_obs_ra, arr_obs_dec, n_brightest=1, radius_deg=radius_deg)
 
+        arr_star_name = np.array([r[0][0] for r in results_list], dtype=str)
+
+        counts = Counter(arr_star_name)
+        duplicated_star_names = {name for name, c in counts.items() if c > 1}
+
+        if len(duplicated_star_names):
+            log.info(f"Duplicated star names {duplicated_star_names}")
+        set_duplicated_star_indices = set(np.where(np.isin(arr_star_name, list(duplicated_star_names)))[0])
+
+
         arr_obs_az, arr_obs_alt = raDec2AltAz(arr_obs_ra, arr_obs_dec, arr_jd, obs_con.latitude, obs_con.longitude)
         frame_list = []
 
@@ -1874,10 +1885,14 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         for i, (query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum,
                 o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx) in enumerate(zip(
                 results_list,
-            arr_obs_ra,arr_obs_dec, arr_obs_mag,
-            arr_obs_x, arr_obs_y,arr_obs_intensity_sum,
-            arr_obs_az, arr_obs_alt,
-            arr_ampltd, arr_fwhm, arr_bg_lvl, arr_snr, arr_nsatpx)):
+                arr_obs_ra,arr_obs_dec, arr_obs_mag,
+                arr_obs_x, arr_obs_y,arr_obs_intensity_sum,
+                arr_obs_az, arr_obs_alt,
+                arr_ampltd, arr_fwhm, arr_bg_lvl, arr_snr, arr_nsatpx)):
+
+            if i in set_duplicated_star_indices:
+                log.info(f"Dropping duplicate star {query_results[0]} from frame {fits_file}")
+                continue
 
             if o_intens_sum <= 0:
                 log.info(
