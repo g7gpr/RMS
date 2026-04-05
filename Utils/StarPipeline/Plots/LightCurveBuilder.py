@@ -697,6 +697,75 @@ def applyDetectionCorrections(conn, det, spatial_method):
         # ------------------------------------------------------------
         # 4. Compute RMS for ALL spatial methods
         # ------------------------------------------------------------
+        if spatial_map is None:
+            # No spatial correction → RMS from raw residuals
+            resid_after = residuals
+        else:
+            if spatial_method == 'tps':
+                spatial_offset = spatial_map(frame_data['x'], frame_data['y'])
+            else:
+                spatial_offset = spatial_map(
+                    np.column_stack([frame_data['x'], frame_data['y']])
+                )
+
+            resid_after = residuals - spatial_offset
+
+        rms_frame = float(np.sqrt(np.mean(resid_after**2)))
+        n_points = len(residuals)
+
+        # Weight formula for ALL models
+        w_frame = n_points / (rms_frame * rms_frame) if rms_frame > 0 else 0.0
+        w_frame = float(min(w_frame, 1e6))
+
+        # Store in cache
+        frame_cache[fname] = (frame_offset, spatial_map, w_frame)
+
+    # ============================================================
+    #  PASS 2: Apply corrections to each detection
+    # ============================================================
+    mag_corr = np.empty_like(mag_det)
+
+    for i in range(len(mag_det)):
+        fname = frame_names[i]
+
+        if fname in bad_frames:
+            mag_corr[i] = np.nan
+            continue
+
+        frame_offset, spatial_map, _ = frame_cache[fname]
+
+        m = mag_det[i] - frame_offset
+
+        if spatial_map is not None:
+            if np.isnan(x_det[i]) or np.isnan(y_det[i]):
+                spatial_offset = 0.0
+            else:
+                if spatial_method == 'tps':
+                    spatial_offset = spatial_map(x_det[i], y_det[i])
+                else:
+                    spatial_offset = spatial_map([[x_det[i], y_det[i]]])[0]
+
+            m -= spatial_offset
+
+        mag_corr[i] = m
+
+    # ============================================================
+    #  PASS 3: Build frame weights for each detection
+    # ============================================================
+    frame_weight = np.array([
+        0.0 if f in bad_frames else frame_cache[f][2]
+        for f in frame_names
+    ])
+
+    # ============================================================
+    #  Return corrected detection dict
+    # ============================================================
+    det_corr = dict(det)
+    det_corr['mag'] = mag_corr
+    det_corr['frame_weight'] = frame_weight
+
+    return det_corr
+
 
 
 
@@ -897,11 +966,16 @@ def getPNGFilepath(base_name):
 # =========================
 
 def loadDetections(conn, jd_start=None, jd_end=None,
-                   prove=False, prove_n=100, star_name=None):
-    # Star-name lookup (fast path)
+                   prove=False, prove_n=100, star_name=None,
+                   max_pixel_scale=None):
+    """
+    Load detections with optional JD range, star name, and pixel-scale filtering.
+    """
+
     where = []
     params = []
 
+    # Star-name filter
     if star_name is not None:
         where.append("obs.star_name = %s")
         params.append(star_name)
@@ -910,11 +984,17 @@ def loadDetections(conn, jd_start=None, jd_end=None,
     where.append("abs(obs.mag_err) < 1e6")
     where.append("obs.flags = 0")
 
-    # Time filters
-    where.append("jd_mid > %s")
+    # Time filters (micro-JD)
+    where.append("f.jd_mid > %s")
     params.append(1e6 * jd_start)
-    where.append("jd_mid < %s")
+    where.append("f.jd_mid < %s")
     params.append(1e6 * jd_end)
+
+    # Pixel-scale filter
+    if max_pixel_scale is not None:
+        where.append("GREATEST(s.pixel_scale_h, s.pixel_scale_v) < %s")
+        params.append(max_pixel_scale)
+
     where_clause = "WHERE " + " AND ".join(where)
 
     sql = f"""
@@ -929,6 +1009,10 @@ def loadDetections(conn, jd_start=None, jd_end=None,
             obs.y,
             obs.mag_err
         FROM observation AS obs
+        JOIN frame AS f
+            ON obs.frame_name = f.frame_name
+        JOIN session AS s
+            ON f.session_name = s.session_name
         {where_clause}
     """
 
@@ -943,7 +1027,6 @@ def loadDetections(conn, jd_start=None, jd_end=None,
         return None
 
     # Extract columns
-
     ra_deg     = np.array([r[0] for r in rows], dtype=float) / 1e6
     dec_deg    = np.array([r[1] for r in rows], dtype=float) / 1e6
     mag        = np.array([r[2] for r in rows], dtype=float) / 1e6
@@ -953,7 +1036,6 @@ def loadDetections(conn, jd_start=None, jd_end=None,
     x          = np.array([r[6] for r in rows], dtype=float)
     y          = np.array([r[7] for r in rows], dtype=float)
 
-    # mag_err may be NULL → convert to nan
     mag_err = np.array([
         (r[8] / 1e6) if r[8] is not None else np.nan
         for r in rows
@@ -964,38 +1046,9 @@ def loadDetections(conn, jd_start=None, jd_end=None,
 
     # Compute JD mid from frame name
     jd = np.array([
-        datetime2JD(getMiddleTimeFF(f"FF_{fn}_000000",fps=25, dt_obj=True))  # returns JD in natural units
+        datetime2JD(getMiddleTimeFF(f"FF_{fn}_000000", fps=25, dt_obj=True))
         for fn in frame_name
     ], dtype=float)
-
-    # Optional time filtering this now gets done in SQL - but leaving here for safety
-    if jd_start is not None:
-        mask = jd >= jd_start
-        jd = jd[mask]
-        ra_deg = ra_deg[mask]
-        dec_deg = dec_deg[mask]
-        mag = mag[mask]
-        snr = snr[mask]
-        camera_id = camera_id[mask]
-        frame_name = frame_name[mask]
-        x = x[mask]
-        y = y[mask]
-        cat_mag = cat_mag[mask]
-        mag_err = mag_err[mask]
-
-    if jd_end is not None:
-        mask = jd <= jd_end
-        jd = jd[mask]
-        ra_deg = ra_deg[mask]
-        dec_deg = dec_deg[mask]
-        mag = mag[mask]
-        snr = snr[mask]
-        camera_id = camera_id[mask]
-        frame_name = frame_name[mask]
-        x = x[mask]
-        y = y[mask]
-        cat_mag = cat_mag[mask]
-        mag_err = mag_err[mask]
 
     # Optional proving mode
     if prove:
@@ -1019,7 +1072,6 @@ def loadDetections(conn, jd_start=None, jd_end=None,
             cat_mag_catalogue /= 1e6
 
             print(f"     lookupBrightestStar returned {star_name}, mag={cat_mag_catalogue:.3f}\n")
-            pass
 
     return {
         'ra_deg': ra_deg,
@@ -1032,7 +1084,8 @@ def loadDetections(conn, jd_start=None, jd_end=None,
         'x': x,
         'y': y,
         'cat_mag': cat_mag,
-        'mag_err': mag_err}
+        'mag_err': mag_err
+    }
 
 
 
@@ -1194,7 +1247,7 @@ def generateStarLightCurve(conn,
                            ang_tol_deg=0.05,
                            min_cameras=1,
                            cadence_sec=10.24,
-                           spatial_method=None, period_jd=None, period_repeats=1):
+                           spatial_method=None, period_jd=None, period_repeats=1, max_pixel_scale=None):
 
     star_name_from_db, mag_from_db = lookupBrightestStar(conn, ra_star_deg, dec_star_deg, radius_deg=0.05)
 
@@ -1202,7 +1255,7 @@ def generateStarLightCurve(conn,
     base_name = makeLightcurveFilename(ra_star_deg, dec_star_deg, jd_start, jd_end, star_name_from_db, spatial_method=spatial_method)
 
 
-    det = loadDetections(conn, jd_start=jd_start, jd_end=jd_end, star_name=star_name_from_db)
+    det = loadDetections(conn, jd_start=jd_start, jd_end=jd_end, star_name=star_name_from_db, max_pixel_scale=max_pixel_scale)
 
     if det is None:
         return None
@@ -1623,6 +1676,8 @@ if __name__ == "__main__":
 
 
 
+
+
     ###
 
     # Parse the command line arguments
@@ -1710,7 +1765,7 @@ if __name__ == "__main__":
             ang_tol_deg=0.2,
             min_cameras=3,
             cadence_sec=cadence_sec,
-            spatial_method = spatial_method, period_jd=period_jd, period_repeats = period_repeats)
+            spatial_method = spatial_method, period_jd=period_jd, period_repeats = period_repeats, max_pixel_scale=None)
 
         if lc is None:
             print("No light curve generated.")
