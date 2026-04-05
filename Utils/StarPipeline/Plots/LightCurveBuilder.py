@@ -623,7 +623,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
             cache_hit += 1
             frame_data = loadFramePhotometry(conn, fname)
             if frame_data is None:
-                frame_cache[fname] = (0.0, None)
+                frame_cache[fname] = (0.0, None, 0.0)
                 continue
 
             if len(frame_data['cat_mag']) < 40:
@@ -631,7 +631,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
                 frame_drop_count += 1
                 continue
             frame_offset = computeFrameOffset(frame_data) if frame_data else 0.0
-            frame_cache[fname] = (frame_offset, cached_map)
+            frame_cache[fname] = (frame_offset, cached_map, 0.0)
             continue
 
         if spatial_method != "none":
@@ -642,7 +642,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
         frame_data = loadFramePhotometry(conn, fname)
 
         if frame_data is None:
-            frame_cache[fname] = (0.0, None)
+            frame_cache[fname] = (0.0, None, 0.0)
             continue
 
         if len(frame_data['cat_mag']) < 40:
@@ -660,7 +660,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
 
             # Save binned map
             saveSpatialModel(conn, frame_name=fname, spatial_model=spatial_method, version=1, grid_mag=grid_mag, xmid=xmid, ymid=ymid)
-            frame_cache[fname] = (frame_offset, spatial_map)
+            frame_cache[fname] = (frame_offset, spatial_map, 0.0)
 
         elif spatial_method == 'gaussian':
 
@@ -668,7 +668,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
                 frame_data['x'], frame_data['y'], residuals)
 
             saveSpatialModel(conn, spatial_model="gaussian", frame_name=fname, version=1, params=gauss_model.to_params())
-            frame_cache[fname] = (frame_offset, gauss_model)
+            frame_cache[fname] = (frame_offset, gauss_model, 0.0)
 
 
         elif spatial_method == 'tps':
