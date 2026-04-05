@@ -12,17 +12,15 @@ import matplotlib.pyplot as plt
 import math
 import os
 import argparse
+from urllib.parse import urlparse
 
 BIN_BY_CADENCE = True
 CHARTS_DIR = os.path.expanduser("~/RMS_data/Plots")
 os.makedirs(CHARTS_DIR, exist_ok=True)
 
-# =========================
-# Frame-level + spatial corrections
-# =========================
-
 
 import numpy as np
+
 from RMS.Formats.FFfile import getMiddleTimeFF
 from RMS.Astrometry.Conversions import datetime2JD
 
@@ -1504,6 +1502,10 @@ def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_
 
     y_top, y_bottom = min(arr_mag_bins), max(arr_mag_bins)
 
+    # always include the catlogue magnitude with at least 0.2 Mags to the end of the axis
+
+    y_top, y_bottom = min(y_top, cat_mag + 0.2), max(y_top, cat_mag - 0.2)
+
     # Produce a positive margin
     margin = (y_bottom - y_top) * 0.01
 
@@ -1557,7 +1559,7 @@ def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_
 
     return
 
-from urllib.parse import urlparse
+
 
 def parseDBArg(db_arg):
     """
@@ -1659,6 +1661,12 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('-b', '--bins_per_jd', metavar='BINS_PER_JD', type=int,
                             help="Number of bins of intensity in each julian day, default 100")
+
+    arg_parser.add_argument('-p', '--period_jd', metavar='PERIOD_JD', type=float,
+                            help="Period length wrapping")
+
+    arg_parser.add_argument('--max_pixel_scale', metavar='MAX_PIXEL_SCALE', type=float,
+                            help="Maximum pixel scale in microdegrees per pixel. \n A 4mm lens has as scale of around 70000, a 6mm lens around 42000, a 15mm lens around 16000, and a 25mm lens around 10000")
 
     arg_parser.add_argument('-p', '--period_jd', metavar='PERIOD_JD', type=float,
                             help="Period length wrapping")
@@ -1765,7 +1773,7 @@ if __name__ == "__main__":
             ang_tol_deg=0.2,
             min_cameras=3,
             cadence_sec=cadence_sec,
-            spatial_method = spatial_method, period_jd=period_jd, period_repeats = period_repeats, max_pixel_scale=None)
+            spatial_method = spatial_method, period_jd=period_jd, period_repeats = period_repeats, max_pixel_scale=cml_args.max_pixel_scale)
 
         if lc is None:
             print("No light curve generated.")
