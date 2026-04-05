@@ -669,7 +669,11 @@ def applyDetectionCorrections(conn, det, spatial_method):
                                  version=1, params=spatial_map.to_params())
 
             elif spatial_method == 'tps':
-                spatial_map = tryBuildTPS(frame_data['x'], frame_data['y'], residuals)
+                # --- IMPORTANT: increase smoothing to avoid overfitting ---
+                spatial_map = tryBuildTPS(
+                    frame_data['x'], frame_data['y'], residuals,
+                    smooth=1.0   # was 0.1 → too little regularisation
+                )
 
                 if spatial_map is None:
                     bad_frames.add(fname)
@@ -680,10 +684,9 @@ def applyDetectionCorrections(conn, det, spatial_method):
                     "x": frame_data['x'].tolist(),
                     "y": frame_data['y'].tolist(),
                     "residuals": residuals.tolist(),
-                    "smooth": 0.1
+                    "smooth": 1.0
                 }
 
-                # Save TPS metadata
                 saveSpatialModel(conn, spatial_model='tps', frame_name=fname, version=1,
                                  params=params, n_points=len(residuals),
                                  rms_mag=float(np.sqrt(np.mean(residuals**2))),
@@ -696,7 +699,6 @@ def applyDetectionCorrections(conn, det, spatial_method):
         # 4. Compute RMS for ALL spatial methods
         # ------------------------------------------------------------
         if spatial_map is None:
-            # No spatial correction → RMS from raw residuals
             resid_after = residuals
         else:
             if spatial_method == 'tps':
@@ -711,9 +713,22 @@ def applyDetectionCorrections(conn, det, spatial_method):
         rms_frame = float(np.sqrt(np.mean(resid_after**2)))
         n_points = len(residuals)
 
-        # Weight formula for ALL models
-        w_frame = n_points / (rms_frame * rms_frame) if rms_frame > 0 else 0.0
-        w_frame = float(min(w_frame, 1e6))
+        # ------------------------------------------------------------
+        # 5. Sanity checks: reject pathological frames
+        # ------------------------------------------------------------
+        if rms_frame < 1e-3:
+            # TPS overfit or broken model
+            print(f"Rejecting frame {fname}: RMS too small ({rms_frame})")
+            bad_frames.add(fname)
+            frame_cache[fname] = (frame_offset, None, 0.0)
+            continue
+
+        # ------------------------------------------------------------
+        # 6. RMS floor + weight clipping
+        # ------------------------------------------------------------
+        rms_frame = max(rms_frame, 0.03)   # floor to prevent overfitting
+        w_frame = n_points / (rms_frame * rms_frame)
+        w_frame = float(min(w_frame, 500))  # clip to prevent domination
 
         # Store in cache
         frame_cache[fname] = (frame_offset, spatial_map, w_frame)
@@ -763,6 +778,7 @@ def applyDetectionCorrections(conn, det, spatial_method):
     det_corr['frame_weight'] = frame_weight
 
     return det_corr
+
 
 
 
@@ -1254,6 +1270,11 @@ def generateStarLightCurve(conn,
 
 
     det = loadDetections(conn, jd_start=jd_start, jd_end=jd_end, star_name=star_name_from_db, max_pixel_scale=max_pixel_scale)
+
+    print("mag_err stats:",
+          np.nanmin(det['mag_err']),
+          np.nanmax(det['mag_err']),
+          np.nanmean(det['mag_err']))
 
     if det is None:
         return None
