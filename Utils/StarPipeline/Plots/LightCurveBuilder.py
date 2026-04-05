@@ -424,7 +424,8 @@ def loadFramePhotometry(conn, frame_name):
             obs.mag      AS obs_mag,
             obs.cat_mag  AS cat_mag,
             obs.x,
-            obs.y
+            obs.y,
+            obs.star_name
         FROM observation AS obs
         WHERE obs.frame_name = %s
           AND obs.mag IS NOT NULL
@@ -446,12 +447,14 @@ def loadFramePhotometry(conn, frame_name):
     cat_mag = np.array([r[1] for r in rows], dtype=float) / 1e6
     x       = np.array([r[2] for r in rows], dtype=float)
     y       = np.array([r[3] for r in rows], dtype=float)
+    star_name = np.array([r[4] for r in rows], dtype=str)
 
     return {
         'obs_mag': obs_mag,
         'cat_mag': cat_mag,
         'x': x,
-        'y': y
+        'y': y,
+        'star_name': star_name
     }
 
 
@@ -589,7 +592,11 @@ def applyDetectionCorrections(conn, det, spatial_method):
             #print(f"[cache hit] spatial map type {spatial_method} for frame {fname}")
             cache_hit += 1
             frame_data = loadFramePhotometry(conn, fname)
-            if len(frame_data) < 40:
+            if frame_data is None:
+                frame_cache[fname] = (0.0, None)
+                continue
+
+            if len(frame_data['cat_mag']) < 40:
                 # Drop this frame, fewer than 40 matched stars
                 frame_drop_count += 1
                 continue
@@ -603,8 +610,14 @@ def applyDetectionCorrections(conn, det, spatial_method):
 
         # 2. Otherwise compute
         frame_data = loadFramePhotometry(conn, fname)
+
         if frame_data is None:
             frame_cache[fname] = (0.0, None)
+            continue
+
+        if len(frame_data['cat_mag']) < 40:
+            # Drop this frame, fewer than 40 matched stars
+            frame_drop_count += 1
             continue
 
         frame_offset = computeFrameOffset(frame_data)
