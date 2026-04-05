@@ -1502,7 +1502,7 @@ def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_
 
     y_top, y_bottom = min(arr_mag_bins), max(arr_mag_bins)
 
-    # always include the catlogue magnitude with at least 0.2 Mags to the end of the axis
+    # always include the catalogue magnitude with at least 0.2 Mags to the end of the axis
 
     y_top, y_bottom = min(y_top, cat_mag + 0.2), max(y_top, cat_mag - 0.2)
 
@@ -1667,9 +1667,6 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('--max_pixel_scale', metavar='MAX_PIXEL_SCALE', type=float,
                             help="Maximum pixel scale in microdegrees per pixel. \n A 4mm lens has as scale of around 70000, a 6mm lens around 42000, a 15mm lens around 16000, and a 25mm lens around 10000")
-
-    arg_parser.add_argument('-p', '--period_jd', metavar='PERIOD_JD', type=float,
-                            help="Period length wrapping")
 
     arg_parser.add_argument('-r', '--period_repeats', metavar='PERIOD_REPEATS', type=int,
                             help="Period repeats to show")
