@@ -1867,7 +1867,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             if res is not None:
                 cat_mag_list.append(res[0][3])
             else:
-                cat_mag_list.append(obs_mag)
+                cat_mag_list.append("None")
 
 
         arr_cat_mag = np.array(cat_mag_list)

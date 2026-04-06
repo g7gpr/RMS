@@ -432,6 +432,26 @@ def resetStalledJobs(conn):
     conn.commit()
 
 
+def createRejectedFrameTable(conn):
+    sql = """
+            CREATE TABLE IF NOT EXISTS rejected_frame (
+    frame_name      TEXT PRIMARY KEY,
+    station_name    TEXT,
+    timestamp       TIMESTAMPTZ,
+    reason          TEXT,
+    tps_error       TEXT,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+    CREATE INDEX IF NOT EXISTS idx_rejected_frame_name
+    ON rejected_frame(frame_name);
+
+
+    
+
+          """
+    with conn.cursor() as cur:
+        cur.execute(sql)
+    conn.commit()
 
 
 def createAllTables(conn):
@@ -443,6 +463,7 @@ def createAllTables(conn):
     createCalstarFilesTable(conn)
     createSpatialModelTable(conn)
     createIngestWorkTable(conn)
+    createRejectedFrameTable(conn)
 
 
 def createAllIndexes(conn):

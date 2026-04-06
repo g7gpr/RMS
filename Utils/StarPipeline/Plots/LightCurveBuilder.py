@@ -1,393 +1,24 @@
 import datetime
-from tkinter.constants import NONE
-
+import argparse
+import psycopg
+import os
 import numpy as np
-from sklearn.cluster import DBSCAN
-from scipy.interpolate import RegularGridInterpolator, Rbf
+import matplotlib.pyplot as plt
+import warnings
+import io
+import contextlib
+
+from scipy.interpolate import SmoothBivariateSpline
+from pathlib import Path
 from scipy.spatial import ConvexHull
 from collections import Counter
-import psycopg
-import json
-import matplotlib.pyplot as plt
-import math
-import os
-import argparse
 from urllib.parse import urlparse
 
-BIN_BY_CADENCE = True
-CHARTS_DIR = os.path.expanduser("~/RMS_data/Plots")
-os.makedirs(CHARTS_DIR, exist_ok=True)
 
 
-import numpy as np
 
-from RMS.Formats.FFfile import getMiddleTimeFF
-from RMS.Astrometry.Conversions import datetime2JD
 
-
-class GaussianSpatialModel:
-    """
-    2D anisotropic Gaussian spatial correction model.
-
-    delta_mag(x, y) = offset + A * exp(-0.5 * Q)
-
-    where Q is the Mahalanobis distance squared:
-
-        Q = (1 / (1 - rho^2)) * [
-                (dx/sx)^2 + (dy/sy)^2 - 2*rho*(dx/sx)*(dy/sy)
-            ]
-
-        dx = x - x0
-        dy = y - y0
-    """
-
-    def __init__(self, x0, y0, amp, sigma_x, sigma_y, rho=0.0, offset=0.0):
-        self.x0 = float(x0)
-        self.y0 = float(y0)
-        self.amp = float(amp)
-        self.sigma_x = float(sigma_x)
-        self.sigma_y = float(sigma_y)
-        self.rho = float(rho)
-        self.offset = float(offset)
-
-    def __call__(self, xy):
-        xy = np.asarray(xy, dtype=float)
-
-        # Accept [x, y] or [[x, y], ...]
-        if xy.ndim == 1:
-            xy = xy[None, :]
-
-        x = xy[:, 0]
-        y = xy[:, 1]
-
-        dx = x - self.x0
-        dy = y - self.y0
-
-        sx = self.sigma_x
-        sy = self.sigma_y
-        rho = self.rho
-
-        # Avoid degenerate sigmas
-        if sx <= 0 or sy <= 0:
-            return np.full_like(x, self.offset)
-
-        denom = 1.0 - rho * rho
-        if denom <= 0:
-            rho = 0.0
-            denom = 1.0
-
-        q = (
-            (dx / sx)**2 +
-            (dy / sy)**2 -
-            2.0 * rho * (dx / sx) * (dy / sy)
-        ) / denom
-
-        return self.offset + self.amp * np.exp(-0.5 * q)
-
-    def to_params(self):
-        return {
-            "x0": self.x0,
-            "y0": self.y0,
-            "amp": self.amp,
-            "sigma_x": self.sigma_x,
-            "sigma_y": self.sigma_y,
-            "rho": self.rho,
-            "offset": self.offset,
-        }
-
-    @classmethod
-    def from_params(cls, params):
-        if params is None:
-            return None
-        return cls(
-            x0=params["x0"],
-            y0=params["y0"],
-            amp=params["amp"],
-            sigma_x=params["sigma_x"],
-            sigma_y=params["sigma_y"],
-            rho=params.get("rho", 0.0),
-            offset=params.get("offset", 0.0),
-        )
-
-def fitGaussianSpatialModel(x, y, residuals):
-    """
-    Fit a simple Gaussian model to spatial residuals.
-    This is a heuristic fit, not a full optimizer.
-    """
-
-    x = np.asarray(x)
-    y = np.asarray(y)
-    r = np.asarray(residuals)
-
-    # Center at weighted centroid
-    w = np.abs(r) + 1e-6
-    x0 = np.average(x, weights=w)
-    y0 = np.average(y, weights=w)
-
-    # Amplitude = peak residual
-    amp = np.median(r)
-
-    # Widths = fraction of detector range
-    sigma_x = 0.25 * (x.max() - x.min())
-    sigma_y = 0.25 * (y.max() - y.min())
-
-    # No correlation initially
-    rho = 0.0
-
-    # Offset = median residual
-    offset = np.median(r)
-
-    return GaussianSpatialModel(x0, y0, amp, sigma_x, sigma_y, rho, offset)
-
-def makeLightcurveFilename(ra_deg, dec_deg, jd_start, jd_end,
-                           star_name=None, spatial_method=None):
-
-    ra_str  = f"{ra_deg:.3f}"
-    dec_str = f"{dec_deg:.3f}"
-    jd0_str = f"{jd_start:.5f}"
-    jd1_str = f"{jd_end:.5f}"
-
-    if star_name:
-        safe_name = star_name.replace(" ", "_").replace("/", "_")
-        base = f"{safe_name}_jd{jd0_str}-{jd1_str}_ra{ra_str}_dec{dec_str}"
-    else:
-        base = f"lc_jd{jd0_str}-{jd1_str}_ra{ra_str}_dec{dec_str}"
-
-    if spatial_method:
-        base += f"_model_{spatial_method}"
-
-    return base
-
-
-def loadCachedSpatialMap(conn, frame_name, method='binned', version=1):
-    sql = """
-        SELECT grid_mag, xmid, ymid, params
-        FROM spatial_model
-        WHERE frame_name = %s AND model_type = %s AND version = %s;
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql, (frame_name, method, version))
-        row = cur.fetchone()
-
-    if not row:
-        return None
-
-    grid_mag, xmid, ymid, params = row
-
-    # -------------------------
-    # Binned method
-    # -------------------------
-    if method == 'binned':
-        if grid_mag is None or xmid is None or ymid is None:
-            return None
-
-        grid_mag = np.array(grid_mag)
-        xmid = np.array(xmid)
-        ymid = np.array(ymid)
-
-        interp = RegularGridInterpolator(
-            (xmid, ymid),
-            grid_mag,
-            bounds_error=False,
-            fill_value=0.0
-        )
-        return interp
-
-    # -------------------------
-    # Gaussian method
-    # -------------------------
-    if method == 'gaussian':
-        if params is None:
-            return None
-        return GaussianSpatialModel.from_params(params)
-
-    # -------------------------
-    # TPS method
-    # -------------------------
-    if method == 'tps':
-        if params is None:
-            return None
-
-        # Expecting params = { "x": [...], "y": [...], "residuals": [...], "smooth": value }
-        x = np.array(params.get("x", []))
-        y = np.array(params.get("y", []))
-        residuals = np.array(params.get("residuals", []))
-        smooth = params.get("smooth", 0.1)
-
-        if len(x) == 0 or len(y) == 0 or len(residuals) == 0:
-            return None
-
-        # Rebuild the TPS model
-        try:
-            tps_model = Rbf(x, y, residuals, function='thin_plate', smooth=smooth)
-            return tps_model
-        except Exception:
-            return None
-
-    # -------------------------
-    # Unknown method
-    # -------------------------
-    raise ValueError(f"Unknown spatial correction method: {method}")
-
-
-def loadSpatialModel(conn, frame_name, spatial_model=None, version=1):
-    """
-    Load a spatial correction model from the spatial_model table.
-
-    Returns
-    -------
-    - RegularGridInterpolator instance (for binned)
-    - GaussianSpatialModel instance (for gaussian)
-    - None (if no model found or model_type == 'none')
-    """
-
-    sql = """
-        SELECT grid_mag, xmid, ymid, params
-        FROM spatial_model
-        WHERE frame_name = %s AND model_type = %s AND version = %s;
-    """
-
-    with conn.cursor() as cur:
-        cur.execute(sql, (frame_name, spatial_model, version))
-        row = cur.fetchone()
-
-    if not row:
-        return None
-
-    grid_mag_json, xmid_json, ymid_json, params_json = row
-
-    # -------------------------
-    # Model type: NONE
-    # -------------------------
-    if spatial_model == "none":
-        return None
-
-    # -------------------------
-    # Model type: TPS
-    # -------------------------
-    if spatial_model == "tps":
-        if params_json is None:
-            return None
-
-        params = json.loads(params_json)
-        x = np.array(params["x"], float)
-        y = np.array(params["y"], float)
-        r = np.array(params["residuals"], float)
-        smooth = params.get("smooth", 0.1)
-
-        return Rbf(x, y, r, function='thin_plate', smooth=smooth)
-
-    # -------------------------
-    # Model type: BINNED
-    # -------------------------
-    if spatial_model == "binned":
-        if grid_mag_json is None or xmid_json is None or ymid_json is None:
-            return None
-
-        grid_mag = np.array(json.loads(grid_mag_json))
-        xmid     = np.array(json.loads(xmid_json))
-        ymid     = np.array(json.loads(ymid_json))
-
-        return RegularGridInterpolator(
-            (xmid, ymid),
-            grid_mag,
-            bounds_error=False,
-            fill_value=0.0
-        )
-
-    # -------------------------
-    # Model type: GAUSSIAN
-    # -------------------------
-    if spatial_model == "gaussian":
-        if params_json is None:
-            return None
-
-        params = json.loads(params_json)
-        return GaussianSpatialModel.from_params(params)
-
-    # -------------------------
-    # Future model types
-    # -------------------------
-    raise ValueError(f"Unknown spatial model type: {spatial_model}")
-
-
-def saveSpatialModel(
-    conn,
-    frame_name,
-    spatial_model=None,
-    version=1,
-    grid_mag=None,
-    xmid=None,
-    ymid=None,
-    params=None,
-    n_points=None,
-    rms_mag=None,
-    median_resid=None):
-    """
-    Persist a spatial correction model into the spatial_model table.
-
-    All model payload fields are optional. Only the fields relevant to the
-    model_type need to be provided.
-
-    Parameters
-    ----------
-    frame_name : str
-    model_type : str      # 'binned', 'gaussian', 'none', etc.
-    version    : int
-    grid_mag   : np.ndarray or None
-    xmid       : np.ndarray or None
-    ymid       : np.ndarray or None
-    params     : dict or None
-    n_points   : int or None
-    rms_mag    : float or None
-    median_resid : float or None
-    """
-
-    # Convert numpy arrays to JSON-serializable lists
-    grid_mag_json = json.dumps(grid_mag.tolist()) if grid_mag is not None else None
-    xmid_json     = json.dumps(xmid.tolist())     if xmid is not None else None
-    ymid_json     = json.dumps(ymid.tolist())     if ymid is not None else None
-    params_json   = json.dumps(params)            if params is not None else None
-
-    sql = """
-        INSERT INTO spatial_model
-            (frame_name, model_type, version,
-             grid_mag, xmid, ymid, params,
-             n_points, rms_mag, median_resid)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (frame_name, model_type, version) DO UPDATE
-        SET grid_mag     = EXCLUDED.grid_mag,
-            xmid         = EXCLUDED.xmid,
-            ymid         = EXCLUDED.ymid,
-            params       = EXCLUDED.params,
-            n_points     = EXCLUDED.n_points,
-            rms_mag      = EXCLUDED.rms_mag,
-            median_resid = EXCLUDED.median_resid,
-            created_at   = NOW();
-    """
-
-    with conn.cursor() as cur:
-        cur.execute(
-            sql,
-            (
-                frame_name,
-                spatial_model,
-                version,
-                grid_mag_json,
-                xmid_json,
-                ymid_json,
-                params_json,
-                n_points,
-                rms_mag,
-                median_resid
-            )
-        )
-
-    conn.commit()
-
-
-
-def lookupBrightestStar(conn, ra_deg, dec_deg, radius_deg=0.05):
+def lookupBrightestStar(conn, ra_deg, dec_deg, radius_deg=0.02):
     sql = """
         SELECT star_name, mag
         FROM star
@@ -408,20 +39,114 @@ def lookupBrightestStar(conn, ra_deg, dec_deg, radius_deg=0.05):
         row = cur.fetchone()
     return row if row else None
 
+def lookupCatalogueStar(conn, star_name):
+    """
+    Given a star name, return its catalogue RA, Dec (in degrees) and magnitude.
+    Returns None if the star is not found.
+    """
 
+    sql = """
+        SELECT ra, dec, mag
+        FROM star
+        WHERE star_name = %s
+        LIMIT 1;
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql, (star_name,))
+        row = cur.fetchone()
+
+    if row is None:
+        return None, None, None
+
+    r = row[0] / 1e6
+    d = row[1] / 1e6
+    m = row[2] / 1e6 if row[2] is not None else None
+
+    return r, d, m
+
+
+# ============================================================
+# Filename helpers
+# ============================================================
+
+def makeLightcurveFilename(ra_deg, dec_deg, jd_start, jd_end, star_name=None):
+    ra_str  = f"{ra_deg:.3f}"
+    dec_str = f"{dec_deg:.3f}"
+    jd0_str = f"{jd_start:.5f}"
+    jd1_str = f"{jd_end:.5f}"
+
+    if star_name:
+        safe = star_name.replace(" ", "_").replace("/", "_")
+        return f"{safe}_jd{jd0_str}-{jd1_str}_ra{ra_str}_dec{dec_str}"
+    else:
+        return f"lc_jd{jd0_str}-{jd1_str}_ra{ra_str}_dec{dec_str}"
+
+def binDetections(det, bin_seconds=10.24*10):
+    jd = det["jd"]
+    mag = det["mag"]
+    mag_err = det["mag_err"]
+    station = det["station"]
+
+    dt_days = bin_seconds / 86400.0
+    jd0 = jd.min()
+    bin_index = np.floor((jd - jd0) / dt_days).astype(int)
+
+    jd_bins = []
+    mag_bins = []
+    mag_err_bins = []
+    station_bins = []
+
+    for b in np.unique(bin_index):
+        idx = np.where(bin_index == b)[0]
+
+        if len(idx) == 0:
+            continue
+
+        unique_stations = np.unique(station[idx])
+        station_bins.append(np.asarray(unique_stations))
+
+        w = 1.0 / (mag_err[idx] ** 2)
+        w_sum = np.sum(w)
+
+        flux = 10 ** (-0.4 * mag[idx])
+        flux_mean = np.sum(w * flux) / w_sum
+        sigma_flux = np.sqrt(1.0 / w_sum)
+
+        mag_mean = -2.5 * np.log10(flux_mean)
+        mag_err_mean = (2.5 / np.log(10)) * (sigma_flux / flux_mean)
+
+        jd_bins.append(np.mean(jd[idx]))
+        mag_bins.append(mag_mean)
+        mag_err_bins.append(mag_err_mean)
+
+    return {
+        "jd": np.array(jd_bins),
+        "mag": np.array(mag_bins),
+        "mag_err": np.array(mag_err_bins),
+        "station": station_bins
+    }
+
+
+
+
+
+# ============================================================
+# DB loading
+# ============================================================
 
 def loadFramePhotometry(conn, frame_name):
     """
-    Load all observations for a given frame, including:
-      - observed magnitude (obs_mag)
-      - catalogue magnitude (cat_mag)
-      - detector coordinates (x, y)
-      - star_name (for diagnostics)
+    Load all observations for a given frame:
+      - obs_mag
+      - cat_mag
+      - x, y
+      - star_name
     """
     sql = """
         SELECT
-            obs.mag      AS obs_mag,
-            obs.cat_mag  AS cat_mag,
+            obs.mag,
+            obs.cat_mag,
             obs.x,
             obs.y,
             obs.star_name
@@ -429,11 +154,11 @@ def loadFramePhotometry(conn, frame_name):
         WHERE obs.frame_name = %s
           AND obs.mag IS NOT NULL
           AND obs.cat_mag IS NOT NULL
-          AND star_name <> ''
-          AND obs.mag_err < 0.5e6
-          and obs.mad > 0.1e6
-          AND flags = 0;
-
+          AND obs.star_name <> ''
+          AND obs.mag_err < 3e6
+          AND obs.mad > 0.1e6
+          AND obs.flags = 0
+          AND obs.intens_sum != 0;
     """
 
     with conn.cursor() as cur:
@@ -443,571 +168,55 @@ def loadFramePhotometry(conn, frame_name):
     if not rows:
         return None
 
-    # Extract star names
     star_name = np.array([r[4] for r in rows], dtype=str)
-
-
     counts = Counter(star_name)
-    duplicated_star_names = {name for name, c in counts.items() if c > 1}
+    dupes = {name for name, c in counts.items() if c > 1}
 
-    # Filter rows BEFORE building arrays
-    if len(duplicated_star_names):
-        #print(f"Dropping {len(duplicated_star_names)} duplicated stars from {frame_name}")
-        rows = [r for r in rows if r[4] not in duplicated_star_names]
+    if dupes:
+        rows = [r for r in rows if r[4] not in dupes]
 
-
-    obs_mag = np.array([r[0] for r in rows], dtype=float) / 1e6
-    cat_mag = np.array([r[1] for r in rows], dtype=float) / 1e6
-    x       = np.array([r[2] for r in rows], dtype=float)
-    y       = np.array([r[3] for r in rows], dtype=float)
-    star_name = np.array([r[4] for r in rows], dtype=str)
-    star_name_set = set(star_name)
-    if len(star_name_set) != len(star_name):
-        print("Duplicate star names detected")
-        counts = Counter(star_name)
-        dupes = [name for name, c, in counts.items() if c>1]
-        print(f"Duplicate names:{dupes}")
-        for d in dupes:
-            idx = np.where(star_name == d)[0]
-            print(f"{d} appears at rows {idx.tolist()}")
-
-
-        pass
+    obs_mag = np.array([r[0] for r in rows], float) / 1e6
+    cat_mag = np.array([r[1] for r in rows], float) / 1e6
+    x       = np.array([r[2] for r in rows], float)
+    y       = np.array([r[3] for r in rows], float)
 
     return {
-        'obs_mag': obs_mag,
-        'cat_mag': cat_mag,
-        'x': x,
-        'y': y,
-        'star_name': star_name
+        "obs_mag": obs_mag,
+        "cat_mag": cat_mag,
+        "x": x,
+        "y": y,
     }
 
 
-def computeFrameOffset(frame_data):
+def loadDetections(conn, jd_start, jd_end, star_name=None):
     """
-    Compute robust frame-level zero-point offset using median residual.
-    """
-    residuals = frame_data['obs_mag'] - frame_data['cat_mag']
-
-    if len(frame_data['obs_mag']) < 3:
-        return np.mean(residuals)
-
-    return np.median(residuals)
-
-def buildTPSCorrectionMap(x, y, residuals_mag, smooth=0.1):
-    """
-    Build a thin-plate spline correction model
-    smooth: smoothing parameter (lambda)
-    Returns an Rbf instance.
-
-    Work in magnitude (log) space because TPS models additive fields, and magnitude residuals
-    turn multiplicative flux errors into additive ones.
-    """
-    x = np.asarray(x, float)
-    y = np.asarray(y, float)
-    r = np.asarray(residuals_mag, float)
-
-    rbf = Rbf(x, y, r, function='thin_plate', smooth=smooth)
-    return rbf
-
-
-def buildSpatialCorrectionMap(x, y, residuals_mag, bins=40):
-    """
-    Build a 2D correction map delta mag(x,y) using mean flux ratios in bins.
-
-    Spatial corrections are derived from the mean flux ratio in each detector bin, converted back to magnitudes.
-
-    """
-
-    # Convert mag residuals to flux ratios
-    flux_ratio = 10**(-0.4 * residuals_mag)
-
-    # Bin the flux ratios
-    H, xedges, yedges = np.histogram2d(x, y, bins=bins, weights=flux_ratio)
-    N, _, _ = np.histogram2d(x, y, bins=bins)
-
-    # Mean flux ratio per bin (1.0 = no correction)
-    grid_ratio = np.where(N > 0, H / N, 1.0)
-
-    # Convert back to magnitude correction
-    grid_mag = -2.5 * np.log10(grid_ratio)
-
-    # Build interpolator
-    xmid = 0.5 * (xedges[:-1] + xedges[1:])
-    ymid = 0.5 * (yedges[:-1] + yedges[1:])
-
-    interp = RegularGridInterpolator(
-        (xmid, ymid),
-        grid_mag,
-        bounds_error=False,
-        fill_value=0.0
-    )
-
-    return interp, grid_mag, xmid, ymid
-
-def tryBuildTPS(x, y, residuals, smooth=0.1):
-
-    # this is very inefficient, but the best I can do for now.
-
-    mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(residuals)
-    x = x[mask]
-    y = y[mask]
-    residuals = residuals[mask]
-
-    if len(x) < 40:
-        return None
-
-    coords = np.column_stack((x, y))
-    if len(np.unique(coords, axis=0)) < len(coords):
-        return None
-
-    # 2. Collinearity check
-    if len(x) >= 3:
-        hull = ConvexHull(coords)
-        if hull.area < 1e-3:
-            return None
-
-    # 3. Residual structure check
-    if np.nanstd(residuals) < 1e-4:
-        return None
-
-    # 4. Try TPS fit
-    try:
-        return Rbf(x, y, residuals, function='thin_plate', smooth=smooth)
-    except np.linalg.LinAlgError:
-        return None
-
-
-def applyDetectionCorrections(conn, det, spatial_method):
-    """
-    Apply frame-level and spatial (x,y) corrections to each detection.
-
-    det: dict from loadDetections()
-    Returns a new dict with corrected 'mag' and 'frame_weight'.
-    """
-
-    # --- Extract detection arrays ---
-    frame_names = det['frame_name']
-    x_det = det['x']
-    y_det = det['y']
-    mag_det = det['mag']
-
-    unique_frames = np.unique(frame_names)
-
-    # --- Storage ---
-    frame_cache = {}      # fname -> (frame_offset, spatial_model, weight)
-    bad_frames = set()    # frames to exclude entirely
-
-    # --- Progress tracking ---
-    start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-    total = len(unique_frames)
-    cache_hit = 0
-    frame_drop_count = 0
-
-    # ============================================================
-    #  PASS 1: Build frame-level corrections and quality gates
-    # ============================================================
-    for i, fname in enumerate(unique_frames, start=1):
-
-        # Progress logging
-        if i % 500 == 0 or i == 10:
-            now = datetime.datetime.now(tz=datetime.timezone.utc)
-            elapsed_s = (now - start_time).total_seconds()
-            forecast_total_s = elapsed_s * total / i
-            forecast_completion_time = start_time + datetime.timedelta(seconds=forecast_total_s)
-            cache_hit_pc = 100 * cache_hit / i if spatial_method != 'none' else 0
-            cache_hit_txt = f"Cache hit {cache_hit_pc:.1f}%" if spatial_method != 'none' else ""
-            print(f"[{i}/{total}] Forecast completion: {forecast_completion_time.isoformat().split('.')[0]} "
-                  f"{cache_hit_txt} - dropped frame count {frame_drop_count}")
-
-        version = 1
-        cached_map = loadCachedSpatialMap(conn, fname, spatial_method, version)
-
-        # ------------------------------------------------------------
-        # 1. LOAD FRAME DATA
-        # ------------------------------------------------------------
-        frame_data = loadFramePhotometry(conn, fname)
-
-        if frame_data is None:
-            bad_frames.add(fname)
-            frame_cache[fname] = (0.0, None, 0.0)
-            continue
-
-        if len(frame_data['cat_mag']) < 40:
-            frame_drop_count += 1
-            bad_frames.add(fname)
-            frame_cache[fname] = (0.0, None, 0.0)
-            continue
-
-        # Compute frame offset and raw residuals
-        frame_offset = computeFrameOffset(frame_data)
-        residuals = frame_data['obs_mag'] - frame_data['cat_mag'] - frame_offset
-
-        # ------------------------------------------------------------
-        # 2. CACHE HIT → use cached spatial model
-        # ------------------------------------------------------------
-        if cached_map is not None:
-            cache_hit += 1
-            spatial_map = cached_map
-
-        else:
-            # ------------------------------------------------------------
-            # 3. CACHE MISS → build spatial model
-            # ------------------------------------------------------------
-            if spatial_method == 'binned':
-                spatial_map, grid_mag, xmid, ymid = buildSpatialCorrectionMap(
-                    frame_data['x'], frame_data['y'], residuals)
-
-                saveSpatialModel(conn, frame_name=fname, spatial_model='binned',
-                                 version=1, grid_mag=grid_mag, xmid=xmid, ymid=ymid)
-
-            elif spatial_method == 'gaussian':
-                spatial_map = fitGaussianSpatialModel(
-                    frame_data['x'], frame_data['y'], residuals)
-
-                saveSpatialModel(conn, spatial_model='gaussian', frame_name=fname,
-                                 version=1, params=spatial_map.to_params())
-
-            elif spatial_method == 'tps':
-                # --- IMPORTANT: increase smoothing to avoid overfitting ---
-                spatial_map = tryBuildTPS(
-                    frame_data['x'], frame_data['y'], residuals,
-                    smooth=1.0   # was 0.1 → too little regularisation
-                )
-
-                if spatial_map is None:
-                    bad_frames.add(fname)
-                    frame_cache[fname] = (frame_offset, None, 0.0)
-                    continue
-
-                params = {
-                    "x": frame_data['x'].tolist(),
-                    "y": frame_data['y'].tolist(),
-                    "residuals": residuals.tolist(),
-                    "smooth": 1.0
-                }
-
-                saveSpatialModel(conn, spatial_model='tps', frame_name=fname, version=1,
-                                 params=params, n_points=len(residuals),
-                                 rms_mag=float(np.sqrt(np.mean(residuals**2))),
-                                 median_resid=float(np.median(residuals)))
-
-            else:
-                spatial_map = None
-
-        # ------------------------------------------------------------
-        # 4. Compute RMS for ALL spatial methods
-        # ------------------------------------------------------------
-        if spatial_map is None:
-            resid_after = residuals
-        else:
-            if spatial_method == 'tps':
-                spatial_offset = spatial_map(frame_data['x'], frame_data['y'])
-            else:
-                spatial_offset = spatial_map(
-                    np.column_stack([frame_data['x'], frame_data['y']])
-                )
-
-            resid_after = residuals - spatial_offset
-
-        rms_frame = float(np.sqrt(np.mean(resid_after**2)))
-        n_points = len(residuals)
-
-        # ------------------------------------------------------------
-        # 5. Sanity checks: reject pathological frames
-        # ------------------------------------------------------------
-        if rms_frame < 1e-3:
-            # TPS overfit or broken model
-            print(f"Rejecting frame {fname}: RMS too small ({rms_frame})")
-            bad_frames.add(fname)
-            frame_cache[fname] = (frame_offset, None, 0.0)
-            continue
-
-        # ------------------------------------------------------------
-        # 6. RMS floor + weight clipping
-        # ------------------------------------------------------------
-        rms_frame = max(rms_frame, 0.03)   # floor to prevent overfitting
-        w_frame = n_points / (rms_frame * rms_frame)
-        w_frame = float(min(w_frame, 500))  # clip to prevent domination
-
-        # Store in cache
-        frame_cache[fname] = (frame_offset, spatial_map, w_frame)
-
-    # ============================================================
-    #  PASS 2: Apply corrections to each detection
-    # ============================================================
-    mag_corr = np.empty_like(mag_det)
-
-    for i in range(len(mag_det)):
-        fname = frame_names[i]
-
-        if fname in bad_frames:
-            mag_corr[i] = np.nan
-            continue
-
-        frame_offset, spatial_map, _ = frame_cache[fname]
-
-        m = mag_det[i] - frame_offset
-
-        if spatial_map is not None:
-            if np.isnan(x_det[i]) or np.isnan(y_det[i]):
-                spatial_offset = 0.0
-            else:
-                if spatial_method == 'tps':
-                    spatial_offset = spatial_map(x_det[i], y_det[i])
-                else:
-                    spatial_offset = spatial_map([[x_det[i], y_det[i]]])[0]
-
-            m -= spatial_offset
-
-        mag_corr[i] = m
-
-    # ============================================================
-    #  PASS 3: Build frame weights for each detection
-    # ============================================================
-    frame_weight = np.array([
-        0.0 if f in bad_frames else frame_cache[f][2]
-        for f in frame_names
-    ])
-
-    # ============================================================
-    #  Return corrected detection dict
-    # ============================================================
-    det_corr = dict(det)
-    det_corr['mag'] = mag_corr
-    det_corr['frame_weight'] = frame_weight
-
-    return det_corr
-
-
-
-
-
-# =========================
-# Geometry helpers
-# =========================
-
-def radecToUnit(ra_deg, dec_deg):
-    ra_rad = np.deg2rad(ra_deg)
-    dec_rad = np.deg2rad(dec_deg)
-    x = np.cos(dec_rad) * np.cos(ra_rad)
-    y = np.cos(dec_rad) * np.sin(ra_rad)
-    z = np.sin(dec_rad)
-    return x, y, z
-
-
-def chordEpsFromDeg(angle_deg):
-    angle_rad = np.deg2rad(angle_deg)
-    return np.sqrt(2 - 2 * np.cos(angle_rad))
-
-
-# =========================
-# Clustering
-# =========================
-
-def clusterDetectionsStar(ra_deg, dec_deg, ang_tol_deg=0.05):
-    x, y, z = radecToUnit(ra_deg, dec_deg)
-    coords = np.column_stack((x, y, z))
-
-    eps = chordEpsFromDeg(ang_tol_deg)
-    db = DBSCAN(eps=eps, min_samples=1, metric="euclidean")
-    return db.fit_predict(coords)
-
-
-def clusterDetectionsEvent(ra_deg, dec_deg, jd,
-                           t_window_min=1.0, ang_tol_deg=0.05):
-
-    x, y, z = radecToUnit(ra_deg, dec_deg)
-
-    dt_days = t_window_min / (24.0 * 60.0)
-    jd0 = jd.min()
-
-    t_scaled = (jd - jd0) / dt_days
-
-    eps_spatial = chordEpsFromDeg(ang_tol_deg)
-    t_scaled *= eps_spatial
-
-    coords = np.column_stack((x, y, z, t_scaled))
-
-    eps_4d = eps_spatial
-
-    db = DBSCAN(eps=eps_4d, min_samples=1, metric="euclidean")
-    return db.fit_predict(coords)
-
-
-# =========================
-# Photometric point building
-# =========================
-
-def buildPhotometricPoint(idx, ra_deg, dec_deg, jd,
-                          mag, snr, camera_id):
-
-    ra_c = ra_deg[idx]
-    dec_c = dec_deg[idx]
-    jd_c = jd[idx]
-    mag_c = mag[idx]
-    snr_c = snr[idx]
-    cams = camera_id[idx]
-
-    ra_rad = np.deg2rad(ra_c)
-    dec_rad = np.deg2rad(dec_c)
-
-    x = np.cos(dec_rad) * np.cos(ra_rad)
-    y = np.cos(dec_rad) * np.sin(ra_rad)
-    z = np.sin(dec_rad)
-
-    x_m = x.mean()
-    y_m = y.mean()
-    z_m = z.mean()
-
-    r = np.sqrt(x_m * x_m + y_m * y_m + z_m * z_m)
-    x_m, y_m, z_m = x_m / r, y_m / r, z_m / r
-
-    dec_mean = np.rad2deg(np.arcsin(z_m))
-    ra_mean = np.rad2deg(np.arctan2(y_m, x_m)) % 360.0
-
-    flux = 10**(-0.4 * mag_c)
-    w = snr_c**2
-    w_sum = w.sum()
-
-    flux_mean = np.sum(w * flux) / w_sum
-    mag_mean = -2.5 * np.log10(flux_mean)
-
-    sigma_flux = np.sqrt(1.0 / w_sum)
-    mag_err = (2.5 / np.log(10)) * (sigma_flux / flux_mean)
-
-    jd_mean = np.median(jd_c)
-
-    return {
-        'ra_deg': ra_mean,
-        'dec_deg': dec_mean,
-        'jd': jd_mean,
-        'mag': mag_mean,
-        'mag_err': mag_err,
-        'n_det': len(idx),
-        'n_cam': len(set(cams))
-    }
-
-
-def binByCadence(lc, cadence_sec=10.24):
-
-    dt_days = cadence_sec / 86400.0
-
-    jd = lc['jd']
-    jd0 = jd.min()
-
-    bins = np.floor((jd - jd0) / dt_days).astype(int)
-
-    out = {k: [] for k in lc}
-
-    for b in np.unique(bins):
-        idx = np.where(bins == b)[0]
-
-        w = 1.0 / lc['mag_err'][idx]**2
-        mag_mean = np.sum(w * lc['mag'][idx]) / np.sum(w)
-        mag_err  = np.sqrt(1.0 / np.sum(w))
-
-        out['jd'].append(np.mean(lc['jd'][idx]))
-        out['mag'].append(mag_mean)
-        out['mag_err'].append(mag_err)
-        out['ra_deg'].append(np.mean(lc['ra_deg'][idx]))
-        out['dec_deg'].append(np.mean(lc['dec_deg'][idx]))
-        out['n_det'].append(np.sum(lc['n_det'][idx]))
-        out['n_cam'].append(np.max(lc['n_cam'][idx]))
-
-    for k in out:
-        out[k] = np.array(out[k])
-
-    return out
-
-
-# =========================
-# High-level cluster wrapper
-# =========================
-
-def buildLightCurvePoints(det, cat_mag=None, ang_tol_deg=0.05, min_cameras=2, star_name=None, t_window_min=1.0, base_name=None, cadence_sec=10.24):
-
-    ra_bin, dec_bin, jd_bin = det['ra_deg'], det['dec_deg'], det['jd']
-    mag_bin, mag_err_bin, snr, camera_id = det['mag'], det['mag_err'], det['snr'], det['camera_id']
-
-    labels = clusterDetectionsStar5D(
-        ra_bin, dec_bin, jd_bin, mag_bin,
-        t_window_min=10.0,
-        ang_tol_deg=0.05,
-        mag_tol_mag=0.1)
-
-    n_cam_bin = np.ones_like(mag_bin, dtype=int)
-
-    points = []
-    unique_labels = np.unique(labels)
-
-    for lab in unique_labels:
-        if lab == -1:
-            continue
-
-        idx = np.where(labels == lab)[0]
-
-        print(
-            "Cluster", lab,
-            "JD range:", float(np.min(jd_bin[idx])), float(np.max(jd_bin[idx])),
-            "Cameras:", "N/A")
-
-        point = buildPhotometricPoint(
-            idx, ra_bin, dec_bin, jd_bin, mag_bin, mag_err_bin, n_cam_bin
-        )
-
-        if point['n_cam'] >= min_cameras:
-            points.append(point)
-
-    return points
-
-
-def getJSONFilepath(base_name):
-
-    return os.path.join(CHARTS_DIR, f"{base_name}.json")
-
-
-def getTXTFilepath(base_name):
-
-    return os.path.join(CHARTS_DIR, f"{base_name}.txt")
-
-def getPNGFilepath(base_name):
-
-    return os.path.join(CHARTS_DIR, f"{base_name}.png")
-
-# =========================
-# DB access
-# =========================
-
-def loadDetections(conn, jd_start=None, jd_end=None,
-                   prove=False, prove_n=100, star_name=None,
-                   max_pixel_scale=None):
-    """
-    Load detections with optional JD range, star name, and pixel-scale filtering.
+    Load raw detections for a star or region.
     """
 
     where = []
     params = []
 
-    # Star-name filter
     if star_name is not None:
         where.append("obs.star_name = %s")
         params.append(star_name)
 
-    # Quality filters
-    where.append("abs(obs.mag_err) < 1e6")
-    where.append("obs.flags = 0")
+    #where.append("abs(obs.mag_err) < 3e6")
+    #where.append("obs.flags = 0")
 
-    # Time filters (micro-JD)
-    where.append("f.jd_mid > %s")
+    where.append("obs.jd_mid > %s")
     params.append(1e6 * jd_start)
-    where.append("f.jd_mid < %s")
+    where.append("obs.jd_mid < %s")
     params.append(1e6 * jd_end)
+    where.append("obs.flags = 0")
+    where.append("obs.intens_sum != 0")
+    where.append("abs(obs.mag_err) < 3e6")
 
-    # Pixel-scale filter
-    if max_pixel_scale is not None:
-        where.append("GREATEST(s.pixel_scale_h, s.pixel_scale_v) < %s")
-        params.append(max_pixel_scale)
+    where.append("""
+        NOT EXISTS (
+            SELECT 1 FROM rejected_frame rf
+            WHERE rf.frame_name = obs.frame_name
+        )
+    """)
 
     where_clause = "WHERE " + " AND ".join(where)
 
@@ -1017,586 +226,612 @@ def loadDetections(conn, jd_start=None, jd_end=None,
             obs.dec,
             obs.mag,
             obs.snr,
-            obs.station_name,
             obs.frame_name,
             obs.x,
             obs.y,
-            obs.mag_err
+            obs.mag_err,
+            obs.jd_mid,
+            obs.cat_mag,
+            obs.intens_sum
         FROM observation AS obs
-        JOIN frame AS f
-            ON obs.frame_name = f.frame_name
-        JOIN session AS s
-            ON f.session_name = s.session_name
         {where_clause}
     """
 
     with conn.cursor() as cur:
-        print("Starting bulk SQL query")
         cur.execute(sql, params)
-        print("SQL query completed, fetching rows")
         rows = cur.fetchall()
-        print("Row fetch complete")
 
     if not rows:
         return None
 
-    # Extract columns
-    ra_deg     = np.array([r[0] for r in rows], dtype=float) / 1e6
-    dec_deg    = np.array([r[1] for r in rows], dtype=float) / 1e6
-    mag        = np.array([r[2] for r in rows], dtype=float) / 1e6
-    snr        = np.array([r[3] for r in rows], dtype=float) / 1e6
-    camera_id  = np.array([r[4] for r in rows], dtype=str)
-    frame_name = np.array([r[5] for r in rows], dtype=str)
-    x          = np.array([r[6] for r in rows], dtype=float)
-    y          = np.array([r[7] for r in rows], dtype=float)
-
-    mag_err = np.array([
-        (r[8] / 1e6) if r[8] is not None else np.nan
-        for r in rows
-    ], dtype=float)
-
-    # Reconstruct catalogue magnitude
-    cat_mag = mag - mag_err
-
-    # Compute JD mid from frame name
-    jd = np.array([
-        datetime2JD(getMiddleTimeFF(f"FF_{fn}_000000", fps=25, dt_obj=True))
-        for fn in frame_name
-    ], dtype=float)
-
-    # Optional proving mode
-    if prove:
-        print("\n=== PROVING lookupBrightestStar() ===")
-        for i in range(min(prove_n, len(ra_deg))):
-            ra = ra_deg[i]
-            dec = dec_deg[i]
-
-            row = lookupBrightestStar(conn, ra, dec, radius_deg=0.2)
-
-            print(f"[{i}] RA={ra:.6f}, DEC={dec:.6f}")
-            print(f"     observed mag = {mag[i]:.3f}")
-            print(f"     mag_err = {mag_err[i]:.3f}")
-            print(f"     reconstructed cat_mag = {cat_mag[i]:.3f}")
-
-            if row is None:
-                print("     lookupBrightestStar returned None\n")
-                continue
-
-            star_name, cat_mag_catalogue = row
-            cat_mag_catalogue /= 1e6
-
-            print(f"     lookupBrightestStar returned {star_name}, mag={cat_mag_catalogue:.3f}\n")
+    ra_deg      = np.array([r[0] for r in rows], float) / 1e6
+    dec_deg     = np.array([r[1] for r in rows], float) / 1e6
+    mag         = np.array([r[2] for r in rows], float) / 1e6
+    snr         = np.array([r[3] for r in rows], float) / 1e6
+    frame_name  = np.array([r[4] for r in rows], str)
+    x           = np.array([r[5] for r in rows], float)
+    y           = np.array([r[6] for r in rows], float)
+    mag_err     = np.array([(r[7] / 1e6) if r[7] is not None else np.nan for r in rows])
+    jd          = np.array([r[8] for r in rows], float) / 1e6
+    cat_mag     = np.array([(r[9] / 1e6) if r[9] is not None else np.nan for r in rows])
+    station     = np.array([fn.split("_")[0] for fn in frame_name], dtype=str)
 
     return {
-        'ra_deg': ra_deg,
-        'dec_deg': dec_deg,
-        'jd': jd,
-        'mag': mag,
-        'snr': snr,
-        'camera_id': camera_id,
-        'frame_name': frame_name,
-        'x': x,
-        'y': y,
-        'cat_mag': cat_mag,
-        'mag_err': mag_err
+        "ra_deg": ra_deg,
+        "dec_deg": dec_deg,
+        "jd": jd,
+        "mag": mag,
+        "snr": snr,
+        "frame_name": frame_name,
+        "x": x,
+        "y": y,
+        "cat_mag": cat_mag,
+        "mag_err": mag_err,
+        "station": station
     }
 
 
+# ============================================================
+# Frame offset + TPS smoothing
+# ============================================================
 
-def binNetworkDetections(det, bin_seconds=10.24, period_jd=None, period_repeats=1):
+def computeFrameOffset(frame_data):
+    residuals = frame_data["obs_mag"] - frame_data["cat_mag"]
+    if len(residuals) < 3:
+        return np.mean(residuals)
+    return np.median(residuals)
+
+
+def buildSplineWithDiagnostics(x, y, r, smooth):
+    stderr_buffer = io.StringIO()
+
+    with warnings.catch_warnings(record=True) as wlist, \
+         contextlib.redirect_stderr(stderr_buffer):
+
+        warnings.simplefilter("error", UserWarning)
+
+        try:
+            spline = SmoothBivariateSpline(x, y, r, s=smooth)
+        except UserWarning as uw:
+            # FITPACK message is in stderr
+            fitpack_text = stderr_buffer.getvalue().strip()
+            python_warning = str(uw)
+
+            full_msg = f"{fitpack_text}\n{python_warning}".strip()
+            return None, full_msg
+
+        except Exception as e:
+            return None, f"Exception: {e}"
+
+    # No warnings → good fit
+    return spline, None
+
+
+
+
+def tryBuildTPS(x, y, residuals, smooth=5.0):
     """
-    Bin network detections either in time (default) or in phase if period_jd is given.
-    period_jd: period in Julian days (float)
+    Build a TPS spline with strict quality gating.
+    Frames that produce FITPACK warnings or unstable fits return None.
     """
 
-    jd = det['jd']
-    ra_deg = det['ra_deg']
-    dec_deg = det['dec_deg']
-    mag = det['mag']
-    snr = det['snr']
-    camera_id = det['camera_id']
+    # -------------------------
+    # 1. Clean input
+    # -------------------------
+    x = np.asarray(x)
+    y = np.asarray(y)
+    r = np.asarray(residuals)
 
-    if jd.size == 0:
-        return
+    mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(r)
+    x, y, r = x[mask], y[mask], r[mask]
 
-    # Convert to arrays
-    jd = np.asarray(jd)
-    ra_deg = np.asarray(ra_deg)
-    dec_deg = np.asarray(dec_deg)
-    mag = np.asarray(mag)
-    snr = np.asarray(snr)
-    camera_id = np.asarray(camera_id)
+    # -------------------------
+    # 2. Basic geometric checks
+    # -------------------------
+    if len(x) < 40:
+        return None
 
-    # Reference epoch
-    jd0 = jd.min()
+    coords = np.column_stack((x, y))
+    if len(np.unique(coords, axis=0)) < len(coords):
+        return None
 
-    # --- TIME OR PHASE COORDINATE ---
-    if period_jd is not None:
-        # Phase in [0,1)
-        phase = ((jd - jd0) / period_jd) % 1.0
+    if len(x) >= 3:
+        hull = ConvexHull(coords)
+        if hull.area < 1e-3:
+            return None
 
-        phase_extended = phase + np.floor((jd - jd0) / period_jd)
+    # Residuals too flat → no meaningful spatial structure
+    if np.nanstd(r) < 1e-4:
+        return None
 
-        phase_extended = phase_extended % period_repeats
+    # -------------------------
+    # 3. Attempt spline fit with full warning capture
+    # -------------------------
+    stderr_buffer = io.StringIO()
 
-        time_coord = phase_extended
+    with warnings.catch_warnings(record=True) as wlist, \
+         contextlib.redirect_stderr(stderr_buffer):
 
-        # Bin width in phase units
-        bin_width_phase = bin_seconds / (period_jd * 86400.0)
-        bin_index = np.floor(phase_extended / bin_width_phase).astype(int)
+        warnings.simplefilter("always")               # record warnings
+        warnings.simplefilter("error", UserWarning)   # turn them into exceptions
 
-    else:
-        # Normal time binning
-        dt_days = bin_seconds / 86400.0
-        time_coord = jd
-        bin_index = np.floor((jd - jd0) / dt_days).astype(int)
+        try:
+            spline = SmoothBivariateSpline(x, y, r, s=smooth)
 
-    # --- OUTPUT ARRAYS ---
-    jd_bins = []
-    ra_bins = []
-    dec_bins = []
+        except UserWarning as uw:
+            # FITPACK diagnostic text (from Fortran stderr)
+            fitpack_text = stderr_buffer.getvalue().strip()
+
+            # Python warning text (usually just "ier=###")
+            python_warning = str(uw).strip()
+
+            # Combine both
+            full_msg = (fitpack_text + "\n" + python_warning).strip()
+
+            # print("TPS REJECTED:", full_msg)
+            return None
+
+        except Exception as e:
+            # print("TPS EXCEPTION:", e)
+            return None
+
+    # -------------------------
+    # 4. Return callable model
+    # -------------------------
+    def model(xq, yq, spline=spline):
+        return spline.ev(np.asarray(xq), np.asarray(yq))
+
+    return model
+
+def tryBuildTPSDummy():
+
+    def model(xq, yq):
+        return 0.0
+
+    return model
+
+
+def applyDetectionCorrections(conn, det, dummy_run=False):
+    """
+    Apply frame offset + TPS spatial correction.
+    """
+
+    if dummy_run:
+        # Fast path: no corrections at all
+        det_corr = dict(det)
+        det_corr["mag"] = det["mag"].copy()
+        return det_corr
+
+
+
+    frame_names = det["frame_name"]
+    x_det = det["x"]
+    y_det = det["y"]
+    mag_det = det["mag"]
+
+    unique_frames = np.unique(frame_names)
+
+    frame_offset_map = {}
+    spatial_model_map = {}
+
+    # Build TPS per frame
+    build_tps_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
+
+    reject_tps, attempted_tps, rejected_frames = 0, 0, []
+
+    frames_to_process = len(unique_frames)
+    for i, fname in enumerate(unique_frames):
+
+        if i % 200 == 0 and i > 0:
+            if len(rejected_frames):
+                insertRejectedFrames(conn, rejected_frames)
+                rejected_frames.clear()
+            time_elapsed = datetime.datetime.now(tz=datetime.timezone.utc) - build_tps_start_time
+            time_per_iteration_seconds = time_elapsed.total_seconds() / i
+            iterations_remaining = len(unique_frames) - i
+            completion_time = datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(seconds=time_per_iteration_seconds * iterations_remaining)
+            print(f"Forecast end time={completion_time.replace(microsecond=0).isoformat()} {100*i/frames_to_process:.1f}% frame rejection={100 * reject_tps / attempted_tps:.1f}%")
+
+        frame_data = loadFramePhotometry(conn, fname)
+
+
+        if frame_data is None or len(frame_data["cat_mag"]) < 40:
+            frame_offset_map[fname] = 0.0
+            spatial_model_map[fname] = None
+            rejected_frames.append(fname)
+
+            continue
+
+
+        frame_offset = computeFrameOffset(frame_data)
+        frame_offset_map[fname] = frame_offset
+
+        residuals = frame_data["obs_mag"] - frame_data["cat_mag"] - frame_offset
+        attempted_tps += 1
+
+        spatial_model_map[fname] = tryBuildTPS(frame_data["x"], frame_data["y"], residuals, smooth=0.1*(len(frame_data['obs_mag'])))
+        if spatial_model_map[fname] is None:
+            reject_tps += 1
+            rejected_frames.append(fname)
+
+    insertRejectedFrames(conn, rejected_frames)
+
+
+    # Apply corrections
+    mag_corr = np.empty_like(mag_det)
+
+    for i in range(len(mag_det)):
+        fname = frame_names[i]
+        m = mag_det[i] - frame_offset_map.get(fname, 0.0)
+
+        model = spatial_model_map.get(fname)
+        if model is not None and not (np.isnan(x_det[i]) or np.isnan(y_det[i])):
+            m -= model(x_det[i], y_det[i])
+
+        mag_corr[i] = m
+
+    det_corr = dict(det)
+    det_corr["mag"] = mag_corr
+
+
+    return det_corr
+
+def insertRejectedFrames(conn, rejected_frame_list):
+    sql = """
+        INSERT INTO rejected_frame (frame_name) VALUES (%s)
+        ON CONFLICT (frame_name) DO NOTHING;
+    """
+
+    with conn.cursor() as cur:
+        for rejected_frame in rejected_frame_list:
+            cur.execute(sql, (rejected_frame, ))
+    conn.commit()
+# ============================================================
+# Plotting
+# ============================================================
+def phaseBinFolded(folded, n_phase_bins=50):
+    phase = folded["phase"]
+    mag = folded["mag"]
+    mag_err = folded["mag_err"]
+    station = folded["station"]
+
+    # Define bin edges
+    bins = np.linspace(-1.0, 1.0, n_phase_bins + 1)
+    bin_index = np.digitize(phase, bins) - 1
+
+    phase_bins = []
     mag_bins = []
     mag_err_bins = []
-    n_det_bins = []
-    n_cam_bins = []
-    cam_sets = []
+    station_bins = []
 
-    # --- BINNING LOOP ---
-    for b in np.unique(bin_index):
+    for b in range(n_phase_bins):
         idx = np.where(bin_index == b)[0]
+        if len(idx) == 0:
+            continue
 
-        jd_bins.append(np.mean(time_coord[idx]))
-        ra_bins.append(np.mean(ra_deg[idx]))
-        dec_bins.append(np.mean(dec_deg[idx]))
+        stations_here = np.unique(np.concatenate([station[i] for i in idx]))
+        station_bins.append(stations_here)
 
-        # Convert magnitudes to flux
-        flux = 10**(-0.4 * mag[idx])
-
-        # Photometric weight (inverse variance)
-        w_phot = snr[idx] ** 2
-
-        # Frame-level TPS weight
-        w_frame = det['frame_weight'][idx]
-
-        # Combined weight
-        w = w_phot * w_frame
-
+        # Weighted mean in flux space
+        w = 1.0 # / (mag_err[idx] ** 2)
         w_sum = np.sum(w)
 
-        if np.any(snr[idx] == -1):
-            # Old-style detections without SNR
-            flux_mean = np.mean(flux)
-            sigma_flux = np.std(flux, ddof=1)
-        else:
-            # Weighted mean flux
-            flux_mean = np.sum(w * flux) / w_sum
-            sigma_flux = np.sqrt(1.0 / w_sum)
-
-        # Convert back to magnitude
+        flux = 10 ** (-0.4 * mag[idx])
+        flux_mean = np.mean(flux)
         mag_mean = -2.5 * np.log10(flux_mean)
-        mag_err = (2.5 / np.log(10)) * (sigma_flux / flux_mean)
 
+        # Representative phase = bin centre
+        phase_center = 0.5 * (bins[b] + bins[b+1])
+
+        phase_bins.append(phase_center)
         mag_bins.append(mag_mean)
-        mag_err_bins.append(mag_err)
-
-        cams = set(camera_id[idx])
-        cam_sets.append(cams)
-
-        n_det_bins.append(len(idx))
-        n_cam_bins.append(len(cams))
-
-    return (
-        np.array(jd_bins),
-        np.array(ra_bins),
-        np.array(dec_bins),
-        np.array(mag_bins),
-        np.array(mag_err_bins),
-        np.array(n_det_bins),
-        np.array(n_cam_bins),
-        cam_sets,
-        jd0
-    )
-
-
-
-def clusterDetectionsStar5D(ra_deg, dec_deg, jd, mag,
-                            t_window_min=10.0,
-                            ang_tol_deg=0.05,
-                            mag_tol_mag=0.1):
-
-    x, y, z = radecToUnit(ra_deg, dec_deg)
-
-    dt_days = t_window_min / (24.0 * 60.0)
-    jd0 = jd.min()
-    t_scaled = (jd - jd0) / dt_days
-
-    eps_spatial = chordEpsFromDeg(ang_tol_deg)
-
-    t_scaled *= eps_spatial
-
-    mag_center = np.median(mag)
-    mag_scaled = mag - mag_center
-
-    if mag_tol_mag <= 0:
-        raise ValueError("mag_tol_mag must be > 0")
-    mag_scaled *= (eps_spatial / mag_tol_mag)
-
-    coords = np.column_stack((x, y, z, t_scaled, mag_scaled))
-
-    eps_5d = eps_spatial
-    db = DBSCAN(eps=eps_5d, min_samples=1, metric="euclidean")
-    return db.fit_predict(coords)
-
-
-# =========================
-# High-level API
-# =========================
-
-def generateStarLightCurve(conn,
-                           ra_star_deg,
-                           dec_star_deg,
-                           search_radius_deg=0.05,
-                           jd_start=None,
-                           jd_end=None,
-                           ang_tol_deg=0.05,
-                           min_cameras=1,
-                           cadence_sec=10.24,
-                           spatial_method=None, period_jd=None, period_repeats=1, max_pixel_scale=None):
-
-    star_name_from_db, mag_from_db = lookupBrightestStar(conn, ra_star_deg, dec_star_deg, radius_deg=0.05)
-
-    print(f"Working on star {star_name_from_db}, RA: {ra_star_deg:.2f}, DEC: {dec_star_deg:.2f} MAG:{mag_from_db/1e6:.2f} Period:{period_jd:.4f}" )
-    base_name = makeLightcurveFilename(ra_star_deg, dec_star_deg, jd_start, jd_end, star_name_from_db, spatial_method=spatial_method)
-
-
-    det = loadDetections(conn, jd_start=jd_start, jd_end=jd_end, star_name=star_name_from_db, max_pixel_scale=max_pixel_scale)
-
-    print("mag_err stats:",
-          np.nanmin(det['mag_err']),
-          np.nanmax(det['mag_err']),
-          np.nanmean(det['mag_err']))
-
-    if det is None:
-        return None
-
-    if len(det['camera_id']) == 0:
-        print("No station made an observation")
-        return None
-
-    contributing_stations = sorted(set(det['camera_id']))
-    print(f"Unique stations: {contributing_stations}")
-
-    det = applyDetectionCorrections(conn, det, spatial_method=spatial_method)
-
-    if det is None:
-        return []
-
-    cat_mag = float(np.nanmedian(det['cat_mag']))
-    print(f"Detections {len(det['jd'])}")
-    binned_detections = binNetworkDetections(det, bin_seconds=cadence_sec, period_jd=period_jd, period_repeats=period_repeats)
-
-
-    arr_jd_bins, arr_ra_bins, arr_dec_bins, arr_mag_bins, arr_mag_err_bins, arr_n_det_bins, arr_n_cam_bins, cam_sets, jd0 = binned_detections
-    print(f"Bins {len(arr_jd_bins)}")
-
-    plotTimeBinnedLightCurve(binned_detections, n_stations=len(set(det['camera_id'])), n_observations=len(det['jd']), cat_mag=mag_from_db/1e6, bin_length=cadence_sec, star_name=star_name_from_db, base_name=base_name, sub_title=contributing_stations, period_jd=period_jd)
-
-    points = buildLightCurvePoints(det, cat_mag=cat_mag, ang_tol_deg=ang_tol_deg, min_cameras=min_cameras,
-                                   star_name=star_name_from_db, t_window_min=cadence_sec / 60.0, base_name=base_name, cadence_sec=cadence_sec)
-    if not points:
-        return None
-
-
-
-    lc = {
-        'jd':      np.array([p['jd'] for p in points]),
-        'mag':     np.array([p['mag'] for p in points]),
-        'mag_err': np.array([p['mag_err'] for p in points]),
-        'ra_deg':  np.array([p['ra_deg'] for p in points]),
-        'dec_deg': np.array([p['dec_deg'] for p in points]),
-        'n_det':   np.array([p['n_det'] for p in points]),
-        'n_cam':   np.array([p['n_cam'] for p in points]),
-
-    }
-
-
-
-    lc = binByCadence(lc, cadence_sec=cadence_sec)
-
-    order = np.argsort(lc['jd'])
-    for k in lc:
-        lc[k] = lc[k][order]
-
-    # Metadata
-    stations = set(det['camera_id'])
-    n_observations = len(det['jd'])
-
-    # Save JSON with metadata
-    saveLightCurveAsJson(
-        lc,
-        base_name,
-        stations=stations,
-        n_observations=n_observations,
-        ra_star_deg=ra_star_deg,
-        dec_star_deg=dec_star_deg,
-        jd_start=jd_start,
-        jd_end=jd_end,
-        cat_mag=cat_mag
-    )
-
-    saveLightCurveSidecarTxt(
-        star_name_from_db,
-        ra_star_deg,
-        dec_star_deg,
-        jd_start,
-        jd_end,
-        cat_mag,
-        n_observations,
-        stations,
-        lc,
-        base_name,
-        spatial_method=spatial_method)
-
-    return lc
-
-
-def saveLightCurveSidecarTxt(
-    star_name,
-    ra_star_deg,
-    dec_star_deg,
-    jd_start,
-    jd_end,
-    cat_mag,
-    n_observations,
-    stations,
-    lc,
-    base_name=None,
-    spatial_method=None):
-
-
-    n_stations = len(stations)
-    ra_mean = float(np.mean(lc['ra_deg']))
-    dec_mean = float(np.mean(lc['dec_deg']))
-
-    mag_med = float(np.nanmedian(lc['mag']))
-    mag_min = float(np.nanmin(lc['mag']))
-    mag_max = float(np.nanmax(lc['mag']))
-    mag_err_med = float(np.nanmedian(lc['mag_err']))
-
-    with open(getTXTFilepath(base_name), "w") as f:
-        f.write(f"Star: {star_name}\n")
-        f.write(f"Catalogue magnitude: {cat_mag:.3f}\n\n")
-
-        f.write(f"RA (target):  {ra_star_deg:.6f} deg\n")
-        f.write(f"Dec (target): {dec_star_deg:.6f} deg\n")
-        f.write(f"RA (mean):    {ra_mean:.6f} deg\n")
-        f.write(f"Dec (mean):   {dec_mean:.6f} deg\n\n")
-
-        f.write(f"JD start: {jd_start}\n")
-        f.write(f"JD end:   {jd_end}\n")
-        f.write(f"Detections: {n_observations}\n")
-        f.write(f"Stations:   {n_stations}\n")
-        f.write(f"Binned points: {len(lc['jd'])}\n\n")
-        f.write(f"Spatial method: {spatial_method}\n\n")
-
-        f.write(f"Mag median: {mag_med:.3f}\n")
-        f.write(f"Mag min:    {mag_min:.3f}\n")
-        f.write(f"Mag max:    {mag_max:.3f}\n")
-        f.write(f"Mag_err median: {mag_err_med:.3f}\n\n")
-
-        f.write(f"JSON: {os.path.basename(getJSONFilepath(base_name))}\n")
-        f.write(f"Plot: {os.path.basename(getPNGFilepath(base_name))}\n")
-
-        f.write("\n\nContributing stations:\n")
-        for s in sorted(stations):
-            f.write(f"  - {s}\n")
-        f.write("\n")
-
-    return getTXTFilepath(base_name)
-
-# =========================
-# JSON export
-# =========================
-
-def saveLightCurveAsJson(lc, base_name,
-                         stations=None,
-                         n_observations=None,
-                         ra_star_deg=None,
-                         dec_star_deg=None,
-                         jd_start=None,
-                         jd_end=None,
-                         cat_mag=None):
-
-
-    serializable = {k: v.tolist() for k, v in lc.items()}
-
-    if stations is not None:
-        serializable["stations"] = list(stations)
-
-    if n_observations is not None:
-        serializable["n_observations"] = int(n_observations)
-
-    if ra_star_deg is not None:
-        serializable["ra_star_deg"] = float(ra_star_deg)
-
-    if dec_star_deg is not None:
-        serializable["dec_star_deg"] = float(dec_star_deg)
-
-    if jd_start is not None:
-        serializable["jd_start"] = float(jd_start)
-
-    if jd_end is not None:
-        serializable["jd_end"] = float(jd_end)
-
-    if cat_mag is not None:
-        serializable["cat_mag"] = float(cat_mag)
-
-
-    with open(getJSONFilepath(base_name), 'w') as f:
-        json.dump(serializable, f, indent=2)
-
-
-def plotTimeBinnedLightCurve(binned_detections, n_stations, n_observations, cat_mag, bin_length=None, star_name=None, base_name=None, sub_title=None, period_jd=None):
-
-    arr_jd_bins, arr_ra_bins, arr_dec_bins, arr_mag_bins, arr_mag_err_bins, arr_n_det_bins, arr_n_cam_bins, cam_sets, jd_period_start = binned_detections
-
-
-    jd0 = arr_jd_bins[0]
-    jd_rel = arr_jd_bins - jd0
-
-    ra_mean  = np.mean(arr_ra_bins)
-    dec_mean = np.mean(arr_dec_bins)
-
-    fig, (ax_mag, ax_cam) = plt.subplots(
-        2, 1,
-        figsize=(12, 8),
-        sharex=True,
-        gridspec_kw={'height_ratios': [3, 1]}
-    )
-
-    n = 30
-    if sub_title is not None:
-        sub_title_as_list = [",".join(sub_title[i:i + n]) for i in range(0, len(sub_title), n)]
-        ax_cam.set_title("\n".join(sub_title_as_list), fontsize=6, alpha=0.7)
-
-
-
-    if period_jd is not None:
-        ax_mag.set_title(
-            f"{star_name} — Time-Binned Light Curve\n"
-            f"RA={ra_mean:.2f} deg, DEC={dec_mean:.2f} deg MAG={cat_mag:.2f} PERIOD={period_jd:.3f} days\n"
-            f"{n_stations} stations, {n_observations} detections, {len(binned_detections[0])} bins of length {bin_length:.1f} seconds")
-    else:
-        ax_mag.set_title(
-            f"{star_name} — Time-Binned Light Curve\n"
-            f"RA={ra_mean:.2f} deg, DEC={dec_mean:.2f} deg MAG={cat_mag:.2f}\n"
-            f"{n_stations} stations, {n_observations} detections, {len(binned_detections[0])} bins of length {bin_length:.1f} seconds")
-
-
-
-
-
-
-
-    for x, y, dy in zip(jd_rel, arr_mag_bins, arr_mag_err_bins):
-        ax_mag.fill_between(
-            [x - 0.0001, x + 0.0001],
-            y - dy,
-            y + dy,
-            color='lightblue',
-            alpha=0.35,
-            linewidth=0
-        )
-
-    ax_mag.scatter(jd_rel, arr_mag_bins, s=14, color='tab:blue', alpha=0.9)
-    ax_mag.set_ylabel("Magnitude")
-    ax_mag.invert_yaxis()
-    # --- Dynamic scaling: 75% of points in middle 3/5 of axis ---
-    q25, q75 = np.percentile(arr_mag_bins, [25, 75])
-    middle_span = q75 - q25
-
-    # Full axis span so that middle 75% occupies middle 3/5
-    full_span = (5 / 3) * middle_span
-
-
-    # Axis limits (remember: magnitude axis is inverted)
-
-    y_top, y_bottom = min(arr_mag_bins), max(arr_mag_bins)
-
-    # always include the catalogue magnitude with at least 0.2 Mags to the end of the axis
-
-    y_top, y_bottom = min(y_top, cat_mag - 0.2), max(y_top, cat_mag + 0.2)
-
-    # Produce a positive margin
-    margin = (y_bottom - y_top) * 0.01
-
-    # subtract from top, add to bottom
-    y_top -= margin
-    y_bottom += margin
-
-    ax_mag.set_ylim(y_bottom, y_top)
-
-    if cat_mag is not None:
-        ax_mag.axhline(
-            y=cat_mag,
-            color='grey',
-            linestyle=':',
-            linewidth=1.0,
-            alpha=0.6,
-            label=f"Catalogue mag {cat_mag:.3f}"
-        )
-
-    # --- Robust bar width calculation ---
-    if len(jd_rel) > 1:
-        # Compute all spacings
-        spacings = np.diff(jd_rel)
-
-        # Use median spacing for robustness
-        median_spacing = np.median(spacings)
-
-        # Scale to leave a small gap between bars
-        bar_width = median_spacing * 0.8
-
-        # Enforce reasonable bounds (in days)
-        bar_width = np.clip(bar_width, 0.0001, 0.1)
-    else:
-        bar_width = 0.001  # fallback for single-bin case
-
-    ax_cam.bar(jd_rel, arr_n_cam_bins, width=bar_width, color='tab:red', alpha=0.7)
-
-
-
-
-
-    ax_cam.set_ylabel("Stations")
-    if jd0 is None:
-        ax_cam.set_xlabel(f"Time since JD {jd0:.5f} (days)")
-    else:
-        ax_cam.set_xlabel(f"Period starting from jd {jd_period_start}")
-
-    fig.tight_layout()
-    #plt.show()
-    fig.savefig(getPNGFilepath(base_name), dpi=150)
-
-    return
-
-
-
-def parseDBArg(db_arg):
-    """
-    Convert a PostgreSQL URI into a dict suitable for psycopg.connect().
-    Password is intentionally omitted (use .pgpass).
-    """
-    parsed = urlparse(db_arg)
+        #mag_err_bins.append(mag_err_mean)
 
     return {
-        "host": parsed.hostname,
-        "port": parsed.port,
-        "user": parsed.username,
-        "dbname": parsed.path.lstrip("/"),
-        # password intentionally not included — .pgpass handles it
+        "phase": np.array(phase_bins),
+        "mag": np.array(mag_bins),
+        "mag_err": np.array(mag_err_bins),
+        "station": station_bins
     }
 
+def foldLightCurve(binned, raw_det, period_days):
+    # -------------------------
+    # Corrected (binned) data
+    # -------------------------
+    jd       = binned["jd"]
+    mag      = binned["mag"]
+    mag_err  = binned["mag_err"]
+    station  = binned["station"]
+
+    # -------------------------
+    # Raw (uncompensated) data
+    # -------------------------
+    raw_jd   = raw_det["jd"]
+    raw_mag  = raw_det["mag"]
+    raw_station = raw_det.get("station", None)
+
+    # -------------------------
+    # Compute phase for binned data
+    # -------------------------
+    phase = (((jd - jd.min()) / (period_days * 2)) % 1.0)
+    phase_sym = phase - 0.5
+    phase_2p = 2.0 * phase_sym
+
+    # -------------------------
+    # Compute phase for raw data
+    # -------------------------
+    raw_phase = (((raw_jd - jd.min()) / (period_days * 2)) % 1.0)
+    raw_phase_sym = raw_phase - 0.5
+    raw_phase_2p = 2.0 * raw_phase_sym
+
+    # -------------------------
+    # Return both folded datasets
+    # -------------------------
+    return {
+        # Corrected folded data
+        "phase": phase_2p,
+        "mag": mag,
+        "mag_err": mag_err,
+        "station": station,
+
+        # Raw folded data (for top panel)
+        "raw_phase": raw_phase_2p,
+        "raw_mag": raw_mag,
+        "raw_station": raw_station,
+    }
+
+
+
+def plotFoldedWithStations(folded_binned, folded, cat_mag=None, base_name=None, nbins=100, titles=None, output_dir=None):
+
+
+    # Extract corrected folded data
+    phase   = folded_binned["phase"]
+    mag     = folded_binned["mag"]
+    station = folded_binned["station"]
+
+    # Extract raw folded data (must exist in folded dict)
+    raw_phase = folded["raw_phase"]
+    raw_mag   = folded["raw_mag"]
+
+    # Titles dict with safe defaults
+    if titles is None:
+        titles = {}
+
+    raw_title    = titles.get("raw",    "Raw Folded Light Curve (Uncorrected)")
+    top_title    = titles.get("top",    "Corrected Folded Light Curve")
+    bottom_title = titles.get("bottom", "Station Participation")
+    super_title  = titles.get("super",  None)
+    footer_text  = titles.get("footer", None)
+
+    # ---------------------------------------------------------
+    # Create figure with THREE vertically stacked axes
+    # ---------------------------------------------------------
+    fig = plt.figure(figsize=(20, 16))
+    gs = fig.add_gridspec(3, 1, height_ratios=[1, 3, 1])
+
+    ax0 = fig.add_subplot(gs[0])              # RAW folded
+    ax1 = fig.add_subplot(gs[1], sharex=ax0)  # Corrected folded
+    ax2 = fig.add_subplot(gs[2], sharex=ax0)  # Station participation
+
+
+
+    # ---------------------------------------------------------
+    # SUPERTITLE (optional)
+    # ---------------------------------------------------------
+    if super_title:
+        fig.suptitle(
+            super_title,
+            fontsize=20,
+            fontweight="normal",
+            y=0.965,
+            color="black"
+        )
+
+    plt.tight_layout(rect=[0.025, 0.1, 0.975, 0.95])
+
+    # =========================================================
+    #  RAW TOP PANEL (ax0)
+    # =========================================================
+    ax0.scatter(raw_phase, raw_mag, s=2, alpha=0.0025, color="blue")
+    ax0.invert_yaxis()
+    ax0.set_ylabel("Observed phase folded magnitude")
+
+    ax0.set_title(
+        raw_title,
+        fontsize=10,
+        color="#666666",
+        fontweight="normal"
+    )
+
+    # Clamp y-axis
+    ax0.set_ylim(np.mean(raw_mag) + 2, np.mean(raw_mag) - 2)
+
+    ax0.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
+    ax1.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
+
+    # =========================================================
+    #  CORRECTED FOLDED PANEL (ax1)
+    # =========================================================
+    ax1.scatter(phase, mag, s=12, alpha=0.7, color="black")
+    ax1.invert_yaxis()
+    ax1.set_ylabel("Compensated binned phase folded magnitude")
+
+    ax1.set_title(
+        top_title,
+        fontsize=10,
+        color="#666666",
+        fontweight="normal"
+    )
+
+    # Catalogue magnitude line
+    if cat_mag is not None and np.isfinite(cat_mag):
+        ax1.axhline(
+            y=cat_mag,
+            color="grey",
+            linestyle=":",
+            linewidth=1.0,
+            alpha=0.5,
+            label="Catalogue magnitude"
+        )
+        ax1.legend(fontsize=8)
+
+    # Clamp y-axis
+    ax1.set_ylim(max(mag) + 0.05, min(mag) - 0.05)
+
+    # Faint red connecting line
+    order = np.argsort(phase)
+    ax1.plot(
+        phase[order],
+        mag[order],
+        color="red",
+        alpha=0.25,
+        linewidth=0.8,
+        zorder=0
+    )
+
+    # =========================================================
+    #  STATION PARTICIPATION PANEL (ax2)
+    # =========================================================
+    bins = np.linspace(-1, 1, nbins + 1)
+    station_counts = []
+
+    for i in range(nbins):
+        mask = (phase >= bins[i]) & (phase < bins[i + 1])
+        idx = np.where(mask)[0]
+
+        if len(idx) == 0:
+            station_counts.append(0)
+            continue
+
+        stations_here = []
+        for j in idx:
+            stations_here.extend(station[j])
+
+        unique_stations = np.unique(stations_here)
+        station_counts.append(len(unique_stations))
+
+    ax2.bar(
+        (bins[:-1] + bins[1:]) / 2,
+        station_counts,
+        width=(2 / nbins),
+        color="steelblue",
+        alpha=0.7,
+        edgecolor="none"
+    )
+
+    ax2.set_ylabel("Stations")
+    ax2.set_xlabel("Phase (two periods, -1 to +1)")
+    ax2.set_xlim(-1, 1)
+
+
+
+
+    # ---------------------------------------------------------
+    # FOOTER (optional)
+    # ---------------------------------------------------------
+    if footer_text:
+        fig.text(
+            0.99, 0.01,
+            footer_text,
+            ha="right",
+            va="bottom",
+            fontsize=8,
+            color="#666666"
+        )
+
+    fig.text(
+        0.05, 0.03,
+        bottom_title,
+        ha="left",
+        va="bottom",
+        fontsize=6,
+        color="#666666"
+    )
+
+    # ---------------------------------------------------------
+    # SAVE
+    # ---------------------------------------------------------
+    if base_name and output_dir:
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        full_path = os.path.expanduser(os.path.join(output_dir, base_name))
+        plt.savefig(f"{full_path}.png", dpi=600)
+        print(f"Saved as {full_path}.png")
+
+    #plt.show()
+
+
+
+
+# ============================================================
+# Command-line interface
+# ============================================================
+
+def summariseStationCounts(det, max_chars=180):
+    """
+    Given the dict returned by loadDetections(), produce:
+      - a comma-separated summary of station counts sorted by decreasing detections
+      - with a newline inserted after max_chars characters
+      - the number of distinct stations
+
+    Returns:
+        summary_str, n_stations
+    """
+
+    stations = det["station"]          # array of strings, one per detection
+    unique, counts = np.unique(stations, return_counts=True)
+
+    # Sort by count descending
+    order = np.argsort(-counts)
+
+    # Build "AU0004-500" style entries
+    parts = [f"{unique[i]}-{counts[i]}" for i in order]
+
+    # Character-based wrapping
+    lines = []
+    current = ""
+
+    for part in parts:
+        # +2 accounts for ", " that will be added
+        addition = (", " if current else "") + part
+
+        if len(current) + len(addition) > max_chars:
+            # Start a new line
+            lines.append(current)
+            current = part
+        else:
+            current += addition
+
+    # Append final line
+    if current:
+        lines.append(current)
+
+    summary_str = "\n".join(lines)
+    n_stations = len(unique)
+
+    return summary_str, n_stations
+
+def generateTitles(conn, star_name=None, jd_start=None, jd_end=None, det=None, period_days=None, file_path_name=None, preferred_name=None):
+
+
+    n_det = len(det["station"])
+    contributing_station_list, n_station = summariseStationCounts(det)
+    r, d, m = lookupCatalogueStar(conn, star_name)
+
+    base_name = generateBaseName(star_name, r,d, jd_start, jd_end, period_days)
+
+    if preferred_name is not None:
+        star_name = f"{preferred_name} ({star_name})"
+
+    titles = {
+        "super": f"Folded light curve of star {star_name} with period {period_days:.6f} days",
+        "raw": f"RA={r:.2f} DEC={d:.2f} MAG={m:.2f} Time range {jd_start:.2f} to {jd_end:.2f}JD {n_det} observations from {n_station} stations",
+        "bottom": f"{contributing_station_list}",
+        "footer": f"Saved as {base_name}"
+    }
+
+
+    return titles, r, d, m
 
 def parseRaDec(value):
     """
@@ -1629,172 +864,140 @@ def parseRaDec(value):
 
     raise ValueError(f"Unrecognized RA/Dec format: {value!r}")
 
-def parseJdRange(s):
-    if s is None:
-        return None, None
 
-    # Accept "a,b" or "a:b"
-    if ',' in s:
-        a, b = s.split(',', 1)
-    elif ':' in s:
-        a, b = s.split(':', 1)
+def generateBaseName(star_name, r, d, jd_start, jd_end, period_days):
+
+
+    base_name = f"{star_name}_RA_{r*1e6:.0f}_DEC_{d*1e6:.0f}_jds_{jd_start*1e6:.0f}_jde_{jd_end*1e6:.0f}_period_{period_days*1e6:.0f}"
+
+
+    return base_name
+
+
+def main():
+    arg_parser = argparse.ArgumentParser(
+        description="Apply TPS photometric corrections and plot corrected magnitudes vs JD."
+    )
+
+    arg_parser.add_argument("--jd-start", type=float, default=None,
+                        help="Start of JD range (inclusive).")
+    arg_parser.add_argument("--jd-end", type=float, default=None,
+                        help="End of JD range (exclusive).")
+
+    group_star = arg_parser.add_mutually_exclusive_group()
+
+    group_star.add_argument('--radec', metavar='RADEC', type=str,
+                    help="Star coordinates in decimal or sexagesimal degrees, if none are passed then defaults to Betelgeux (88.79 7.41)")
+
+    group_star.add_argument("--star-name", type=str, default=None,
+                        help="Optional star name filter (quote if it contains spaces).")
+
+
+    arg_parser.add_argument("--smooth", type=float, default=1.0,
+                        help="TPS smoothing factor (default 1.0).")
+
+    arg_parser.add_argument("--period_days", type=float, default=None,
+                        help="Period for folding, in days.")
+
+    arg_parser.add_argument("--db-uri", type=str, required=True,
+                        help="PostgreSQL connection URI, e.g. postgresql://user@host:5432/dbname")
+
+    arg_parser.add_argument("-o", "--output-dir", type=str, default=os.path.expanduser("~/RMS_data/Plots/LightCurves"),
+                        help="Output directory defaults to ~/RMS_data/Plots/LightCurves ")
+
+    arg_parser.add_argument("-f", "--file-name", type=str, default=None,
+                            help="Output filename, defaults to ")
+
+    arg_parser.add_argument("-p", "--preferred-name", type=str, default=None,
+                            help="Preferred star name for the plot")
+
+    cml_args = arg_parser.parse_args()
+
+    # ------------------------------------------------------------
+    # Parse PostgreSQL URI
+    # ------------------------------------------------------------
+
+
+    parsed = urlparse(cml_args.db_uri)
+
+    conninfo = (
+        f"host={parsed.hostname} "
+        f"port={parsed.port or 5432} "
+        f"user={parsed.username} "
+        f"dbname={parsed.path.lstrip('/')}"
+    )
+
+
+    conn = psycopg.connect(conninfo)
+
+    if cml_args.radec:
+        r, d = parseRaDec(cml_args.radec)
+        star_name = lookupBrightestStar(conn, r, d)[0]
+        print(f"Searched at {r} {d} and found {star_name}")
     else:
-        raise ValueError("jd_range must be in form start,end or start:end")
+        star_name = cml_args.star_name
 
-    return float(a), float(b)
+    jd_start = cml_args.jd_start
+    jd_end = cml_args.jd_end
+    period_days = cml_args.period_days
+    output_dir = cml_args.output_dir
+    base_name = cml_args.file_name
+    preferred_name = cml_args.preferred_name
 
-def getDbJdRange(conn):
-    sql = """
-        SELECT MIN(jd_mid), MAX(jd_mid)
-        FROM observation
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql)
-        row = cur.fetchone()
 
-    if row is None or row[0] is None or row[1] is None:
-        return None, None
+    # ------------------------------------------------------------
+    # Load detections
+    # ------------------------------------------------------------
 
-    # Convert BIGINT micro-JD → float JD
-    jd_min = row[0] / 1e6
-    jd_max = row[1] / 1e6
-    return jd_min, jd_max
+    det = loadDetections(
+        conn,
+        jd_start=jd_start,
+        jd_end=jd_end,
+        star_name=star_name
+    )
+
+
+
+    titles, ra_cat, dec_cat, mag_cat = generateTitles(conn, star_name=star_name, jd_start=jd_start, jd_end=jd_end,
+                            period_days=period_days, det=det, preferred_name=preferred_name)
+
+    if base_name is None:
+        base_name = generateBaseName(star_name, ra_cat, dec_cat, jd_start, jd_end, period_days)
+
+
+
+    if det is None:
+        print("No detections found in the given JD range.")
+        return
+
+    print("Plotting corrected light curve...")
+    cat_mag = det['cat_mag'][0]
+
+    # ------------------------------------------------------------
+    # Apply TPS corrections
+    # ------------------------------------------------------------
+    print("Applying TPS corrections...")
+    det_corr = applyDetectionCorrections(conn, det, dummy_run=True)
+
+    # ------------------------------------------------------------
+    # Plot corrected light curve
+    # ------------------------------------------------------------
+
+    #plotCorrectedLightCurve(det, base_name=args.output_name, cat_mag=cat_mag)
+    det_binned = binDetections(det_corr, bin_seconds=10.24*1)
+    #plotCorrectedLightCurve(det_binned, base_name=args.output_name, cat_mag = cat_mag)
+
+    if cml_args.period_days is not None:
+        det_folded = foldLightCurve(det_binned, det, cml_args.period_days)
+        det_folded_binned = phaseBinFolded(det_folded, n_phase_bins=360)
+
+        plotFoldedWithStations(det_folded_binned, det_folded, cat_mag=cat_mag, titles=titles, base_name=base_name, output_dir=output_dir)
+
+
+
+    print("Done.")
 
 
 
 if __name__ == "__main__":
-
-
-    ### COMMAND LINE ARGUMENTS
-
-    # Init the command line arguments parser
-    arg_parser = argparse.ArgumentParser(description="""Compute the FOV area given the platepar and mask files.
-        """, formatter_class=argparse.RawTextHelpFormatter)
-
-    arg_parser.add_argument('db_connection_string', metavar='db_connection_string', type=str,
-                    help="DB Connection string in the format postgresql://user@host:port/database ")
-
-    arg_parser.add_argument('--radec', metavar='RADEC', type=str,
-                    help="Star coordinates in decimal or sexagesimal degrees, if none are passed then defaults to Betelgeux (88.79 7.41)")
-
-    arg_parser.add_argument('--jd_range', metavar='JD_RANGE', type=str,
-                            help="Range of jd to use in curve plotting")
-
-    arg_parser.add_argument('-b', '--bins_per_jd', metavar='BINS_PER_JD', type=int,
-                            help="Number of bins of intensity in each julian day, default 100")
-
-    arg_parser.add_argument('-p', '--period_jd', metavar='PERIOD_JD', type=float,
-                            help="Period length wrapping")
-
-    arg_parser.add_argument('--max_pixel_scale', metavar='MAX_PIXEL_SCALE', type=float,
-                            help="Maximum pixel scale in microdegrees per pixel. \n A 4mm lens has as scale of around 70000, a 6mm lens around 42000, a 15mm lens around 16000, and a 25mm lens around 10000")
-
-    arg_parser.add_argument('-r', '--period_repeats', metavar='PERIOD_REPEATS', type=int,
-                            help="Period repeats to show")
-
-    group = arg_parser.add_mutually_exclusive_group()
-
-    group.add_argument("--tps", action="store_true", help="Use thin-plate spline spatial model")
-
-    group.add_argument("--binned", action="store_true", help="Use binned spatial model")
-
-    group.add_argument("--gaussian", action="store_true", help="Use Gaussian spatial model")
-
-
-
-
-
-    ###
-
-    # Parse the command line arguments
-    cml_args = arg_parser.parse_args()
-
-    period_jd = cml_args.period_jd
-
-    if cml_args.tps:
-        spatial_method = "tps"
-    elif cml_args.binned:
-        spatial_method = "binned"
-    elif cml_args.gaussian:
-        spatial_method = "gaussian"
-    else:
-        spatial_method = "none"
-
-    if cml_args.period_repeats is None:
-        period_repeats = 1
-    else:
-        period_repeats = int(cml_args.period_repeats)
-
-    db_dict = parseDBArg(cml_args.db_connection_string)
-    radec = cml_args.radec
-
-    if radec is None:
-        target_ra = 88.79187
-        target_dec = 7.4056
-    else:
-        target_ra, target_dec = parseRaDec(radec)
-
-    bins_per_day = 100
-
-    if cml_args.bins_per_jd is None and cml_args.period_jd is None:
-        bins_per_day = 100
-    elif cml_args.bins_per_jd is not None and cml_args.period_jd is None:
-        bins_per_day = cml_args.bins_per_jd
-    elif cml_args.bins_per_jd is None and cml_args.period_jd is not None:
-        bins_per_day = 100  / cml_args.period_jd
-    elif cml_args.bins_per_jd is not None and cml_args.period_jd is not None:
-        bins_per_day = cml_args.bins_per_jd  / cml_args.period_jd
-
-    cadence_sec = (24 * 60 * 60) / bins_per_day
-    print(f"Running with a bin length of {cadence_sec:.1f} seconds, or {bins_per_day:.1f} bins/day")
-
-    jd_start, jd_end = parseJdRange(cml_args.jd_range)
-
-    # Current time in JD
-    now_dt = datetime.datetime.now(datetime.timezone.utc)
-    jd_now = datetime2JD(now_dt)
-    print(f"JD now is {jd_now}")
-
-    # Clamp jd_end to now
-    if jd_end is None:
-        jd_end = jd_now
-    else:
-        jd_end = min(jd_end, jd_now)
-
-
-    with psycopg.connect(
-            host=db_dict['host'],
-            dbname=db_dict['dbname'],
-            user=db_dict['user'],
-            port=db_dict['port']
-    ) as conn:
-
-        # If jd_start missing, fill from DB
-        if jd_start is None:
-            db_jd_min, db_jd_max = getDbJdRange(conn)
-            db_jd_max = min(db_jd_max, jd_now)
-            jd_start = db_jd_min
-
-        # Safety: ensure ordering
-        if jd_start > jd_end:
-            jd_start, jd_end = jd_end, jd_start
-
-        print(f"Using JD range: {jd_start:.5f} to {jd_end:.5f}")
-
-        lc = generateStarLightCurve(
-            conn,
-            ra_star_deg=target_ra,
-            dec_star_deg=target_dec,
-            search_radius_deg=0.1,
-            jd_start=jd_start,
-            jd_end=jd_end,
-            ang_tol_deg=0.2,
-            min_cameras=3,
-            cadence_sec=cadence_sec,
-            spatial_method = spatial_method, period_jd=period_jd, period_repeats = period_repeats, max_pixel_scale=cml_args.max_pixel_scale)
-
-        if lc is None:
-            print("No light curve generated.")
-        else:
-
-            print("Saved debug_lightcurve.json")
+    main()
