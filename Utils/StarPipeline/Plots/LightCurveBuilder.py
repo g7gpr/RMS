@@ -13,9 +13,52 @@ from pathlib import Path
 from scipy.spatial import ConvexHull
 from collections import Counter
 from urllib.parse import urlparse
+from matplotlib.ticker import FormatStrFormatter
 
 
+def storeCompensatedFrame(conn, frame_name, frame_offset, tps_spline, frame_data):
 
+    if tps_spline is None:
+        tps_x = tps_y = tps_coeff = None
+        smoothing = None
+        quality = "BAD"
+    else:
+        knots = tps_spline.get_knots()
+        tps_x = knots[0].tolist()
+        tps_y = knots[1].tolist()
+        tps_coeff = tps_spline.get_coeffs().tolist()
+        smoothing = None      # SciPy does NOT expose smoothing
+        quality = "GOOD"
+
+    residuals = frame_data["obs_mag"] - frame_data["cat_mag"] - frame_offset
+    rms = float(np.sqrt(np.mean(residuals**2)))
+
+    sql = """
+        INSERT INTO compensated_frame
+        (frame_name, frame_offset, tps_x, tps_y, tps_coeff, tps_smoothing,
+         num_cal_stars, rms_residual, quality)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        ON CONFLICT (frame_name) DO UPDATE SET
+            frame_offset = EXCLUDED.frame_offset,
+            tps_x = EXCLUDED.tps_x,
+            tps_y = EXCLUDED.tps_y,
+            tps_coeff = EXCLUDED.tps_coeff,
+            tps_smoothing = EXCLUDED.tps_smoothing,
+            num_cal_stars = EXCLUDED.num_cal_stars,
+            rms_residual = EXCLUDED.rms_residual,
+            quality = EXCLUDED.quality;
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql, (
+            frame_name,
+            frame_offset,
+            tps_x, tps_y, tps_coeff,
+            smoothing,
+            len(frame_data["obs_mag"]),
+            rms,
+            quality
+        ))
 
 
 def lookupBrightestStar(conn, ra_deg, dec_deg, radius_deg=0.02):
@@ -70,22 +113,12 @@ def lookupCatalogueStar(conn, star_name):
 # Filename helpers
 # ============================================================
 
-def makeLightcurveFilename(ra_deg, dec_deg, jd_start, jd_end, star_name=None):
-    ra_str  = f"{ra_deg:.3f}"
-    dec_str = f"{dec_deg:.3f}"
-    jd0_str = f"{jd_start:.5f}"
-    jd1_str = f"{jd_end:.5f}"
 
-    if star_name:
-        safe = star_name.replace(" ", "_").replace("/", "_")
-        return f"{safe}_jd{jd0_str}-{jd1_str}_ra{ra_str}_dec{dec_str}"
-    else:
-        return f"lc_jd{jd0_str}-{jd1_str}_ra{ra_str}_dec{dec_str}"
 
 def binDetections(det, bin_seconds=10.24*10):
     jd = det["jd"]
     mag = det["mag"]
-    mag_err = det["mag_err"]
+    snr = det["snr"]
     station = det["station"]
 
     dt_days = bin_seconds / 86400.0
@@ -96,20 +129,24 @@ def binDetections(det, bin_seconds=10.24*10):
     mag_bins = []
     mag_err_bins = []
     station_bins = []
+    n_det_bins = []          # <-- NEW
 
     for b in np.unique(bin_index):
         idx = np.where(bin_index == b)[0]
-
         if len(idx) == 0:
             continue
+
+        # Record number of detections in this time bin
+        n_det_bins.append(len(idx))     # <-- NEW
 
         unique_stations = np.unique(station[idx])
         station_bins.append(np.asarray(unique_stations))
 
-        w = 1.0 / (mag_err[idx] ** 2)
+        flux = 10 ** (-0.4 * mag[idx])
+        sigma_flux_i = flux / snr[idx]
+        w = 1.0 / (sigma_flux_i ** 2)
         w_sum = np.sum(w)
 
-        flux = 10 ** (-0.4 * mag[idx])
         flux_mean = np.sum(w * flux) / w_sum
         sigma_flux = np.sqrt(1.0 / w_sum)
 
@@ -124,10 +161,9 @@ def binDetections(det, bin_seconds=10.24*10):
         "jd": np.array(jd_bins),
         "mag": np.array(mag_bins),
         "mag_err": np.array(mag_err_bins),
-        "station": station_bins
+        "station": station_bins,
+        "n_det": np.array(n_det_bins)   # <-- NEW
     }
-
-
 
 
 
@@ -306,18 +342,12 @@ def buildSplineWithDiagnostics(x, y, r, smooth):
     # No warnings → good fit
     return spline, None
 
-
-
-
 def tryBuildTPS(x, y, residuals, smooth=5.0):
     """
     Build a TPS spline with strict quality gating.
-    Frames that produce FITPACK warnings or unstable fits return None.
+    Returns (model_function, spline_object) or None.
     """
 
-    # -------------------------
-    # 1. Clean input
-    # -------------------------
     x = np.asarray(x)
     y = np.asarray(y)
     r = np.asarray(residuals)
@@ -325,9 +355,6 @@ def tryBuildTPS(x, y, residuals, smooth=5.0):
     mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(r)
     x, y, r = x[mask], y[mask], r[mask]
 
-    # -------------------------
-    # 2. Basic geometric checks
-    # -------------------------
     if len(x) < 40:
         return None
 
@@ -340,48 +367,22 @@ def tryBuildTPS(x, y, residuals, smooth=5.0):
         if hull.area < 1e-3:
             return None
 
-    # Residuals too flat → no meaningful spatial structure
     if np.nanstd(r) < 1e-4:
         return None
 
-    # -------------------------
-    # 3. Attempt spline fit with full warning capture
-    # -------------------------
-    stderr_buffer = io.StringIO()
+    try:
+        spline = SmoothBivariateSpline(x, y, r, s=smooth)
+    except Exception:
+        return None
 
-    with warnings.catch_warnings(record=True) as wlist, \
-         contextlib.redirect_stderr(stderr_buffer):
+    def model(xq, yq, s=spline):
+        return s.ev(xq, yq)
 
-        warnings.simplefilter("always")               # record warnings
-        warnings.simplefilter("error", UserWarning)   # turn them into exceptions
+    return model, spline
 
-        try:
-            spline = SmoothBivariateSpline(x, y, r, s=smooth)
 
-        except UserWarning as uw:
-            # FITPACK diagnostic text (from Fortran stderr)
-            fitpack_text = stderr_buffer.getvalue().strip()
 
-            # Python warning text (usually just "ier=###")
-            python_warning = str(uw).strip()
 
-            # Combine both
-            full_msg = (fitpack_text + "\n" + python_warning).strip()
-
-            # print("TPS REJECTED:", full_msg)
-            return None
-
-        except Exception as e:
-            # print("TPS EXCEPTION:", e)
-            return None
-
-    # -------------------------
-    # 4. Return callable model
-    # -------------------------
-    def model(xq, yq, spline=spline):
-        return spline.ev(np.asarray(xq), np.asarray(yq))
-
-    return model
 
 def tryBuildTPSDummy():
 
@@ -390,19 +391,67 @@ def tryBuildTPSDummy():
 
     return model
 
+def loadCompensatedFrame(conn, frame_name):
+    """
+    Load a previously stored calibrated frame.
+    Reconstructs the SmoothBivariateSpline if knots/coeffs exist.
+    """
+
+    sql = """
+        SELECT frame_offset, tps_x, tps_y, tps_coeff, tps_smoothing
+        FROM compensated_frame
+        WHERE frame_name = %s
+        LIMIT 1;
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql, (frame_name,))
+        row = cur.fetchone()
+
+    if row is None:
+        return None
+
+    frame_offset, tps_x, tps_y, tps_coeff, smoothing = row
+
+    if tps_x is None or tps_y is None or tps_coeff is None:
+        return {
+            "frame_offset": frame_offset,
+            "tps_model": None,
+        }
+
+    knots_x = np.array(tps_x)
+    knots_y = np.array(tps_y)
+    coeffs  = np.array(tps_coeff)
+
+    # Create dummy spline
+    dummy_x = np.array([0, 1, 2, 3])
+    dummy_y = np.array([0, 1, 2, 3])
+    dummy_z = np.zeros_like(dummy_x)
+
+    spline = SmoothBivariateSpline(dummy_x, dummy_y, dummy_z)
+
+    # Overwrite internal representation
+    spline.tck = (knots_x, knots_y, coeffs, 3, 3)
+
+    # Recreate wrapper
+    def model(xq, yq, s=spline):
+        return s.ev(xq, yq)
+
+    return {
+        "frame_offset": frame_offset,
+        "tps_model": model,
+    }
 
 def applyDetectionCorrections(conn, det, dummy_run=False):
     """
     Apply frame offset + TPS spatial correction.
+    Uses cached calibration when available.
     """
 
     if dummy_run:
-        # Fast path: no corrections at all
         det_corr = dict(det)
         det_corr["mag"] = det["mag"].copy()
         return det_corr
-
-
 
     frame_names = det["frame_name"]
     x_det = det["x"]
@@ -414,12 +463,10 @@ def applyDetectionCorrections(conn, det, dummy_run=False):
     frame_offset_map = {}
     spatial_model_map = {}
 
-    # Build TPS per frame
     build_tps_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-
-    reject_tps, attempted_tps, rejected_frames = 0, 0, []
-
+    reject_tps, attempted_tps, splines_created, splines_loaded, rejected_frames = 0, 0, 0, 0, []
     frames_to_process = len(unique_frames)
+
     for i, fname in enumerate(unique_frames):
 
         if i % 200 == 0 and i > 0:
@@ -429,19 +476,33 @@ def applyDetectionCorrections(conn, det, dummy_run=False):
             time_elapsed = datetime.datetime.now(tz=datetime.timezone.utc) - build_tps_start_time
             time_per_iteration_seconds = time_elapsed.total_seconds() / i
             iterations_remaining = len(unique_frames) - i
-            completion_time = datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(seconds=time_per_iteration_seconds * iterations_remaining)
-            print(f"Forecast end time={completion_time.replace(microsecond=0).isoformat()} {100*i/frames_to_process:.1f}% frame rejection={100 * reject_tps / attempted_tps:.1f}%")
+            completion_time = datetime.datetime.now(
+                tz=datetime.timezone.utc
+            ) + datetime.timedelta(seconds=time_per_iteration_seconds * iterations_remaining)
+            print(
+                f"Forecast end time={completion_time.replace(microsecond=0).isoformat()} "
+                f"{100*i/frames_to_process:.1f}% frame rejection="
+                f"{100 * reject_tps / max(attempted_tps, 1):.1f}% "
+                f"Splines created/loaded {splines_created}/{splines_loaded}"
+            )
 
+
+        # 1) Try cached calibration
+        cached = loadCompensatedFrame(conn, fname)
+        if cached is not None:
+            frame_offset_map[fname] = cached["frame_offset"]
+            spatial_model_map[fname] = cached["tps_model"]
+            splines_loaded += 1
+            continue
+
+        # 2) Compute calibration fresh
         frame_data = loadFramePhotometry(conn, fname)
-
 
         if frame_data is None or len(frame_data["cat_mag"]) < 40:
             frame_offset_map[fname] = 0.0
             spatial_model_map[fname] = None
             rejected_frames.append(fname)
-
             continue
-
 
         frame_offset = computeFrameOffset(frame_data)
         frame_offset_map[fname] = frame_offset
@@ -449,13 +510,26 @@ def applyDetectionCorrections(conn, det, dummy_run=False):
         residuals = frame_data["obs_mag"] - frame_data["cat_mag"] - frame_offset
         attempted_tps += 1
 
-        spatial_model_map[fname] = tryBuildTPS(frame_data["x"], frame_data["y"], residuals, smooth=0.1*(len(frame_data['obs_mag'])))
-        if spatial_model_map[fname] is None:
-            reject_tps += 1
+        result = tryBuildTPS(
+            frame_data["x"],
+            frame_data["y"],
+            residuals,
+            smooth=0.1 * len(frame_data["obs_mag"])
+        )
+
+        if result is None:
+            spatial_model_map[fname] = None
             rejected_frames.append(fname)
+        else:
+            model, spline = result
+            spatial_model_map[fname] = model
+
+        # Store calibration
+        storeCompensatedFrame(conn, fname, frame_offset, spline if result is not None else None, frame_data)
+        splines_created += 1
 
     insertRejectedFrames(conn, rejected_frames)
-
+    conn.commit()
 
     # Apply corrections
     mag_corr = np.empty_like(mag_det)
@@ -473,8 +547,9 @@ def applyDetectionCorrections(conn, det, dummy_run=False):
     det_corr = dict(det)
     det_corr["mag"] = mag_corr
 
-
     return det_corr
+
+
 
 def insertRejectedFrames(conn, rejected_frame_list):
     sql = """
@@ -494,6 +569,7 @@ def phaseBinFolded(folded, n_phase_bins=50):
     mag = folded["mag"]
     mag_err = folded["mag_err"]
     station = folded["station"]
+    n_det = folded["n_det"]
 
     # Define bin edges
     bins = np.linspace(-1.0, 1.0, n_phase_bins + 1)
@@ -503,36 +579,53 @@ def phaseBinFolded(folded, n_phase_bins=50):
     mag_bins = []
     mag_err_bins = []
     station_bins = []
+    n_det_phase = []
+
+
 
     for b in range(n_phase_bins):
         idx = np.where(bin_index == b)[0]
         if len(idx) == 0:
             continue
 
+        # Sum n_det from all time bins that fall into this phase bin
+        n_det_phase.append(np.sum(n_det[idx]))
+
+        # Stations contributing to this phase bin
         stations_here = np.unique(np.concatenate([station[i] for i in idx]))
         station_bins.append(stations_here)
 
-        # Weighted mean in flux space
-        w = 1.0 # / (mag_err[idx] ** 2)
-        w_sum = np.sum(w)
-
+        # Convert to flux, average, convert back
         flux = 10 ** (-0.4 * mag[idx])
         flux_mean = np.mean(flux)
         mag_mean = -2.5 * np.log10(flux_mean)
+
+        # --- RMS ERROR PROPAGATION ---
+        if len(idx) > 1:
+            # RMS scatter of magnitudes in this phase bin
+            rms = np.sqrt(np.mean((mag[idx] - mag_mean)**2))
+            # Error on the mean
+            mag_err_mean = rms / np.sqrt(len(idx))
+        else:
+            # Only one point → use its own error
+            mag_err_mean = mag_err[idx][0]
 
         # Representative phase = bin centre
         phase_center = 0.5 * (bins[b] + bins[b+1])
 
         phase_bins.append(phase_center)
         mag_bins.append(mag_mean)
-        #mag_err_bins.append(mag_err_mean)
+        mag_err_bins.append(mag_err_mean)
 
     return {
         "phase": np.array(phase_bins),
         "mag": np.array(mag_bins),
         "mag_err": np.array(mag_err_bins),
-        "station": station_bins
+        "station": station_bins,
+        "n_det": np.array(n_det_phase)
     }
+
+
 
 def foldLightCurve(binned, raw_det, period_days):
     # -------------------------
@@ -573,6 +666,7 @@ def foldLightCurve(binned, raw_det, period_days):
         "mag": mag,
         "mag_err": mag_err,
         "station": station,
+        "n_det": binned['n_det'],
 
         # Raw folded data (for top panel)
         "raw_phase": raw_phase_2p,
@@ -582,24 +676,25 @@ def foldLightCurve(binned, raw_det, period_days):
 
 
 
-def plotFoldedWithStations(folded_binned, folded, cat_mag=None, base_name=None, nbins=100, titles=None, output_dir=None):
+def plotFoldedWithStations(det_phase_folded_binned, folded, cat_mag=None, base_name=None, nbins=100, titles=None, output_dir=None):
 
 
     # Extract corrected folded data
-    phase   = folded_binned["phase"]
-    mag     = folded_binned["mag"]
-    station = folded_binned["station"]
+    phase   = det_phase_folded_binned["phase"]
+    mag     = det_phase_folded_binned["mag"]
+    station = det_phase_folded_binned["station"]
 
     # Extract raw folded data (must exist in folded dict)
     raw_phase = folded["raw_phase"]
     raw_mag   = folded["raw_mag"]
+    mag_err = folded["mag_err"]
 
     # Titles dict with safe defaults
     if titles is None:
         titles = {}
 
     raw_title    = titles.get("raw",    "Raw Folded Light Curve (Uncorrected)")
-    top_title    = titles.get("top",    "Corrected Folded Light Curve")
+    top_title    = titles.get("top",    "")
     bottom_title = titles.get("bottom", "Station Participation")
     super_title  = titles.get("super",  None)
     footer_text  = titles.get("footer", None)
@@ -607,14 +702,12 @@ def plotFoldedWithStations(folded_binned, folded, cat_mag=None, base_name=None, 
     # ---------------------------------------------------------
     # Create figure with THREE vertically stacked axes
     # ---------------------------------------------------------
-    fig = plt.figure(figsize=(20, 16))
-    gs = fig.add_gridspec(3, 1, height_ratios=[1, 3, 1])
-
-    ax0 = fig.add_subplot(gs[0])              # RAW folded
+    fig = plt.figure(figsize=(20, 20))
+    gs = fig.add_gridspec(4, 1, height_ratios=[0.5, 3, 0.75, 0.75])
+    ax0 = fig.add_subplot(gs[0])  # Raw folded
     ax1 = fig.add_subplot(gs[1], sharex=ax0)  # Corrected folded
     ax2 = fig.add_subplot(gs[2], sharex=ax0)  # Station participation
-
-
+    ax3 = fig.add_subplot(gs[3], sharex=ax0)  # NEW: detections per folded bin
 
     # ---------------------------------------------------------
     # SUPERTITLE (optional)
@@ -628,14 +721,14 @@ def plotFoldedWithStations(folded_binned, folded, cat_mag=None, base_name=None, 
             color="black"
         )
 
-    plt.tight_layout(rect=[0.025, 0.1, 0.975, 0.95])
+    plt.tight_layout(rect=[0.04, 0.1, 0.975, 0.95])
 
     # =========================================================
     #  RAW TOP PANEL (ax0)
     # =========================================================
     ax0.scatter(raw_phase, raw_mag, s=2, alpha=0.0025, color="blue")
     ax0.invert_yaxis()
-    ax0.set_ylabel("Observed phase folded magnitude")
+    ax0.set_ylabel("Magnitude")
 
     ax0.set_title(
         raw_title,
@@ -647,15 +740,20 @@ def plotFoldedWithStations(folded_binned, folded, cat_mag=None, base_name=None, 
     # Clamp y-axis
     ax0.set_ylim(np.mean(raw_mag) + 2, np.mean(raw_mag) - 2)
 
+    ax0.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+    ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+
     ax0.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
-    ax1.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
+    ax1.tick_params(axis="x", which="both", bottom=True, top=False, labelbottom=True)
+    ax2.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
+    ax3.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
 
     # =========================================================
     #  CORRECTED FOLDED PANEL (ax1)
     # =========================================================
     ax1.scatter(phase, mag, s=12, alpha=0.7, color="black")
     ax1.invert_yaxis()
-    ax1.set_ylabel("Compensated binned phase folded magnitude")
+    ax1.set_ylabel("Compensated magnitude")
 
     ax1.set_title(
         top_title,
@@ -677,7 +775,7 @@ def plotFoldedWithStations(folded_binned, folded, cat_mag=None, base_name=None, 
         ax1.legend(fontsize=8)
 
     # Clamp y-axis
-    ax1.set_ylim(max(mag) + 0.05, min(mag) - 0.05)
+    ax1.set_ylim(max(max(mag), cat_mag) + 0.05, min(min(mag), cat_mag) - 0.05)
 
     # Faint red connecting line
     order = np.argsort(phase)
@@ -689,6 +787,8 @@ def plotFoldedWithStations(folded_binned, folded, cat_mag=None, base_name=None, 
         linewidth=0.8,
         zorder=0
     )
+
+    ax1.errorbar(phase, mag, yerr=mag_err[order], fmt='none', ecolor='#88c0ff', alpha=0.1)
 
     # =========================================================
     #  STATION PARTICIPATION PANEL (ax2)
@@ -721,18 +821,42 @@ def plotFoldedWithStations(folded_binned, folded, cat_mag=None, base_name=None, 
     )
 
     ax2.set_ylabel("Stations")
-    ax2.set_xlabel("Phase (two periods, -1 to +1)")
+    ax1.set_xlabel("Phase")
     ax2.set_xlim(-1, 1)
 
+    # =========================================================
+    #  DETECTION COUNT PER FOLDED BIN (ax3)
+    # =========================================================
+    det_counts = []
 
+    # =========================================================
+    #  DETECTIONS PER TIME BIN (ax3)
+    # =========================================================
+    n_det = det_phase_folded_binned["n_det"]
 
+    ax3.bar(
+        phase,  # phase of each binned point
+        n_det,  # number of detections in that bin
+        width=0.02,  # small width so bars don't overlap
+        color="lightgrey",
+        alpha=0.8,
+        edgecolor="none"
+    )
+
+    ax3.set_ylabel("Detections")
+    ax3.set_xlim(-1, 1)
+    ax3.set_xlabel("Phase")
+
+    ax3.set_ylabel("Detections")
+    ax3.set_xlabel("Phase")
+    ax3.set_xlim(-1, 1)
 
     # ---------------------------------------------------------
     # FOOTER (optional)
     # ---------------------------------------------------------
     if footer_text:
         fig.text(
-            0.99, 0.01,
+            0.95, 0.01,
             footer_text,
             ha="right",
             va="bottom",
@@ -740,14 +864,7 @@ def plotFoldedWithStations(folded_binned, folded, cat_mag=None, base_name=None, 
             color="#666666"
         )
 
-    fig.text(
-        0.05, 0.03,
-        bottom_title,
-        ha="left",
-        va="bottom",
-        fontsize=6,
-        color="#666666"
-    )
+    fig.text(0.057, 0.033,f"Contributing stations\n\n{bottom_title}", ha="left", va="bottom", fontsize=6, color="#666666")
 
     # ---------------------------------------------------------
     # SAVE
@@ -824,7 +941,7 @@ def generateTitles(conn, star_name=None, jd_start=None, jd_end=None, det=None, p
         star_name = f"{preferred_name} ({star_name})"
 
     titles = {
-        "super": f"Folded light curve of star {star_name} with period {period_days:.6f} days",
+        "super": f"{star_name} with period {period_days:.6f} days",
         "raw": f"RA={r:.2f} DEC={d:.2f} MAG={m:.2f} Time range {jd_start:.2f} to {jd_end:.2f}JD {n_det} observations from {n_station} stations",
         "bottom": f"{contributing_station_list}",
         "footer": f"Saved as {base_name}"
@@ -872,6 +989,42 @@ def generateBaseName(star_name, r, d, jd_start, jd_end, period_days):
 
 
     return base_name
+
+def resolveJdRange(conn, star_name, jd_start=None, jd_end=None):
+    """
+    Resolve JD start/end for a given star.
+    If jd_start or jd_end is None, query the observation table
+    to find the earliest and latest jd_mid for that star.
+
+    Returns:
+        (jd_start, jd_end)
+    """
+
+    # If both are already provided, nothing to do
+    if jd_start is not None and jd_end is not None:
+        return jd_start, jd_end
+
+    sql = """
+        SELECT MIN(jd_mid), MAX(jd_mid)
+        FROM observation
+        WHERE star_name = %s
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql, (star_name,))
+        row = cur.fetchone()
+
+    if row is None or row[0] is None:
+        raise ValueError(f"No observations found for star '{star_name}'")
+
+    db_min, db_max = row
+
+    # Fill in missing values
+
+    jd_start = db_min / 1e6 if jd_start is None else jd_start
+    jd_end = db_max / 1e6 if jd_end is None else jd_end
+
+    return jd_start, jd_end
 
 
 def main():
@@ -932,7 +1085,7 @@ def main():
 
     if cml_args.radec:
         r, d = parseRaDec(cml_args.radec)
-        star_name = lookupBrightestStar(conn, r, d)[0]
+        star_name = lookupBrightestStar(conn, r, d, radius_deg=0.1)[0]
         print(f"Searched at {r} {d} and found {star_name}")
     else:
         star_name = cml_args.star_name
@@ -949,6 +1102,8 @@ def main():
     # Load detections
     # ------------------------------------------------------------
 
+    jd_start, jd_end = resolveJdRange(conn, star_name, jd_start, jd_end)
+
     det = loadDetections(
         conn,
         jd_start=jd_start,
@@ -958,7 +1113,8 @@ def main():
 
 
 
-    titles, ra_cat, dec_cat, mag_cat = generateTitles(conn, star_name=star_name, jd_start=jd_start, jd_end=jd_end,
+
+    titles, ra_cat, dec_cat, mag_cat = generateTitles(conn, star_name=star_name, jd_start=np.min(det['jd']), jd_end=np.max(det['jd']),
                             period_days=period_days, det=det, preferred_name=preferred_name)
 
     if base_name is None:
@@ -977,21 +1133,21 @@ def main():
     # Apply TPS corrections
     # ------------------------------------------------------------
     print("Applying TPS corrections...")
-    det_corr = applyDetectionCorrections(conn, det, dummy_run=True)
+    det_corr = applyDetectionCorrections(conn, det, dummy_run=False)
 
     # ------------------------------------------------------------
     # Plot corrected light curve
     # ------------------------------------------------------------
 
     #plotCorrectedLightCurve(det, base_name=args.output_name, cat_mag=cat_mag)
-    det_binned = binDetections(det_corr, bin_seconds=10.24*1)
+    det_binned = binDetections(det_corr, bin_seconds=5)
     #plotCorrectedLightCurve(det_binned, base_name=args.output_name, cat_mag = cat_mag)
 
     if cml_args.period_days is not None:
         det_folded = foldLightCurve(det_binned, det, cml_args.period_days)
-        det_folded_binned = phaseBinFolded(det_folded, n_phase_bins=360)
+        det_phase_folded_binned = phaseBinFolded(det_folded, n_phase_bins=200)
 
-        plotFoldedWithStations(det_folded_binned, det_folded, cat_mag=cat_mag, titles=titles, base_name=base_name, output_dir=output_dir)
+        plotFoldedWithStations(det_phase_folded_binned, det_folded, cat_mag=cat_mag, titles=titles, base_name=base_name, output_dir=output_dir)
 
 
 
