@@ -246,7 +246,8 @@ if __name__ == '__main__':
 
     while True:
 
-        wait_time = (start_time - datetime.datetime.now())
+        original_wait_time = (start_time - datetime.datetime.now())
+        wait_time = original_wait_time
         # If the uploader is more than one cycle late
         while wait_time.total_seconds() < (0 - cycle_time_seconds):
             # Add a cycle time and check again
@@ -264,7 +265,7 @@ if __name__ == '__main__':
             else:
                 pass
                 log.info(f"Starting upload process immediately, start time was {start_time.strftime('%H:%M:%S')}, "
-                         f"time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {0 - round(wait_time.total_seconds() / 60)} minutes")
+                         f"time now is {datetime.datetime.now().strftime('%H:%M:%S')}, overdue by {0 - round(original_wait_time.total_seconds() / 60)} minutes")
 
 
 
