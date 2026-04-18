@@ -1,4 +1,3 @@
-# RPi Meteor Station
 # Copyright (C) 2017 Dario Zubovic, Denis Vida
 # 
 # This program is free software: you can redistribute it and/or modify
@@ -1086,9 +1085,9 @@ if __name__ == "__main__":
     else:
         pid = None
 
-    running_under_systemd = runningUnderSystemd()
+    running_under_systemd = True
 
-    if runningUnderSystemd():
+    if running_under_systemd:
         log.info("Running under systemd")
 
     # Get the program version
