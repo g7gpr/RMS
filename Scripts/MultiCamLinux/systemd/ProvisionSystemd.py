@@ -26,6 +26,7 @@ from typing import Optional
 
 
 MANUAL_MODE = False  # set from args
+UNIT_PATH = "/etc/systemd/system/rms@.service"
 
 
 # ------------------------------------------------------------
@@ -200,7 +201,7 @@ def stepCloneRms(source_root: str, station_user: str) -> str:
         logMessage("OK", f"RMS repo already exists at {code_dir}.")
     else:
         logMessage("CREATE", f"Cloning RMS into {code_dir}.")
-        runCommand(["git", "clone", "https://github.com/CroatianMeteorNetwork/RMS.git", code_dir],
+        runCommand(["git", "clone", "https://github.com/g7gpr/RMS.git", code_dir],
                    as_user=station_user)
 
     validatePathExists(code_dir, station_user)
@@ -230,10 +231,11 @@ def stepInstallRmsIntoVenv(venv_dir: str, code_dir: str, station_user: str) -> N
         print(f"sudo -u {station_user} bash <<'EOF'")
         print("set -euo pipefail")
         print(f"source '{activate}'")
-        print(f"python -m pip install --upgrade pip setuptools wheel")
+        print("python -m pip install --upgrade pip setuptools wheel")
+        print("python -m pip install 'numpy<2.0'")
         print(f"python -m pip install -r '{requirements}'")
         print(f"cd '{code_dir}'")
-        print("python -m pip install -e . --no-deps --no-build-isolation")
+        print("python -m pip install . --no-deps --no-build-isolation")
         print("EOF")
         input("Press ENTER once you have executed this block...")
     else:
@@ -241,13 +243,15 @@ def stepInstallRmsIntoVenv(venv_dir: str, code_dir: str, station_user: str) -> N
 set -euo pipefail
 source '{activate}'
 python -m pip install --upgrade pip setuptools wheel
+python -m pip install 'numpy<2.0'
 python -m pip install -r '{requirements}'
 cd '{code_dir}'
-python -m pip install -e . --no-deps --no-build-isolation
+python -m pip install .
 """
         runCommand(["bash", "-c", command], as_user=station_user)
 
     validateFileExists(activate, station_user)
+
 
 
 def stepCreateConfigDir(station_id: str, station_user: str) -> str:
@@ -380,27 +384,18 @@ def stepCreateDataDir(station_id: str, station_user: str) -> None:
     validatePathExists(data_dir, station_user)
 
 
-def stepInstallSystemd(station_user: str) -> None:
-    unit_path = "/etc/systemd/system/rms@.service"
+def stepInstallSystemd(unit_path=None) -> None:
+    unit_path = UNIT_PATH if unit_path is None else unit_path
 
     content = """[Unit]
-Description=RMS Station %i
+Description=%i
 After=network.target
 
 [Service]
 User=%i
 SyslogIdentifier=%i
 WorkingDirectory=/home/%i/source/RMS/
-
-ExecStart=/bin/bash -c "\
-    STATION_USER='%i'; \
-    STATION_ID_UPPER=\\"${STATION_USER^^}\\"; \
-    /home/${STATION_USER}/source/RMS/Scripts/RMS_Update.sh ; \
-    source /home/${STATION_USER}/vRMS/bin/activate ; \
-    python -m RMS.StartCapture \
-        -c /srv/rms/Stations/${STATION_ID_UPPER}/station.conf \
-"
-
+ExecStart=/home/%i/source/RMS/Scripts/MultiCamLinux/systemd/StartSystemD.sh %i
 Restart=always
 RestartSec=30
 RuntimeMaxSec=48h
@@ -424,11 +419,14 @@ WantedBy=multi-user.target
         runCommand(["chmod", "644", unit_path], require_root=True)
         runCommand(["systemctl", "daemon-reload"], require_root=True)
 
+
+
+def stepEnableSystemd(unit_path, station_user: str) -> None:
+
     validateFileExists(unit_path, station_user)
 
     logMessage("OK", f"Enabling rms@{station_user}.service")
     runCommand(["systemctl", "enable", f"rms@{station_user}.service"], require_root=True)
-
 
 # ------------------------------------------------------------
 # Argument parsing and main
@@ -450,6 +448,8 @@ def parseArgs() -> argparse.Namespace:
 def main() -> None:
     global MANUAL_MODE
 
+    unit_path = UNIT_PATH
+
     args = parseArgs()
     MANUAL_MODE = args.manual
 
@@ -463,6 +463,8 @@ def main() -> None:
     station_list = [s.strip().upper() for s in args.stations.split(",") if s.strip()]
     if not station_list:
         fail("No valid station IDs provided.")
+
+    stepInstallSystemd(unit_path=UNIT_PATH)
 
     for station_id in station_list:
         station_user = station_id.lower()
@@ -488,7 +490,7 @@ def main() -> None:
         )
 
         stepCreateDataDir(station_id, station_user)
-        stepInstallSystemd(station_user)
+        stepEnableSystemd(unit_path, station_user)
 
         logMessage("OK", f"Provisioning steps completed for station {station_id}.")
 
