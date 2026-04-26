@@ -12,4 +12,4 @@ source /home/${STATION_USER}/vRMS/bin/activate
 
 # Run capture
 exec python -m RMS.StartCapture \
-    -c /srv/rms/Stations/${STATION_ID_UPPER}/station.conf
+    -c /srv/rms/Stations/${STATION_ID_UPPER}/.config
