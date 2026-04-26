@@ -428,6 +428,24 @@ def stepEnableSystemd(unit_path, station_user: str) -> None:
     logMessage("OK", f"Enabling rms@{station_user}.service")
     runCommand(["systemctl", "enable", f"rms@{station_user}.service"], require_root=True)
 
+
+def stepStartStation(station_user: str) -> None:
+    service_name = f"rms@{station_user}.service"
+
+    # Validate that the service file exists before attempting to start it
+    unit_path = f"/etc/systemd/system/rms@.service"
+    validateFileExists(unit_path, station_user)
+
+    if MANUAL_MODE:
+        print()
+        print(f"STEP: Start systemd service for station {station_user}")
+        print(f"sudo systemctl start {service_name}")
+        input("Press ENTER once you have executed this command...")
+    else:
+        logMessage("OK", f"Starting {service_name}")
+        runCommand(["systemctl", "start", service_name], require_root=True)
+
+
 # ------------------------------------------------------------
 # Argument parsing and main
 # ------------------------------------------------------------
@@ -491,8 +509,9 @@ def main() -> None:
 
         stepCreateDataDir(station_id, station_user)
         stepEnableSystemd(unit_path, station_user)
-
         logMessage("OK", f"Provisioning steps completed for station {station_id}.")
+
+        stepStartStation(station_user)
 
         if MANUAL_MODE:
             logMessage("OK",
