@@ -580,9 +580,9 @@ def stepEnsureRmsKeysGroup():
     # Ensure the rmskeys group exists
     try:
         grp.getgrnam("rmskeys")
-        logMessage("Group 'rmskeys' already exists.")
+        logMessage("OK", "Group 'rmskeys' already exists.")
     except KeyError:
-        logMessage("Creating group 'rmskeys'.")
+        logMessage("OK", "Creating group 'rmskeys'.")
         runCommand(["groupadd", "rmskeys"], require_root=True)
 
     # Ensure user 'rms' is a member of rmskeys
