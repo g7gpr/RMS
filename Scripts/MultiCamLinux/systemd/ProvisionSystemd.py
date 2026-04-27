@@ -196,6 +196,15 @@ def stepCloneRms(source_root: str, station_user: str) -> str:
     code_dir = os.path.join(source_root, "RMS")
     git_dir = os.path.join(code_dir, ".git")
 
+    # If RMS exists and we are NOT in manual mode, remove it entirely.
+    if os.path.isdir(code_dir) and not MANUAL_MODE:
+        logMessage("INFO", f"Removing existing RMS source directory: {code_dir}")
+        runCommand(
+            ["sudo", "-u", station_user, "bash", "-lc", f"rm -rf {code_dir}"],
+            require_root=True
+        )
+        logMessage("OK", "Old RMS source directory removed")
+
     if os.path.isdir(git_dir) and not MANUAL_MODE:
         logMessage("OK", f"RMS repo already exists at {code_dir}. Pulling latest changes.")
         runCommand(["git", "-C", code_dir, "pull", "--ff-only"], as_user=station_user)
@@ -265,6 +274,22 @@ def stepCreateConfigDir(station_id: str, station_user: str) -> str:
 
     validatePathExists(config_dir, station_user)
     return config_dir
+
+
+def stepCleanRMSBuildDirectory(station_user: str, source_dir: str):
+    build_dir = os.path.join(source_dir, "build")
+
+    if os.path.isdir(build_dir):
+        logMessage("INFO", f"Removing stale RMS build directory: {build_dir}")
+        runCommand(
+            ["sudo", "-u", station_user, "bash", "-lc", f"rm -rf {build_dir}"],
+            require_root=True
+        )
+        logMessage("OK", "Stale build directory removed")
+    else:
+        logMessage("OK", "No stale build directory found")
+
+
 
 def stepCreateConfigFile(station_id: str, station_user: str,
                          lat: Optional[float], lon: Optional[float],
