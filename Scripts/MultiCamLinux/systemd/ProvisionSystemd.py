@@ -430,7 +430,7 @@ After=network.target
 User=%i
 SyslogIdentifier=%i
 WorkingDirectory=/home/%i/source/RMS/
-ExecStart=/home/rms/source/RMS/Scripts/MultiCamLinux/systemd/StartSystemD.sh %i
+ExecStart=/usr/local/lib/rms/StartSystemD.sh %i
 Restart=always
 RestartSec=30
 RuntimeMaxSec=48h
@@ -479,6 +479,25 @@ def stepStartStation(station_user: str) -> None:
     else:
         logMessage("OK", f"Starting {service_name}")
         runCommand(["systemctl", "start", service_name], require_root=True)
+
+def stepInstallStartSystemDScript():
+    src = "/home/rms/source/RMS/Scripts/MultiCamLinux/systemd/StartSystemD.sh"
+    dst_dir = "/usr/local/lib/rms"
+    dst = f"{dst_dir}/StartSystemD.sh"
+
+    # Ensure target directory exists
+    logMessage("INFO", f"Ensuring directory {dst_dir} exists.")
+    runCommand(["install", "-d", "-m", "755", "-o", "root", "-g", "root", dst_dir],
+               require_root=True)
+
+    # Install (copy) the script with correct permissions
+    logMessage("INFO", f"Installing StartSystemD.sh to {dst}")
+    runCommand(["install", "-m", "755", "-o", "root", "-g", "root", src, dst],
+               require_root=True)
+
+    logMessage("OK", f"Installed StartSystemD.sh to {dst}")
+    return dst
+
 
 
 # ------------------------------------------------------------
