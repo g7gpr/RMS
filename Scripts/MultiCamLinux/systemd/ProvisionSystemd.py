@@ -662,6 +662,7 @@ def main() -> None:
 
     # Install systemd template once
     stepInstallSystemd(unit_path=UNIT_PATH)
+    stepInstallStartSystemDScript()
     stepEnsureRmsKeysGroup()
 
     # Loop with index so we can match stations[i] → addresses[i]
