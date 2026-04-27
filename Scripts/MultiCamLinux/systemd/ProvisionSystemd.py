@@ -265,10 +265,11 @@ def stepCreateConfigDir(station_id: str, station_user: str) -> str:
     validatePathExists(config_dir, station_user)
     return config_dir
 
-
 def stepCreateConfigFile(station_id: str, station_user: str,
                          lat: Optional[float], lon: Optional[float],
-                         elev: Optional[float], location: Optional[str]) -> None:
+                         elev: Optional[float], location: Optional[str],
+                         new_ip: Optional[str], protocol: str,
+                         hostname: Optional[str]) -> None:
 
     config_dir = f"/srv/rms/Stations/{station_id}"
     target_path = os.path.join(config_dir, ".config")
@@ -349,8 +350,41 @@ def stepCreateConfigFile(station_id: str, station_user: str,
                 continue
 
         if current_section == "Capture":
+
+            if key == "protocol":
+                new_lines.append(f"protocol: {protocol}\n")
+                continue
+
+            if key == "device" and new_ip is not None:
+                # Example template:
+                # device: rtsp://192.168.42.10:554/user=admin&password=&channel=1&stream=0.sdp
+
+                prefix = "device:"
+                rest = line.split(prefix, 1)[1].lstrip()
+
+                if rest.startswith("rtsp://"):
+                    after_rtsp = rest[len("rtsp://"):]
+                    parts = after_rtsp.split("/", 1)
+                    hostport = parts[0]
+                    tail = parts[1] if len(parts) > 1 else ""
+
+                    if ":" in hostport:
+                        _, port = hostport.split(":", 1)
+                        new_hostport = f"{new_ip}:{port}"
+                    else:
+                        new_hostport = new_ip
+
+                    new_rest = f"rtsp://{new_hostport}/{tail}"
+                    new_lines.append(f"{prefix} {new_rest}\n")
+                    continue
+
             if key == "data_dir":
                 new_lines.append(f"data_dir: /srv/rms/RMS_data/{station_id}\n")
+                continue
+
+        if current_section == "Upload":
+            if key == "hostname" and hostname:
+                new_lines.append(f"hostname: {hostname}\n")
                 continue
 
         new_lines.append(line)
@@ -450,17 +484,99 @@ def stepStartStation(station_user: str) -> None:
 # Argument parsing and main
 # ------------------------------------------------------------
 
+def parseStationList(stations_str: str) -> list[str]:
+    return [x.strip() for x in stations_str.split(",") if x.strip()]
+
+
+def parseAddressList(addresses_str: str | None, count: int) -> list[str | None]:
+    if addresses_str is None:
+        return [None] * count
+
+    addr_list = [x.strip() for x in addresses_str.split(",") if x.strip()]
+
+    if len(addr_list) != count:
+        raise ValueError(
+            f"--addresses count ({len(addr_list)}) does not match --stations count ({count})"
+        )
+
+    for addr in addr_list:
+        parts = addr.split(".")
+        if len(parts) != 4 or not all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+            raise ValueError(f"Invalid IPv4 address: {addr}")
+
+    return addr_list
+
+
 def parseArgs() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Provision RMS stations.")
-    parser.add_argument("--stations", required=True,
-                        help="Comma-separated list of station IDs (e.g. au0004,au0006)")
+
+    parser.add_argument(
+        "--hostname",
+        help="Override the upload hostname in the .config file (applies to all stations)."
+    )
+
+    parser.add_argument(
+        "--stations",
+        required=True,
+        help="Comma-separated list of station IDs (e.g. au0004,au0006)"
+    )
+
+    parser.add_argument(
+        "--addresses",
+        help="Comma-separated list of IP addresses, one per station (e.g. 192.168.1.10,192.168.1.11)"
+    )
+
+
     parser.add_argument("--lat", type=float, help="Latitude in degrees")
     parser.add_argument("--lon", type=float, help="Longitude in degrees")
     parser.add_argument("--elev", type=float, help="Elevation in meters")
-    parser.add_argument("--location", help="Combined LAT,LON,ELEV")
-    parser.add_argument("--manual", action="store_true",
-                        help="Do not execute commands; print them one by one and wait for confirmation.")
+
+    parser.add_argument(
+        "--location",
+        help="Combined LAT,LON,ELEV (e.g. 43.19301,-81.315555,327)"
+    )
+
+    parser.add_argument(
+        "--tcp",
+        action="store_true",
+        help="Use TCP instead of UDP for the Capture protocol."
+    )
+
+    parser.add_argument(
+        "--manual",
+        action="store_true",
+        help="Do not execute commands; print them one by one and wait for confirmation."
+    )
+
     return parser.parse_args()
+
+def stepGenerateStationKey(station_user: str) -> str:
+    ssh_dir = f"/home/{station_user}/.ssh"
+    key_path = f"{ssh_dir}/id_ed25519"
+
+    runCommand(["install", "-d", "-m", "700", "-o", station_user, "-g", station_user, ssh_dir],
+               require_root=True)
+
+    runCommand([
+        "sudo", "-u", station_user,
+        "ssh-keygen", "-t", "ed25519", "-N", "", "-f", key_path
+    ], require_root=False)
+
+    return key_path
+
+def stepCopyStationKeyToCache(station_user: str, station_id: str) -> None:
+    src_key = f"/home/{station_user}/.ssh/id_ed25519"
+    dst_dir = f"/home/rms/.ssh/{station_id}"
+    dst_key = f"{dst_dir}/id_ed25519"
+
+    runCommand(["install", "-d", "-m", "750", "-o", "rms", "-g", "rmskeys", dst_dir],
+               require_root=True)
+
+    runCommand(["install", "-m", "640", "-o", "rms", "-g", "rmskeys", src_key, dst_key],
+               require_root=True)
+
+    logMessage("OK", f"Copied private key for {station_id} into uploader cache.")
+
 
 
 def main() -> None:
@@ -469,6 +585,10 @@ def main() -> None:
     unit_path = UNIT_PATH
 
     args = parseArgs()
+    stations = parseStationList(args.stations)
+    addresses = parseAddressList(args.addresses, len(stations))
+    protocol = "tcp" if args.tcp else "udp"
+
     MANUAL_MODE = args.manual
 
     if MANUAL_MODE:
@@ -478,17 +598,25 @@ def main() -> None:
         logMessage("INFO", "Running in AUTOMATIC mode: commands will be executed.")
         requireRoot()
 
-    station_list = [s.strip().upper() for s in args.stations.split(",") if s.strip()]
-    if not station_list:
+    if not stations:
         fail("No valid station IDs provided.")
 
+    # Install systemd template once
     stepInstallSystemd(unit_path=UNIT_PATH)
 
-    for station_id in station_list:
+    # Loop with index so we can match stations[i] → addresses[i]
+    for i, station_id in enumerate(stations):
+        station_id = station_id.upper()
         station_user = station_id.lower()
+        new_ip = addresses[i]
+
         logMessage("OK", f"Provisioning station {station_id} (user: {station_user})")
 
         stepCreateUser(station_user)
+
+        key_path = stepGenerateStationKey(station_user)
+        stepCopyStationKeyToCache(station_user, station_id)
+
         home_dir = stepGetUserHome(station_user)
 
         source_root = stepPrepareSourceDir(home_dir, station_user)
@@ -499,25 +627,27 @@ def main() -> None:
 
         stepCreateConfigDir(station_id, station_user)
         stepCreateConfigFile(
-            station_id,
-            station_user,
-            args.lat,
-            args.lon,
-            args.elev,
-            args.location
-        )
+            station_id=station_id,
+            station_user=station_user,
+            lat=args.lat,
+            lon=args.lon,
+            elev=args.elev,
+            location=args.location,
+            new_ip=new_ip,
+            protocol=protocol,
+            hostname=args.hostname)
 
         stepCreateDataDir(station_id, station_user)
         stepEnableSystemd(unit_path, station_user)
-        logMessage("OK", f"Provisioning steps completed for station {station_id}.")
 
+        logMessage("OK", f"Provisioning steps completed for station {station_id}.")
         stepStartStation(station_user)
 
-        if MANUAL_MODE:
-            logMessage("OK",
-                       "Manual mode complete. All commands have been emitted and checks performed where possible.")
-        else:
-            logMessage("OK", "All stations provisioned successfully.")
+    if MANUAL_MODE:
+        logMessage("OK", "Manual mode complete. All commands have been emitted and checks performed where possible.")
+    else:
+        logMessage("OK", "All stations provisioned successfully.")
+
 
 if __name__ == "__main__":
     main()

@@ -51,6 +51,21 @@ sudo apt-get install -y \
 # Install gstreamer python plugin loader if available (not present on all platforms)
 sudo apt-get install -y gstreamer1.0-python3-plugin-loader 2>/dev/null || true
 
+
+PYVER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+
+if [[ "$PYVER" == "3.13" || "$PYVER" > "3.13" ]]; then
+    echo "System Python is $PYVER — installing Python 3.12 for RMS compatibility."
+    sudo apt-get install -y python3.12 python3.12-venv python3.12-dev
+    PYTHON=python3.12
+else
+    PYTHON=python3
+fi
+
+echo "Using interpreter: $PYTHON"
+
+
+
 # Configure system services
 sudo timedatectl set-timezone UTC
 sudo timedatectl set-local-rtc 0
@@ -65,7 +80,7 @@ git clone https://github.com/CroatianMeteorNetwork/cmn_binviewer.git
 
 # Set up Python virtual environment with access to system packages
 cd ~
-python3 -m venv --system-site-packages vRMS
+$PYTHON -m venv --system-site-packages vRMS
 source ~/vRMS/bin/activate
 
 # Install Python packages
