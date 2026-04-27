@@ -22,6 +22,8 @@ import pwd
 import grp
 import subprocess
 import sys
+import socket
+
 from typing import Optional
 
 
@@ -552,16 +554,36 @@ def parseArgs() -> argparse.Namespace:
 def stepGenerateStationKey(station_user: str) -> str:
     ssh_dir = f"/home/{station_user}/.ssh"
     key_path = f"{ssh_dir}/id_ed25519"
+    pub_path = f"{key_path}.pub"
 
+    # Ensure ~/.ssh exists with correct permissions
+    logMessage("INFO", f"Ensuring SSH directory for {station_user}: {ssh_dir}")
     runCommand(["install", "-d", "-m", "700", "-o", station_user, "-g", station_user, ssh_dir],
                require_root=True)
 
+    # If key already exists, do NOT overwrite it
+    if os.path.exists(key_path) and os.path.exists(pub_path):
+        logMessage("OK", f"SSH key already exists for {station_user}, skipping generation.")
+        return key_path
+
+    # Build hostname/comment for the key
+    hostname = socket.gethostname()
+    comment = f"{station_user}@{hostname}"
+
+    logMessage("INFO", f"Generating new SSH key for {station_user} with comment '{comment}'.")
+
+    # Generate the keypair
     runCommand([
         "sudo", "-u", station_user,
-        "ssh-keygen", "-t", "ed25519", "-N", "", "-f", key_path
+        "ssh-keygen", "-t", "ed25519",
+        "-C", comment,
+        "-N", "",
+        "-f", key_path
     ], require_root=False)
 
+    logMessage("OK", f"Generated SSH key for {station_user}: {key_path}")
     return key_path
+
 
 def stepCopyStationKeyToCache(station_user: str, station_id: str) -> None:
     src_key = f"/home/{station_user}/.ssh/id_ed25519"
