@@ -243,7 +243,6 @@ def stepInstallRmsIntoVenv(venv_dir: str, code_dir: str, station_user: str) -> N
 set -euo pipefail
 source '{activate}'
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install 'numpy<2.0'
 python -m pip install -r '{requirements}'
 cd '{code_dir}'
 python -m pip install .
@@ -577,6 +576,25 @@ def stepCopyStationKeyToCache(station_user: str, station_id: str) -> None:
 
     logMessage("OK", f"Copied private key for {station_id} into uploader cache.")
 
+def stepEnsureRmsKeysGroup():
+    # Ensure the rmskeys group exists
+    try:
+        grp.getgrnam("rmskeys")
+        logMessage("Group 'rmskeys' already exists.")
+    except KeyError:
+        logMessage("Creating group 'rmskeys'.")
+        runCommand(["groupadd", "rmskeys"], require_root=True)
+
+    # Ensure user 'rms' is a member of rmskeys
+    rms_groups = [g.gr_name for g in grp.getgrall() if "rms" in g.gr_mem]
+    primary_group = pwd.getpwnam("rms").pw_gid
+    primary_group_name = grp.getgrgid(primary_group).gr_name
+
+    if "rmskeys" not in rms_groups and primary_group_name != "rmskeys":
+        logMessage("Adding user 'rms' to group 'rmskeys'.")
+        runCommand(["usermod", "-aG", "rmskeys", "rms"], require_root=True)
+    else:
+        logMessage("User 'rms' already in group 'rmskeys'.")
 
 
 def main() -> None:
@@ -603,6 +621,7 @@ def main() -> None:
 
     # Install systemd template once
     stepInstallSystemd(unit_path=UNIT_PATH)
+    stepEnsureRmsKeysGroup()
 
     # Loop with index so we can match stations[i] → addresses[i]
     for i, station_id in enumerate(stations):
