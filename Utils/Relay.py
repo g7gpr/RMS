@@ -214,16 +214,16 @@ def testArchive(file_path, verbose=False):
 def uploadFile(station, f, sftp, test=False):
 
     if test:
-        return True, 0
+        return True, 0, 0, 0, 0, 0, 0
 
     local_file_path = os.path.join(FS_ROOT, station.lower(),"files",f)
     if not testArchive(local_file_path, verbose=False):
         log.info(f"{os.path.basename(local_file_path)} archive is not valid")
-        return False, 0
+        return True, 0, 0, 0, 0, 0, 0
     remote_file_path = os.path.join("files",f)
     if test:
         log.info(f"Simulating good upload of {local_file_path} to {remote_file_path} for station {station}")
-        return True, 0
+        return True, 0, 0, 0, 0, 0, 0
     upload_start_time = datetime.datetime.now()
     success = sftp.put(local_file_path, remote_file_path, confirm=True)
     upload_end_time = datetime.datetime.now()
