@@ -388,6 +388,12 @@ def stepCreateConfigFile(station_id: str, station_user: str,
                 new_lines.append(f"hostname: {hostname}\n")
                 continue
 
+            if key == "rsa_private_key":
+                # RMS template defaults to ~/.ssh/id_rsa, but we use Ed25519 keys.
+                new_key_path = f"/home/{station_user}/.ssh/id_ed25519"
+                new_lines.append(f"rsa_private_key: {new_key_path}\n")
+                continue
+
         new_lines.append(line)
 
     with open(target_path, "w", encoding="utf-8") as f:
