@@ -591,10 +591,10 @@ def stepEnsureRmsKeysGroup():
     primary_group_name = grp.getgrgid(primary_group).gr_name
 
     if "rmskeys" not in rms_groups and primary_group_name != "rmskeys":
-        logMessage("Adding user 'rms' to group 'rmskeys'.")
+        logMessage("OK", "Adding user 'rms' to group 'rmskeys'.")
         runCommand(["usermod", "-aG", "rmskeys", "rms"], require_root=True)
     else:
-        logMessage("User 'rms' already in group 'rmskeys'.")
+        logMessage("OK", "User 'rms' already in group 'rmskeys'.")
 
 
 def main() -> None:
