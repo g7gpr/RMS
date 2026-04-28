@@ -48,7 +48,7 @@ def formatCommand(command: list[str]) -> str:
     return " ".join(command)
 
 
-def runCommand(command: list[str], as_user: Optional[str] = None, require_root: bool = False) -> None:
+def runCommand(command: list[str], as_user: Optional[str] = None, require_root: bool = False, allow_fail=False) -> None:
     """
     Automatic mode:
         - optionally wraps with sudo
@@ -80,7 +80,8 @@ def runCommand(command: list[str], as_user: Optional[str] = None, require_root: 
     try:
         subprocess.run(display_cmd, check=True)
     except subprocess.CalledProcessError as e:
-        fail(f"Command failed: {formatCommand(display_cmd)} (exit code {e.returncode})")
+        if not allow_fail:
+            fail(f"Command failed: {formatCommand(display_cmd)} (exit code {e.returncode})")
 
 
 def requireRoot() -> None:
@@ -268,27 +269,27 @@ def stepCreateConfigDir(station_id: str, station_user: str) -> str:
     config_root = "/srv/rms/Stations"
     config_dir = os.path.join(config_root, station_id)
 
+    # Per-station group name
+    group_name = f"rms-{station_id}-config"
+
+    # Create per-station group (idempotent)
+    runCommand(["groupadd", group_name], require_root=True, allow_fail=True)
+
+    # Add station user and rms to the group this gives rms user read access to all station configs
+    runCommand(["usermod", "-a", "-G", group_name, station_user], require_root=True)
+    runCommand(["usermod", "-a", "-G", group_name, "rms"], require_root=True)
+
+    # Create directory
     runCommand(["mkdir", "-p", config_dir], require_root=True)
-    runCommand(["chown", f"{station_user}:{station_user}", config_dir], require_root=True)
-    runCommand(["chmod", "700", config_dir], require_root=True)
+
+    # Ownership: station user + per-station config group
+    runCommand(["chown", f"{station_user}:{group_name}", config_dir], require_root=True)
+
+    # Permissions: station user full, group read/execute, others none
+    runCommand(["chmod", "750", config_dir], require_root=True)
 
     validatePathExists(config_dir, station_user)
     return config_dir
-
-
-def stepCleanRMSBuildDirectory(station_user: str, source_dir: str):
-    build_dir = os.path.join(source_dir, "build")
-
-    if os.path.isdir(build_dir):
-        logMessage("INFO", f"Removing stale RMS build directory: {build_dir}")
-        runCommand(
-            ["sudo", "-u", station_user, "bash", "-lc", f"rm -rf {build_dir}"],
-            require_root=True
-        )
-        logMessage("OK", "Stale build directory removed")
-    else:
-        logMessage("OK", "No stale build directory found")
-
 
 
 def stepCreateConfigFile(station_id: str, station_user: str,
@@ -305,8 +306,8 @@ def stepCreateConfigFile(station_id: str, station_user: str,
         return
 
     if os.path.isfile(target_path) and not MANUAL_MODE:
-        logMessage("OK", f".config already exists: {target_path}")
-        return
+        logMessage("OK", f".config already exists: {target_path}, overwriting")
+
 
     loc_lat = loc_lon = loc_elev = None
     if location:
@@ -317,9 +318,14 @@ def stepCreateConfigFile(station_id: str, station_user: str,
         except ValueError:
             fail("Invalid --location format. Expected: LAT,LON,ELEV")
 
+    print(parts)
+    print(f"Setting lat lon elev as {loc_lat}, {loc_lon}, {loc_elev}")
+
     final_lat = lat if lat is not None else loc_lat or 0.0
     final_lon = lon if lon is not None else loc_lon or 0.0
     final_elev = elev if elev is not None else loc_elev or 0
+
+    print(f"Setting lat lon elev as {final_lat}, {final_lon}, {final_elev}")
 
     url = "https://raw.githubusercontent.com/CroatianMeteorNetwork/RMS/refs/heads/master/.config"
     logMessage("CREATE", f"Downloading upstream .config to {target_path}")
@@ -424,8 +430,9 @@ def stepCreateConfigFile(station_id: str, station_user: str,
     with open(target_path, "w", encoding="utf-8") as f:
         f.writelines(new_lines)
 
-    runCommand(["chown", f"{station_user}:{station_user}", target_path], require_root=True)
-    runCommand(["chmod", "600", target_path], require_root=True)
+    group_name = f"rms-{station_id}-config"
+    runCommand(["chown", f"{station_user}:{group_name}", target_path], require_root=True)
+    runCommand(["chmod", "640", target_path], require_root=True)
 
     validateFileExists(target_path, station_user)
 
@@ -495,7 +502,7 @@ def stepEnableSystemd(unit_path, station_user: str) -> None:
     runCommand(["systemctl", "enable", f"rms@{station_user}.service"], require_root=True)
 
 
-def stepStartStation(station_user: str) -> None:
+def stepStartStation(station_user: str, restart=False) -> None:
     service_name = f"rms@{station_user}.service"
 
     # Validate that the service file exists before attempting to start it
@@ -509,7 +516,10 @@ def stepStartStation(station_user: str) -> None:
         input("Press ENTER once you have executed this command...")
     else:
         logMessage("OK", f"Starting {service_name}")
-        runCommand(["systemctl", "start", service_name], require_root=True)
+        if restart:
+            runCommand(["systemctl", "restart", service_name], require_root=True)
+        else:
+            runCommand(["systemctl", "restart", service_name], require_root=True)
 
 def stepInstallStartSystemDScript():
     src = "/home/rms/source/RMS/Scripts/MultiCamLinux/systemd/StartSystemD.sh"
@@ -597,6 +607,12 @@ def parseArgs() -> argparse.Namespace:
         "--manual",
         action="store_true",
         help="Do not execute commands; print them one by one and wait for confirmation."
+    )
+
+    parser.add_argument(
+        "--configure-only",
+        action="store_true",
+        help="Only create users, file structure under /srv, set permissions and groups and customise .config file."
     )
 
     return parser.parse_args()
@@ -691,6 +707,9 @@ def main() -> None:
     if not stations:
         fail("No valid station IDs provided.")
 
+    if args.configure_only:
+        logMessage("INFO", "Only creating user and directory structure under /srv")
+
     # Install systemd template once
     stepInstallSystemd(unit_path=UNIT_PATH)
     stepInstallStartSystemDScript()
@@ -705,19 +724,8 @@ def main() -> None:
         logMessage("OK", f"Provisioning station {station_id} (user: {station_user})")
 
         stepCreateUser(station_user)
-
-        key_path = stepGenerateStationKey(station_user)
-        stepCopyStationKeyToCache(station_user, station_id)
-
-        home_dir = stepGetUserHome(station_user)
-
-        source_root = stepPrepareSourceDir(home_dir, station_user)
-        code_dir = stepCloneRms(source_root, station_user)
-
-        venv_dir = stepCreateVenv(home_dir, station_user)
-        stepInstallRmsIntoVenv(venv_dir, code_dir, station_user)
-
         stepCreateConfigDir(station_id, station_user)
+        stepCreateDataDir(station_id, station_user)
         stepCreateConfigFile(
             station_id=station_id,
             station_user=station_user,
@@ -729,10 +737,24 @@ def main() -> None:
             protocol=protocol,
             hostname=args.hostname)
 
-        stepCreateDataDir(station_id, station_user)
+        if args.configure_only:
+            stepStartStation(station_user, restart=True)
+            continue
+
+        key_path = stepGenerateStationKey(station_user)
+        stepCopyStationKeyToCache(station_user, station_id)
+
+        home_dir = stepGetUserHome(station_user)
+
+        source_root = stepPrepareSourceDir(home_dir, station_user)
+        code_dir = stepCloneRms(source_root, station_user)
+
+        venv_dir = stepCreateVenv(home_dir, station_user)
+        stepInstallRmsIntoVenv(venv_dir, code_dir, station_user)
         stepEnableSystemd(unit_path, station_user)
 
         logMessage("OK", f"Provisioning steps completed for station {station_id}.")
+
         stepStartStation(station_user)
 
     if MANUAL_MODE:
