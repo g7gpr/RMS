@@ -203,6 +203,9 @@ if __name__ == '__main__':
 
 
     log.info("Uploader daemon starting")
+
+    # Debian multi-cam linux style
+    # Check in the /home/{whoami}/source/Stations/{stationID}/.config location
     potential_station_paths_list = []
     stations_dir = f"/home/{getpass.getuser()}/source/Stations"
     if os.path.exists(stations_dir):
@@ -213,6 +216,9 @@ if __name__ == '__main__':
                     potential_station_paths_list.append(p)
 
 
+
+    # One username per camera
+    # Check in /home/{stationID}/source/RMS/.config
     home_dir = "/home/"
     for p in os.listdir(home_dir):
         p = os.path.join(home_dir, p)
@@ -222,6 +228,18 @@ if __name__ == '__main__':
                     potential_station_paths_list.append(os.path.join(p, "source/RMS"))
                 except:
                     pass
+
+    # Systemd style
+    # /srv/rms/Stations/{stationID}/source/RMS/.config
+
+    srv_stations_dir = "/srv/rms/Stations"
+    if os.path.exists(srv_stations_dir):
+        for p in os.listdir(srv_stations_dir):
+            p = os.path.join(srv_stations_dir, p)
+            if os.path.isdir(p):
+                potential_station_paths_list.append(p)
+
+
 
     config_paths_list, station_list = [], []
 
