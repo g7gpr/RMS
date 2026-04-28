@@ -112,7 +112,24 @@ def makeUpload(config_dict, verbose=False):
                 station_id_lower = station_id.lower()
                 remote_host_address_path = os.path.expanduser(os.path.join(config.data_dir, "rsync_remote_host.txt"))
 
-                key_path = os.path.expanduser(config.rsa_private_key)
+
+                legacy_key_path = os.path.expanduser(config.rsa_private_key)
+                cache_key_path = os.path.join(
+                    "/home",
+                    getpass.getuser(),
+                    ".ssh",
+                    config.stationID.upper(),
+                    os.path.basename(legacy_key_path)
+                )
+
+                log.info(f"Checking cached key path {cache_key_path}")
+
+                if os.path.isfile(cache_key_path) and os.access(cache_key_path, os.R_OK):
+                    key_path = cache_key_path
+                    log.info(f"Using cached key for {config.stationID}: {key_path}")
+                else:
+                    key_path = legacy_key_path
+                    log.info(f"Using legacy key for {config.stationID}: {key_path}")
 
                 if not os.path.exists(remote_host_address_path):
                     log.info(f"\t\tRemote host path not found at {remote_host_address_path}")
