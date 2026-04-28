@@ -1,14 +1,36 @@
 [Unit]
-Description=Uploader
+Description=RMS MultiCam Uploader
+After=network-online.target
+Wants=network-online.target
 
 [Service]
-ExecStart=/bin/bash -c 'source ~/vRMS/bin/activate; ~/source/RMS/Scripts/RMS_Update.sh ; cd ~/source/RMS; python -m Tests.RsyncUploader '
-RuntimeMaxSec=48h
-RestartSec=30
-Restart=always
+Type=simple
+User=rms
 WorkingDirectory=/home/rms/source/RMS/
 SyslogIdentifier=Uploader
-User=rms
+
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/rms/source/RMS/Scripts/MultiCamLinux/systemd/StartUploader.sh
+
+Restart=on-failure
+RestartSec=30
+RuntimeMaxSec=48h
+
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+KillMode=process
+TimeoutStopSec=30
+OOMScoreAdjust=1000
+
+StandardOutput=journal
+StandardError=journal
+
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target
+
