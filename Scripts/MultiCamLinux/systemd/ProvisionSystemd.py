@@ -671,7 +671,7 @@ def stepCopyStationKeyToCache(station_user: str, station_id: str) -> None:
                require_root=True)
 
     # Copy the private key with correct permissions
-    runCommand(["install", "-m", "640", "-o", "rms", "-g", "rmskeys", src_key, dst_key],
+    runCommand(["install", "-m", "600", "-o", "rms", "-g", "rmskeys", src_key, dst_key],
                require_root=True)
 
     logMessage("OK", f"Copied private key for {station_id} into uploader cache.")
