@@ -760,7 +760,10 @@ def main() -> None:
     if MANUAL_MODE:
         logMessage("OK", "Manual mode complete. All commands have been emitted and checks performed where possible.")
     else:
-        logMessage("OK", "All stations provisioned successfully.")
+        if args.configure_only:
+            logMessage("OK", "All stations reconfigured and restarted.")
+        else:
+            logMessage("OK", "All stations provisioned and started.")
 
 
 if __name__ == "__main__":
