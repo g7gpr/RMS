@@ -122,15 +122,10 @@ def makeUpload(config_dict, verbose=False):
                     os.path.basename(legacy_key_path)
                 )
 
-                log.info(f"Checking cached key path {cache_key_path}")
-
                 if os.path.isfile(cache_key_path) and os.access(cache_key_path, os.R_OK):
                     key_path = cache_key_path
-                    log.info(f"Using cached key for {config.stationID}: {key_path}")
                 else:
                     key_path = legacy_key_path
-                    log.info(f"Using legacy key for {config.stationID}: {key_path}")
-
                 if not os.path.exists(remote_host_address_path):
                     log.info(f"\t\tRemote host path not found at {remote_host_address_path}")
                     continue

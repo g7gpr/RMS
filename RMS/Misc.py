@@ -31,6 +31,7 @@ else:
 import numpy as np
 import itertools
 import fcntl
+import getpass
 
 from matplotlib import scale as mscale
 from matplotlib import transforms as mtransforms
@@ -1203,7 +1204,10 @@ def pythonSetup():
     then return to complete its work.
     """
 
-    update_lock = os.open("/var/lock/pythonSetup.lock", os.O_CREAT | os.O_RDWR)
+    lock_dir = os.path.join("/var","lock",getpass.getuser())
+    os.makedirs(lock_dir, mode=0o700, exist_ok=True)
+    os.chmod(lock_dir, mode=0o700)
+    update_lock = os.open(os.path.join(lock_dir,"pythonSetup.lock"),os.O_CREAT | os.O_RDWR)
 
     try:
         # Try non-blocking lock
