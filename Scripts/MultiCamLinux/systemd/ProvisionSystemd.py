@@ -650,19 +650,32 @@ def stepGenerateStationKey(station_user: str) -> str:
     logMessage("OK", f"Generated SSH key for {station_user}: {key_path}")
     return key_path
 
+def stepEnsureRmsSshRoot() -> None:
+    runCommand(["install", "-d", "-m", "750", "-o", "rms", "-g", "rmskeys", "/home/rms/.ssh"],
+               require_root=True)
+
+
+
 
 def stepCopyStationKeyToCache(station_user: str, station_id: str) -> None:
     src_key = f"/home/{station_user}/.ssh/id_ed25519"
-    dst_dir = f"/home/rms/.ssh/{station_id}"
+    dst_dir = f"/home/rms/.ssh/{station_id.upper()}"
     dst_key = f"{dst_dir}/id_ed25519"
 
+    # Ensure the root exists with correct permissions
+    runCommand(["install", "-d", "-m", "750", "-o", "rms", "-g", "rmskeys", "/home/rms/.ssh"],
+               require_root=True)
+
+    # Create the per-station directory
     runCommand(["install", "-d", "-m", "750", "-o", "rms", "-g", "rmskeys", dst_dir],
                require_root=True)
 
+    # Copy the private key with correct permissions
     runCommand(["install", "-m", "640", "-o", "rms", "-g", "rmskeys", src_key, dst_key],
                require_root=True)
 
     logMessage("OK", f"Copied private key for {station_id} into uploader cache.")
+
 
 def stepEnsureRmsKeysGroup():
     # Ensure the rmskeys group exists
@@ -714,6 +727,7 @@ def main() -> None:
     stepInstallSystemd(unit_path=UNIT_PATH)
     stepInstallStartSystemDScript()
     stepEnsureRmsKeysGroup()
+    stepEnsureRmsSshRoot()
 
     # Loop with index so we can match stations[i] → addresses[i]
     for i, station_id in enumerate(stations):
@@ -737,12 +751,15 @@ def main() -> None:
             protocol=protocol,
             hostname=args.hostname)
 
+
+        key_path = stepGenerateStationKey(station_user)
+        stepCopyStationKeyToCache(station_user, station_id)
+
         if args.configure_only:
             stepStartStation(station_user, restart=True)
             continue
 
-        key_path = stepGenerateStationKey(station_user)
-        stepCopyStationKeyToCache(station_user, station_id)
+
 
         home_dir = stepGetUserHome(station_user)
 
