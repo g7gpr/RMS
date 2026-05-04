@@ -496,6 +496,8 @@ if __name__ == '__main__':
 
                             log.info(log_line)
 
+                            log.info(f"lag_time {lag_time}")
+                            log.info(f"max_lag_time_across_stations {max_lag_time_across_stations}")
                             if lag_time > max_lag_time_across_stations:
                                 log.info(f"   Got a new max_lag_time of {lag_time}")
                                 max_lag_time_across_stations = lag_time
