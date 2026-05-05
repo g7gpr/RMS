@@ -234,6 +234,7 @@ def uploadFile(station, f, sftp, test=False):
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     filetime_utc = datetime.datetime.fromtimestamp(os.path.getmtime(local_file_path), tz=datetime.timezone.utc)
     lag_time = now_utc - filetime_utc
+    log.info(f"Lag time {lag_time}")
     lag_time_str = f"{lag_time.days}d "
     lag_time_str += (datetime.datetime(1970,1,1, tzinfo=datetime.timezone.utc) + lag_time).strftime("%H:%M:%S")
 
