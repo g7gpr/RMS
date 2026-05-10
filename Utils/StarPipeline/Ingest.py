@@ -2204,7 +2204,7 @@ if __name__ == "__main__":
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
     country_code = cml_args.country_code
-    create_database = cml_args.create_database
+    create_db = cml_args.create_db
     build_cache = cml_args.build_cache
     write_db = cml_args.write_db
     get_remote_file_list = cml_args.get_remote_file_list
@@ -2247,7 +2247,7 @@ if __name__ == "__main__":
         concurrent_threads = cml_args.threads
         log.info(f"Postgresql host {postgresql_host}")
 
-        if create_database:
+        if create_db:
             with psycopg.connect(host=postgresql_host, dbname="star_data", user="postgres") as postgress_conn:
                 createDatabaseIfMissing(postgress_conn)
                 initialiseDatabase(postgress_conn)
