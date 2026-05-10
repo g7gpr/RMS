@@ -929,7 +929,7 @@ def extractBz2Files(bz2_list, input_directory, working_directory, silent=True, h
             if not silent:
                 log.info("Unable to extract".format(basename_bz2))
 
-def downloadFile(host, username, local_path, remote_path, port=PORT,  silent=False):
+def downloadFile(host, username, local_path, remote_path, port=PORT,  silent=False, bw_limit=None):
     """Download a single file try compressed rsync first, then fall back to Paramiko.
 
     Arguments:
@@ -956,8 +956,20 @@ def downloadFile(host, username, local_path, remote_path, port=PORT,  silent=Fal
                 print("Remote file {} was not found.".format(os.path.basename(remote)))
             return
         else:
+            cmd = [
+                'rsync',
+                '--partial',
+                '--partial-dir=.rsync-partial',
+            ]
 
-            result = subprocess.run(['rsync', '--bwlimit=1024', '--partial', '--partial-dir=.rsync-partial',remote, os.path.join(local_path, os.path.basename(remote_path))], capture_output=True, text=True)
+            if bw_limit is not None:
+                cmd.append(f'--bwlimit={bw_limit}')
+                log.info(f"Starting rsync with a band width limit of {bw_limit}")
+
+            cmd.extend([remote, os.path.join(local_path, os.path.basename(remote_path))])
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
         if not os.path.exists(os.path.expanduser(local_path)):
             if not silent:
                 print("Download of {} from {}@{} failed. You need to add your keys to remote using ssh-copy-id."
@@ -1234,7 +1246,7 @@ def getRemoteFiles(username, host, port, remote_dir, delay_retry=True):
 
     return remote_files
 
-def downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=22, max_tries=3, verbose=False):
+def downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=22, max_tries=3, verbose=False, bw_limit=None):
 
     remote_file = os.path.basename(full_remote_path_to_bz2)
     download_start_time = datetime.datetime.now(datetime.timezone.utc)
@@ -1244,7 +1256,7 @@ def downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=22, max
         log.info(f"Downloading {full_remote_path_to_bz2} to {target_path}")
 
     while not os.path.exists(target_path) and download_count < max_tries:
-        downloadFile(host, username, t, full_remote_path_to_bz2, port=port)
+        downloadFile(host, username, t, full_remote_path_to_bz2, port=port, bw_limit=bw_limit)
         download_count += 1
         # If the file is now present, break immediately
         if os.path.exists(target_path):
@@ -1286,7 +1298,7 @@ def markIngestedIfFilesMissing(conn, path_local_list, files_available, local_tar
             markIngested(conn, local_target)
             continue
 
-def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path):
+def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=None):
 
 
     parts = remote_file.split("_")
@@ -1302,7 +1314,7 @@ def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_f
     with tempfile.TemporaryDirectory() as t:
 
         # Download from remote
-        if downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=port):
+        if downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=port, bw_limit=bw_limit):
             pass
             #log.info(f"Downloaded {full_remote_path_to_bz2} to {local_target}")
             size_mb = os.path.getsize(os.path.join(t, remote_file)) / 1024 ** 2
@@ -1383,7 +1395,7 @@ def extractSessionNameFromCalstar(calstars_path):
 
 
 
-def worker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None, concurrent_threads=None):
+def worker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None, concurrent_threads=None, bw_limit=None):
 
     # Each worker must open its own DB connection
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as worker_conn:
@@ -1395,7 +1407,7 @@ def worker(remote_station_processed_dir, username, host, port, calstars_data_ful
                 continue
 
             try:
-                processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars)
+                processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit=bw_limit)
                 markJobDone(worker_conn, remote_file)
             except Exception as e:
                 tb = traceback.format_exc()
@@ -1414,7 +1426,7 @@ def chunkByHour(file_list, day_divider=24):
     return dict(days)
 
 
-def runParallel(remote_station_processed_dir=None, username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, concurrent_threads=2):
+def runParallel(remote_station_processed_dir=None, username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, concurrent_threads=2, bw_limit=None):
 
     log.info(f"Starting pool with {concurrent_threads} threads")
     with Pool(concurrent_threads) as pool:
@@ -1430,7 +1442,8 @@ def runParallel(remote_station_processed_dir=None, username=None, host=None, por
                 calstars_data_full_path,
                 write_db,
                 catalog_stars,
-                concurrent_threads))
+                concurrent_threads,
+                bw_limit))
 
 
         results = pool.starmap(worker, args_list)
@@ -1439,7 +1452,7 @@ def runParallel(remote_station_processed_dir=None, username=None, host=None, por
 
 
 def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=None, username=None, host=None, port=None,
-                      calstars_data_full_path=None, write_db=True, catalog_stars=None):
+                      calstars_data_full_path=None, write_db=True, catalog_stars=None, bw_limit=None):
 
     print(f"Entering Process Server File with {remote_file}")
     station_name = remote_file.split("_")[0]
@@ -1475,7 +1488,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
     # If we don't have a directory, then get from remote working in a temporary directory
     if not os.path.exists(os.path.join(calstars_data_full_path, local_dir_name)):
         log.info(f"Retrieving {remote_file} from {username}@{host}:/{remote_dir}")
-        local_config_path, local_platepar_path, local_recalibrated_path, calstars_name, size_mb = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path)
+        local_config_path, local_platepar_path, local_recalibrated_path, calstars_name, size_mb = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=bw_limit)
 
     if local_config_path is None:
         log.info(f"Skipping {remote_file} because config file not available")
@@ -1522,7 +1535,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
 
 def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
            remote_station_processed_dir=None, write_db=True,
-           host=None, username=None, port=PORT, concurrent_threads=2):
+           host=None, username=None, port=PORT, concurrent_threads=2, bw_limit=None):
 
     """
     In a subdirectoy of station_data_dir create a directory for each station containing mask
@@ -1560,7 +1573,7 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
     catalog_stars = loadCatalogStars(config, config.catalog_mag_limit)
 
 
-    runParallel(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars, concurrent_threads=concurrent_threads)
+    runParallel(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars, concurrent_threads=concurrent_threads, bw_limit=None)
 
     #Single threading approach - not in use
     """
@@ -2095,7 +2108,7 @@ def archiveWholeDir(full_path_to_dir, verbose=False):
     archiveCalstarDirectories(conn, full_path_to_dir, dirs_to_archive, ingested_only=False)
 
 
-def buildCache(config, remote_files_sorted, history_days=21, username=None, host=None, remote_station_processed_dir=None, port=22):
+def buildCache(config, remote_files_sorted, history_days=21, username=None, host=None, remote_station_processed_dir=None, port=22, bw_limit=None):
 
     calstars_data_dir = CALSTARS_DATA_DIR
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
@@ -2139,7 +2152,7 @@ def buildCache(config, remote_files_sorted, history_days=21, username=None, host
         full_path_to_downloaded_file = os.path.join(calstars_data_full_path, f"{local_dir_name}_CALSTAR.tar.bz2")
         # If we don't have an archive, then get from remote working in a temporary directory
         if not os.path.exists(full_path_to_downloaded_file):
-            _, _, _, _, size_mb = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path)
+            _, _, _, _, size_mb = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=bw_limit)
             downloaded_mb += size_mb
         archiveWholeDir(calstars_data_full_path)
         if os.path.exists(full_path_to_downloaded_file):
@@ -2199,6 +2212,8 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('--country_code', metavar='COUNTRY_CODE', help="""Country code to work on""")
 
+    arg_parser.add_argument('--bw_limit', metavar='BANDWIDTH_LIMIT', help="""Bandwidth limit per thread""")
+
 
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
@@ -2208,6 +2223,7 @@ if __name__ == "__main__":
     build_cache = cml_args.build_cache
     write_db = cml_args.write_db
     get_remote_file_list = cml_args.get_remote_file_list
+    bw_limit = cml_args.bw_limit
 
     user, _, remainder = cml_args.path_template.partition("@")
     hostname, _, path_template = remainder.partition(":")
@@ -2275,4 +2291,4 @@ if __name__ == "__main__":
 
             remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))
             remote_files_sorted = sortFilesByTime(remote_files)
-            ingest(config, remote_files_sorted, conn, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db, concurrent_threads=concurrent_threads)
+            ingest(config, remote_files_sorted, conn, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db, concurrent_threads=concurrent_threads, bw_limit=bw_limit)
