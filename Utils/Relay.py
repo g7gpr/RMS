@@ -493,10 +493,10 @@ if __name__ == '__main__':
                             log_line = f"{mb_sent:6.1f}MB to {station}@{HOSTNAME}:{remote_file_path} in {int_ts:03d} seconds at {data_rate:01.2f}MB/s - delay {lag_time_str}"
                             data_sent += mb_sent
                             this_station_seconds = int((datetime.datetime.now() - start_station_time).total_seconds())
-                            data_rate_so_far_this_station = data_sent / this_station_seconds
-                            log_line += f" ({i}/{len(files_to_upload)}) {this_station_seconds:03d} seconds cumulative to send {data_sent:04.1f}MB at {data_rate_so_far_this_station:01.2f}MB/s"
-
-                            log.info(log_line)
+                            if this_station_seconds > 0:
+                                data_rate_so_far_this_station = data_sent / this_station_seconds
+                                log_line += f" ({i}/{len(files_to_upload)}) {this_station_seconds:03d} seconds cumulative to send {data_sent:04.1f}MB at {data_rate_so_far_this_station:01.2f}MB/s"
+                                log.info(log_line)
 
                             log.info(f"lag_time {lag_time}")
                             log.info(f"max_lag_time_across_stations {max_lag_time_across_stations}")
