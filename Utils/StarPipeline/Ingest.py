@@ -1454,7 +1454,7 @@ def runParallel(remote_station_processed_dir=None, username=None, host=None, por
 def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=None, username=None, host=None, port=None,
                       calstars_data_full_path=None, write_db=True, catalog_stars=None, bw_limit=None):
 
-    print(f"Entering Process Server File with {remote_file}")
+    log.info(f"Entering processServerFile with {remote_file}")
     station_name = remote_file.split("_")[0]
     remote_dir = remote_station_processed_dir.replace("stationID", station_name.lower())
 
