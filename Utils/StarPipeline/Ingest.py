@@ -2193,9 +2193,9 @@ if __name__ == "__main__":
     arg_parser.add_argument('-g', '--get_remote_file_list', dest='get_remote_file_list', default=False, action="store_true",
                             help="Build the list of remote files")
 
-    arg_parser.add_argument('--create_database', dest='create_database', default=False,
+    arg_parser.add_argument('--create_db', dest='create_db', default=False,
                             action="store_true",
-                            help="Populate ingestion table and then quit immediately")
+                            help="Create the database")
 
     arg_parser.add_argument('--country_code', metavar='COUNTRY_CODE', help="""Country code to work on""")
 
