@@ -24,6 +24,7 @@ import math
 
 from RMS.Formats.FFfile import getMiddleTimeFF
 
+
 """
 Database configuration instructions
 
@@ -190,6 +191,7 @@ from multiprocessing import Pool
 from collections import defaultdict
 from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges, claimNextJob, markJobDone, markJobError, resetStalledJobs
 from collections import Counter
+from scipy.interpolate import SmoothBivariateSpline
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
@@ -218,6 +220,19 @@ CALSTAR_FILES_TABLE_NAME = "calstar_files"
 STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
 CHARTS = "charts"
 PORT = 22
+
+
+def countKnots(spline):
+    """
+    Return (nx, ny) = number of knots in x and y.
+    A valid spline must have >= 4 knots in each dimension.
+    """
+    kx, ky = spline.get_knots()
+    return kx.size, ky.size
+
+def splineIsValid(spline):
+    nx, ny = countKnots(spline)
+    return nx >= 4 and ny >= 4
 
 
 
@@ -1383,6 +1398,9 @@ def worker(remote_station_processed_dir, username, host, port, calstars_data_ful
                 processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars)
                 markJobDone(worker_conn, remote_file)
             except Exception as e:
+                tb = traceback.format_exc()
+                error_msg = f"{type(e).__name__}: {e}\n{tb}"
+                log.error(error_msg)
                 markJobError(worker_conn, remote_file, str(e))
 
 def chunkByHour(file_list, day_divider=24):
@@ -1457,7 +1475,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
     # If we don't have a directory, then get from remote working in a temporary directory
     if not os.path.exists(os.path.join(calstars_data_full_path, local_dir_name)):
         log.info(f"Retrieving {remote_file} from {username}@{host}:/{remote_dir}")
-        local_config_path, local_platepar_path, local_recalibrated_path, calstars_name = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path)
+        local_config_path, local_platepar_path, local_recalibrated_path, calstars_name, size_mb = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path)
 
     if local_config_path is None:
         log.info(f"Skipping {remote_file} because config file not available")
@@ -1529,7 +1547,7 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
     """
 
     log.info("Reset stalled jobs")
-    resetStalledJobs(conn)
+    resetStalledJobs(conn, this_machine=True)
 
     with conn.cursor() as cur:
         cur.execute("SELECT current_user;")
@@ -1667,10 +1685,10 @@ def saveRemoteFiles(remote_files, json_path):
     with open(json_path, "w") as f:
         json.dump(serialisable, f, indent=2)
 
-def loadRemoteFiles(json_path):
+def loadRemoteFiles(json_path, country_code=""):
 
     if not os.path.exists(json_path):
-        getRemoteFileList()
+        getRemoteFileList(country_code=country_code)
 
     with open(json_path, "r") as f:
         data = json.load(f)
@@ -1864,14 +1882,14 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         )
 
         results_list = cat.queryRaDec(arr_obs_ra, arr_obs_dec, n_brightest=1, radius_deg=radius_deg)
-
-        arr_star_name = np.array([r[0][0] for r in results_list], dtype=str)
+        arr_star_name = np.array([r[0][0] if r is not None else None for r in results_list], dtype=object)
 
         counts = Counter(arr_star_name)
         duplicated_star_names = {name for name, c in counts.items() if c > 1}
 
         if len(duplicated_star_names):
-            log.info(f"Duplicated star names {duplicated_star_names}")
+            #log.info(f"Duplicated star names {duplicated_star_names}")
+            pass
         set_duplicated_star_indices = set(np.where(np.isin(arr_star_name, list(duplicated_star_names)))[0])
 
 
@@ -1886,8 +1904,24 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             else:
                 cat_mag_list.append("None")
 
+        # Build the spline if possible
 
-        arr_cat_mag = np.array(cat_mag_list)
+        arr_cat_mag = np.array([float(m) if m != "None" else np.nan for m in cat_mag_list])
+        arr_mag_err = arr_obs_mag - arr_cat_mag
+        valid = (~np.isnan(arr_mag_err) & ~np.isin(np.arange(len(arr_mag_err)), list(set_duplicated_star_indices)))
+        x, y, r = arr_obs_x[valid], arr_obs_y[valid], arr_mag_err[valid]
+        spline = SmoothBivariateSpline(x, y, r, s=1.0)
+
+        if splineIsValid(spline):
+            #log.info(f"Spline built successfully for {fits_file}")
+            flags &= ~ob_flag.SPLINE_NOT_BUILT
+        else:
+            log.warning(f"Spline could not be built for {fits_file}")
+            flags |= ob_flag.SPLINE_NOT_BUILT
+
+
+
+
         mean_absolute_deviation = np.median(np.abs(arr_cat_mag - arr_obs_mag))
 
         if mean_absolute_deviation > 0.2:
@@ -1908,7 +1942,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
                 arr_ampltd, arr_fwhm, arr_bg_lvl, arr_snr, arr_nsatpx)):
 
             if i in set_duplicated_star_indices:
-                log.info(f"Dropping duplicate star {query_results[0]} from frame {fits_file}")
+                # log.info(f"Dropping duplicate star {query_results[0]} from frame {fits_file}")
                 continue
 
             if o_intens_sum <= 0:
@@ -1975,7 +2009,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     return observation_dict, start_jd, end_jd
 
-def resetIngestion(local_calstars_path, ingestion_marker):
+def resetIngestion(conn, local_calstars_path, ingestion_marker):
 
     dir_contents = sorted(os.listdir(local_calstars_path))
     for object in dir_contents:
@@ -2021,8 +2055,15 @@ def populateWorkQueue(conn, file_name_list):
                 dt = FFfile.getMiddleTimeFF(file_name, fps=25, ret_milliseconds=True, ff_frames=256)
                 jd = date2JD(*dt)
                 jd_int = scale1e6(jd)
+                time_now = datetime.datetime.now(tz=datetime.timezone.utc)
+
+                now_jd_int = scale1e6(date2JD(time_now.year, time_now.month, time_now.day, time_now.hour, time_now.minute, time_now.second, time_now.microsecond / 1000))
 
                 if jd_int is None:
+                    continue
+
+                if jd_int > now_jd_int:
+                    log.info(f"Rejecting file {file_name} as observation start time is in the future")
                     continue
 
                 copy.write_row((file_name, jd_int))
@@ -2113,7 +2154,7 @@ def buildCache(config, remote_files_sorted, history_days=21, username=None, host
             log.info(f"{remote_file} {size_mb:.1f}MB rate {cumulative_mb_s:.1f}MB/s estimated cache download completion time {completion_time_str} {files_downloaded}/{files_to_download}")
     return
 
-def getRemoteFileList():
+def getRemoteFileList(country_code=""):
 
     station_list = getStationList(country_code=country_code)
     remote_files = discoverRemoteFiles(station_list, user, hostname, 22, remote_processed_dir_template=path_template)
@@ -2156,13 +2197,13 @@ if __name__ == "__main__":
                             action="store_true",
                             help="Populate ingestion table and then quit immediately")
 
-    arg_parser.add_argument('--country', metavar='COUNTRY', help="""Country code to work on""")
+    arg_parser.add_argument('--country_code', metavar='COUNTRY_CODE', help="""Country code to work on""")
 
 
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
-    country_code = cml_args.country
+    country_code = cml_args.country_code
     create_database = cml_args.create_database
     build_cache = cml_args.build_cache
     write_db = cml_args.write_db
@@ -2185,23 +2226,24 @@ if __name__ == "__main__":
 
     # Get the logger handle
     log = getLogger("rmslogger")
-
+    postgresql_host = cml_args.postgresql_host
 
     if cml_args.reset_ingestion:
         log.info(f"Removing all ingestion markers ({DIRECTORY_INGESTED_MARKER}) from {calstars_directory_path}")
-        resetIngestion(calstars_directory_path, DIRECTORY_INGESTED_MARKER)
+        with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as reset_ingestion_conn:
+            resetIngestion(reset_ingestion_conn, calstars_directory_path, DIRECTORY_INGESTED_MARKER)
 
     if get_remote_file_list:
-        getRemoteFileList()
+        getRemoteFileList(country_code=country_code)
 
     if build_cache:
-        remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))
+        remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"), country_code=country_code)
         remote_files_sorted = sortFilesByTime(remote_files)
         buildCache(config, remote_files_sorted, username=user, host=hostname, remote_station_processed_dir=path_template)
         sys.exit()
 
     if write_db:
-        postgresql_host = cml_args.postgresql_host
+
         concurrent_threads = cml_args.threads
         log.info(f"Postgresql host {postgresql_host}")
 

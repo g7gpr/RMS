@@ -39,13 +39,15 @@ class Flags:
     FEW_STARS = 1 << 2
     MOON_IN_FOV = 1 << 3
     SKY_NOT_FULLY_DARK = 1 << 4
+    SPLINE_NOT_BUILT = 1 << 5
 
     NAMES = {
         BAD_AUTO_PP: "bad auto platepar",
         BAD_MAD: "bad median absolute stellar difference",
         FEW_STARS: "too few stars",
         MOON_IN_FOV: "illuminated moon close to fov",
-        SKY_NOT_FULLY_DARK: "dusk or dawn"}
+        SKY_NOT_FULLY_DARK: "dusk or dawn",
+        SPLINE_NOT_BUILT: "could not build a spline on x, y, r"}
 
     @classmethod
     def decode(cls, value):
@@ -396,7 +398,7 @@ def claimNextJob(conn):
         SELECT remote_path
         FROM ingest_work
         WHERE status = 'pending'
-        ORDER BY jd_int DESC, remote_path
+        ORDER BY jd_int, remote_path
         LIMIT 1
         FOR UPDATE SKIP LOCKED)
     RETURNING remote_path, jd_int;
@@ -412,23 +414,33 @@ def claimNextJob(conn):
 
     return row if row else None
 
-def resetStalledJobs(conn):
+def resetStalledJobs(conn, this_machine=False):
     """
     Reset any jobs that have been claimed for more than 30 minutes.
     These are considered stalled and returned to the pending queue.
     """
+
+    params = []
     sql = """
-        UPDATE ingest_work
-        SET status = 'pending',
-            claimed_by = NULL,
-            claimed_at = NULL,
-            updated_at = now()
-        WHERE status = 'claimed'
-          AND claimed_at < now() - interval '30 minutes';
-    """
+          UPDATE ingest_work
+          SET status     = 'pending',
+              claimed_by = NULL,
+              claimed_at = NULL,
+              updated_at = now()
+          WHERE status = 'claimed' """
+
+    if this_machine:
+        host_name = socket.gethostname()
+        sql += f" AND claimed_by = %s;"
+        params.append(host_name)
+    else:
+        sql +=       "AND claimed_at < now() - interval '30 minutes';"
+
+    log.info("Resetting stalled jobs")
+    log.info(sql)
 
     with conn.cursor() as cur:
-        cur.execute(sql)
+        cur.execute(sql, params)
     conn.commit()
 
 

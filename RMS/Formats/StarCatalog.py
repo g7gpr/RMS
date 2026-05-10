@@ -155,7 +155,7 @@ class Catalog:
 
             results.append(matched)
 
-        # ⭐ Always return a list, even for scalar input
+
         return results
 
     def queryRaDecOld(self, ra_deg, dec_deg, radius_deg=0.1, n_brightest=1):
