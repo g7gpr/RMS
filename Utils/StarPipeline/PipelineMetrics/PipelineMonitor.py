@@ -22,13 +22,13 @@ def printSection(title):
 def showLatestSessions():
     lines = ["Latest Sessions"]
     for row in latestSessions():
-        lines.append(str(row))
+        lines.append(str(f"{row[0]}\t{row[1]}\t{row[2]}"))
     return "\n".join(lines)
 
 def showFrameCounts():
     lines = ["Frame Counts"]
     for row in frameCounts():
-        lines.append(str(row))
+        lines.append(str(row[1]))
     return "\n".join(lines)
 
 def showObservationCounts():
@@ -98,6 +98,39 @@ def showIngestionRate():
         f"{rate:.2f} calstars/day"
     )
 
+def showWorkerLeaderboard():
+    """
+    Show workers (claimed_by) with number of claimed and completed jobs.
+    """
+    from Utils.StarPipeline.PipelineMetrics.db import getConn
+    conn = getConn()
+
+    sql = """
+        SELECT
+            claimed_by AS hostname,
+            COUNT(*) FILTER (WHERE status = 'claimed') AS number_claimed,
+            COUNT(*) FILTER (WHERE status = 'done') AS number_completed
+        FROM ingest_work
+        WHERE claimed_by IS NOT NULL
+        GROUP BY claimed_by
+        ORDER BY number_completed DESC;
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        rows = cur.fetchall()
+
+    if not rows:
+        return "=== Worker Leaderboard ===\nNo workers have claimed jobs yet"
+
+    lines = ["=== Worker Leaderboard ===", "hostname        claimed   completed"]
+    for hostname, claimed, completed in rows:
+        lines.append(f"{hostname:14} {claimed:7}   {completed:10}")
+
+    return "\n".join(lines)
+
+
+
 def dashboard():
     try:
         sections = [
@@ -109,7 +142,8 @@ def dashboard():
             #showTotalObservations(),
             showJdRange(),
             showIngestionRate(),
-            showActiveStations()]
+            showActiveStations(),
+            showWorkerLeaderboard()]
 
     except Exception as e:
         # Database not ready or query failed

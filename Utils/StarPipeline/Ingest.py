@@ -2271,13 +2271,14 @@ if __name__ == "__main__":
         with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 
             auditIngestUserPrivileges(conn)
-            log.info("Loading star catalog")
-            cat = Catalog(config, lim_mag=10)
-            log.info(f"Loaded catalog of {cat.entry_count} entries")
 
             if cml_args.reset_stalled:
                 resetStalledJobs(conn)
                 sys.exit()
+
+            log.info("Loading star catalog")
+            cat = Catalog(config, lim_mag=10)
+            log.info(f"Loaded catalog of {cat.entry_count} entries")
 
             if cml_args.populate_ingestion_table:
                 log.info("Populating the ingestion table")
