@@ -37,7 +37,7 @@ def refileArchives(cache_root):
                 #print("Already in correct location: " + filename)
                 continue
 
-            #print("Moving " + str(file_path) + " -> " + str(target_path))
+            print("Moving " + str(file_path) + " -> " + str(target_path))
             moveFile(file_path, target_path)
 
 def main():
