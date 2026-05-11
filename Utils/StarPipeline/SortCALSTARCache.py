@@ -19,25 +19,26 @@ def moveFile(src_path, dest_path):
     shutil.move(str(src_path), str(dest_path))
 
 def refileArchives(cache_root):
-    for entry in cache_root.iterdir():
-        if entry.is_dir():
-            continue
+    for root, dirs, files in os.walk(cache_root):
+        root_path = Path(root)
 
-        filename = entry.name
-        date_str = extractDate(filename)
-        if not date_str:
-            print("Skipping invalid filename: " + filename)
-            continue
+        for filename in files:
+            file_path = root_path / filename
 
-        target_dir = ensureDirectory(cache_root / date_str)
-        target_path = target_dir / filename
+            date_str = extractDate(filename)
+            if not date_str:
+                print("Skipping invalid filename: " + filename)
+                continue
 
-        if entry == target_path:
-            print("Already in correct location: " + filename)
-            continue
+            target_dir = ensureDirectory(cache_root / date_str)
+            target_path = target_dir / filename
 
-        print("Moving " + str(entry) + " -> " + str(target_path))
-        moveFile(entry, target_path)
+            if file_path == target_path:
+                print("Already in correct location: " + filename)
+                continue
+
+            print("Moving " + str(file_path) + " -> " + str(target_path))
+            moveFile(file_path, target_path)
 
 def main():
     if len(sys.argv) != 2:
@@ -52,4 +53,5 @@ def main():
     refileArchives(cache_root)
 
 if __name__ == "__main__":
+    import os
     main()
