@@ -1,8 +1,8 @@
 [Unit]
-Description=Run PopulateWorkQueue every hour
+Description=Run PopulateWorkQueue every second day at midnight UTC
 
 [Timer]
-OnCalendar=hourly
+OnCalendar=*-*-*~2 00:00 UTC
 Persistent=true
 
 [Install]
