@@ -27,17 +27,17 @@ def refileArchives(cache_root):
 
             date_str = extractDate(filename)
             if not date_str:
-                print("Skipping invalid filename: " + filename)
+                #print("Skipping invalid filename: " + filename)
                 continue
 
             target_dir = ensureDirectory(cache_root / date_str)
             target_path = target_dir / filename
 
             if file_path == target_path:
-                print("Already in correct location: " + filename)
+                #print("Already in correct location: " + filename)
                 continue
 
-            print("Moving " + str(file_path) + " -> " + str(target_path))
+            #print("Moving " + str(file_path) + " -> " + str(target_path))
             moveFile(file_path, target_path)
 
 def main():
