@@ -4,7 +4,7 @@ Description=PopulateWorkQueue
 [Service]
 Type=oneshot
 User=star
-WorkingDirectory=/home/rms/source/RMS
+WorkingDirectory=/home/star/source/RMS
 ExecStart=/usr/local/bin/PopulateWorkQueue.sh
 TimeoutStartSec=7d
 SyslogIdentifier=populateworkqueue
