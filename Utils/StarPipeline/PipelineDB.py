@@ -343,7 +343,7 @@ def createObservationIndexes(conn):
 def createIngestWorkTable(conn):
         ddl = """
         CREATE TABLE IF NOT EXISTS ingest_work (
-            remote_path     TEXT PRIMARY KEY,
+            remote_filename     TEXT PRIMARY KEY,
             jd_int          BIGINT NOT NULL,
             status          TEXT NOT NULL DEFAULT 'pending',
             claimed_by      TEXT,
@@ -355,28 +355,28 @@ def createIngestWorkTable(conn):
             cur.execute(ddl)
         conn.commit()
 
-def markJobDone(conn, remote_path):
+def markJobDone(conn, remote_filename):
     with conn.cursor() as cur:
         cur.execute(
             """
             UPDATE ingest_work
             SET status = 'done', updated_at = now()
-            WHERE remote_path = %s
+            WHERE remote_filename = %s
             """,
-            (remote_path,)
+            (remote_filename,)
         )
     conn.commit()
 
 
-def markJobError(conn, remote_path, msg):
+def markJobError(conn, remote_filename, msg):
     with conn.cursor() as cur:
         cur.execute(
             """
             UPDATE ingest_work
             SET status = 'error', updated_at = now()
-            WHERE remote_path = %s
+            WHERE remote_filename = %s
             """,
-            (remote_path,)
+            (remote_filename,)
         )
     conn.commit()
 
@@ -386,7 +386,7 @@ def claimNextJob(conn):
     """
     Atomically claim the next pending job.
     Records hostname and timestamp.
-    Returns remote_path or None if no work is available.
+    Returns remote_filename or None if no work is available.
     """
     sql = """
     UPDATE ingest_work
@@ -394,14 +394,14 @@ def claimNextJob(conn):
         claimed_by = %s,
         claimed_at = now(),
         updated_at = now()
-    WHERE remote_path = (
-        SELECT remote_path
+    WHERE remote_filename = (
+        SELECT remote_filename
         FROM ingest_work
         WHERE status = 'pending'
-        ORDER BY jd_int, remote_path
+        ORDER BY jd_int, remote_filename
         LIMIT 1
         FOR UPDATE SKIP LOCKED)
-    RETURNING remote_path, jd_int;
+    RETURNING remote_filename, jd_int;
     """
 
     with conn.cursor() as cur:
