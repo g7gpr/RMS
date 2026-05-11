@@ -1,0 +1,13 @@
+[Unit]
+Description=Refile CALSTAR cache
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=star
+Group=star
+ExecStart=/usr/local/bin/sort_calstar_cache.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
