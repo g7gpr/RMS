@@ -417,8 +417,6 @@ def discoverRemoteFiles(stations, username, host, port,
 
         seconds_per_download = elapsed_time_seconds / idx
         end_time = (start_time + datetime.timedelta(seconds = len(stations) * seconds_per_download)).replace(microsecond=0)
-        plural = '' if len(stations) == 1 else 's'
-        log.info(f"Processing station {idx}/{len(stations)}: {station} had {len(station_files)} file{plural}. Start / Completion {start_time.isoformat()} / {end_time.isoformat()} {seconds_per_download:.1f} sec/station")
 
         # Filter valid tars
         for file_name in station_files:
@@ -497,7 +495,7 @@ def populateWorkQueue(conn, file_name_list):
             INSERT INTO ingest_work (remote_filename, jd_int)
             SELECT remote_path, jd_int
             FROM ingest_work_stage
-            ON CONFLICT (remote_path) DO NOTHING;
+            ON CONFLICT (remote_filename) DO NOTHING;
         """)
 
     # 4. Commit drops the temp table automatically

@@ -1,0 +1,13 @@
+[Unit]
+Description=PopulateWorkQueue
+
+[Service]
+Type=oneshot
+User=rms
+WorkingDirectory=/home/rms/source/RMS
+ExecStart=/usr/local/bin/PopulateWorkQueue.sh
+TimeoutStartSec=7d
+SyslogIdentifier=populateworkqueue
+
+[Install]
+WantedBy=multi-user.target
