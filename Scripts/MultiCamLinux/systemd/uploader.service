@@ -28,7 +28,6 @@ StandardOutput=journal
 StandardError=journal
 
 ProtectSystem=full
-ProtectHome=read-only
 PrivateTmp=yes
 
 [Install]
