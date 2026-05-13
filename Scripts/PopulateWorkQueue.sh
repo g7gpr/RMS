@@ -5,7 +5,7 @@ set -euo pipefail
 source /home/star/vRMS/bin/activate
 
 # Run the module
-python -m Utils.StarPipeline.PopulateWorkQueue analysis@gmn.uwo.ca:/home/stationID/files/processed 192.168.217.212
+python -m Utils.StarPipeline.PopulateWorkQueue gmn@192.168.217.241:/home/stationID/files 192.168.217.212
 
 # exit
 exit 0

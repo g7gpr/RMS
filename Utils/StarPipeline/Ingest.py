@@ -187,9 +187,9 @@ from RMS.Logger import LoggingManager, getLogger
 from pathlib import Path
 from RMS.Astrometry.AutoPlatepar import autoFitPlatepar, loadCatalogStars
 from Utils.Flux import detectMoon
-from multiprocessing import Pool
+from multiprocessing import Pool, Process
 from collections import defaultdict
-from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges, claimNextJob, markJobDone, markJobError, resetStalledJobs
+from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges, claimNextJob, markJobDone, markJobError, resetStalledJobs, jobsRemaining
 from collections import Counter
 from scipy.interpolate import SmoothBivariateSpline
 
@@ -1306,8 +1306,8 @@ def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_f
         log.error(f"Unexpected remote filename format: {remote_file}")
         return None, None, None, None
 
-    local_dir_name = "_".join(remote_file.split("_")[0:4])
-    calstars_name = f"CALSTARS_{local_dir_name}.txt"
+    local_dir_name = os.path.join("_".join(remote_file.split("_")[1:2]), "_".join(remote_file.split("_")[0:4]))
+    calstars_name = f"CALSTARS_{os.path.basename(local_dir_name)}.txt"
     full_remote_path_to_bz2 = os.path.join(remote_dir, remote_file)
     local_target = os.path.join(calstars_data_full_path, local_dir_name)
 
@@ -1395,25 +1395,23 @@ def extractSessionNameFromCalstar(calstars_path):
 
 
 
-def worker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None, concurrent_threads=None, bw_limit=None):
+def ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None, concurrent_threads=None, bw_limit=None):
 
     # Each worker must open its own DB connection
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as worker_conn:
-        while True:
-            log.info(f"Running with {concurrent_threads} threads")
-            remote_file, jd_scaled = claimNextJob(worker_conn)
-            if remote_file is None:
-                time.sleep(120)
-                continue
+        log.info(f"Running with {concurrent_threads} threads")
+        remote_file, jd_scaled = claimNextJob(worker_conn)
+        if remote_file is None:
+            return
 
-            try:
-                processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit=bw_limit)
-                markJobDone(worker_conn, remote_file)
-            except Exception as e:
-                tb = traceback.format_exc()
-                error_msg = f"{type(e).__name__}: {e}\n{tb}"
-                log.error(error_msg)
-                markJobError(worker_conn, remote_file, str(e))
+        try:
+            processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit=bw_limit)
+            markJobDone(worker_conn, remote_file)
+        except Exception as e:
+            tb = traceback.format_exc()
+            error_msg = f"{type(e).__name__}: {e}\n{tb}"
+            log.error(error_msg)
+            markJobError(worker_conn, remote_file, str(e))
 
 def chunkByHour(file_list, day_divider=24):
 
@@ -1426,28 +1424,44 @@ def chunkByHour(file_list, day_divider=24):
     return dict(days)
 
 
-def runParallel(remote_station_processed_dir=None, username=None, host=None, port=None, calstars_data_full_path=None, write_db=True, catalog_stars=None, concurrent_threads=2, bw_limit=None):
+def startWorker(args):
 
-    log.info(f"Starting pool with {concurrent_threads} threads")
-    with Pool(concurrent_threads) as pool:
-        args_list = []
+    worker = Process(target=ingestWorker, args=args)
+    worker.start()
+    return worker
 
-        for _ in range(concurrent_threads):
+def runParallel(remote_station_processed_dir=None, username=None, host=None,
+                port=None, calstars_data_full_path=None, write_db=True,
+                catalog_stars=None, concurrent_threads=2, bw_limit=None):
 
-            args_list.append((
-                remote_station_processed_dir,
-                username,
-                host,
-                port,
-                calstars_data_full_path,
-                write_db,
-                catalog_stars,
-                concurrent_threads,
-                bw_limit))
+    log.info(f"Starting ingestion with {concurrent_threads} threads")
 
+    with psycopg.connect(host=postgresql_host,
+                         dbname="star_data",
+                         user="ingest_user") as supervisor_conn:
 
-        results = pool.starmap(worker, args_list)
-    return results
+        workers_list = []
+
+        worker_args = (remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db,
+                       catalog_stars, bw_limit)
+
+        while True:
+            pending = jobsRemaining(supervisor_conn)
+
+            # Remove dead workers
+            workers_list = [w for w in workers_list if w.is_alive()]
+            log.info(f"{pending} jobs pending, {len(workers_list)} workers active")
+
+            # Desired number of workers right now
+            target_workers = min(concurrent_threads, pending)
+
+            # Top up to target
+            while len(workers_list) < target_workers:
+                workers_list.append(startWorker(worker_args))
+
+            # When pending == 0, target_workers == 0, so we don't spawn;
+            # existing workers just finish and drop out of workers_list.
+            time.sleep(20)
 
 
 
@@ -1465,7 +1479,8 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
 
     local_dir_name = "_".join(remote_file.split("_")[0:4])
 
-    local_target = os.path.join(calstars_data_full_path, local_dir_name)
+    split = local_dir_name.split("_")
+    local_target = os.path.join(calstars_data_full_path, f"{split[1]}_{split[2]}", local_dir_name)
 
     if isIngested(conn, local_target):
         log.info(f"{local_dir_name} already processed")
@@ -1474,7 +1489,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
     log.info(f"Working on {local_dir_name}")
     # If we already have a .bz2 file, extract it so we can work on it
     local_calstars_archive_path = f"{local_target}_CALSTAR.tar.bz2"
-    extractCalstarArchives(calstars_data_full_path, [os.path.basename(local_calstars_archive_path)], remove_archives=True)
+    extractCalstarArchives(local_target, [os.path.basename(local_calstars_archive_path)], remove_archives=True)
     calstars_name = f"CALSTARS_{local_dir_name}.txt"
     local_config_path = os.path.join(local_target, os.path.basename(config.config_file_name))
     if os.path.basename(config.config_file_name) != ".config":
@@ -1533,7 +1548,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
 
     return
 
-def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
+def ingest(config, file_list, conn, calstars_data_dir=None,
            remote_station_processed_dir=None, write_db=True,
            host=None, username=None, port=PORT, concurrent_threads=2, bw_limit=None):
 
@@ -1568,7 +1583,7 @@ def ingest(config, file_list, conn, calstars_data_dir=CALSTARS_DATA_DIR,
         cur.execute("SELECT inet_server_addr(), inet_server_port();")
         log.info(f"Python is connected to:{cur.fetchone()}")
 
-    calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
+    calstars_data_full_path = calstars_data_dir
 
     catalog_stars = loadCatalogStars(config, config.catalog_mag_limit)
 
@@ -2108,9 +2123,8 @@ def archiveWholeDir(full_path_to_dir, verbose=False):
     archiveCalstarDirectories(conn, full_path_to_dir, dirs_to_archive, ingested_only=False)
 
 
-def buildCache(config, remote_files_sorted, history_days=21, username=None, host=None, remote_station_processed_dir=None, port=22, bw_limit=None):
+def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=21, username=None, host=None, remote_station_processed_dir=None, port=22, bw_limit=None):
 
-    calstars_data_dir = CALSTARS_DATA_DIR
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
     conn = None
@@ -2214,6 +2228,7 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('--bw_limit', metavar='BANDWIDTH_LIMIT', help="""Bandwidth limit per thread""")
 
+    arg_parser.add_argument('--calstars_data_dir', metavar='CALSTARS_DATA_DIR', help="""Calstars data dir""")
 
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
@@ -2225,10 +2240,12 @@ if __name__ == "__main__":
     get_remote_file_list = cml_args.get_remote_file_list
     bw_limit = cml_args.bw_limit
 
+    calstars_data_dir = os.path.join(config.data_dir, CALSTARS_DATA_DIR) if cml_args.calstars_data_dir is None else cml_args.calstars_data_dir
+
     user, _, remainder = cml_args.path_template.partition("@")
     hostname, _, path_template = remainder.partition(":")
 
-    calstars_directory_path = os.path.join(config.data_dir, CALSTARS_DATA_DIR)
+    calstars_directory_path = calstars_data_dir
 
     if not os.path.exists(calstars_directory_path):
         Path(calstars_directory_path).mkdir(parents=True, exist_ok=True)
@@ -2255,7 +2272,7 @@ if __name__ == "__main__":
     if build_cache:
         remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"), country_code=country_code)
         remote_files_sorted = sortFilesByTime(remote_files)
-        buildCache(config, remote_files_sorted, username=user, host=hostname, remote_station_processed_dir=path_template)
+        buildCache(config, remote_files_sorted, calstars_data_dir, username=user, host=hostname, remote_station_processed_dir=path_template)
         sys.exit()
 
     if write_db:
@@ -2292,4 +2309,4 @@ if __name__ == "__main__":
 
             remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))
             remote_files_sorted = sortFilesByTime(remote_files)
-            ingest(config, remote_files_sorted, conn, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db, concurrent_threads=concurrent_threads, bw_limit=bw_limit)
+            ingest(config, remote_files_sorted, conn, calstars_data_dir=calstars_data_dir, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db, concurrent_threads=concurrent_threads, bw_limit=bw_limit)

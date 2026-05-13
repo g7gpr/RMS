@@ -380,6 +380,15 @@ def markJobError(conn, remote_filename, msg):
         )
     conn.commit()
 
+def jobsRemaining(conn):
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM ingest_work
+            WHERE status = 'pending';
+        """)
+        (count,) = cur.fetchone()
+        return count
 
 
 def claimNextJob(conn):
@@ -406,7 +415,6 @@ def claimNextJob(conn):
 
     with conn.cursor() as cur:
         host_name = socket.gethostname()
-        log.info(f"{host_name} requesting next job")
         cur.execute(sql, (host_name, ))
         row = cur.fetchone()
         conn.commit()
