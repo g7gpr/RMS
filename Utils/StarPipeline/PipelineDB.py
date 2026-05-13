@@ -227,6 +227,7 @@ def createObservationTable(conn):
               mag INTEGER,
               cat_mag INTEGER,
               mag_err INTEGER,
+              mag_cor INTEGER,
               sun_angle INTEGER,
 
               -- Astrometric solution (scaled RA/Dec)
@@ -398,19 +399,22 @@ def claimNextJob(conn):
     Returns remote_filename or None if no work is available.
     """
     sql = """
-    UPDATE ingest_work
-    SET status = 'claimed',
-        claimed_by = %s,
-        claimed_at = now(),
-        updated_at = now()
-    WHERE remote_filename = (
-        SELECT remote_filename
-        FROM ingest_work
-        WHERE status = 'pending'
-        ORDER BY jd_int, remote_filename
-        LIMIT 1
-        FOR UPDATE SKIP LOCKED)
-    RETURNING remote_filename, jd_int;
+        UPDATE ingest_work AS w
+        SET status = 'claimed',
+            claimed_by = %s,
+            claimed_at = now(),
+            updated_at = now()
+        FROM (
+            SELECT remote_filename, jd_int
+            FROM ingest_work
+            WHERE status = 'pending'
+            ORDER BY jd_int, remote_filename
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+        ) AS sub
+        WHERE w.remote_filename = sub.remote_filename
+        RETURNING w.remote_filename, w.jd_int;
+
     """
 
     with conn.cursor() as cur:

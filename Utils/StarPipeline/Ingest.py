@@ -222,6 +222,56 @@ CHARTS = "charts"
 PORT = 22
 
 
+
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+def visualiseSpline3d(x, y, r_norm, spline, title="Spline Surface"):
+    """
+    Visualise a SmoothBivariateSpline as a 3D surface with the original points.
+
+    Parameters
+    ----------
+    x, y : 1D arrays
+        Input coordinates used to fit the spline.
+    r_norm : 1D array
+        Normalised residuals used in the spline fit.
+    spline : SmoothBivariateSpline
+        The fitted spline object.
+    title : str
+        Title for the plot.
+    """
+
+    # Build a grid covering the data range
+    x_grid = np.linspace(np.min(x), np.max(x), 80)
+    y_grid = np.linspace(np.min(y), np.max(y), 80)
+    Xg, Yg = np.meshgrid(x_grid, y_grid)
+
+    # Evaluate spline on the grid
+    Zg = spline.ev(Xg.ravel(), Yg.ravel()).reshape(Xg.shape)
+
+    # Plot
+    fig = plt.figure(figsize=(10, 7))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Surface
+    ax.plot_surface(Xg, Yg, Zg, cmap="viridis", alpha=0.85, linewidth=0)
+
+    # Scatter original points
+    ax.scatter(x, y, r_norm, color="red", s=12, label="data points")
+
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_zlabel("normalised residual")
+    ax.set_title(title)
+    ax.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+
 def countKnots(spline):
     """
     Return (nx, ny) = number of knots in x and y.
@@ -343,6 +393,7 @@ def buildObservationRows(observation_dict, session_name, station_name):
                 scale1e6(obs["obs_mag"]),
                 scale1e6(obs["cat_mag"]),
                 scale1e6(obs["err_mag"]),
+                scale1e6(obs["cor_mag"]),
                 scale1e6(obs["obs_ra"]),
                 scale1e6(obs["obs_dec"]),
                 session_name,
@@ -478,7 +529,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                     star_name,
                     y, x,
                     intens_sum, ampltd, fwhm, bg_lvl, snr, nsatpx,
-                    mag, cat_mag, mag_err, ra, dec,
+                    mag, cat_mag, mag_err, mag_cor, ra, dec,
                     session_name,
                     station_name,
                     jd_mid,
@@ -489,7 +540,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                 VALUES (%s, %s,
                         %s, %s,
                         %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s,
                         %s,        -- session_name
                         %s,        -- station_name
                         %s,
@@ -1402,19 +1453,21 @@ def extractSessionNameFromCalstar(calstars_path):
 
 
 
-def ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None, concurrent_threads=None, bw_limit=None):
+def ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None, bw_limit=None):
 
     # Each worker must open its own DB connection
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as worker_conn:
-        log.info(f"Running with {concurrent_threads} threads")
+
         remote_file, jd_scaled = claimNextJob(worker_conn)
         if remote_file is None:
             return
 
-        try:
+        if True:
+        # try:
             processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit=bw_limit)
             markJobDone(worker_conn, remote_file)
-        except Exception as e:
+        if False:
+        #except Exception as e:
             tb = traceback.format_exc()
             error_msg = f"{type(e).__name__}: {e}\n{tb}"
             log.error(error_msg)
@@ -1964,6 +2017,11 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         if splineIsValid(spline):
             #log.info(f"Spline built successfully for {fits_file}")
             flags &= ~ob_flag.SPLINE_NOT_BUILT
+            # visualiseSpline3d(x, y, r_norm, spline, title=f"Spline for {fits_file}")
+            spline_values_norm = spline.ev(x,y)
+            spline_values = spline_values_norm * sigma + np.median(r)
+            arr_corrected_mag = arr_obs_mag[valid] - spline_values
+
         else:
             log.warning(f"Spline could not be built for {fits_file}")
             flags |= ob_flag.SPLINE_NOT_BUILT
@@ -1984,12 +2042,12 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
         for i, (query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum,
 
-                o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx) in enumerate(zip(
+                o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx, o_corrected_mag) in enumerate(zip(
                 results_list,
                 arr_obs_ra,arr_obs_dec, arr_obs_mag,
                 arr_obs_x, arr_obs_y,arr_obs_intensity_sum,
                 arr_obs_az, arr_obs_alt,
-                arr_ampltd, arr_fwhm, arr_bg_lvl, arr_snr, arr_nsatpx)):
+                arr_ampltd, arr_fwhm, arr_bg_lvl, arr_snr, arr_nsatpx, arr_corrected_mag)):
 
             if i in set_duplicated_star_indices:
                 # log.info(f"Dropping duplicate star {query_results[0]} from frame {fits_file}")
@@ -2032,7 +2090,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
                 "obs_mag": o_mag,
                 "err_mag": mag_err,
-
+                "cor_mag": o_corrected_mag,
                 "obs_x": o_x,
                 "obs_y": o_y,
 
