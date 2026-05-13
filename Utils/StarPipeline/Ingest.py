@@ -1337,8 +1337,11 @@ def moveFiles(local_target, path_source_list, path_local_list):
     files_available = []
     mkdirP(local_target)
     log.info(f"Setting permissions on {local_target}")
-    os.chmod(os.path.dirname(local_target), 0o777)
-    os.chmod(local_target, 0o777)
+    try:
+        os.chmod(os.path.dirname(local_target), 0o777)
+        os.chmod(local_target, 0o777)
+    except:
+        pass
     for p_source, p_local in zip(path_source_list, path_local_list):
         if os.path.exists(p_source):
 
