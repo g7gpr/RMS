@@ -636,7 +636,7 @@ def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True, 
     root = Path(root)
 
     for d in sorted(directories_list):
-        source_dir = root / d
+        source_dir = root / os.path.basename(d).split('_')[1] / d
         if not os.path.isdir(source_dir):
             continue
         # Check for ingestion marker inside the directory
@@ -648,10 +648,11 @@ def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True, 
 
 
         tar_file_name = f"{d}_CALSTAR.tar.bz2"
-        output_file = root / tar_file_name
+        output_file = root / os.path.basename(tar_file_name).split('_')[1]  / tar_file_name
 
         #log.info(f"Creating {os.path.basename(output_file)}")
         makeTarBz2(source_dir, output_file)
+        os.chmod(output_file,0o666)
 
         # compute uncompressed size
         uncompressed_size = getDirectorySize(source_dir)  / (1024 ** 2)
@@ -888,6 +889,7 @@ def extractBz2(input_directory, working_directory, host, username, local_target_
 
     bz2_list.sort()
     mkdirP(working_directory)
+    os.chmod(working_directory, 0o777)
     extractBz2Files(bz2_list, input_directory, working_directory, host=host, username=username)
 
     return working_directory
@@ -1282,10 +1284,15 @@ def downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=22, max
 def moveFiles(local_target, path_source_list, path_local_list):
 
     files_available = []
+    mkdirP(local_target)
+    os.chmod(os.path.dirname(local_target), 0o777)
+    os.chmod(local_target, 0o777)
     for p_source, p_local in zip(path_source_list, path_local_list):
         if os.path.exists(p_source):
-            mkdirP(local_target)
+
+
             shutil.move(p_source, p_local)
+            os.chmod(p_local, 0o666)
             files_available.append(os.path.basename(p_local))
     return files_available
 
@@ -1479,8 +1486,8 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
 
     local_dir_name = "_".join(remote_file.split("_")[0:4])
 
-    split = local_dir_name.split("_")
-    local_target = os.path.join(calstars_data_full_path, f"{split[1]}_{split[2]}", local_dir_name)
+
+    local_target = os.path.join(calstars_data_full_path, f"{local_dir_name.split('_')[1]}", local_dir_name)
 
     if isIngested(conn, local_target):
         log.info(f"{local_dir_name} already processed")
@@ -1489,7 +1496,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
     log.info(f"Working on {local_dir_name}")
     # If we already have a .bz2 file, extract it so we can work on it
     local_calstars_archive_path = f"{local_target}_CALSTAR.tar.bz2"
-    extractCalstarArchives(local_target, [os.path.basename(local_calstars_archive_path)], remove_archives=True)
+    extractCalstarArchives(os.path.dirname(local_calstars_archive_path), [os.path.basename(local_calstars_archive_path)], remove_archives=True)
     calstars_name = f"CALSTARS_{local_dir_name}.txt"
     local_config_path = os.path.join(local_target, os.path.basename(config.config_file_name))
     if os.path.basename(config.config_file_name) != ".config":
@@ -1501,7 +1508,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
     local_recalibrated_path = os.path.join(local_target, PLATEPARS_ALL_RECALIBRATED_JSON)
 
     # If we don't have a directory, then get from remote working in a temporary directory
-    if not os.path.exists(os.path.join(calstars_data_full_path, local_dir_name)):
+    if not os.path.exists(os.path.join(calstars_data_full_path, local_dir_name.split("_")[1], local_dir_name)):
         log.info(f"Retrieving {remote_file} from {username}@{host}:/{remote_dir}")
         local_config_path, local_platepar_path, local_recalibrated_path, calstars_name, size_mb = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=bw_limit)
 
@@ -1938,7 +1945,21 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         arr_mag_err = arr_obs_mag - arr_cat_mag
         valid = (~np.isnan(arr_mag_err) & ~np.isin(np.arange(len(arr_mag_err)), list(set_duplicated_star_indices)))
         x, y, r = arr_obs_x[valid], arr_obs_y[valid], arr_mag_err[valid]
-        spline = SmoothBivariateSpline(x, y, r, s=1.0)
+
+        if len(x) <= 40:
+            continue
+
+        # Debias
+        r0 = r - np.median(r)
+
+        # Compute median average deviation
+        mad = np.median(np.abs(r0 - np.median(r0)))
+        sigma = 1.4826 * mad if mad > 0 else 1.0
+
+        # Scale and clip
+        r_norm = np.clip(r0 / sigma, -5, 5)
+
+        spline = SmoothBivariateSpline(x, y, r_norm, s=1.0)
 
         if splineIsValid(spline):
             #log.info(f"Spline built successfully for {fits_file}")
@@ -1962,6 +1983,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             pass
 
         for i, (query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum,
+
                 o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx) in enumerate(zip(
                 results_list,
                 arr_obs_ra,arr_obs_dec, arr_obs_mag,
