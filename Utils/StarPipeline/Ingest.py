@@ -1420,6 +1420,9 @@ def ingestWorker(remote_station_processed_dir, username, host, port, calstars_da
             tb = traceback.format_exc()
             error_msg = f"{type(e).__name__}: {e}\n{tb}"
             log.error(error_msg)
+            # Put back in an archive in all cases
+            local_dir_name = "_".join(remote_file.split("_")[0:4])
+            archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
             markJobError(worker_conn, remote_file, str(e))
 
 def chunkByHour(file_list, day_divider=24):
@@ -1520,6 +1523,9 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
         log.info(f"Ingesting {calstars_name}")
 
         observation_session_config = cr.parse(local_config_path)
+        if not os.path.exists(observation_session_config):
+            log.info(f"No config file available for {calstars_name}")
+            return
         observation_session_dict, start_jd, end_jd = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path, catalog_stars=catalog_stars)
 
         pixel_scale_h, pixel_scale_v = extractMedianPixelScale(observation_session_dict)

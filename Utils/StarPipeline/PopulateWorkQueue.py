@@ -34,6 +34,7 @@ import psycopg
 from RMS.Formats import FFfile, Platepar
 from RMS.Astrometry.Conversions import J2000_JD, date2JD
 from RMS.Logger import LoggingManager, getLogger
+from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase
 
 
 # Constants
@@ -530,6 +531,10 @@ if __name__ == "__main__":
     # Get the logger handle
     log = getLogger("rmslogger")
     postgresql_host = cml_args.postgresql_host
+
+    with psycopg.connect(host=postgresql_host, dbname="star_data", user="postgres") as postgress_conn:
+        createDatabaseIfMissing(postgress_conn)
+        initialiseDatabase(postgress_conn)
 
     log.info("Populating the ingestion table")
     station_list = getStationList()
