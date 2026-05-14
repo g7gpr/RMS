@@ -716,13 +716,6 @@ def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True, 
         source_dir = root / os.path.basename(d).split('_')[1] / d
         if not os.path.isdir(source_dir):
             continue
-        # Check for ingestion marker inside the directory
-        if conn is not None:
-            if not isIngested(conn, source_dir) and ingested_only:
-                log.info(f"Not archiving {os.path.basename(source_dir)} not yet ingested")
-                continue
-
-
 
         tar_file_name = f"{d}_CALSTAR.tar.bz2"
         output_file = root / os.path.basename(tar_file_name).split('_')[1]  / tar_file_name
@@ -817,51 +810,6 @@ def recordCalstarFileIngested(conn, file_name):
             log.warning(f"Executed {sql}")
     conn.commit()
 
-def markIngested(conn, directory_path):
-    """Save the ingested marker file into the folder_path.
-
-    Arguments:
-        directory_path: [str] Path to folder.
-
-    Returns:
-        Nothing.
-    """
-
-    calstar_filename = buildCalstarFilename(directory_path)
-    recordCalstarFileIngested(conn, calstar_filename)
-    directory_path = Path(directory_path)
-    marker_file = directory_path / ".ingested"
-    log.info(f"Marked {os.path.basename(directory_path)} as ingested")
-    marker_file.touch()
-
-def isIngestedFromFileSystem(directory_path):
-    """If the folder_path contains the ingested file marker, return True.
-
-    Arguments:
-        directory_path: [str] Path to folder.
-
-    Returns:
-        [bool]: True if ingested file marker in directory, else false.
-    """
-    directory_path = Path(directory_path)
-    marker_file = directory_path / ".ingested"
-    if marker_file.exists():
-        log.info(f"{os.path.basename(directory_path)} was already ingested")
-        return True
-    else:
-        return False
-
-def isIngestedFromDB(conn,file_name):
-
-    sql = "SELECT 1 FROM calstar_files WHERE file_name = %s;"
-
-    if conn is None:
-        return False
-
-    with conn.cursor() as cur:
-        cur.execute(sql, (file_name,))
-        return cur.fetchone() is not None
-
 def buildCalstarFilename(calstar_directory_path):
     base = os.path.basename(calstar_directory_path)
     parts = base.split("_")
@@ -869,23 +817,6 @@ def buildCalstarFilename(calstar_directory_path):
     # Expecting: YYYYMMDD_HHMMSS_STATIONID_SEQUENCE
     # Produces:  CALSTARS_YYYYMMDD_HHMMSS_STATIONID_SEQUENCE
     return f"CALSTARS_{parts[0]}_{parts[1]}_{parts[2]}_{parts[3]}"
-
-def isIngested(conn, calstar_directory_path):
-    calstar_filename = buildCalstarFilename(calstar_directory_path)
-    log.info(f"Checking ingestion status for {calstar_filename}")
-
-    # Primary guard: database
-    if isIngestedFromDB(conn, calstar_filename):
-        log.info(f"{calstar_filename} is recorded as ingested in the database")
-        return True
-
-    # Secondary guard: filesystem marker
-    if isIngestedFromFileSystem(calstar_directory_path) and FILE_SYSTEM_MARKERS_ENABLED:
-        log.warning(f"Ingested in filesystem marker but not in DB: {calstar_filename}")
-        recordCalstarFileIngested(conn, calstar_filename)
-        return True
-
-    return False
 
 def dictInvert(d):
     """Given a nested dictionary with keys [a][b] return the nested dictionary with keys [b][a].
@@ -1377,14 +1308,6 @@ def moveFiles(local_target, path_source_list, path_local_list):
             files_available.append(os.path.basename(p_local))
     return files_available
 
-def markIngestedIfFilesMissing(conn, path_local_list, files_available, local_target):
-
-    for f in path_local_list:
-        if os.path.basename(f) not in files_available and f != "mask.bmp":
-            # Mark this folder as ingested so we don't waste time on it in future
-            log.warning(f"Missing files for {os.path.basename(local_target)}: {f}")
-            markIngested(conn, local_target)
-            continue
 
 def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=None):
 
@@ -1448,10 +1371,6 @@ def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_f
 
         # Move the files from the tempdir to the target dir
         files_available = moveFiles(local_target, path_source_list, path_local_list)
-
-        # If we are missing key files, then mark ingested - this is not beautiful
-        if conn is not None:
-            markIngestedIfFilesMissing(conn, path_local_list, files_available, local_target)
 
     return local_config_path, local_platepar_path, local_recalibrated_path, calstars_name, size_mb
 
@@ -1572,9 +1491,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
 
     local_target = os.path.join(calstars_data_full_path, f"{local_dir_name.split('_')[1]}", local_dir_name)
 
-    if isIngested(conn, local_target):
-        log.info(f"{local_dir_name} already processed")
-        return
+
 
     log.info(f"Working on {local_dir_name}")
     # If we already have a .bz2 file, extract it so we can work on it
@@ -1594,13 +1511,6 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
     if not os.path.exists(os.path.join(calstars_data_full_path, local_dir_name.split("_")[1], local_dir_name)):
         log.info(f"Retrieving {remote_file} from {username}@{host}:/{remote_dir}")
         local_config_path, local_platepar_path, local_recalibrated_path, calstars_name, size_mb = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=bw_limit)
-
-    if local_config_path is None:
-        log.info(f"Skipping {remote_file} because config file not available")
-        # Mark ingested, because we don't want to look at this again
-        markIngested(conn, local_target)
-        return
-
 
     if not write_db:
         log.info(f"Data from {local_dir_name} not being written to database as writes not enabled.")
@@ -1630,7 +1540,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
             session_config=observation_session_config
         )
 
-        markIngested(conn, local_target)
+
 
 
     # Put back in an archive in all cases
