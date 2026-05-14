@@ -561,7 +561,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                     jd_mid,
                     flags, 
                     mad,
-                    sun_angle, mean_cuvature, max_curvature)
+                    sun_angle, mean_curvature, max_curvature)
                     
                 VALUES (%s, %s,
                         %s, %s,

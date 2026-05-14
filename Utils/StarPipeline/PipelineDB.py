@@ -234,6 +234,8 @@ def createObservationTable(conn):
               mag_err INTEGER,
               mag_cor INTEGER,
               sun_angle INTEGER,
+              mean_curvature INTEGER,
+              max_curvature INTEGER,
 
               -- Astrometric solution (scaled RA/Dec)
               ra INTEGER,
