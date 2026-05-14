@@ -193,7 +193,7 @@ from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDat
 from collections import Counter
 from scipy.interpolate import SmoothBivariateSpline
 
-from PipelineDB import PG_INT_MAG_LIMIT, PG_BIGINT_MAG_LIMIT
+from Utils.StarPipeline.PipelineDB import PG_INT_MAG_LIMIT, PG_BIGINT_MAG_LIMIT
 
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
@@ -2052,7 +2052,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         if splineIsValid(spline):
             log.info(f"Spline built successfully for {fits_file}")
             flags &= ~ob_flag.SPLINE_NOT_BUILT
-            visualiseSpline3d(x, y, r_norm, spline, fits_file)
+            #visualiseSpline3d(x, y, r_norm, spline, fits_file)
             spline_values_norm = spline.ev(x,y)
             spline_values = spline_values_norm * sigma + np.median(r)
             arr_corrected_mag = arr_obs_mag[valid] - spline_values
