@@ -2050,7 +2050,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             pass
 
         if splineIsValid(spline):
-            log.info(f"Spline built successfully for {fits_file}")
+            #log.info(f"Spline built successfully for {fits_file}")
             flags &= ~ob_flag.SPLINE_NOT_BUILT
             #visualiseSpline3d(x, y, r_norm, spline, fits_file)
             spline_values_norm = spline.ev(x,y)
