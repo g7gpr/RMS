@@ -209,7 +209,7 @@ TYPE_MAP = {
 
 # Constants
 
-# urls
+# url
 STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
 
 # Paths and names
@@ -1492,12 +1492,12 @@ def ingestWorker(remote_station_processed_dir, username, host, port, calstars_da
         if remote_file is None:
             return
 
-        if True:
-        # try:
+
+        try:
             processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit=bw_limit)
             markJobDone(worker_conn, remote_file)
-        if False:
-        #except Exception as e:
+
+        except Exception as e:
             tb = traceback.format_exc()
             error_msg = f"{type(e).__name__}: {e}\n{tb}"
             log.error(error_msg)
