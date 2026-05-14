@@ -1402,7 +1402,7 @@ def extractSessionNameFromCalstar(calstars_path):
 
 
 
-def ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None, bw_limit=None):
+def ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None, bw_limit=None, break_on_exception=True):
 
     # Each worker must open its own DB connection
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as worker_conn:
@@ -1412,18 +1412,25 @@ def ingestWorker(remote_station_processed_dir, username, host, port, calstars_da
             return
 
 
-        try:
-            processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit=bw_limit)
+        if break_on_exception
+            processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port,
+                              calstars_data_full_path, write_db, catalog_stars, bw_limit=bw_limit)
             markJobDone(worker_conn, remote_file)
 
-        except Exception as e:
-            tb = traceback.format_exc()
-            error_msg = f"{type(e).__name__}: {e}\n{tb}"
-            log.error(error_msg)
-            # Put back in an archive in all cases
-            local_dir_name = "_".join(remote_file.split("_")[0:4])
-            archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
-            markJobError(worker_conn, remote_file, str(e))
+        else:
+
+            try:
+                processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit=bw_limit)
+                markJobDone(worker_conn, remote_file)
+
+            except Exception as e:
+                tb = traceback.format_exc()
+                error_msg = f"{type(e).__name__}: {e}\n{tb}"
+                log.error(error_msg)
+                # Put back in an archive in all cases
+                local_dir_name = "_".join(remote_file.split("_")[0:4])
+                archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
+                markJobError(worker_conn, remote_file, str(e))
 
 def chunkByHour(file_list, day_divider=24):
 
@@ -1490,13 +1497,8 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
         return
 
     local_dir_name = "_".join(remote_file.split("_")[0:4])
-
-
     local_target = os.path.join(calstars_data_full_path, f"{local_dir_name.split('_')[1]}", local_dir_name)
 
-
-
-    log.info(f"Working on {local_dir_name}")
     # If we already have a .bz2 file, extract it so we can work on it
     local_calstars_archive_path = f"{local_target}_CALSTAR.tar.bz2"
     extractCalstarArchives(os.path.dirname(local_calstars_archive_path), [os.path.basename(local_calstars_archive_path)], remove_archives=True)
