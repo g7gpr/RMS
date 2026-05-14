@@ -1412,7 +1412,7 @@ def ingestWorker(remote_station_processed_dir, username, host, port, calstars_da
             return
 
 
-        if break_on_exception
+        if break_on_exception:
             processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port,
                               calstars_data_full_path, write_db, catalog_stars, bw_limit=bw_limit)
             markJobDone(worker_conn, remote_file)
