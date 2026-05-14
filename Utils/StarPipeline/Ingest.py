@@ -1517,15 +1517,19 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
 
     if not write_db:
         log.info(f"Data from {local_dir_name} not being written to database as writes not enabled.")
+        archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
         return
 
     if write_db:
         log.info(f"Ingesting {calstars_name}")
 
-        observation_session_config = cr.parse(local_config_path)
-        if not os.path.exists(observation_session_config):
+
+        if not os.path.exists(local_config_path):
             log.info(f"No config file available for {calstars_name}")
+            archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
             return
+
+        observation_session_config = cr.parse(local_config_path)
         observation_session_dict, start_jd, end_jd = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path, catalog_stars=catalog_stars)
 
         pixel_scale_h, pixel_scale_v = extractMedianPixelScale(observation_session_dict)
@@ -1554,7 +1558,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
 
     return
 
-def ingest(config, file_list, conn, calstars_data_dir=None,
+def ingest(config, conn, calstars_data_dir=None,
            remote_station_processed_dir=None, write_db=True,
            host=None, username=None, port=PORT, concurrent_threads=2, bw_limit=None):
 
@@ -1593,26 +1597,13 @@ def ingest(config, file_list, conn, calstars_data_dir=None,
 
     catalog_stars = loadCatalogStars(config, config.catalog_mag_limit)
 
-
-    runParallel(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars, concurrent_threads=concurrent_threads, bw_limit=None)
-
-    #Single threading approach - not in use
-    """
-    log.info("Starting to download files")
-
-    hour_chunks = chunkByHour(file_list, day_divider=48)
-    sorted_hours = sorted(hour_chunks.keys())
-
-    for hour in sorted_hours:
-        hour_files = sorted(hour_chunks[hour])
-
-        log.info(f"Working on jd {hour} - following files to be processed")
-        for f in sortFilesByTime(hour_files):
-            log.info(f"\t{f}")
-    
-    #for f in file_list:
-    #    processServerFile(conn, f, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars)
-    """
+    if concurrent_threads > 1:
+        log.info(f"Running concurrently with {concurrent_threads} threads")
+        runParallel(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars, concurrent_threads=concurrent_threads, bw_limit=None)
+    else:
+        while True:
+            log.info("Running single thread mode")
+            ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit)
 
 
 def getLatestCalstarFile(conn, station_id):
@@ -2341,6 +2332,4 @@ if __name__ == "__main__":
                 populateWorkQueue(conn, remote_files_sorted)
                 log.info("Table populated")
 
-            remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))
-            remote_files_sorted = sortFilesByTime(remote_files)
-            ingest(config, remote_files_sorted, conn, calstars_data_dir=calstars_data_dir, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db, concurrent_threads=concurrent_threads, bw_limit=bw_limit)
+            ingest(config, conn, calstars_data_dir=calstars_data_dir, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db, concurrent_threads=concurrent_threads, bw_limit=bw_limit)
