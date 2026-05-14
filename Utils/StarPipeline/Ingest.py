@@ -2016,12 +2016,12 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         # Scale and clip
         r_norm = np.clip(r0 / sigma, -5, 5)
 
-        spline = SmoothBivariateSpline(x, y, r_norm, s=1.0)
+        spline = SmoothBivariateSpline(x, y, r_norm, s=100.0)
 
         if splineIsValid(spline):
-            #log.info(f"Spline built successfully for {fits_file}")
+            log.info(f"Spline built successfully for {fits_file}")
             flags &= ~ob_flag.SPLINE_NOT_BUILT
-            # visualiseSpline3d(x, y, r_norm, spline, title=f"Spline for {fits_file}")
+            visualiseSpline3d(x, y, r_norm, spline, title=f"Spline for {fits_file}")
             spline_values_norm = spline.ev(x,y)
             spline_values = spline_values_norm * sigma + np.median(r)
             arr_corrected_mag = arr_obs_mag[valid] - spline_values
