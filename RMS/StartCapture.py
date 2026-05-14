@@ -1085,7 +1085,7 @@ if __name__ == "__main__":
     else:
         pid = None
 
-    running_under_systemd = True
+    running_under_systemd = runningUnderSystemd()
 
     if running_under_systemd:
         log.info("Running under systemd")
@@ -1268,7 +1268,11 @@ if __name__ == "__main__":
 
                     # Reboot the computer (script needs sudo privileges, works only on Linux)
                     try:
-                        os.system('sudo shutdown -r now')
+                        if running_under_systemd:
+                            log.info(f"Running under systemd so terminating own process PID:{pid}")
+                            os.kill(pid, signal.SIGKILL)
+                        else:
+                            os.system('sudo shutdown -r now')
 
                     except Exception as e:
                         log.debug('Rebooting failed with message:\n' + repr(e))
