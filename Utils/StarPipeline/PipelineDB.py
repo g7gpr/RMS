@@ -23,6 +23,11 @@ STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
 CHARTS = "charts"
 PORT = 22
 
+# Clamp to Postgres INTEGER storage range (magnitudes × 1e6)
+PG_INT_MAG_LIMIT = 2147.483647
+PG_BIGINT_MAG_LIMIT = 9.22e12
+
+
 config = cr.parse(os.path.join(os.getcwd(), ".config"))
 
 # Initialize the logger

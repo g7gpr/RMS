@@ -193,6 +193,8 @@ from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDat
 from collections import Counter
 from scipy.interpolate import SmoothBivariateSpline
 
+from PipelineDB import PG_INT_MAG_LIMIT, PG_BIGINT_MAG_LIMIT
+
 JD_OFFSET = J2000_JD
 DEBUG_CALSTAR_INSERT = False
 
@@ -227,20 +229,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-def visualiseSpline3d(x, y, r_norm, spline, title="Spline Surface"):
+def visualiseSpline3d(x, y, r_norm, spline, fits_file):
     """
-    Visualise a SmoothBivariateSpline as a 3D surface with the original points.
-
-    Parameters
-    ----------
-    x, y : 1D arrays
-        Input coordinates used to fit the spline.
-    r_norm : 1D array
-        Normalised residuals used in the spline fit.
-    spline : SmoothBivariateSpline
-        The fitted spline object.
-    title : str
-        Title for the plot.
+    Visualise a SmoothBivariateSpline as a 3D surface with the original points,
+    compute curvature metrics, and save the plot to a file named after the FITS file.
     """
 
     # Build a grid covering the data range
@@ -250,6 +242,20 @@ def visualiseSpline3d(x, y, r_norm, spline, title="Spline Surface"):
 
     # Evaluate spline on the grid
     Zg = spline.ev(Xg.ravel(), Yg.ravel()).reshape(Xg.shape)
+
+    # ---- Compute curvature metric ----
+    mean_curv, max_curv = splineCurvatureMetric(
+        spline,
+        (np.min(x), np.max(x)),
+        (np.min(y), np.max(y)),
+        n=40
+    )
+
+    # Build title inside the function
+    title = (
+        f"Spline Surface for {fits_file}\n"
+        f"mean curvature={mean_curv * 1e6:.4f} micromagnitudes/pixel^2, max curvature={max_curv * 1e6:.4f} micromagnitudes/pixel^2"
+    )
 
     # Plot
     fig = plt.figure(figsize=(10, 7))
@@ -268,8 +274,11 @@ def visualiseSpline3d(x, y, r_norm, spline, title="Spline Surface"):
     ax.legend()
 
     plt.tight_layout()
-    plt.show()
 
+    # ---- Save to file instead of showing ----
+    output_file = os.path.join(os.path.expanduser("~/tmp/splines/"),f"{fits_file}_spline.png")
+    plt.savefig(output_file, dpi=150)
+    plt.close(fig)
 
 
 def countKnots(spline):
@@ -285,7 +294,22 @@ def splineIsValid(spline):
     return nx >= 4 and ny >= 4
 
 
+def splineCurvatureMetric(spline, x_range, y_range, n=40):
+    x_grid = np.linspace(*x_range, n)
+    y_grid = np.linspace(*y_range, n)
+    Xg, Yg = np.meshgrid(x_grid, y_grid)
 
+    # finite differences for second derivatives
+    h = (x_grid[1] - x_grid[0])
+    k = (y_grid[1] - y_grid[0])
+
+    Z = spline.ev(Xg.ravel(), Yg.ravel()).reshape(Xg.shape)
+
+    d2x = (Z[2:, 1:-1] - 2*Z[1:-1, 1:-1] + Z[:-2, 1:-1]) / (h*h)
+    d2y = (Z[1:-1, 2:] - 2*Z[1:-1, 1:-1] + Z[1:-1, :-2]) / (k*k)
+
+    curvature = np.sqrt(d2x**2 + d2y**2)
+    return np.mean(curvature), np.max(curvature)
 
 
 def scale1e6(value):
@@ -401,7 +425,9 @@ def buildObservationRows(observation_dict, session_name, station_name):
                 frame_jd_mid,
                 obs["flag"],
                 scale1e6(obs["mad"]),
-                scale1e3(obs["sun_angle"])
+                scale1e3(obs["sun_angle"]),
+                scale1e6(obs["mean_curvature"]),
+                scale1e6(obs["max_curvature"])
             ))
 
     return observation_rows
@@ -535,8 +561,8 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                     jd_mid,
                     flags, 
                     mad,
-                    sun_angle
-                )
+                    sun_angle, mean_cuvature, max_curvature)
+                    
                 VALUES (%s, %s,
                         %s, %s,
                         %s, %s, %s, %s, %s, %s,
@@ -546,7 +572,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                         %s,
                         %s,
                         %s,
-                        %s)
+                        %s, %s, %s)
                 ON CONFLICT DO NOTHING;
                 """, observation_rows)
 
@@ -2016,15 +2042,21 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         # Scale and clip
         r_norm = np.clip(r0 / sigma, -5, 5)
 
-        spline = SmoothBivariateSpline(x, y, r_norm, s=100.0)
+        spline = SmoothBivariateSpline(x, y, r_norm, s=10000.0)
+
+        mean_curvature, max_curvature = splineCurvatureMetric(spline, (np.min(x), np.max(x)), (np.min(y), np.max(y)),n=40)
+
+        if mean_curvature > 0.00005 or max_curvature > 0.0001:
+            pass
 
         if splineIsValid(spline):
             log.info(f"Spline built successfully for {fits_file}")
             flags &= ~ob_flag.SPLINE_NOT_BUILT
-            visualiseSpline3d(x, y, r_norm, spline, title=f"Spline for {fits_file}")
+            visualiseSpline3d(x, y, r_norm, spline, fits_file)
             spline_values_norm = spline.ev(x,y)
             spline_values = spline_values_norm * sigma + np.median(r)
             arr_corrected_mag = arr_obs_mag[valid] - spline_values
+            arr_corrected_mag = np.clip(arr_corrected_mag, -PG_INT_MAG_LIMIT, PG_INT_MAG_LIMIT)
 
         else:
             log.warning(f"Spline could not be built for {fits_file}")
@@ -2109,6 +2141,8 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
                 "pixel_scale_v": pixel_scale_v,
                 "mad": mean_absolute_deviation,
                 "sun_angle": sun_below_horizon_angle,
+                "mean_curvature": mean_curvature,
+                "max_curvature": max_curvature,
                 "flag": flags
             })
 
