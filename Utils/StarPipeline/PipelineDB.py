@@ -659,7 +659,6 @@ def initialiseDatabase(conn):
     createAllTables(conn)
     createAllIndexes(conn)
     grantIngestUserPrivileges(conn)
-    ensureCalstarFilePrivileges(conn)
     grantSequencePrivileges(conn)
     revokeCreatesIngestUser(conn)
 
