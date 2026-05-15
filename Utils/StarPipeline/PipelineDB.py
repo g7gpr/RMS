@@ -1,7 +1,7 @@
 from RMS.Logger import LoggingManager, getLogger
 import RMS.ConfigReader as cr
 import os
-
+import psycopg
 
 import socket
 
@@ -230,6 +230,7 @@ def createObservationTable(conn):
 
               -- Derived fields
               mag INTEGER,
+              obs_mag_corrected INTEGER,
               cat_mag INTEGER,
               mag_err INTEGER,
               mag_cor INTEGER,
@@ -485,14 +486,15 @@ def createRejectedFrameTable(conn):
     conn.commit()
 
 
+
 def createAllTables(conn):
     createStationTable(conn)
     createSessionTable(conn)
     createFrameTable(conn)
     createStarTable(conn)
     createObservationTable(conn)
-    createCalstarFilesTable(conn)
-    createSpatialModelTable(conn)
+    #createCalstarFilesTable(conn)
+    #createSpatialModelTable(conn)
     createIngestWorkTable(conn)
     createRejectedFrameTable(conn)
 
@@ -662,3 +664,61 @@ def initialiseDatabase(conn):
     revokeCreatesIngestUser(conn)
 
     pass
+
+def resetDatabaseForReingest(conn):
+    """
+    Reset all derived and metadata tables while preserving ingest_work entries.
+    - Truncate observation, frame, session, rejected_frame.
+    - Truncate station and star.
+    - Reset ingest_work.status back to 'pending'.
+    """
+
+    # Tables we want to fully clear
+    tables_to_truncate = [
+        "observation",
+        "frame",
+        "session",
+        "rejected_frame",
+        "station",
+        "star"
+    ]
+
+    with conn.cursor() as cur:
+
+        # 1. Wipe all selected tables
+        for tbl in tables_to_truncate:
+            cur.execute(f"TRUNCATE TABLE {tbl} RESTART IDENTITY CASCADE;")
+
+        # 2. Reset ingest_work statuses
+        cur.execute("""
+            UPDATE ingest_work
+            SET status = 'pending',
+                claimed_by = NULL,
+                claimed_at = NULL,
+                updated_at = now()
+            WHERE status != 'pending';
+        """)
+
+    conn.commit()
+
+
+if __name__ == "__main__":
+
+    import argparse
+
+    arg_parser = argparse.ArgumentParser(description="""Pipeline DB Utilities""", formatter_class=argparse.RawTextHelpFormatter)
+
+    arg_parser.add_argument('postgresql_host', help="""PostgreSQL server host """)
+
+    arg_parser.add_argument('-r', '--reset_ingestion', dest='reset_ingestion', default=False, action="store_true",
+                            help="Reset ingestion")
+    cml_args = arg_parser.parse_args()
+
+    reset_ingestion = cml_args.reset_ingestion
+    postgresql_host = cml_args.postgresql_host
+
+    if cml_args.reset_ingestion:
+        log.info("Resetting ingestion")
+        with psycopg.connect(host=postgresql_host, dbname="star_data", user="postgres") as reset_ingestion_conn:
+            createDatabaseIfMissing(reset_ingestion_conn)
+            resetDatabaseForReingest(reset_ingestion_conn)

@@ -21,9 +21,16 @@ from __future__ import print_function, division, absolute_import
 
 import logging
 import math
+from typing import Any
 
-from RMS.Formats.FFfile import getMiddleTimeFF
+from imageio.core import Format
 
+from RMS.Formats.FFfile import getMiddleTimeFF, filenameToDatetime
+
+
+from PIL import Image, ImageDraw, ImageFont
+import imageio.v2 as imageio
+import matplotlib.pyplot as plt
 
 """
 Database configuration instructions
@@ -216,6 +223,7 @@ STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_sta
 CALSTARS_DATA_DIR = "CALSTARS"
 PLATEPARS_ALL_RECALIBRATED_JSON = "platepars_all_recalibrated.json"
 PLATEPARS_FLUX_RECALIBRATED_JSON = "platepars_flux_recalibrated.json"
+FTP_DETECT_INFO_TEMPLATE = "FTPdetectinfo_"
 DIRECTORY_INGESTED_MARKER = ".processed"
 FILE_SYSTEM_MARKERS_ENABLED = False
 CALSTAR_FILES_TABLE_NAME = "calstar_files"
@@ -415,6 +423,7 @@ def buildObservationRows(observation_dict, session_name, station_name):
                 scale1e6(obs["snr"]),
                 obs["nsatpx"],
                 scale1e6(obs["obs_mag"]),
+                scale1e6(obs["obs_mag_corrected"]),
                 scale1e6(obs["cat_mag"]),
                 scale1e6(obs["err_mag"]),
                 scale1e6(obs["cor_mag"]),
@@ -555,7 +564,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                     star_name,
                     y, x,
                     intens_sum, ampltd, fwhm, bg_lvl, snr, nsatpx,
-                    mag, cat_mag, mag_err, mag_cor, ra, dec,
+                    mag, obs_mag_corrected, cat_mag, mag_err, mag_cor, ra, dec,
                     session_name,
                     station_name,
                     jd_mid,
@@ -572,7 +581,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
                         %s,
                         %s,
                         %s,
-                        %s, %s, %s)
+                        %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING;
                 """, observation_rows)
 
@@ -717,7 +726,7 @@ def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True, 
         if not os.path.isdir(source_dir):
             continue
 
-        tar_file_name = f"{d}_CALSTAR.tar.bz2"
+        tar_file_name = f"{d}_raw.tar.bz2"
         output_file = root / os.path.basename(tar_file_name).split('_')[1]  / tar_file_name
 
         #log.info(f"Creating {os.path.basename(output_file)}")
@@ -1351,12 +1360,18 @@ def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_f
         extracted_mask_path = os.path.join(extracted_files_path, config.mask_file)
         extracted_recalibrated_path = os.path.join(extracted_files_path, PLATEPARS_ALL_RECALIBRATED_JSON)
         extracted_flux_recalibrated_path = os.path.join(extracted_files_path, PLATEPARS_FLUX_RECALIBRATED_JSON)
-
         extracted_calstars_path = os.path.join(extracted_files_path, calstars_name)
+        ftp_detect_info_name = f"{FTP_DETECT_INFO_TEMPLATE}{os.path.basename(local_dir_name)}.txt"
+        log.info(f"FTP detect info file {ftp_detect_info_name}")
+        extracted_ftp_detect_info_path = os.path.join(extracted_files_path,ftp_detect_info_name)
+        log.info(f"FTP detect info path {extracted_ftp_detect_info_path}")
+
 
         # Place in a list
-        path_source_list = [extracted_config_path, extracted_platepar_path, extracted_mask_path,
-                            extracted_calstars_path, extracted_recalibrated_path, extracted_flux_recalibrated_path]
+        path_source_list = [extracted_config_path, extracted_platepar_path,
+                            extracted_mask_path,   extracted_calstars_path,
+                            extracted_recalibrated_path, extracted_flux_recalibrated_path,
+                            extracted_ftp_detect_info_path]
 
         # Create the expected paths for all the files in the data directory
         local_config_path = os.path.join(local_target, os.path.basename(config.config_file_name))
@@ -1364,10 +1379,11 @@ def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_f
         local_mask_path = os.path.join(local_target, config.mask_file)
         local_calstars_path = os.path.join(local_target, calstars_name)
         local_recalibrated_path = os.path.join(local_target, PLATEPARS_ALL_RECALIBRATED_JSON)
+        local_ftp_detect_info_path = os.path.join(local_target, ftp_detect_info_name)
 
         # Place in a list
         path_local_list = [local_config_path, local_platepar_path, local_mask_path, local_calstars_path,
-                           local_recalibrated_path]
+                           local_recalibrated_path, local_ftp_detect_info_path]
 
         # Move the files from the tempdir to the target dir
         files_available = moveFiles(local_target, path_source_list, path_local_list)
@@ -1429,7 +1445,7 @@ def ingestWorker(remote_station_processed_dir, username, host, port, calstars_da
                 log.error(error_msg)
                 # Put back in an archive in all cases
                 local_dir_name = "_".join(remote_file.split("_")[0:4])
-                archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
+                archiveCalstarDirectories(worker_conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
                 markJobError(worker_conn, remote_file, str(e))
 
 def chunkByHour(file_list, day_divider=24):
@@ -1451,7 +1467,7 @@ def startWorker(args):
 
 def runParallel(remote_station_processed_dir=None, username=None, host=None,
                 port=None, calstars_data_full_path=None, write_db=True,
-                catalog_stars=None, concurrent_threads=2, bw_limit=None):
+                catalog_stars=None, concurrent_threads=2, bw_limit=None, break_on_exception=False):
 
     log.info(f"Starting ingestion with {concurrent_threads} threads")
 
@@ -1462,7 +1478,7 @@ def runParallel(remote_station_processed_dir=None, username=None, host=None,
         workers_list = []
 
         worker_args = (remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db,
-                       catalog_stars, bw_limit)
+                       catalog_stars, bw_limit, break_on_exception)
 
         while True:
             pending = jobsRemaining(supervisor_conn)
@@ -1500,7 +1516,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
     local_target = os.path.join(calstars_data_full_path, f"{local_dir_name.split('_')[1]}", local_dir_name)
 
     # If we already have a .bz2 file, extract it so we can work on it
-    local_calstars_archive_path = f"{local_target}_CALSTAR.tar.bz2"
+    local_calstars_archive_path = f"{local_target}_CAL.tar.bz2"
     extractCalstarArchives(os.path.dirname(local_calstars_archive_path), [os.path.basename(local_calstars_archive_path)], remove_archives=True)
     calstars_name = f"CALSTARS_{local_dir_name}.txt"
     local_config_path = os.path.join(local_target, os.path.basename(config.config_file_name))
@@ -1516,6 +1532,8 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
     if not os.path.exists(os.path.join(calstars_data_full_path, local_dir_name.split("_")[1], local_dir_name)):
         log.info(f"Retrieving {remote_file} from {username}@{host}:/{remote_dir}")
         local_config_path, local_platepar_path, local_recalibrated_path, calstars_name, size_mb = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=bw_limit)
+    else:
+        log.info(f"Cache hit for {remote_file}")
 
     if not write_db:
         log.info(f"Data from {local_dir_name} not being written to database as writes not enabled.")
@@ -1533,6 +1551,10 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
 
         observation_session_config = cr.parse(local_config_path)
         observation_session_dict, start_jd, end_jd = calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recalibrated_path, local_calstars_path, catalog_stars=catalog_stars)
+
+        if not len(observation_session_dict):
+            archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
+            return
 
         pixel_scale_h, pixel_scale_v = extractMedianPixelScale(observation_session_dict)
         session_name = extractSessionNameFromCalstar(local_calstars_path)
@@ -1601,11 +1623,12 @@ def ingest(config, conn, calstars_data_dir=None,
 
     if concurrent_threads > 1:
         log.info(f"Running concurrently with {concurrent_threads} threads")
-        runParallel(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars, concurrent_threads=concurrent_threads, bw_limit=None)
+        runParallel(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=write_db, catalog_stars=catalog_stars, concurrent_threads=concurrent_threads, bw_limit=None, break_on_exception=False)
     else:
         while True:
             log.info("Running single thread mode")
-            ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit)
+            ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit, break_on_exception=True)
+            time.sleep(10)
 
 
 def getLatestCalstarFile(conn, station_id):
@@ -1774,9 +1797,275 @@ def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
 
     return astronomical_night_list, np.array(angle_list), setting_count, rising_count
 
+def plotStars(frame_list, max_intensity=None):
+    """
+    Render a grayscale bitmap of the observed stars in this frame.
+    frame_list: list of per-star dicts containing obs_x, obs_y, obs_mag, fwhm.
+    """
+
+    if not frame_list:
+        return np.zeros((720, 1280), dtype=np.uint8)
+
+    # Extract fields from the per-star dicts
+    obs_x   = np.array([s["obs_x"]   for s in frame_list], dtype=float)
+    obs_y   = np.array([s["obs_y"]   for s in frame_list], dtype=float)
+    obs_mag = np.array([s["obs_mag"] for s in frame_list], dtype=float)
+    fwhm    = np.array([s["fwhm"]    for s in frame_list], dtype=float)
+
+    # Build coords array for renderStars
+    coords = np.column_stack((obs_x, obs_y, obs_mag, fwhm))
+
+    # Render the stars into a floating-point bitmap
+    bitmap = renderStars(coords, (720, 1280), gaussian=True)
+
+    max_val = bitmap.max()
+
+    if max_intensity is not None and max_intensity > 0:
+        max_intensity *= 0.8
+        bitmap = np.minimum(bitmap, max_intensity)
+        grey = (bitmap * 255 / max_intensity).astype(np.uint8)
+
+    elif max_val > 0 and max_intensity is None:
+        grey = (bitmap * 255 / max_val).astype(np.uint8)
+
+    else:
+        grey = np.minimum(bitmap, 255).astype(np.uint8)
+
+    return np.minimum(grey, 255)
 
 
-def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None):
+def renderStars(coords, shape, gaussian=True):
+    """
+    Render circular blobs with per-star radii into a bitmap.
+
+    coords: array of [y, x, intensity, radius]
+    shape: (height, width)
+    gaussian: if True, use Gaussian falloff instead of flat circle
+    """
+    H, W = shape
+    bitmap = np.zeros((H, W), dtype=np.float32)
+
+    # Cache stencils so repeated radii don't recompute
+    stencil_cache = {}
+
+    for x, y, I, R in coords:
+        y = int(y)
+        x = int(x)
+        I = float(I)
+        if not gaussian:
+            R = int(R * 0.8)
+        else:
+            R = int(R * 0.8)
+
+        if R <= 0:
+            continue
+
+        # Build or retrieve stencil
+        if R not in stencil_cache:
+            yy, xx = np.ogrid[-R:R+1, -R:R+1]
+
+            if gaussian:
+                sigma = R / 2
+                stencil = np.exp(-(xx*xx + yy*yy) / (2 * sigma * sigma))
+            else:
+                stencil = (xx*xx + yy*yy) <= R*R
+                stencil = stencil.astype(np.float32)
+
+            stencil_cache[R] = stencil
+
+        stencil = stencil_cache[R]
+
+        # Bounds in output image
+        y0 = max(0, y - R)
+        y1 = min(H, y + R + 1)
+        x0 = max(0, x - R)
+        x1 = min(W, x + R + 1)
+
+        # Bounds in stencil
+        sy0 = y0 - (y - R)
+        sy1 = sy0 + (y1 - y0)
+        sx0 = x0 - (x - R)
+        sx1 = sx0 + (x1 - x0)
+
+        # Add scaled stencil
+        bitmap[y0:y1, x0:x1] += 3 * I * stencil[sy0:sy1, sx0:sx1]
+
+    return bitmap
+
+def drawTextOnBitmap(bitmap, text, x, y, intensity=255):
+    """
+    Draw text onto a grayscale NumPy bitmap using Pillow.
+    """
+    img = Image.fromarray(bitmap.astype(np.uint8), mode='L')
+    draw = ImageDraw.Draw(img)
+
+    fontPath = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    fontSize = 12
+    font = ImageFont.truetype(fontPath, fontSize)
+
+
+    draw.text((x, y), text, fill=intensity, font=font)
+
+    return np.array(img, dtype=np.uint8)
+
+
+def createSavePathName(file_path, file_name, extension='png'):
+
+
+
+    save_path_name = os.path.join(file_path, f"{file_name.split('.')[0]}.{extension}")
+
+    return save_path_name
+
+def fmt(val, fmt_str):
+    return fmt_str.format(val) if val is not None else "—"
+
+
+def annotateImage(bitmap, frame_list, intensity=255, rescale=2):
+    """
+    Draw per-star annotations on the rendered bitmap.
+    frame_list: list of per-star dicts containing obs_x, obs_y, ampltd, fwhm, snr,
+                plus cat_ra, cat_dec, name, obs_mag, cat_mag.
+    """
+
+    # Convert to PIL image and upscale for clearer text
+    img = Image.fromarray(bitmap.astype(np.uint8), mode='L')
+    w, h = img.size
+    img = img.resize((w * rescale, h * rescale), Image.NEAREST)
+    draw = ImageDraw.Draw(img)
+
+    # Load font
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    font = ImageFont.truetype(font_path, 12)
+
+    # Draw annotations for each star
+    for s in frame_list:
+
+        x = s["obs_x"]
+        y = s["obs_y"]
+
+        # Handle unmatched stars gracefully
+        name = s["name"] if s["name"] is not None else "—"
+
+
+        annotation_text = (
+            f"{name}\n"
+            f"RA:{fmt(s['cat_ra'], '{:.4f}')} "
+            f"Dec:{fmt(s['cat_dec'], '{:.4f}')}\n"
+            f"ObsMag:{fmt(s['obs_mag'], '{:.2f}')} "
+            f"CatMag:{fmt(s['cat_mag'], '{:.2f}')}\n"
+            f"x:{int(x)} y:{int(y)}\n"
+            f"Amp:{s['ampltd']:4} "
+            f"FWHM:{s['fwhm']:4.2f} "
+            f"SNR:{s['snr']:5.2f}"
+        )
+
+        annotation_text = (
+            f"{name}\n"
+            f"Mag:{fmt(s['obs_mag'], '{:.2f}')}/{fmt(s['obs_mag_corrected'], '{:.2f}')}/{fmt(s['cat_mag'], '{:.2f}')}"
+        )
+
+        draw.text(
+            ((x + 5) * rescale, (y + 5) * rescale),
+            annotation_text,
+            fill=intensity,
+            font=font
+        )
+
+    return np.array(img, dtype=np.uint8)
+
+
+
+def plotMagScatter(frame_list, title=None, height_px=1440, width_px=2560, dpi=100):
+    """
+    Create a scatter plot of observed vs catalog magnitude for matched stars,
+    with a fixed pixel size so the output image matches the sky image height.
+    """
+
+    height_in = height_px / dpi
+    width_in = width_px / dpi
+
+    fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=dpi)
+    fig.patch.set_facecolor("black")
+    ax.set_facecolor("black")
+
+    cat_mag = []
+    obs_mag = []
+    obs_mag_corr = []
+
+    for s in frame_list:
+        if s["cat_mag"] is not None and s["obs_mag"] is not None:
+            cat_mag.append(s["cat_mag"])
+            obs_mag.append(s["obs_mag"])
+            obs_mag_corr.append(s.get("obs_mag_corrected"))
+
+    if not cat_mag:
+        ax.text(0.5, 0.5, "No matched stars", ha="center", va="center", color="white")
+        ax.set_axis_off()
+        fig.tight_layout()
+        return fig
+
+    # Raw magnitudes in bright green
+    ax.scatter(cat_mag, obs_mag, s=10, c="#00FF00", label="Raw")
+
+    # Corrected magnitudes in bright orange (only where available)
+    if any(v is not None for v in obs_mag_corr):
+        cat_mag_corr = [c for c, v in zip(cat_mag, obs_mag_corr) if v is not None]
+        obs_mag_corr = [v for v in obs_mag_corr if v is not None]
+        ax.scatter(cat_mag_corr, obs_mag_corr, s=10, c="#FFA500", label="Corrected")
+
+    ax.set_xlabel("Catalog Magnitude", color="white")
+    ax.set_ylabel("Observed Magnitude", color="white")
+    ax.set_title(title if title else "Obs vs Cat Magnitude", color="white")
+
+    # White ticks
+    ax.tick_params(colors="white")
+
+    # 1:1 reference line in white
+    min_mag = min(min(cat_mag), min(obs_mag))
+    max_mag = max(max(cat_mag), max(obs_mag))
+    ax.plot([min_mag, max_mag], [min_mag, max_mag], "w--", linewidth=1)
+
+    ax.invert_xaxis()
+    ax.invert_yaxis()
+
+    ax.legend(facecolor="black", edgecolor="white", labelcolor="white")
+
+    fig.tight_layout()
+    return fig
+
+
+def fitMagModel(frame_list):
+    cat_mag = []
+    obs_mag = []
+    fwhm = []
+    n_sat = []
+
+    for s in frame_list:
+        if s["cat_mag"] is not None and s["obs_mag"] is not None:
+            cat_mag.append(s["cat_mag"])
+            obs_mag.append(s["obs_mag"])
+            fwhm.append(s["fwhm"])
+            n_sat.append(s["nsatpx"])
+
+    if len(cat_mag) < 3:
+        return None  # not enough stars
+
+    cat_mag = np.array(cat_mag)
+    obs_mag = np.array(obs_mag)
+    fwhm = np.array(fwhm)
+    n_sat = np.array(n_sat)
+
+    delta_mag = obs_mag - cat_mag
+
+    X = np.column_stack([fwhm, n_sat, np.ones_like(fwhm)])
+    coeffs, _, _, _ = np.linalg.lstsq(X, delta_mag, rcond=None)
+
+    a, b, c = coeffs
+    return a, b, c
+
+
+def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None, auto_fit_on=False, diagnostic_video=True):
     """
       Parses a calstar data structures in archived directories path,
       converts to RaDec, corrects magnitude data and writes newer data to database
@@ -1800,6 +2089,21 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     pp.read(local_platepar_path)
 
     calstar, chunk = readCALSTARS(os.path.dirname(local_calstars_path), calstars_name)
+
+    if not len(calstar):
+        log.info(f"No entries in calstar file for {calstars_name}")
+
+        return {}, 0, 0
+
+    if diagnostic_video:
+        save_path_name = createSavePathName("/mnt/rms/cache/RMS_data/videos", calstars_name, extension='mp4')
+        writer = imageio.get_writer(save_path_name, fps=2)
+
+    max_intensity = max([coordinates[2]
+                      for entry in calstar
+                      for coordinates in entry[1]])
+
+
     star_dict = starListToDict(obs_con, [calstar, chunk])
 
     if not len(star_dict):
@@ -1836,9 +2140,12 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     dir_path = os.path.dirname(local_calstars_path)
 
+    if auto_fit_on:
 
-    auto_pp, matched_star_pairs, used_ff = autoFitPlatepar(dir_path, obs_con, catalog_stars=catalog_stars,
+        auto_pp, matched_star_pairs, used_ff = autoFitPlatepar(dir_path, obs_con, catalog_stars=catalog_stars,
                                                            platepar_template=pp, verbose=False)
+    else:
+        auto_pp = None
 
     flags = 0
     if auto_pp is None:
@@ -1886,7 +2193,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         pixel_scale_h = pp.fov_h / pp.X_res
         pixel_scale_v = pp.fov_v / pp.Y_res
         pixel_scale = max(pixel_scale_h, pixel_scale_v)
-        radius_deg = pixel_scale * 3
+        radius_deg = pixel_scale * 5
         if jd in star_dict:
             stars_list = star_dict[jd]
             stars_list = np.array(stars_list)
@@ -1908,8 +2215,44 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
             jd_time=True, measurement=True, precompute_pointing_corr=True, extinction_correction=True
         )
 
-        results_list = cat.queryRaDec(arr_obs_ra, arr_obs_dec, n_brightest=1, radius_deg=radius_deg)
-        arr_star_name = np.array([r[0][0] if r is not None else None for r in results_list], dtype=object)
+        faintest_mag = np.min(arr_obs_mag)
+
+
+
+
+        results_query_list = cat.queryRaDec(arr_obs_ra, arr_obs_dec, n_brightest=1, radius_deg=radius_deg)
+
+
+
+        masked_results_list = []
+
+        for match, mag_obs in zip(results_query_list, arr_obs_mag):
+
+            # No spatial match at all
+            if match is None:
+                masked_results_list.append(None)
+                continue
+
+            # match is a list of one element: [name, ra, dec, mag_cat, theta]
+            try:
+                name, ra_c, dec_c, mag_cat, theta = match[0]
+            except Exception:
+                # Defensive: malformed match structure
+                masked_results_list.append(None)
+                continue
+
+            if not np.isfinite(mag_cat) or not np.isfinite(mag_obs):
+                masked_results_list.append(None)
+                continue
+
+            # Apply magnitude sanity check
+            mag_err = mag_obs - mag_cat
+            if abs(mag_err) > 1.0:
+                masked_results_list.append(None)
+            else:
+                masked_results_list.append(match)
+
+        arr_star_name = np.array([r[0][0] if r is not None else None for r in masked_results_list], dtype=object)
 
         counts = Counter(arr_star_name)
         duplicated_star_names = {name for name, c in counts.items() if c > 1}
@@ -1925,7 +2268,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
         cat_mag_list = []
 
-        for res, obs_mag in zip(results_list, arr_obs_mag):
+        for res, obs_mag in zip(masked_results_list, arr_obs_mag):
             if res is not None:
                 cat_mag_list.append(res[0][3])
             else:
@@ -1988,7 +2331,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         for i, (query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum,
 
                 o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx, o_corrected_mag) in enumerate(zip(
-                results_list,
+                masked_results_list,
                 arr_obs_ra,arr_obs_dec, arr_obs_mag,
                 arr_obs_x, arr_obs_y,arr_obs_intensity_sum,
                 arr_obs_az, arr_obs_alt,
@@ -2017,7 +2360,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
             mag_err = None if c_mag is None else (o_mag - c_mag)
 
-            frame_list.append({
+            per_star_data = {
                 "name": name,
                 "station_name": obs_con.stationID.upper(),
                 "jd": float(jd),
@@ -2052,17 +2395,70 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
                 "sun_angle": sun_below_horizon_angle,
                 "mean_curvature": mean_curvature,
                 "max_curvature": max_curvature,
-                "flag": flags
-            })
+                "flag": flags}
+
+            frame_list.append(per_star_data)
+
+        coeffs = fitMagModel(frame_list)
+        if coeffs is None:
+            a, b, c = 0, 0, 0
+        else:
+            a, b, c = coeffs
+
+        for s in frame_list:
+            if s["obs_mag"] is None:
+                continue
+
+            fwhm = s["fwhm"]
+            n_sat = s["nsatpx"]
+
+            delta_model = a * fwhm + b * n_sat + c
+            s["obs_mag_corrected"] = s["obs_mag"] - delta_model
+
+        if diagnostic_video:
+            writeDiagnosticVideo(fits_file, fits_station_id, frame_list, star_list, writer)
 
         observation_dict[fits_file] = frame_list
-
+    if diagnostic_video:
+        writer.close()
     fits_end_time = datetime.datetime.now(tz=datetime.timezone.utc)
     elapsed_seconds = (fits_end_time - fits_start_time).total_seconds()
     fits_count = len(observation_dict)
     log.info(f"Read {calstars_name} at {fits_count / elapsed_seconds:.1f} fits / second")
-
     return observation_dict, start_jd, end_jd
+
+
+def writeDiagnosticVideo(fits_file, fits_station_id, frame_list, star_list, writer):
+    text_x, text_y = 10, 720 - 20
+    timestamp = filenameToDatetime(fits_file).strftime("%Y-%m-%d %H:%M:%S")
+
+    grey = plotStars(frame_list)
+
+    fig = plotMagScatter(frame_list, title=f"{fits_station_id} {timestamp}")
+    fig.canvas.draw()
+
+    # Extract RGBA buffer safely
+    buf = fig.canvas.buffer_rgba()
+    w, h = fig.canvas.get_width_height()
+
+    rgba = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 4)
+
+    # Convert to RGB (drop alpha)
+    scatter_img = rgba[:, :, :3]
+
+    plt.close(fig)
+
+    text = f"{fits_station_id} {timestamp} UTC {len(star_list[1])}"
+    grey = drawTextOnBitmap(grey, text, text_x, text_y)
+
+    grey = annotateImage(grey, frame_list, intensity=255)
+    g = grey.astype(np.uint8)
+    rgb = np.stack([g, g, g], axis=-1)  # (H, W, 3)
+
+    alpha = 0.35
+    combined = (rgb * (1 - alpha) + scatter_img * alpha).astype(np.uint8)
+    writer.append_data(combined)
+
 
 def resetIngestion(conn, local_calstars_path, ingestion_marker):
 

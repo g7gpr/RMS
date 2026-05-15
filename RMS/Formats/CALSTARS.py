@@ -359,7 +359,7 @@ def calstarsToMP4(file_path, file_name, save_path=None, chunk_frames=256):
 
     file_path = os.path.expanduser(file_path)
 
-    save_path_name = createSavePathName(file_path, file_name, save_path, extension='mp4')
+    save_path_name = createSavePathName("/mnt/rms/cache/RMS_data/videos", file_name, save_path, extension='mp4')
 
     if not os.path.exists(os.path.join(file_path, file_name)):
         return False
