@@ -2065,7 +2065,7 @@ def fitMagModel(frame_list):
     return a, b, c
 
 
-def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None, auto_fit_on=False, diagnostic_video=True):
+def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None, auto_fit_on=False, diagnostic_video=False):
     """
       Parses a calstar data structures in archived directories path,
       converts to RaDec, corrects magnitude data and writes newer data to database
