@@ -721,4 +721,5 @@ if __name__ == "__main__":
         log.info("Resetting ingestion")
         with psycopg.connect(host=postgresql_host, dbname="star_data", user="postgres") as reset_ingestion_conn:
             createDatabaseIfMissing(reset_ingestion_conn)
+            initialiseDatabase(reset_ingestion_conn)
             resetDatabaseForReingest(reset_ingestion_conn)
