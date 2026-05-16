@@ -196,66 +196,56 @@ def createStarTable(conn):
 
 def createObservationTable(conn):
     sql = """
-          CREATE TABLE IF NOT EXISTS observation \
-          ( \
-              obs_id \
-              BIGSERIAL \
-              PRIMARY \
-              KEY, \
-              jd_mid \
-              BIGINT, \
-              session_name \
-              TEXT \
-              REFERENCES \
-              session \
-          ( \
-              session_name \
-          ),
-              station_name TEXT,
+        CREATE TABLE IF NOT EXISTS observation (
+            obs_id BIGSERIAL PRIMARY KEY,
+            jd_mid BIGINT,
+            session_name TEXT REFERENCES session(session_name),
+            station_name TEXT,
+            frame_name TEXT REFERENCES frame(frame_name),
+            star_name TEXT,
 
-              frame_name TEXT REFERENCES frame \
-          ( \
-              frame_name \
-          ),
-              star_name TEXT,
+            y INTEGER,
+            x INTEGER,
+            intens_sum INTEGER,
+            ampltd INTEGER,
+            fwhm INTEGER,
+            bg_lvl INTEGER,
+            snr INTEGER,
+            nsatpx SMALLINT,
 
-              -- CALSTARS fields (scaled where needed)
-              y INTEGER,
-              x INTEGER,
-              intens_sum INTEGER,
-              ampltd INTEGER,
-              fwhm INTEGER,
-              bg_lvl INTEGER,
-              snr INTEGER,
-              nsatpx SMALLINT,
+            mag INTEGER,
+            obs_mag_corrected INTEGER,
+            cat_mag INTEGER,
+            mag_err INTEGER,
+            mag_cor INTEGER,
+            sun_angle INTEGER,
+            mean_curvature INTEGER,
+            max_curvature INTEGER,
 
-              -- Derived fields
-              mag INTEGER,
-              obs_mag_corrected INTEGER,
-              cat_mag INTEGER,
-              mag_err INTEGER,
-              mag_cor INTEGER,
-              sun_angle INTEGER,
-              mean_curvature INTEGER,
-              max_curvature INTEGER,
+            ra INTEGER,
+            dec INTEGER,
 
-              -- Astrometric solution (scaled RA/Dec)
-              ra INTEGER,
-              dec INTEGER,
-
-              -- Flags
-              flags SMALLINT,
-              
-              
-              -- Median absolute deviation
-              mad INTEGER
-              ); \
-          """
+            flags SMALLINT,
+            mad INTEGER
+        )
+        PARTITION BY HASH (star_name);
+    """
 
     with conn.cursor() as cur:
         cur.execute(sql)
 
+        # Create 32 hash partitions
+        for i in range(32):
+            cur.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS observation_p{i:02d}
+                PARTITION OF observation
+                FOR VALUES WITH (MODULUS 32, REMAINDER {i});
+                """
+            )
+
     conn.commit()
+
 
 
 def createSpatialModelTable(conn):
