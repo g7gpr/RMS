@@ -1648,7 +1648,7 @@ def ingest(config, conn, calstars_data_dir=None,
     else:
         while True:
             log.info("Running single thread mode")
-            ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit, break_on_exception=True, force_error=True)
+            ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit, break_on_exception=True, force_error=force_error)
             time.sleep(10)
 
 
@@ -2086,7 +2086,7 @@ def fitMagModel(frame_list):
     return a, b, c
 
 
-def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None, auto_fit_on=False, diagnostic_video=False):
+def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None, auto_fit_on=False, diagnostic_video=True):
     """
       Parses a calstar data structures in archived directories path,
       converts to RaDec, corrects magnitude data and writes newer data to database
