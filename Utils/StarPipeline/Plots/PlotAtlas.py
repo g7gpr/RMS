@@ -82,8 +82,8 @@ def fetchHemisphereRadec(conn, hemisphere="south", limit_rows=30000, mag_limit=3
 
         names_list = None
         query = f"""
-            SELECT ra, dec, mag
-            FROM observation
+            SELECT ra, dec, mag, star_name
+            FROM star
             WHERE ra IS NOT NULL
               AND dec IS NOT NULL
               AND mag < {mag_scaled_limit}
@@ -98,10 +98,11 @@ def fetchHemisphereRadec(conn, hemisphere="south", limit_rows=30000, mag_limit=3
 
         with conn.cursor() as cur:
             cur.execute(query)
-            for ra_scaled, dec_scaled, mag_scaled in cur:
+            for ra_scaled, dec_scaled, mag_scaled, star_name in cur:
                 ra_list.append(ra_scaled / DB_SCALE_FACTOR)
                 dec_list.append(dec_scaled / DB_SCALE_FACTOR)
                 mag_list.append(mag_scaled / DB_SCALE_FACTOR)
+                names_list.append(star_name)
 
     ra_list, dec_list = np.array(ra_list), np.array(dec_list)
 
@@ -141,7 +142,7 @@ if __name__ == "__main__":
 
 
     with psycopg.connect(
-        host="192.168.1.190",
+        host="192.168.217.212",
         dbname="star_data",
         user="ingest_user",
     ) as conn:

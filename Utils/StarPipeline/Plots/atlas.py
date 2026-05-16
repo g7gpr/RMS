@@ -189,7 +189,7 @@ def plotAtlasTwoPanel(
     addCurvedHemisphereTitle(ax_north, "NORTHERN HEMISPHERE", "north")
 
     fig.suptitle(
-        "The Global Meteor Network All Sky Survey \n (Australia Edition)",
+        "The Global Meteor Network\nAll Sky Survey",
         y=0.92,
         color="#444444",
         fontweight="light",

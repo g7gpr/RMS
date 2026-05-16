@@ -282,7 +282,7 @@ def showQueueHealth():
     cache_count = 0
     for day_dir in Path(cache_root).iterdir():
         if day_dir.is_dir():
-            cache_count += len(list(day_dir.glob("*_raw.tar.bz2")))
+            cache_count += len(list(day_dir.glob("*")))
 
     # --- Normalise error filenames ---
     normalised_errors = []

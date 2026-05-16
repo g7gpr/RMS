@@ -25,7 +25,7 @@ def plotHemisphere(fig, ax, ra_deg, dec_deg, constellations, mag=None, names_lis
     theta, r = radecToPolar(ra_deg, dec_deg, hemisphere=hemisphere)
 
 
-    names_list = None
+
     plotStars(ax, theta, r, ra_deg=ra_deg, dec_deg=dec_deg, mag=mag, names_list=names_list, size=1.2, alpha=0.5)
 
     plotConstellationLines(ax, constellations, hemisphere=hemisphere)

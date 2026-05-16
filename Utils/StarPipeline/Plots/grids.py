@@ -54,7 +54,7 @@ def addDecTicks(ax):
 
     ax.set_yticks(r_minor, minor=True)
     # Declination ticks you want to show (omit +90°)
-    dec_labels = ["60", "30", "", "30", "60"]
+    dec_labels = ["", "", "", "", ""]
 
     # Corresponding declinations in degrees (north → south)
     dec_degs = np.array([+60, +30, 0, -30, -60])
@@ -69,12 +69,12 @@ def addDecTicks(ax):
 
 def addRaGrid(ax):
     """Add faint RA gridlines."""
-    ax.grid(which="major", axis="x", color="#0044aa", alpha=0.15)
+    ax.grid(which="major", axis="x", color="#0044aa", alpha=0.07)
 
 
 def addDecGrid(ax):
     """Add faint Dec gridlines."""
-    ax.grid(which="major", axis="y", color="#0044aa", alpha=0.15)
+    ax.grid(which="major", axis="y", color="#0044aa", alpha=0.05)
 
 
 def addEquator(ax):

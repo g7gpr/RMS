@@ -2,7 +2,7 @@ import numpy as np
 
 import numpy as np
 
-def magnitudeToSize(mag, mag0=2.0, size0=20.0,
+def magnitudeToSize(mag, mag0=1.0, size0=5.0,
                     min_size=0.5, max_size=40.0):
     """
     Convert stellar magnitude to a visually pleasing point size.
@@ -26,7 +26,7 @@ def plotStars(ax, theta, r, names_list=None, ra_deg=None, dec_deg=None, mag=None
 
     sizes = magnitudeToSize(mag)
     mag = np.array(mag)
-    alpha = np.clip(1.2 - 0.15 * mag, 0.2, 1.0)
+    alpha = np.clip(1.2 - 0.5 * mag, 0.2, 1.0)
 
     # Mask bright vs faint
     bright = mag < 2.0
@@ -41,7 +41,7 @@ def plotStars(ax, theta, r, names_list=None, ra_deg=None, dec_deg=None, mag=None
             s=sizes[faint],
             c=color,
             alpha=alpha[faint],
-            zorder=5
+            zorder=6
         )
 
     # Bright stars on top
@@ -52,8 +52,9 @@ def plotStars(ax, theta, r, names_list=None, ra_deg=None, dec_deg=None, mag=None
             s=sizes[bright],
             c=color,
             alpha=alpha[bright],
-            zorder=6
+            zorder=7
 )
+    names_list = None
     if names_list is not None and ra_deg is not None and dec_deg is not None:
         for th, rr, nm, ra, dec in zip(theta, r, names_list, ra_deg, dec_deg):
             label = f"{nm}" #\nRA={ra:.1f}°\nDec={dec:.1f}°"

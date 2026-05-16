@@ -2046,11 +2046,17 @@ def plotMagScatter(frame_list, title=None, height_px=1440, width_px=2560, dpi=10
     min_mag = min(min(cat_mag), min(obs_mag))
     max_mag = max(max(cat_mag), max(obs_mag))
     ax.plot([min_mag, max_mag], [min_mag, max_mag], "w--", linewidth=1)
+    ax.legend(facecolor="black", edgecolor="white", labelcolor="white")
+
+
+    # Fixed axis ranges
+    ax.set_xlim(6.0, 1.0)
+    ax.set_ylim(6.0, 1.0)
 
     ax.invert_xaxis()
     ax.invert_yaxis()
 
-    ax.legend(facecolor="black", edgecolor="white", labelcolor="white")
+
 
     fig.tight_layout()
     return fig
