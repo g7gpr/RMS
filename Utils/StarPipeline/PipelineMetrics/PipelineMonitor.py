@@ -140,7 +140,7 @@ def dashboard():
     try:
         sections = [
             datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
-            #showIngestionHealth(),
+            showIngestionHealth(),
             showQueueHealth(),
             showNextJob(),
             showLatestSessions(),

@@ -46,61 +46,30 @@ def activeStationCount(hours=48):
 
     return runQueryScalar(sql)
 
-def calstarsPerDay(window_days=7):
-    # --- Find earliest ingestion ---
-    sql_min = "SELECT MIN(ingestion_time) FROM calstar_files;"
-    min_ing = runQueryScalar(sql_min) / 1e6
 
-    if not min_ing:
-        return 0.0
-
-    # --- Compute actual DB history length ---
-    now = time.time()
-    history_days = (now - min_ing) / (24 * 3600)
-
-    # --- Clamp window to available history ---
-    effective_window = min(window_days, history_days)
-
-    if effective_window <= 0:
-        return 0.0
-
-    # --- Rolling count over clamped window ---
-    sql = f"""
-        SELECT COUNT(*)
-        FROM calstar_files
-        WHERE ingestion_time >= extract(epoch FROM now()) - ({effective_window} * 24 * 3600);
-    """
-    count = runQueryScalar(sql)
-
-    return count / effective_window if count else 0.0
 
 
 def ingestionStalled():
-    nowCount = getCalstarCount()
-    nowTime = time.time()
+    """
+    Ingestion is stalled if no jobs have been marked 'done'
+    in the last 10 minutes.
+    """
+    from Utils.StarPipeline.PipelineMetrics.db import getConn
+    conn = getConn()
 
-    state = loadState()
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM ingest_work
+            WHERE status = 'done'
+              AND updated_at >= now() - interval '10 minutes';
+        """)
+        recent_done = cur.fetchone()[0]
 
-    if state is None:
-        state = {
-            "last_count": nowCount,
-            "stall_count": 0
-        }
-        saveState(state)
-        return False
+    conn.close()
 
-    # Stall detection
-    if nowCount == state["last_count"]:
-        state["stall_count"] += 1
-    else:
-        state["stall_count"] = 0
+    return recent_done == 0
 
-    stalled = state["stall_count"] >= STALL_THRESHOLD
-
-    state["last_count"] = nowCount
-    saveState(state)
-
-    return stalled
 
 
 
