@@ -94,27 +94,51 @@ def showIngestionHealth():
     if stalled:
         return "=== Ingestion Health ===\nWARNING: Ingestion stalled"
     else:
-        return "=== Ingestion Health ===\nOK"
+        ingestion_rate = ingestionRate(days=7)
+        return f"=== Ingestion Health ===\nOK Processing {ingestion_rate:.0f} CALSTARS per day"
 
 def ingestionRate(days=7):
     """
-    Return average jobs/day completed over the last N days.
+    Return average jobs/day completed over the last N days,
+    compensating for shorter ingestion histories.
     """
-    from Utils.StarPipeline.PipelineMetrics.db import getConn
+
     conn = getConn()
 
-    with conn.cursor() as cur:
-        cur.execute("""
-            SELECT COUNT(*)
+    sql = """SELECT COUNT(*),
+                   MIN(updated_at)
             FROM ingest_work
             WHERE status = 'done'
-              AND updated_at >= now() - interval %s;
-        """, (f'{days} days',))
-        count = cur.fetchone()[0]
+              AND updated_at >= now() - (%s * interval '1 day');"""
+
+    with conn.cursor() as cur:
+        # Count jobs done in the window
+        cur.execute(sql, (days, ))
+        count, earliest_ts = cur.fetchone()
 
     conn.close()
 
-    return count / days
+    if count == 0:
+        return 0.0
+
+    # Compute actual time span in days
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    if earliest_ts is None:
+        # Should not happen if count > 0, but safe fallback
+        return 0.0
+
+    actual_days = (now - earliest_ts).total_seconds() / 86400.0
+
+    # Clamp to at least a tiny positive number
+    actual_days = max(actual_days, 1e-6)
+
+    # If ingestion has been running longer than the window,
+    # use the window size instead.
+    actual_days = min(actual_days, days)
+
+    return count / actual_days
+
 
 
 def showWorkerLeaderboard():
@@ -151,25 +175,25 @@ def showWorkerLeaderboard():
 
 
 def dashboard():
-    try:
-        sections = [
-            datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
-            showIngestionHealth(),
-            showQueueHealth(),
-            showNextJob(),
-            showLatestSessions(),
-            showFrameCounts(),
-            showJdRange(),
-            showActiveStations(),
-            showWorkerLeaderboard()]
 
+    sections = [
+        datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+        showIngestionHealth(),
+        showQueueHealth(),
+        showNextJob(),
+        showLatestSessions(),
+        showFrameCounts(),
+        showJdRange(),
+        showActiveStations(),
+        showWorkerLeaderboard()]
+    """
     except Exception as e:
         # Database not ready or query failed
         sections = [
         f"Database not ready at {datetime.datetime.now(tz=datetime.timezone.utc).isoformat()}",
         f"Reason: {type(e).__name__}"
     ]
-
+    """
     output = "\n\n".join(sections)
     os.system("clear")
     print(output)
