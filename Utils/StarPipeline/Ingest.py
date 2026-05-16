@@ -1370,10 +1370,7 @@ def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_f
         extracted_flux_recalibrated_path = os.path.join(extracted_files_path, PLATEPARS_FLUX_RECALIBRATED_JSON)
         extracted_calstars_path = os.path.join(extracted_files_path, calstars_name)
         ftp_detect_info_name = f"{FTP_DETECT_INFO_TEMPLATE}{os.path.basename(local_dir_name)}.txt"
-        log.info(f"FTP detect info file {ftp_detect_info_name}")
         extracted_ftp_detect_info_path = os.path.join(extracted_files_path,ftp_detect_info_name)
-        log.info(f"FTP detect info path {extracted_ftp_detect_info_path}")
-
 
         # Place in a list
         path_source_list = [extracted_config_path, extracted_platepar_path,
@@ -1529,7 +1526,6 @@ def runParallel(remote_station_processed_dir=None, username=None, host=None,
 def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=None, username=None, host=None, port=None,
                       calstars_data_full_path=None, write_db=True, catalog_stars=None, bw_limit=None):
 
-    log.info(f"Entering processServerFile with {remote_file}")
     station_name = remote_file.split("_")[0]
     remote_dir = remote_station_processed_dir.replace("stationID", station_name.lower())
 
