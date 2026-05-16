@@ -231,9 +231,9 @@ def showQueueHealth():
     - pending
     - done
     - error
-    - first 5 error jobs (normalised)
+    - first 5 error jobs (normalised, with worker)
     """
-
+    from Utils.StarPipeline.PipelineMetrics.db import getConn
     conn = getConn()
 
     # --- Query DB job counts ---
@@ -250,16 +250,17 @@ def showQueueHealth():
         cur.execute("SELECT COUNT(*) FROM ingest_work WHERE status = 'error';")
         error = cur.fetchone()[0]
 
-        # First 5 error jobs
+        # First 5 error jobs (with worker)
         cur.execute("""
-            SELECT remote_filename
+            SELECT remote_filename, claimed_by
             FROM ingest_work
             WHERE status = 'error'
             ORDER BY jd_int ASC
             LIMIT 5;
         """)
         results = cur.fetchall()
-        error_rows = [r[0] for r in results]
+
+    conn.close()
 
     # --- Count cache files ---
     cache_root = "/mnt/rms/cache/RMS_data/CALSTARS"
@@ -270,14 +271,15 @@ def showQueueHealth():
 
     # --- Normalise error filenames ---
     normalised_errors = []
-    for name in error_rows:
-        if "_detected" in name:
-            normalised = name.replace("_detected", "_raw")
-        elif "_metadata" in name:
-            normalised = name.replace("_metadata", "_raw")
+    for remote_filename, claimed_by in results:
+        if "_detected" in remote_filename:
+            normalised = remote_filename.replace("_detected", "_raw")
+        elif "_metadata" in remote_filename:
+            normalised = remote_filename.replace("_metadata", "_raw")
         else:
-            normalised = name
-        normalised_errors.append(normalised)
+            normalised = remote_filename
+
+        normalised_errors.append((normalised, claimed_by))
 
     # --- Build output ---
     lines = [
@@ -292,12 +294,14 @@ def showQueueHealth():
     ]
 
     if normalised_errors:
-        for f in normalised_errors:
-            lines.append(f"  {f}")
+        for fname, worker in normalised_errors:
+            worker_label = worker if worker is not None else "(unclaimed)"
+            lines.append(f"  {fname}    [{worker_label}]")
     else:
         lines.append("  (none)")
 
     return "\n".join(lines)
+
 
 
 
