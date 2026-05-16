@@ -7,6 +7,7 @@ from Utils.StarPipeline.PipelineMetrics.Sessions import latestSessions
 from Utils.StarPipeline.PipelineMetrics.Frames import frameCounts
 from Utils.StarPipeline.PipelineMetrics.Observations import observationCounts, totalObservations
 from Utils.StarPipeline.PipelineMetrics.IngestionRate import calstarsPerDay, activeStationCount, ingestionStalled
+from pathlib import Path
 
 INTERVAL = datetime.timedelta(minutes=1)
 
@@ -136,6 +137,7 @@ def dashboard():
         sections = [
             datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
             showIngestionHealth(),
+            showQueueHealth(),
             showLatestSessions(),
             showFrameCounts(),
             #showObservationCounts(),
@@ -155,6 +157,82 @@ def dashboard():
     os.system("clear")
     print(output)
 
+
+def showQueueHealth():
+    """
+    Show ingestion queue health:
+    - total jobs
+    - cache files
+    - pending
+    - done
+    - error
+    - first 5 error jobs (normalised)
+    """
+    from Utils.StarPipeline.PipelineMetrics.db import getConn
+    conn = getConn()
+
+    # --- Query DB job counts ---
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM ingest_work;")
+        total_jobs = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM ingest_work WHERE status = 'pending';")
+        pending = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM ingest_work WHERE status = 'done';")
+        done = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM ingest_work WHERE status = 'error';")
+        error = cur.fetchone()[0]
+
+        # First 5 error jobs
+        cur.execute("""
+            SELECT remote_filename
+            FROM ingest_work
+            WHERE status = 'error'
+            ORDER BY jd_int ASC
+            LIMIT 5;
+        """)
+        results = cur.fetchall()
+        error_rows = [r[0] for r in results]
+
+    # --- Count cache files ---
+    cache_root = "/mnt/rms/cache/RMS_data/CALSTARS"
+    cache_count = 0
+    for day_dir in Path(cache_root).iterdir():
+        if day_dir.is_dir():
+            cache_count += len(list(day_dir.glob("*_raw.tar.bz2")))
+
+    # --- Normalise error filenames ---
+    normalised_errors = []
+    for name in error_rows:
+        if "_detected" in name:
+            normalised = name.replace("_detected", "_raw")
+        elif "_metadata" in name:
+            normalised = name.replace("_metadata", "_raw")
+        else:
+            normalised = name
+        normalised_errors.append(normalised)
+
+    # --- Build output ---
+    lines = [
+        "=== Queue Health ===",
+        f"Total jobs:     {total_jobs}",
+        f"Cache files:    {cache_count}",
+        f"Pending:        {pending}",
+        f"Completed:      {done}",
+        f"Error:          {error}",
+        "",
+        "First 5 error jobs:"
+    ]
+
+    if normalised_errors:
+        for f in normalised_errors:
+            lines.append(f"  {f}")
+    else:
+        lines.append("  (none)")
+
+    return "\n".join(lines)
 
 
 
