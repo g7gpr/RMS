@@ -196,7 +196,7 @@ from RMS.Astrometry.AutoPlatepar import autoFitPlatepar, loadCatalogStars
 from Utils.Flux import detectMoon
 from multiprocessing import Pool, Process
 from collections import defaultdict
-from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges, claimNextJob, markJobDone, markJobError, resetStalledJobs, jobsRemaining
+from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges, claimNextJob, markJobDone, markJobError, resetStalledJobs, jobsRemaining, getNextErrorJob
 from collections import Counter
 from scipy.interpolate import SmoothBivariateSpline
 
@@ -1423,12 +1423,26 @@ def extractSessionNameFromCalstar(calstars_path):
 
 
 
-def ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None, bw_limit=None, break_on_exception=True):
+def ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None, bw_limit=None, break_on_exception=True, force_job=None, force_error=False):
 
     # Each worker must open its own DB connection
     with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as worker_conn:
 
-        remote_file, jd_scaled = claimNextJob(worker_conn)
+        if force_error:
+            job_to_force = getNextErrorJob(worker_conn)
+        else:
+            job_to_force = force_job
+
+        # Claim the job (forced or normal)
+        row = claimNextJob(worker_conn, force_job=job_to_force)
+
+        # If no job was returned, exit cleanly
+        if row is None:
+            log.info("No job available for this worker")
+            return
+
+        remote_file, jd_scaled = row
+
         if remote_file is None:
             return
 
@@ -1632,7 +1646,7 @@ def ingest(config, conn, calstars_data_dir=None,
     else:
         while True:
             log.info("Running single thread mode")
-            ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit, break_on_exception=True)
+            ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit, break_on_exception=True, force_error=True)
             time.sleep(10)
 
 
@@ -2658,6 +2672,10 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('--calstars_data_dir', metavar='CALSTARS_DATA_DIR', help="""Calstars data dir""")
 
+    arg_parser.add_argument('--force_error', dest='force_error', default=False,
+                            action="store_true",
+                            help="Run single threaded any jobs which have caused errors with exception handling disabled - this is a debugging mode")
+
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
@@ -2667,6 +2685,7 @@ if __name__ == "__main__":
     write_db = cml_args.write_db
     get_remote_file_list = cml_args.get_remote_file_list
     bw_limit = cml_args.bw_limit
+    force_error = cml_args.force_error
 
     calstars_data_dir = os.path.join(config.data_dir, CALSTARS_DATA_DIR) if cml_args.calstars_data_dir is None else cml_args.calstars_data_dir
 
@@ -2690,7 +2709,7 @@ if __name__ == "__main__":
     postgresql_host = cml_args.postgresql_host
 
     if cml_args.reset_ingestion:
-        log.info(f"Removing all ingestion markers ({DIRECTORY_INGESTED_MARKER}) from {calstars_directory_path}")
+        log.info(f"Resetting ingestion")
         with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as reset_ingestion_conn:
             resetIngestion(reset_ingestion_conn, calstars_directory_path, DIRECTORY_INGESTED_MARKER)
 
@@ -2735,4 +2754,9 @@ if __name__ == "__main__":
                 populateWorkQueue(conn, remote_files_sorted)
                 log.info("Table populated")
 
-            ingest(config, conn, calstars_data_dir=calstars_data_dir, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db, concurrent_threads=concurrent_threads, bw_limit=bw_limit)
+            if force_error:
+                if concurrent_threads != 1:
+                    log.info("Forcing single thread operation for error detection mode")
+                concurrent_threads = 1
+
+            ingest(config, conn, calstars_data_dir=calstars_data_dir, username=user, host=hostname, remote_station_processed_dir=path_template, write_db=write_db, concurrent_threads=concurrent_threads, bw_limit=bw_limit, force_error=force_error)
