@@ -399,6 +399,45 @@ def jobsRemaining(conn):
         (count,) = cur.fetchone()
         return count
 
+def repairMissingCacheEntries(conn, cache_root):
+    """
+    For each job marked 'done', verify the cache file exists.
+    If missing, reset status to 'pending' and clear claimed_by.
+    """
+
+    sql_fetch = """
+        SELECT remote_filename, jd_int
+        FROM ingest_work
+        WHERE status = 'done';
+    """
+
+    sql_reset = """
+        UPDATE ingest_work
+        SET status = 'pending',
+            claimed_by = NULL,
+            claimed_at = NULL,
+            updated_at = now()
+        WHERE remote_filename = %s;
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql_fetch)
+        rows = cur.fetchall()
+
+        for remote_filename, jd_int in rows:
+            cache_path = os.path.join(cache_root, remote_filename.split('_')[1], remote_filename)
+
+            if not os.path.exists(cache_path):
+                log.warning("Cache missing for %s — resetting to pending", remote_filename)
+                cur.execute(sql_reset, (remote_filename,))
+            else:
+                log.info("Cache OK for %s", remote_filename)
+
+        conn.commit()
+
+
+
+
 def getNextErrorJob(conn):
     """
     Return the remote_filename of the oldest error job, or None.
@@ -780,10 +819,20 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('-r', '--reset_ingestion', dest='reset_ingestion', default=False, action="store_true",
                             help="Reset ingestion")
+
+    arg_parser.add_argument(
+        '-s', '--sync_cache',
+        dest='sync_cache',
+        type=str,
+        metavar='CACHE_ROOT',
+        help='Sync ingestion work using the given cache root path'
+    )
+
     cml_args = arg_parser.parse_args()
 
     reset_ingestion = cml_args.reset_ingestion
     postgresql_host = cml_args.postgresql_host
+    sync_cache = cml_args.sync_cache
 
     if cml_args.reset_ingestion:
         log.info("Resetting ingestion")
@@ -791,3 +840,7 @@ if __name__ == "__main__":
             createDatabaseIfMissing(reset_ingestion_conn)
             initialiseDatabase(reset_ingestion_conn)
             resetDatabaseForReingest(reset_ingestion_conn)
+
+    if sync_cache is not "None":
+        with psycopg.connect(host=postgresql_host, dbname="star_data", user="postgres") as conn:
+            repairMissingCacheEntries(conn, sync_cache)

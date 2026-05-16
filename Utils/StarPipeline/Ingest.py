@@ -361,7 +361,7 @@ def buildFrameRows(observation_dict, session_name):
 
         # If there are no stars, then do no more work here
         if not frame_list:
-            log.info(f"{fits_file} had no stars, skipping")
+            #log.info(f"{fits_file} had no stars, skipping")
             continue
 
         # Get JD from any star entry (all stars in frame share same JD)
@@ -407,6 +407,9 @@ def buildObservationRows(observation_dict, session_name, station_name):
 
     for fits_file, frame_list in observation_dict.items():
         frame_name = extractFrameName(fits_file)
+        #log.info(f"Building observation row for frame {frame_name}")
+        if len(frame_list) == 0:
+            continue
         frame_jd_mid = scale1e6(frame_list[0]["jd"])
 
         # frame_list is now a list of observation dicts
@@ -1430,8 +1433,12 @@ def ingestWorker(remote_station_processed_dir, username, host, port, calstars_da
 
         if force_error:
             job_to_force = getNextErrorJob(worker_conn)
+            if job_to_force is None:
+                log.info("No error jobs found - returning")
+                return
         else:
             job_to_force = force_job
+
 
         # Claim the job (forced or normal)
         row = claimNextJob(worker_conn, force_job=job_to_force)
@@ -1603,7 +1610,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
 
 def ingest(config, conn, calstars_data_dir=None,
            remote_station_processed_dir=None, write_db=True,
-           host=None, username=None, port=PORT, concurrent_threads=2, bw_limit=None):
+           host=None, username=None, port=PORT, concurrent_threads=2, bw_limit=None, force_error=None):
 
     """
     In a subdirectoy of station_data_dir create a directory for each station containing mask
@@ -2674,7 +2681,7 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('--force_error', dest='force_error', default=False,
                             action="store_true",
-                            help="Run single threaded any jobs which have caused errors with exception handling disabled - this is a debugging mode")
+                            help="Sisyphus mode - only work on the jobs which show error with exception handling disabled. This is to assist debugging.")
 
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
