@@ -1783,7 +1783,7 @@ def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
     if not len(fits_file_list):
         return [], np.array([]), 0, 0
 
-    log.info(f"First/last fits file was {fits_file_list[0]}/{fits_file_list[-1]}")
+
     # Initialize observer
     o = ephem.Observer()
     o.lat, o.lon, o.elevation  = str(c.latitude), str(c.longitude), float(c.elevation)
@@ -2135,16 +2135,16 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     # Find out which fits_files do not have the illuminated moon in view
     fits_files_without_moon_list = detectMoon(fits_files_from_calstar_list, pp, obs_con)
     dropped_files_count = len(fits_files_from_calstar_list) - len(fits_files_without_moon_list)
-    plural = "" if dropped_files_count == 1 else "s"
-    log.info(f"For {calstars_name} flagging {dropped_files_count} fits file{plural} as disrupted by moon approx {100*dropped_files_count/total_calstar_fits:3.2f}%")
+    # plural = "" if dropped_files_count == 1 else "s"
+    # log.info(f"For {calstars_name} flagging {dropped_files_count} fits file{plural} as disrupted by moon approx {100*dropped_files_count/total_calstar_fits:3.2f}%")
 
 
 
     # Find out which fits files are not in astronomical night
     astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
     dropped_files_count = len(fits_files_from_calstar_list) - len(astronomical_night_list)
-    plural = "" if dropped_files_count == 1 else "s"
-    log.info(f"For {calstars_name} flagging setting/rising/% {setting_count}/{rising_count}/{100*dropped_files_count/total_calstar_fits:3.2f}% fits file{plural} as outside astronomical night")
+    # plural = "" if dropped_files_count == 1 else "s"
+    # log.info(f"For {calstars_name} flagging setting/rising/% {setting_count}/{rising_count}/{100*dropped_files_count/total_calstar_fits:3.2f}% fits file{plural} as outside astronomical night")
 
     # Next take the intersection
 
