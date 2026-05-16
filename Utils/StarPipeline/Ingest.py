@@ -648,7 +648,7 @@ def extractCalstarArchives(root, archives_list, remove_archives=True):
             continue
 
         # Derive original directory name
-        dir_name = arc_name.name.replace("_CALSTAR.tar.bz2", "")
+        dir_name = arc_name.name.replace("_raw.tar.bz2", "")
         output_dir = root / dir_name
 
         # Ensure output directory does not already exist
@@ -663,6 +663,11 @@ def extractCalstarArchives(root, archives_list, remove_archives=True):
                 tar.extractall(root)
                 if output_dir.exists():
                     output_dir_list.append(output_dir)
+                    for dirpath, dirnames, filenames in os.walk(output_dir):
+                        os.chmod(dirpath, 0o777)
+                        for f in filenames:
+                            os.chmod(os.path.join(dirpath, f), 0o666)
+
                 else:
                     log.error(f"Expected extracted directory {output_dir} but it does not exist")
 
@@ -1516,7 +1521,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
     local_target = os.path.join(calstars_data_full_path, f"{local_dir_name.split('_')[1]}", local_dir_name)
 
     # If we already have a .bz2 file, extract it so we can work on it
-    local_calstars_archive_path = f"{local_target}_CAL.tar.bz2"
+    local_calstars_archive_path = f"{local_target}_raw.tar.bz2"
     extractCalstarArchives(os.path.dirname(local_calstars_archive_path), [os.path.basename(local_calstars_archive_path)], remove_archives=True)
     calstars_name = f"CALSTARS_{local_dir_name}.txt"
     local_config_path = os.path.join(local_target, os.path.basename(config.config_file_name))

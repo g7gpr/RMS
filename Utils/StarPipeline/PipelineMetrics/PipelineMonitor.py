@@ -141,7 +141,6 @@ def dashboard():
             #showObservationCounts(),
             #showTotalObservations(),
             showJdRange(),
-            showIngestionRate(),
             showActiveStations(),
             showWorkerLeaderboard()]
 
