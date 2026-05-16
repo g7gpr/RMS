@@ -1169,7 +1169,7 @@ def parseCapture(config, parser):
             config.camera_settings_path = station_specific_file
         else:    
             config.camera_settings_path = './camera_settings.json'
-    print(f'Camera settings file: {config.camera_settings_path}')
+    # print(f'Camera settings file: {config.camera_settings_path}')
 
     if parser.has_option(section, "initialize_camera"):
         config.initialize_camera = parser.getboolean(section, "initialize_camera")
