@@ -456,7 +456,7 @@ def getNextErrorJob(conn):
     return row[0] if row else None
 
 
-def claimNextJob(conn, force_job=None):
+def claimNextJob(conn, force_job=None, dry_run=False):
     """
     Atomically claim the next pending job, or claim a specific job if force_job is given.
 
@@ -465,6 +465,10 @@ def claimNextJob(conn, force_job=None):
       - If job is done or error: return it without modifying DB.
       - If job is claimed by someone else: return None.
       - If job does not exist: return None.
+
+    If dry_run is True:
+      - Never modifies the DB.
+      - Returns the job that *would* be claimed.
     """
 
     host_name = socket.gethostname()
@@ -473,10 +477,7 @@ def claimNextJob(conn, force_job=None):
     # CASE 1: force a specific job
     # ----------------------------------------------------------------------
     if force_job is not None:
-
         with conn.cursor() as cur:
-
-            # Check job status
             cur.execute("""
                 SELECT status, jd_int, claimed_by
                 FROM ingest_work
@@ -485,13 +486,17 @@ def claimNextJob(conn, force_job=None):
             row = cur.fetchone()
 
             if row is None:
-                  return None  # job does not exist
+                return None  # job does not exist
 
             status, jd_int, claimed_by = row
 
+            if dry_run:
+                # Just report what this job is, no changes
+                return (force_job, jd_int)
+
             # If claimed by someone else, do not touch it
             if status == 'claimed' and claimed_by != host_name:
-                  return None
+                return None
 
             # If pending, claim it normally
             if status == 'pending':
@@ -516,30 +521,41 @@ def claimNextJob(conn, force_job=None):
     # ----------------------------------------------------------------------
     # CASE 2: normal behavior (claim next pending job)
     # ----------------------------------------------------------------------
-    sql_normal = """
-        UPDATE ingest_work AS w
-        SET status = 'claimed',
-            claimed_by = %s,
-            claimed_at = now(),
-            updated_at = now()
-        FROM (
-            SELECT remote_filename, jd_int
-            FROM ingest_work
-            WHERE status = 'pending'
-            ORDER BY jd_int, remote_filename
-            LIMIT 1
-            FOR UPDATE SKIP LOCKED
-        ) AS sub
-        WHERE w.remote_filename = sub.remote_filename
-        RETURNING w.remote_filename, w.jd_int;
-    """
-
     with conn.cursor() as cur:
+        if dry_run:
+            cur.execute("""
+                SELECT remote_filename, jd_int
+                FROM ingest_work
+                WHERE status = 'pending'
+                ORDER BY jd_int, remote_filename
+                LIMIT 1;
+            """)
+            return cur.fetchone()
+
+        sql_normal = """
+            UPDATE ingest_work AS w
+            SET status = 'claimed',
+                claimed_by = %s,
+                claimed_at = now(),
+                updated_at = now()
+            FROM (
+                SELECT remote_filename, jd_int
+                FROM ingest_work
+                WHERE status = 'pending'
+                ORDER BY jd_int, remote_filename
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            ) AS sub
+            WHERE w.remote_filename = sub.remote_filename
+            RETURNING w.remote_filename, w.jd_int;
+        """
+
         cur.execute(sql_normal, (host_name,))
         row = cur.fetchone()
         conn.commit()
 
     return row if row else None
+
 
 
 def resetStalledJobs(conn, this_machine=False):
