@@ -6,7 +6,7 @@ import datetime
 from Utils.StarPipeline.PipelineMetrics.Sessions import latestSessions
 from Utils.StarPipeline.PipelineMetrics.Frames import frameCounts
 from Utils.StarPipeline.PipelineMetrics.Observations import observationCounts, totalObservations
-from Utils.StarPipeline.PipelineMetrics.IngestionRate import calstarsPerDay, activeStationCount, ingestionStalled
+from Utils.StarPipeline.PipelineMetrics.IngestionRate import activeStationCount, ingestionStalled
 from Utils.StarPipeline.PipelineMetrics.db import getConn
 from Utils.StarPipeline.PipelineDB import claimNextJob
 from pathlib import Path
@@ -96,12 +96,26 @@ def showIngestionHealth():
     else:
         return "=== Ingestion Health ===\nOK"
 
-def showIngestionRate():
-    rate = calstarsPerDay(window_days=7)
-    return (
-        "=== Ingestion Rate (7‑day rolling) ===\n"
-        f"{rate:.2f} calstars/day"
-    )
+def ingestionRate(days=7):
+    """
+    Return average jobs/day completed over the last N days.
+    """
+    from Utils.StarPipeline.PipelineMetrics.db import getConn
+    conn = getConn()
+
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM ingest_work
+            WHERE status = 'done'
+              AND updated_at >= now() - interval %s;
+        """, (f'{days} days',))
+        count = cur.fetchone()[0]
+
+    conn.close()
+
+    return count / days
+
 
 def showWorkerLeaderboard():
     """
@@ -145,8 +159,6 @@ def dashboard():
             showNextJob(),
             showLatestSessions(),
             showFrameCounts(),
-            #showObservationCounts(),
-            #showTotalObservations(),
             showJdRange(),
             showActiveStations(),
             showWorkerLeaderboard()]
