@@ -1,0 +1,15 @@
+[Unit]
+Description=StarPipeline Ingestion Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=star
+WorkingDirectory=/home/star/source/RMS
+ExecStart=/home/star/source/RMS/Scripts/RunStarPipeline.sh
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
