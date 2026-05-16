@@ -2105,7 +2105,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
     if os.path.exists(local_recal_path):
         with open(local_recal_path, 'r') as fh:
             pp_recal_json = json.load(fh)
-            log.info(f"Read {os.path.basename(local_recal_path)}")
+            #log.info(f"Read {os.path.basename(local_recal_path)}")
     else:
         log.info(f"No file {os.path.basename(local_recal_path)}`")
         pp_recal_json = None
@@ -2208,9 +2208,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         fits_station_id = fits_file.split('_')[1]
         dt = FFfile.getMiddleTimeFF(fits_file, obs_con.fps, ret_milliseconds=True, ff_frames=256)
         jd = date2JD(*dt)
-
-        if pp.station_code != obs_con.stationID:
-            log.warning(f"Platepar mismatch for {calstars_name} - platepar station code is {pp.station_code}, config station code is {obs_con.stationID}")
 
         if pp_recal_json is not None:
             if fits_file in pp_recal_json:

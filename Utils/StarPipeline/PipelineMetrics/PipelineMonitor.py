@@ -7,6 +7,8 @@ from Utils.StarPipeline.PipelineMetrics.Sessions import latestSessions
 from Utils.StarPipeline.PipelineMetrics.Frames import frameCounts
 from Utils.StarPipeline.PipelineMetrics.Observations import observationCounts, totalObservations
 from Utils.StarPipeline.PipelineMetrics.IngestionRate import calstarsPerDay, activeStationCount, ingestionStalled
+from Utils.StarPipeline.PipelineMetrics.db import getConn
+from Utils.StarPipeline.PipelineDB import claimNextJob
 from pathlib import Path
 
 INTERVAL = datetime.timedelta(minutes=1)
@@ -49,14 +51,14 @@ def jdRange():
     """
     Return earliest and latest JD from the observation table.
     """
-    from Utils.StarPipeline.PipelineMetrics.db import getConn
+
     conn = getConn()
 
     with conn.cursor() as cur:
         cur.execute("SELECT MIN(jd_mid), MAX(jd_mid) FROM frame;")
         row = cur.fetchone()
 
-    if row is None:
+    if row is None or row[0] is None or row[1] is None:
         return None, None
 
     # Convert microdays → days
@@ -68,10 +70,12 @@ def jdRange():
 def showJdRange():
 
     jd_min, jd_max = jdRange()
-    jd_range = jd_max - jd_min
 
-    if jd_min is None:
+
+    if jd_min is None or jd_max is None:
         return "=== JD Range ===\nNo data"
+
+    jd_range = jd_max - jd_min
 
     return (
         "=== JD Range ===\n"
@@ -103,7 +107,7 @@ def showWorkerLeaderboard():
     """
     Show workers (claimed_by) with number of claimed and completed jobs.
     """
-    from Utils.StarPipeline.PipelineMetrics.db import getConn
+
     conn = getConn()
 
     sql = """
@@ -138,6 +142,7 @@ def dashboard():
             datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
             #showIngestionHealth(),
             showQueueHealth(),
+            showNextJob(),
             showLatestSessions(),
             showFrameCounts(),
             #showObservationCounts(),
@@ -157,6 +162,30 @@ def dashboard():
     os.system("clear")
     print(output)
 
+def showNextJob():
+    """
+    Show the next job that would be claimed by a worker (dry‑run).
+    """
+
+
+
+    conn = getConn()
+
+    try:
+        row = claimNextJob(conn, dry_run=True)
+    finally:
+        conn.close()
+
+    if row is None:
+        return "=== Next Job ===\nNo pending jobs"
+
+    remote_filename, jd_int = row
+    return (
+        "=== Next Job ===\n"
+        f"remote_filename: {remote_filename}\n"
+        f"jd_int:          {jd_int}"
+    )
+
 
 def showQueueHealth():
     """
@@ -168,7 +197,7 @@ def showQueueHealth():
     - error
     - first 5 error jobs (normalised)
     """
-    from Utils.StarPipeline.PipelineMetrics.db import getConn
+
     conn = getConn()
 
     # --- Query DB job counts ---
