@@ -644,8 +644,6 @@ def extractCalstarArchives(root, archives_list, remove_archives=True):
         archive_full_path = root / arc_name
         if not archive_full_path.exists():
             continue
-        log.info(f"Extracting {archive_name}")
-
 
         if not archive_full_path.is_file():
             continue
