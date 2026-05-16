@@ -1,4 +1,5 @@
 from RMS.Logger import LoggingManager, getLogger
+
 import RMS.ConfigReader as cr
 import os
 import psycopg
@@ -399,12 +400,21 @@ def jobsRemaining(conn):
         (count,) = cur.fetchone()
         return count
 
-def repairMissingCacheEntries(conn, cache_root):
-    """
-    For each job marked 'done', verify the cache file exists.
-    If missing, reset status to 'pending' and clear claimed_by.
-    """
+def extractStub(name):
+    parts = name.split("_")
+    return "_".join(parts[:4])
 
+
+from pathlib import Path
+import logging
+
+log = logging.getLogger(__name__)
+
+def extractStub(name):
+    parts = name.split("_")
+    return "_".join(parts[:4])
+
+def repairMissingCacheEntries(conn, cache_root):
     sql_fetch = """
         SELECT remote_filename, jd_int
         FROM ingest_work
@@ -424,16 +434,34 @@ def repairMissingCacheEntries(conn, cache_root):
         cur.execute(sql_fetch)
         rows = cur.fetchall()
 
-        for remote_filename, jd_int in rows:
-            cache_path = os.path.join(cache_root, remote_filename.split('_')[1], remote_filename)
+        # Map stub -> full remote filename
+        doneStubToFull = {
+            extractStub(remoteFilename): remoteFilename
+            for remoteFilename, jdInt in rows
+        }
 
-            if not os.path.exists(cache_path):
-                log.warning("Cache missing for %s — resetting to pending", remote_filename)
-                cur.execute(sql_reset, (remote_filename,))
-            else:
-                log.info("Cache OK for %s", remote_filename)
+        # Collect all cache stubs (raw files + dirs)
+        cacheStubs = set()
+
+        for dayDir in Path(cache_root).iterdir():
+            if not dayDir.is_dir():
+                continue
+
+            for entry in dayDir.iterdir():
+                cacheStubs.add(extractStub(entry.name))
+
+        # Determine missing stubs
+        doneStubs = set(doneStubToFull.keys())
+        missingStubs = doneStubs - cacheStubs
+
+        # Reset missing jobs
+        for stub in missingStubs:
+            missingFile = doneStubToFull[stub]
+            log.warning("Cache missing for %s -- resetting to pending", missingFile)
+            cur.execute(sql_reset, (missingFile,))
 
         conn.commit()
+
 
 
 

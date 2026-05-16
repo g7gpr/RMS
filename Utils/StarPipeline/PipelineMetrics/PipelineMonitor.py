@@ -94,8 +94,23 @@ def showIngestionHealth():
     if stalled:
         return "=== Ingestion Health ===\nWARNING: Ingestion stalled"
     else:
-        ingestion_rate = ingestionRate(days=7)
-        return f"=== Ingestion Health ===\nOK Processing {ingestion_rate:.0f} CALSTARS per day"
+        rate = ingestionRate(days=7)
+        conn = getConn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM ingest_work WHERE status = 'pending';")
+            pending = cur.fetchone()[0]
+        if rate > 0:
+            daysLeft = pending / rate
+            finishDate = (datetime.date.today() +
+                          datetime.timedelta(days=daysLeft))
+            finishStr = finishDate.strftime("%Y-%m-%d")
+            return (f"=== Ingestion Health ===\n"
+                    f"OK Processing {rate:.0f} CALSTARS per day\n"
+                    f"Estimated queue drain date: {finishStr}")
+        else:
+            return (f"=== Ingestion Health ===\n"
+                    f"OK Processing 0 CALSTARS per day\n"
+                    f"Estimated queue drain date: unknown")
 
 def ingestionRate(days=7):
     """
