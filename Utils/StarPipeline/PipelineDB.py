@@ -442,7 +442,9 @@ def repairMissingCacheEntries(conn, cache_root):
                 continue
 
             for entry in dayDir.iterdir():
-                cacheStubs.add(extractStub(entry.name))
+                if entry.is_file():
+                    cacheStubs.add(extractStub(entry.name))
+
 
         # Determine missing stubs
         doneStubs = set(doneStubToFull.keys())

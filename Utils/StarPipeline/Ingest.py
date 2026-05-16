@@ -1332,7 +1332,7 @@ def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_f
     parts = remote_file.split("_")
     if len(parts) < 4:
         log.error(f"Unexpected remote filename format: {remote_file}")
-        return None, None, None, None
+        return None, None, None, None, 0
 
     local_dir_name = os.path.join("_".join(remote_file.split("_")[1:2]), "_".join(remote_file.split("_")[0:4]))
     calstars_name = f"CALSTARS_{os.path.basename(local_dir_name)}.txt"
@@ -1348,7 +1348,7 @@ def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_f
             size_mb = os.path.getsize(os.path.join(t, remote_file)) / 1024 ** 2
         else:
             log.warning(f"Failed to download {full_remote_path_to_bz2} to {local_target}")
-            return None, None, None, None
+            return None, None, None, None, 0
         # Create a directory
         extraction_dir = os.path.join(t, "extracted")
         mkdirP(extraction_dir)
@@ -2092,7 +2092,7 @@ def fitMagModel(frame_list):
     return a, b, c
 
 
-def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None, auto_fit_on=False, diagnostic_video=True):
+def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None, auto_fit_on=False, diagnostic_video=False):
     """
       Parses a calstar data structures in archived directories path,
       converts to RaDec, corrects magnitude data and writes newer data to database

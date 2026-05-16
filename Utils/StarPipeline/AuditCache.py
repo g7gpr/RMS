@@ -62,7 +62,6 @@ def main():
     )
 
     args = parser.parse_args()
-
     conn = psycopg.connect(args.db_conn)
 
     db_set = getDbList(conn, args.daycode)
