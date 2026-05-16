@@ -1515,8 +1515,7 @@ def runParallel(remote_station_processed_dir=None, username=None, host=None,
             while len(workers_list) < target_workers:
                 workers_list.append(startWorker(worker_args))
                 time.sleep(5)
-            # When pending == 0, target_workers == 0, so we don't spawn;
-            # existing workers just finish and drop out of workers_list.
+
             time.sleep(20)
 
 
