@@ -701,13 +701,6 @@ def auditIngestUserPrivileges(conn):
             for schema, table, priv in rows:
                 print(f"  {schema}.{table}: {priv}")
 
-        # 7. Can ingest_user SELECT from calstar_files?
-        print("\nTesting SELECT on public.calstar_files...")
-        try:
-            cur.execute("SELECT COUNT(*) FROM public.calstar_files;")
-            print("  SELECT OK:", cur.fetchone()[0], "rows")
-        except Exception as e:
-            print("  SELECT FAILED:", e)
 
     print("=== END AUDIT ===\n")
 
