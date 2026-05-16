@@ -288,9 +288,8 @@ def showQueueHealth():
         f"Cache files:    {cache_count}",
         f"Pending:        {pending}",
         f"Completed:      {done}",
-        f"Error:          {error}",
         "",
-        "First 5 error jobs:"
+        "First 5 error jobs of {error}:"
     ]
 
     if normalised_errors:
