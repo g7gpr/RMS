@@ -414,6 +414,8 @@ def buildObservationRows(observation_dict, session_name, station_name):
 
         # frame_list is now a list of observation dicts
         for obs in frame_list:
+            if obs["name"] is None:
+                continue
             observation_rows.append((
                 frame_name,
                 obs["name"],

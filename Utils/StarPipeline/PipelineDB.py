@@ -196,39 +196,43 @@ def createStarTable(conn):
 
 def createObservationTable(conn):
     sql = """
-        CREATE TABLE IF NOT EXISTS observation (
-            obs_id BIGSERIAL PRIMARY KEY,
-            jd_mid BIGINT,
-            session_name TEXT REFERENCES session(session_name),
-            station_name TEXT,
-            frame_name TEXT REFERENCES frame(frame_name),
-            star_name TEXT,
+            CREATE TABLE observation (
+    obs_id BIGSERIAL,
+    jd_mid BIGINT,
+    session_name TEXT REFERENCES session(session_name),
+    station_name TEXT,
+    frame_name TEXT REFERENCES frame(frame_name),
+    star_name TEXT,
 
-            y INTEGER,
-            x INTEGER,
-            intens_sum INTEGER,
-            ampltd INTEGER,
-            fwhm INTEGER,
-            bg_lvl INTEGER,
-            snr INTEGER,
-            nsatpx SMALLINT,
+    y INTEGER,
+    x INTEGER,
+    intens_sum INTEGER,
+    ampltd INTEGER,
+    fwhm INTEGER,
+    bg_lvl INTEGER,
+    snr INTEGER,
+    nsatpx SMALLINT,
 
-            mag INTEGER,
-            obs_mag_corrected INTEGER,
-            cat_mag INTEGER,
-            mag_err INTEGER,
-            mag_cor INTEGER,
-            sun_angle INTEGER,
-            mean_curvature INTEGER,
-            max_curvature INTEGER,
+    mag INTEGER,
+    obs_mag_corrected INTEGER,
+    cat_mag INTEGER,
+    mag_err INTEGER,
+    mag_cor INTEGER,
+    sun_angle INTEGER,
+    mean_curvature INTEGER,
+    max_curvature INTEGER,
 
-            ra INTEGER,
-            dec INTEGER,
+    ra INTEGER,
+    dec INTEGER,
 
-            flags SMALLINT,
-            mad INTEGER
-        )
-        PARTITION BY HASH (star_name);
+    flags SMALLINT,
+    mad INTEGER,
+
+    PRIMARY KEY (star_name, jd_mid)
+)
+PARTITION BY HASH (star_name);
+
+
     """
 
     with conn.cursor() as cur:
