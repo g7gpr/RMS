@@ -709,21 +709,6 @@ def auditIngestUserPrivileges(conn):
         except Exception as e:
             print("  SELECT FAILED:", e)
 
-        # 8. Can ingest_user INSERT into calstar_files?
-        print("\nTesting INSERT on public.calstar_files...")
-        try:
-            cur.execute("""
-                        INSERT INTO public.calstar_files (file_name, ingestion_time)
-                        VALUES ('audit_test', 0)
-                        """)
-            conn.rollback()  # Don't leave junk
-            print("  INSERT OK")
-        except Exception as e:
-            print("  INSERT FAILED:", e)
-
-        cur.execute("SELECT inet_server_addr(), inet_server_port();")
-        log.warning("SERVER: %s", cur.fetchone())
-
     print("=== END AUDIT ===\n")
 
 
