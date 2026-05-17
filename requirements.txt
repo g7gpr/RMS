@@ -3,6 +3,8 @@ gitpython>=2.1.8
 paramiko>=2.9.0; python_version>='3.6'
 # Cap bcrypt and cryptography for Python 3.7 (no prebuilt armv7l wheels for newer versions)
 bcrypt<4.0; python_version<'3.8'
+# Required only for the star pipeline
+psycopg[binary]>=3.1
 cryptography<4.0; python_version<'3.8'
 numpy>=1.19.0,<1.21.0 ; python_version=='3.6'
 numpy>=1.21.0,<1.24.0 ; python_version>='3.7' and python_version<'3.10'
