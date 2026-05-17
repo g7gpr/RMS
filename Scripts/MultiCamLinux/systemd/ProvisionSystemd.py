@@ -460,17 +460,21 @@ def stepCreateDataDir(station_id: str, station_user: str) -> None:
 def stepInstallSystemd(unit_path=None) -> None:
     unit_path = UNIT_PATH if unit_path is None else unit_path
 
-    content = """[Unit]
+    content = """
+[Unit]
 Description=%i
 After=network.target
 
 [Service]
+Type=simple
 User=%i
 SyslogIdentifier=%i
 WorkingDirectory=/home/%i/source/RMS/
 ExecStart=/usr/local/lib/rms/StartSystemD.sh %i
 Restart=always
 RestartSec=30
+KillMode=process
+TimeoutStopSec=10
 RuntimeMaxSec=48h
 
 [Install]

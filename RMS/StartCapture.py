@@ -1023,7 +1023,21 @@ def processIncompleteCaptures(config, upload_manager):
 
 if __name__ == "__main__":
 
+    # Configure process group
+    if sys.platform == 'linux' and threading.current_thread() is threading.main_thread():
+        pid = os.getpid()
+        try:
+            os.setpgrp()
+        except Exception as e:
+            print(f"Failed to set process group: {e}")
+    else:
+        pid = None
+
+
+
     ### COMMAND LINE ARGUMENTS
+
+
 
     # Init the command line arguments parser
     arg_parser = argparse.ArgumentParser(description=""" Starting capture and compression.
@@ -1073,21 +1087,14 @@ if __name__ == "__main__":
     # Get the logger handle
     log = getLogger("rmslogger")
 
+    if pid is None:
+        log.info(f"Program start")
+    else:
+        log.info(f"Program start with PID:{pid}")
 
-    log.info("Program start")
     log.info("Station code: {:s}".format(str(config.stationID)))
 
-
-    # Get the process ID on linux
-    if sys.platform == 'linux':
-        pid = os.getpid()
-        log.info(f"Process ID (PID) {pid}")
-    else:
-        pid = None
-
-    running_under_systemd = runningUnderSystemd()
-
-    if running_under_systemd:
+    if runningUnderSystemd():
         log.info("Running under systemd")
 
     # Get the program version
@@ -1268,9 +1275,9 @@ if __name__ == "__main__":
 
                     # Reboot the computer (script needs sudo privileges, works only on Linux)
                     try:
-                        if running_under_systemd:
+                        if runningUnderSystemd():
                             log.info(f"Running under systemd so terminating own process PID:{pid}")
-                            os.kill(pid, signal.SIGKILL)
+                            os.killpg(0, signal.SIGKILL)
                         else:
                             log.info(f"Not running under systemd so sending a shutdown signal")
                             os.system('sudo shutdown -r now')
