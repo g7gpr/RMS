@@ -190,7 +190,7 @@ def showMissingCacheFiles():
         expected_path = f"/mnt/rms/cache/RMS_data/CALSTARS/{shard}/{filename}.{extension}"
 
         if not os.path.isfile(expected_path):
-            missing.append((worker, filename))
+            missing.append((worker, f"{filename}.{extension}"))
 
     # Build output
     lines = ["=== Snitch: Missing Outputs ==="]
