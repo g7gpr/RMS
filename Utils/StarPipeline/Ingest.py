@@ -238,6 +238,41 @@ import matplotlib.pyplot as plt
 
 from mpl_toolkits.mplot3d import Axes3D
 
+def waitForDownloadWindow(start_hour_utc: int, end_hour_utc: int):
+    now = datetime.datetime.utcnow()
+    current_hour = now.hour
+
+    # Case 1: window does not wrap midnight (e.g., 02–06 UTC)
+    if start_hour_utc < end_hour_utc:
+        in_window = start_hour_utc <= current_hour < end_hour_utc
+    else:
+        # Case 2: window wraps midnight (e.g., 22–04 UTC)
+        in_window = current_hour >= start_hour_utc or current_hour < end_hour_utc
+
+    if in_window:
+        return  # safe to download now
+
+    # Compute next allowed time in UTC
+    today = now.date()
+    if start_hour_utc > current_hour:
+        next_start = datetime.datetime.combine(
+            today, datetime.time(start_hour_utc, 0), tzinfo=datetime.timezone.utc
+        )
+    else:
+        tomorrow = today + datetime.timedelta(days=1)
+        next_start = datetime.datetime.combine(
+            tomorrow, datetime.time(start_hour_utc, 0), tzinfo=datetime.timezone.utc
+        )
+
+    sleep_seconds = (next_start - now.replace(tzinfo=datetime.timezone.utc)).total_seconds()
+
+    # Add jitter (0–2 minutes)
+    sleep_seconds += random.uniform(0, 120)
+
+    print(f"Outside download window. Sleeping for {sleep_seconds/3600:.2f} hours (UTC).")
+    time.sleep(sleep_seconds)
+
+
 
 
 def clampThreads(requested_threads: int) -> int:
@@ -1335,6 +1370,8 @@ def moveFiles(local_target, path_source_list, path_local_list):
 
 def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=None):
 
+
+    waitForDownloadWindow(17,23)
 
     parts = remote_file.split("_")
     if len(parts) < 4:
