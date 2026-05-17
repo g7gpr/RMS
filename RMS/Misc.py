@@ -1183,18 +1183,21 @@ def runningUnderSystemd():
         [Boolean] True if running under systemd, False otherwise, or if not detected
 
     """
-    try:
 
+    # Declared variable method
+    if os.environ.get("INVOCATION_ID"):
+        return True
+
+    # Parent process method
+    try:
         ppid = os.getppid()
         parent_name = subprocess.check_output(["ps", "-p", str(ppid), "-o", "comm="], text=True).strip()
 
-        if "systemd" in parent_name:
+        if parent_name == "systemd":
             return True
 
     except Exception as e:
-        # In case of restricted environments or missing /proc
-        log.info(f"systemd Detection error: {e}")
-
+        log.info(f"Systemd status unknown: {e}")
     return False
 
 def pythonSetup():
