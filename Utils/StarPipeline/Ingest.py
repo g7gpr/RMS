@@ -1048,25 +1048,6 @@ def downloadFile(host, username, local_path, remote_path, port=PORT,  silent=Fal
     except:
         pass
 
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # Accept unknown host keys
-    try:
-        ssh.connect(hostname=host, port=port, username=username)
-    except:
-        if not silent:
-            print("Login to {}@{} failed. You may need to add your keys to remote using ssh-copy-id."
-              .format(username,host))
-        sys.exit()
-    try:
-        sftp = ssh.open_sftp()
-        remote_file_list = sftp.listdir(os.path.dirname(remote_path))
-        if remote_file_list:
-            sftp.get(remote_path, local_path)
-
-    finally:
-        sftp.close()
-        ssh.close()
-
     return
 
 def getStationList(url=STATION_COORDINATES_JSON, country_code=None):
