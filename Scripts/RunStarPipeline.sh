@@ -16,4 +16,4 @@ python -m Utils.StarPipeline.Ingest \
     192.168.217.212 \
     --write_db \
     --calstars_data_dir="/mnt/rms/cache/RMS_data/CALSTARS/" \
-    -t4
+    -t24
