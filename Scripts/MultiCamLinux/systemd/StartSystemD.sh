@@ -4,6 +4,9 @@ set -euo pipefail
 STATION_USER="$1"
 STATION_ID_UPPER="${STATION_USER^^}"
 
+# Force into the ~/source/RMS directory - already covered by but useful for testing
+cd /home/${STATION_USER}/source/RMS/
+
 # Update RMS for this station
 /home/${STATION_USER}/source/RMS/Scripts/RMS_Update.sh
 
