@@ -193,7 +193,7 @@ def showMissingCacheFiles():
             missing.append((worker, f"{filename}.{extension}"))
 
     # Build output
-    lines = ["=== Snitch: Missing Outputs ==="]
+    lines = ["=== Cache: Missing Files ==="]
 
     if not missing:
         lines.append("No missing outputs detected")
