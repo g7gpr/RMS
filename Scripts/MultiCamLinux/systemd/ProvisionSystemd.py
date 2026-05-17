@@ -643,13 +643,19 @@ def stepGenerateStationKey(station_user: str) -> str:
     key_path = f"{ssh_dir}/id_ed25519"
     pub_path = f"{key_path}.pub"
 
+    existing_keys = [
+        f for f in os.listdir(ssh_dir)
+        if f.startswith("id")
+    ]
+
+
     # Ensure ~/.ssh exists with correct permissions
     logMessage("INFO", f"Ensuring SSH directory for {station_user}: {ssh_dir}")
     runCommand(["install", "-d", "-m", "700", "-o", station_user, "-g", station_user, ssh_dir],
                require_root=True)
 
-    # If key already exists, do NOT overwrite it
-    if os.path.exists(key_path) and os.path.exists(pub_path):
+    # If keys already exist then don't generate new keys
+    if existing_keys:
         logMessage("OK", f"SSH key already exists for {station_user}, skipping generation.")
         return key_path
 
@@ -677,11 +683,9 @@ def stepEnsureRmsSshRoot() -> None:
 
 
 
-
 def stepCopyStationKeyToCache(station_user: str, station_id: str) -> None:
-    src_key = f"/home/{station_user}/.ssh/id_ed25519"
+    ssh_dir = f"/home/{station_user}/.ssh"
     dst_dir = f"/home/rms/.ssh/{station_id.upper()}"
-    dst_key = f"{dst_dir}/id_ed25519"
 
     # Ensure the root exists with correct permissions
     runCommand(["install", "-d", "-m", "750", "-o", "rms", "-g", "rmskeys", "/home/rms/.ssh"],
@@ -691,11 +695,26 @@ def stepCopyStationKeyToCache(station_user: str, station_id: str) -> None:
     runCommand(["install", "-d", "-m", "750", "-o", "rms", "-g", "rmskeys", dst_dir],
                require_root=True)
 
-    # Copy the private key with correct permissions
-    runCommand(["install", "-m", "600", "-o", "rms", "-g", "rmskeys", src_key, dst_key],
-               require_root=True)
+    # Find all private keys: id*, but NOT *.pub
+    private_keys = sorted(
+        f for f in os.listdir(ssh_dir)
+        if f.startswith("id") and not f.endswith(".pub")
+    )
 
-    logMessage("OK", f"Copied private key for {station_id} into uploader cache.")
+    if not private_keys:
+        fail(f"No private SSH keys found for {station_user} in {ssh_dir}")
+
+    # Copy each private key into the cache
+    for key in private_keys:
+        src_key = os.path.join(ssh_dir, key)
+        dst_key = os.path.join(dst_dir, key)
+
+        runCommand(["install", "-m", "600", "-o", "rms", "-g", "rmskeys", src_key, dst_key],
+                   require_root=True)
+
+    logMessage("OK", f"Copied private key(s) for {station_id}: {', '.join(private_keys)}")
+
+
 
 
 def stepEnsureRmsKeysGroup():
