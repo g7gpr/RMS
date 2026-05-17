@@ -194,7 +194,7 @@ from RMS.Logger import LoggingManager, getLogger
 from pathlib import Path
 from RMS.Astrometry.AutoPlatepar import autoFitPlatepar, loadCatalogStars
 from Utils.Flux import detectMoon
-from multiprocessing import Pool, Process
+from multiprocessing import Pool, Process, cpu_count
 from collections import defaultdict
 from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges, claimNextJob, markJobDone, markJobError, resetStalledJobs, jobsRemaining, getNextErrorJob
 from collections import Counter
@@ -235,13 +235,14 @@ PORT = 22
 
 import numpy as np
 import matplotlib.pyplot as plt
+
 from mpl_toolkits.mplot3d import Axes3D
 
 
 
 def clampThreads(requested_threads: int) -> int:
-    cpu_cores = multiprocessing.cpu_count()
-    return max(1, min(requested_threads, cpu_cores))
+    cpu_cores = cpu_count()
+    return max(1, min(requested_threads, math.floor(cpu_cores * 0.75)))
 
 def visualiseSpline3d(x, y, r_norm, spline, fits_file):
     """
@@ -2736,7 +2737,7 @@ if __name__ == "__main__":
     if write_db:
 
         concurrent_threads = clampThreads(cml_args.threads)
-        log.info(f"Postgresql host {postgresql_host}")
+        log.info(f"Requested {cml_args.threads} using {concurrent_threads} threads. Postgresql host is {postgresql_host}")
 
         if create_db:
             with psycopg.connect(host=postgresql_host, dbname="star_data", user="postgres") as postgress_conn:
