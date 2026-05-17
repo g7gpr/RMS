@@ -297,7 +297,8 @@ def stepCreateConfigFile(station_id: str, station_user: str,
                          lat: Optional[float], lon: Optional[float],
                          elev: Optional[float], location: Optional[str],
                          new_ip: Optional[str], protocol: str,
-                         hostname: Optional[str]) -> None:
+                         hostname: Optional[str],
+                         upload_enabled: bool = False) -> None:
 
     config_dir = f"/srv/rms/Stations/{station_id}"
     target_path = os.path.join(config_dir, ".config")
@@ -431,12 +432,18 @@ def stepCreateConfigFile(station_id: str, station_user: str,
                 if not private_keys:
                     fail(f"No private SSH keys found for {station_user} in {ssh_dir}")
 
+
                 # Use the first private key found
                 chosen_key = private_keys[0]
                 new_key_path = f"{ssh_dir}/{chosen_key}"
 
                 new_lines.append(f"rsa_private_key: {new_key_path}\n")
                 continue
+
+        if key == "upload_enabled":
+            new_lines.append(f"upload_enabled: {'true' if upload_enabled else 'false'}\n")
+            continue
+
 
         new_lines.append(line)
 
