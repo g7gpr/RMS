@@ -269,7 +269,7 @@ def waitForDownloadWindow(start_hour_utc: int, end_hour_utc: int):
     # Add jitter (0–2 minutes)
     sleep_seconds += random.uniform(0, 120)
 
-    print(f"Outside download window. Sleeping for {sleep_seconds/3600:.2f} hours (UTC).")
+    log.info(f"Outside download window. Sleeping for {sleep_seconds/3600:.2f} hours (UTC).")
     time.sleep(sleep_seconds)
 
 
