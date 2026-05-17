@@ -613,13 +613,9 @@ def parseArgs() -> argparse.Namespace:
     )
 
 
-    parser.add_argument("--lat", type=float, help="Latitude in degrees")
-    parser.add_argument("--lon", type=float, help="Longitude in degrees")
-    parser.add_argument("--elev", type=float, help="Elevation in meters")
-
     parser.add_argument(
         "--location",
-        help="Combined LAT,LON,ELEV (e.g. 43.19301,-81.315555,327)"
+        help="Combined LAT,LON,ELEV (e.g. -32.00768444,116.13543655,383.6)"
     )
 
     parser.add_argument(
@@ -731,6 +727,7 @@ def main() -> None:
     args = parseArgs()
     stations = parseStationList(args.stations)
     addresses = parseAddressList(args.addresses, len(stations))
+    lat, lon, elev = args.location.split(",")
     protocol = "tcp" if args.tcp else "udp"
 
     MANUAL_MODE = args.manual
@@ -750,7 +747,7 @@ def main() -> None:
     print(f"Protocol: {protocol}")
 
     # Location
-    lat, lon, elev = args.location.split()
+
     print(f"Location: lat={lat}, lon={lon}, elev={elev} m")
     print()
 
