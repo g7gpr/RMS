@@ -1272,6 +1272,7 @@ if __name__ == "__main__":
                             log.info(f"Running under systemd so terminating own process PID:{pid}")
                             os.kill(pid, signal.SIGKILL)
                         else:
+                            log.info(f"Not running under systemd so sending a shutdown signal")
                             os.system('sudo shutdown -r now')
 
                     except Exception as e:
