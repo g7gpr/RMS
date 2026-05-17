@@ -12,7 +12,7 @@ Manual mode (no root required, prints commands one by one and waits for confirma
 
     ./provision.py \
         --stations au0004,au0006,au0007 \
-        --location "-32.179499,115.859859,30" \
+        --location "-32.00768444,116.13543655,383.6" \
         --manual
 """
 
@@ -23,6 +23,7 @@ import grp
 import subprocess
 import sys
 import socket
+import time
 
 from typing import Optional
 
@@ -573,7 +574,27 @@ def parseAddressList(addresses_str: str | None, count: int) -> list[str | None]:
 
 
 def parseArgs() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Provision RMS stations.")
+
+
+    parser = argparse.ArgumentParser(
+        description="ProvisionSystemd — Install or update systemd service units for RMS stations.",
+        epilog=(
+            """Example:
+              python -m Scripts.MultiCamLinux.systemd.ProvisionSystemd 
+                  --stations="au0004,au0006,au0007" 
+                  --addresses="192.168.2.21,192.168.2.22,192.168.2.23" 
+                  --location="-32.179499 115.859859 30.0"
+        
+            Notes:
+              * The number of stations must match the number of addresses.
+              * Station IDs must be lowercase.
+              * The tool will reload systemd and restart each station service.
+              * RMS source trees on the target stations will be removed and reinstalled.
+                Local modifications to RMS code on those hosts will be lost.
+            """
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
 
     parser.add_argument(
         "--hostname",
@@ -713,6 +734,29 @@ def main() -> None:
     protocol = "tcp" if args.tcp else "udp"
 
     MANUAL_MODE = args.manual
+
+    # Summary
+    print()
+    print(f"Provisioning {len(stations)} stations")
+    print()
+
+    # Station table
+    print("Station   Address")
+    print("--------  ---------------")
+    for st, addr in zip(stations, addresses):
+        print(f"{st:<8}  {addr}")
+
+    print()
+    print(f"Protocol: {protocol}")
+
+    # Location
+    lat, lon, elev = args.location.split()
+    print(f"Location: lat={lat}, lon={lon}, elev={elev} m")
+    print()
+
+    print("Continuing in 10 seconds... press Ctrl-C to abort.")
+    time.sleep(10)
+
 
     if MANUAL_MODE:
         logMessage("INFO", "Running in MANUAL mode: commands will NOT be executed.")
