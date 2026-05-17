@@ -237,6 +237,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
+
+
+def clampThreads(requested_threads: int) -> int:
+    cpu_cores = multiprocessing.cpu_count()
+    return max(1, min(requested_threads, cpu_cores))
+
 def visualiseSpline3d(x, y, r_norm, spline, fits_file):
     """
     Visualise a SmoothBivariateSpline as a 3D surface with the original points,
@@ -2729,7 +2735,7 @@ if __name__ == "__main__":
 
     if write_db:
 
-        concurrent_threads = cml_args.threads
+        concurrent_threads = clampThreads(cml_args.threads)
         log.info(f"Postgresql host {postgresql_host}")
 
         if create_db:
