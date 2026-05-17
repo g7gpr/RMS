@@ -788,9 +788,9 @@ def main() -> None:
         stepCreateConfigFile(
             station_id=station_id,
             station_user=station_user,
-            lat=args.lat,
-            lon=args.lon,
-            elev=args.elev,
+            lat=lat,
+            lon=lon,
+            elev=elev,
             location=args.location,
             new_ip=new_ip,
             protocol=protocol,
