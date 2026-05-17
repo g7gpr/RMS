@@ -2391,10 +2391,8 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
                 continue
 
             if o_intens_sum <= 0:
-                log.info(
-                    f"Observation from session {calstars_name} on {fits_file} "
-                    f"at {o_x:.2f} {o_y:.2f} had an unrealistic intensity sum."
-                )
+                #log.info(f"Observation from session {calstars_name} on {fits_file} at {o_x:.2f} {o_y:.2f} had an unrealistic intensity sum.")
+                pass
                 continue
 
             # Matched vs unmatched
