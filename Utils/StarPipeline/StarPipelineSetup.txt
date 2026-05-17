@@ -1,0 +1,72 @@
+Star pipeline worker node setup procedure
+
+This document describes the complete procedure for setting up a new
+StarPipeline-enabled RMS node (Canopus). All steps are ASCII-only and
+safe for inclusion in the repository.
+
+1. Run the RMS installer
+   wget -qO- https://raw.githubusercontent.com/CroatianMeteorNetwork/RMS/refs/heads/master/Scripts/RMS_Installer.sh | bash
+
+2. Enter the RMS source directory
+   cd ~/source/RMS
+
+3. Add the appropriate GitHub remote
+   git remote add g7gpr https://github.com/g7gpr/RMS
+
+4. Fetch all remotes
+   git fetch --all
+
+5. Check out the StarPipeline branch
+   git checkout feature/Utils/StarPipeline
+
+6. Force-update RMS
+   Scripts/RMS_Update.sh --force
+
+7. Edit /etc/fstab
+   sudo pico /etc/fstab
+
+8. Add the NFS automount entry
+   192.168.217.212:/srv/rms  /mnt/rms/cache  nfs4  rw,noatime,hard,intr,_netdev,noauto,x-systemd.automount,x-systemd.requires=network-online.target  0  0
+
+9. Install NFS client utilities
+   sudo apt install nfs-common
+
+10. Reload systemd
+    sudo systemctl daemon-reload
+
+11. Enable the automount unit
+    sudo systemctl enable mnt-rms-cache.automount
+
+12. Start the automount unit
+    sudo systemctl start mnt-rms-cache.automount
+
+13. Verify the cache mount
+    ls /mnt/rms/cache
+
+14. Reboot cleanly
+    sudo reboot
+
+15. Create the PostgreSQL .pgpass file
+    nano ~/.pgpass
+
+    Add the following two lines:
+    192.168.217.212:5432:star_data:ingest_user:your_ingest_password
+    192.168.217.212:5432:*:postgres:your_postgres_password
+
+    Fix permissions:
+    chmod 600 ~/.pgpass
+
+16. Enter the StarPipeline systemd template directory
+    cd ~/source/RMS/Utils/StarPipeline/SystemDTemplates/
+
+17. Copy the StarPipeline service file into systemd
+    sudo cp star-pipeline.service /etc/systemd/system/
+
+18. Enable the StarPipeline service
+    sudo systemctl enable star-pipeline.service
+
+19. Start the service and follow logs
+    sudo systemctl start star-pipeline.service
+    sudo journalctl -fu star-pipeline
+
+END OF PROCEDURE

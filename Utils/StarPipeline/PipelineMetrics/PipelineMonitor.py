@@ -11,7 +11,7 @@ from Utils.StarPipeline.PipelineMetrics.db import getConn
 from Utils.StarPipeline.PipelineDB import claimNextJob
 from pathlib import Path
 
-INTERVAL = datetime.timedelta(minutes=1)
+INTERVAL = datetime.timedelta(minutes=10)
 
 BLUE = "\033[34m"
 GREEN = "\033[32m"
@@ -155,6 +155,60 @@ def ingestionRate(days=7):
     return count / actual_days
 
 
+def showMissingCacheFiles():
+    """
+    Snitch routine:
+    Detect jobs marked 'done' in the DB whose expected output files
+    do NOT appear in the shared cache. This identifies malfunctioning
+    workers (usually due to broken NFS mounts).
+    """
+
+    conn = getConn()
+
+    sql = """
+        SELECT claimed_by, remote_filename
+        FROM ingest_work
+        WHERE status = 'done';
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        rows = cur.fetchall()
+
+    conn.close()
+
+    missing = []
+
+    for worker, filename in rows:
+        # Determine shard (first 3 chars of filename)
+        shard = filename.split("_")[1]
+        extension_parts = filename.split(".")
+        filename_split = filename.split("_")
+        filename_split[4] = 'raw'
+        extension = ".".join(extension_parts[1:])
+        filename = "_".join(filename_split)
+        expected_path = f"/mnt/rms/cache/RMS_data/CALSTARS/{shard}/{filename}.{extension}"
+
+        if not os.path.isfile(expected_path):
+            missing.append((worker, filename))
+
+    # Build output
+    lines = ["=== Snitch: Missing Outputs ==="]
+
+    if not missing:
+        lines.append("No missing outputs detected")
+        return "\n".join(lines)
+
+    for worker, path in missing[:20]:  # limit to first 20
+        worker_label = worker if worker else "(unclaimed)"
+        lines.append(f"worker={worker_label}  missing={path}")
+
+    if len(missing) > 20:
+        lines.append(f"... and {len(missing) - 20} more")
+
+    return "\n".join(lines)
+
+
 
 def showWorkerLeaderboard():
     """
@@ -200,7 +254,9 @@ def dashboard():
         showFrameCounts(),
         showJdRange(),
         showActiveStations(),
-        showWorkerLeaderboard()]
+        showWorkerLeaderboard(),
+        showMissingCacheFiles()]
+
     """
     except Exception as e:
         # Database not ready or query failed
