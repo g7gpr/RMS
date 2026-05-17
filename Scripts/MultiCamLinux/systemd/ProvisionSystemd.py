@@ -28,6 +28,10 @@ import time
 from typing import Optional
 
 
+
+
+
+
 MANUAL_MODE = False  # set from args
 UNIT_PATH = "/etc/systemd/system/rms@.service"
 
@@ -35,6 +39,29 @@ UNIT_PATH = "/etc/systemd/system/rms@.service"
 # ------------------------------------------------------------
 # Utility functions
 # ------------------------------------------------------------
+
+
+def findOldestPrivateKey(ssh_dir: str) -> str | None:
+    candidates = []
+
+    for filename in os.listdir(ssh_dir):
+        if filename.startswith("id") and not filename.endswith(".pub"):
+            full_path = os.path.join(ssh_dir, filename)
+            try:
+                file_stat = os.stat(full_path)
+                # Use modification time as the age indicator
+                candidates.append((file_stat.st_mtime, full_path))
+            except OSError:
+                continue
+
+    if not candidates:
+        return None
+
+    # Oldest mtime wins
+    candidates.sort(key=lambda x: x[0])
+    return candidates[0][1]
+
+
 
 def logMessage(level: str, message: str) -> None:
     print(f"[{level}] {message}")
