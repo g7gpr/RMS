@@ -421,8 +421,20 @@ def stepCreateConfigFile(station_id: str, station_user: str,
                 continue
 
             if key == "rsa_private_key":
-                # RMS template defaults to ~/.ssh/id_rsa, but we use Ed25519 keys.
-                new_key_path = f"/home/{station_user}/.ssh/id_ed25519"
+                # Find any private key in ~/.ssh starting with "id" (not .pub)
+                ssh_dir = f"/home/{station_user}/.ssh"
+                private_keys = sorted(
+                    f for f in os.listdir(ssh_dir)
+                    if f.startswith("id") and not f.endswith(".pub")
+                )
+
+                if not private_keys:
+                    fail(f"No private SSH keys found for {station_user} in {ssh_dir}")
+
+                # Use the first private key found
+                chosen_key = private_keys[0]
+                new_key_path = f"{ssh_dir}/{chosen_key}"
+
                 new_lines.append(f"rsa_private_key: {new_key_path}\n")
                 continue
 
