@@ -239,7 +239,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 def waitForDownloadWindow(start_hour_utc: int, end_hour_utc: int):
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     current_hour = now.hour
 
     # Case 1: window does not wrap midnight (e.g., 02–06 UTC)
