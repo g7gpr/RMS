@@ -1352,7 +1352,7 @@ def moveFiles(local_target, path_source_list, path_local_list):
 def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=None):
 
 
-    waitForDownloadWindow(13,23)
+    waitForDownloadWindow(13,05)
 
     parts = remote_file.split("_")
     if len(parts) < 4:
