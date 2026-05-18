@@ -2129,9 +2129,12 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
 
     if os.path.exists(local_recal_path):
-        with open(local_recal_path, 'r') as fh:
-            pp_recal_json = json.load(fh)
-            #log.info(f"Read {os.path.basename(local_recal_path)}")
+        try:
+            with open(local_recal_path, 'r') as fh:
+                pp_recal_json = json.load(fh)
+                #log.info(f"Read {os.path.basename(local_recal_path)}")
+        except:
+            pp_recal_json = None
     else:
         log.info(f"No file {os.path.basename(local_recal_path)}`")
         pp_recal_json = None
