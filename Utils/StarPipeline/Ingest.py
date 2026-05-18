@@ -637,7 +637,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
     except Exception:
         conn.rollback()
         raise
-
+    log.info("Write completed")
     return observation_count
 
 def ensureList(value):
