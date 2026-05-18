@@ -110,7 +110,7 @@ def main():
                 for fname in cache_file_list:
                     try:
                         archive_target = os.path.join(cache_root, cache_day_directory, fname)
-                        #tar.add(archive_target, arcname=os.path.join(cache_day_directory,fname))
+                        tar.add(archive_target, arcname=os.path.join(cache_day_directory,fname))
                     except:
                         print("Some file changed during archiving - this directory may not be ready")
                         os.unlink(archive_target)

@@ -1,16 +1,12 @@
 #!/bin/bash
 set -e
 
-# Activate venv
-source /home/david/vRMS/bin/activate
+USER_HOME="$(getent passwd "$USER" | cut -d: -f6)"
 
-# Move to RMS source directory
-cd /home/david/source/RMS
-
-# Update code
+source "$USER_HOME/vRMS/bin/activate"
+cd "$USER_HOME/source/RMS"
 git pull
 
-# Launch StarPipeline ingestion
 python -m Utils.StarPipeline.Ingest \
     analysis@gmn.uwo.ca:/home/stationID/files/processed \
     192.168.217.212 \
