@@ -2135,6 +2135,7 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
                 #log.info(f"Read {os.path.basename(local_recal_path)}")
         except:
             pp_recal_json = None
+            log.info(f"{local_recal_path} was corrupted")
     else:
         log.info(f"No file {os.path.basename(local_recal_path)}`")
         pp_recal_json = None
