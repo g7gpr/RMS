@@ -5,8 +5,8 @@ Wants=network-online.target
 
 [Service]
 User=star
-WorkingDirectory=/home/star/source/RMS
-ExecStart=/home/star/source/RMS/Scripts/RunStarPipeline.sh
+WorkingDirectory=%h/source/RMS
+ExecStart=%h/source/RMS/Scripts/RunStarPipeline.sh
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1

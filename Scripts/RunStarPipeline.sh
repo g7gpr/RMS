@@ -2,10 +2,10 @@
 set -e
 
 # Activate venv
-source /home/star/vRMS/bin/activate
+source /home/david/vRMS/bin/activate
 
 # Move to RMS source directory
-cd /home/star/source/RMS
+cd /home/david/source/RMS
 
 # Update code
 git pull
