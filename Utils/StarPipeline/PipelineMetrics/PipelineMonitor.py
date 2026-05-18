@@ -187,7 +187,7 @@ def showMissingCacheFiles():
         filename_split[4] = 'raw'
         extension = ".".join(extension_parts[1:])
         filename = "_".join(filename_split)
-        expected_path = f"/mnt/rms/cache/RMS_data/CALSTARS/{shard}/{filename}.{extension}"
+        expected_path = f"/srv/rms/cache/RMS_data/CALSTARS/{shard}/{filename}.{extension}"
 
         if not os.path.isfile(expected_path):
             missing.append((worker, f"{filename}.{extension}"))
