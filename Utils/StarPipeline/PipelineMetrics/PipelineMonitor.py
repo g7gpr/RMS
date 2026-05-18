@@ -335,7 +335,7 @@ def showQueueHealth():
     conn.close()
 
     # --- Count cache files ---
-    cache_root = "/srv/rms/cache/RMS_data/CALSTARS"
+    cache_root = "/srv/rms/RMS_data/CALSTARS"
     cache_count = 0
     for day_dir in Path(cache_root).iterdir():
         if day_dir.is_dir():
