@@ -238,6 +238,23 @@ import matplotlib.pyplot as plt
 
 from mpl_toolkits.mplot3d import Axes3D
 
+def waitUntilEnabled():
+    while True:
+        with psycopg.connect(host=postgresql_host,
+                             dbname="star_data",
+                             user="ingest_user") as conn:
+            row = conn.execute(
+                "SELECT downloads_enabled FROM pipeline_config WHERE id = 1"
+            ).fetchone()
+
+        enabled = row[0]   # This is a Python bool
+
+        if enabled:
+            return  # proceed with ingest
+
+        time.sleep(120)
+
+
 def waitForDownloadWindow(start_hour_utc: int, end_hour_utc: int):
     now = datetime.datetime.now(datetime.timezone.utc)
     current_hour = now.hour
@@ -1352,7 +1369,7 @@ def moveFiles(local_target, path_source_list, path_local_list):
 def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=None):
 
 
-    waitForDownloadWindow(13,5)
+    waitUntilEnabled()
 
     parts = remote_file.split("_")
     if len(parts) < 4:
