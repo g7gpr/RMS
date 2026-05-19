@@ -251,7 +251,7 @@ def waitUntilEnabled():
 
         if enabled:
             return  # proceed with ingest
-
+        log.info("Waiting for download to be enabled")
         time.sleep(120)
 
 
