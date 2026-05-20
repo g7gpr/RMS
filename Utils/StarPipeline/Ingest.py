@@ -239,6 +239,8 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 def waitUntilEnabled():
+
+    download_was_disabled = False
     while True:
         with psycopg.connect(host=postgresql_host,
                              dbname="star_data",
@@ -250,8 +252,12 @@ def waitUntilEnabled():
         enabled = row[0]   # This is a Python bool
 
         if enabled:
+            if download_was_disabled:
+                log.info("Downloading has been re-enabled")
             return  # proceed with ingest
+
         log.info("Waiting for download to be enabled")
+        download_was_disabled = True
         time.sleep(120)
 
 

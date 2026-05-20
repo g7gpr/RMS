@@ -104,6 +104,9 @@ def main():
                 cache_file_stub_list.append(extractStub(cache_file))
         cache_file_stub_set = set(cache_file_stub_list)
         missing_files = remote_file_stub_set - cache_file_stub_set
+        target_bz2_file = os.path.join(cache_root,"archives",f"{cache_day_directory}.tar.bz2")
+        if os.path.exists(target_bz2_file):
+            continue
         if len(missing_files) == 0:
             print(f"Ready to archive {cache_day_directory}")
             with tarfile.open(os.path.join(cache_root,"archives",f"{cache_day_directory}.tar.bz2"), "w:bz2") as tar:
