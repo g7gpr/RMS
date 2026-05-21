@@ -860,6 +860,6 @@ if __name__ == "__main__":
             initialiseDatabase(reset_ingestion_conn)
             resetDatabaseForReingest(reset_ingestion_conn)
 
-    if sync_cache is not "None":
+    if sync_cache is not None:
         with psycopg.connect(host=postgresql_host, dbname="star_data", user="postgres") as conn:
             repairMissingCacheEntries(conn, sync_cache)
