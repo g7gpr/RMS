@@ -1025,11 +1025,11 @@ if __name__ == "__main__":
 
     # Configure process group
     if sys.platform == 'linux' and threading.current_thread() is threading.main_thread():
-        pid = os.getpid()
+        pid = os.getsid()
         try:
             os.setpgrp()
         except Exception as e:
-            print(f"Failed to set process group: {e}")
+            print(f"Failed to setsid() : {e}")
     else:
         pid = None
 
