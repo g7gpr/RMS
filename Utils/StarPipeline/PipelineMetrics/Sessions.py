@@ -1,9 +1,11 @@
 from .db import runQuery
 
 def latestSessions(limit=10):
-    return runQuery(f"""
-        SELECT session_id, session_name, station_name
-        FROM public.session
-        ORDER BY session_id DESC
+    sql = f"""
+        SELECT remote_filename, updated_at
+        FROM ingest_work
+        ORDER BY updated_at DESC
         LIMIT {limit};
-    """)
+    """
+    return runQuery(sql)
+
