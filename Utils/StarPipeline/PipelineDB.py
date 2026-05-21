@@ -196,47 +196,53 @@ def createStarTable(conn):
 
 
 def createObservationTable(conn):
-    sql = """
-            CREATE TABLE observation (
-    obs_id BIGSERIAL,
-    jd_mid BIGINT,
-    session_name TEXT REFERENCES session(session_name),
-    station_name TEXT,
-    frame_name TEXT REFERENCES frame(frame_name),
-    star_name TEXT,
 
-    y INTEGER,
-    x INTEGER,
-    intens_sum INTEGER,
-    ampltd INTEGER,
-    fwhm INTEGER,
-    bg_lvl INTEGER,
-    snr INTEGER,
-    nsatpx SMALLINT,
-
-    mag INTEGER,
-    obs_mag_corrected INTEGER,
-    cat_mag INTEGER,
-    mag_err INTEGER,
-    mag_cor INTEGER,
-    sun_angle INTEGER,
-    mean_curvature INTEGER,
-    max_curvature INTEGER,
-
-    ra INTEGER,
-    dec INTEGER,
-
-    flags SMALLINT,
-    mad INTEGER,
-
-    PRIMARY KEY (star_name, jd_mid)
-)
-PARTITION BY HASH (star_name);
-
-
-    """
 
     with conn.cursor() as cur:
+        cur.execute("SELECT to_regclass('public.observation');")
+        if cur.fetchone()[0] is not None:
+            return
+
+        sql = """
+                CREATE TABLE observation (
+        obs_id BIGSERIAL,
+        jd_mid BIGINT,
+        session_name TEXT REFERENCES session(session_name),
+        station_name TEXT,
+        frame_name TEXT REFERENCES frame(frame_name),
+        star_name TEXT,
+    
+        y INTEGER,
+        x INTEGER,
+        intens_sum INTEGER,
+        ampltd INTEGER,
+        fwhm INTEGER,
+        bg_lvl INTEGER,
+        snr INTEGER,
+        nsatpx SMALLINT,
+    
+        mag INTEGER,
+        obs_mag_corrected INTEGER,
+        cat_mag INTEGER,
+        mag_err INTEGER,
+        mag_cor INTEGER,
+        sun_angle INTEGER,
+        mean_curvature INTEGER,
+        max_curvature INTEGER,
+    
+        ra INTEGER,
+        dec INTEGER,
+    
+        flags SMALLINT,
+        mad INTEGER,
+    
+        PRIMARY KEY (star_name, jd_mid)
+    )
+    PARTITION BY HASH (star_name);
+    
+    
+        """
+
         cur.execute(sql)
 
         # Create 32 hash partitions
