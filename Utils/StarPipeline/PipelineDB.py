@@ -6,6 +6,7 @@ import psycopg
 
 import socket
 
+import tqdm
 
 
 # Constants
@@ -437,11 +438,11 @@ def repairMissingCacheEntries(conn, cache_root):
         # Collect all cache stubs (raw files + dirs)
         cacheStubs = set()
 
-        for dayDir in Path(cache_root).iterdir():
+        for dayDir in tqdm.tqdm(sorted(Path(cache_root).iterdir())):
             if not dayDir.is_dir():
                 continue
 
-            for entry in dayDir.iterdir():
+            for entry in sorted(dayDir.iterdir()):
                 if entry.is_file():
                     cacheStubs.add(extractStub(entry.name))
 

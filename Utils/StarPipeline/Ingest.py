@@ -1612,6 +1612,10 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
     if write_db:
         log.info(f"Ingesting {calstars_name}")
 
+        if local_config_path is None:
+            log.info(f"No config file available for {calstars_name}")
+            archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
+            return
 
         if not os.path.exists(local_config_path):
             log.info(f"No config file available for {calstars_name}")

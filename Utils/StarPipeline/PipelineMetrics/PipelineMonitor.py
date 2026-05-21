@@ -361,7 +361,7 @@ def showQueueHealth():
         f"Pending:        {pending}",
         f"Completed:      {done}",
         "",
-        f"First 5 error jobs of {error}:"
+        f"First {min(5,error)} error jobs of {error}:"
     ]
 
     if normalised_errors:
