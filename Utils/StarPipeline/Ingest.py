@@ -2169,8 +2169,8 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
 
     calstar_return = readCALSTARS(os.path.dirname(local_calstars_path), calstars_name)
-    if isinstance(bool, calstar_return):
-        log.info(f"{calstars_name} return boolen, file probably does not exist")
+    if isinstance(calstar_return, bool):
+        log.info(f"{calstars_name} return boolean, file probably does not exist")
         return {}, 0, 0
     else:
         calstar, chunk = calstar_return
