@@ -31,18 +31,17 @@ def saveState(state):
 def activeStationCount(hours=48):
     sql = f"""
 WITH latest AS (
-    SELECT (
-        (extract(epoch FROM MAX(updated_at)) / 86400.0) + 2440587.5
-    ) * 1e6 AS jd_latest
+    SELECT MAX(updated_at) AS t_latest
     FROM ingest_work
 ),
 cutoff AS (
-    SELECT jd_latest - ({hours} / 24.0 * 1e6) AS jd_cut
+    SELECT t_latest - INTERVAL '{hours} hours' AS t_cut
     FROM latest
 )
-SELECT COUNT(DISTINCT split_part(remote_filename, '_', 1))
+SELECT COUNT(DISTINCT split_part(remote_filename, '_', 1)) AS station_count
 FROM ingest_work
-JOIN cutoff ON ingest_work.jd_int >= cutoff.jd_cut;"""
+JOIN cutoff ON ingest_work.updated_at >= cutoff.t_cut;"""
+
 
 
     return runQueryScalar(sql)
