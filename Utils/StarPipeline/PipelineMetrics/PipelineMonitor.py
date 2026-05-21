@@ -25,7 +25,7 @@ def printSection(title):
 def showLatestSessions():
     lines = ["Latest Sessions"]
     for row in latestSessions():
-        lines.append(str(f"{row[0]}\t{row[1]}\t{row[2]}"))
+        lines.append(str(f"{row[0]}\t{row[1]}"))
     return "\n".join(lines)
 
 def showFrameCounts():
