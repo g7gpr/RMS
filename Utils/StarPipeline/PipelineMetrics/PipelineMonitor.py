@@ -26,7 +26,7 @@ def showLatestSessions(limit=10):
     rows = latestSessions(limit)
     lines = ["Latest Sessions", "filename                 updated_at              worker        status"]
     for filename, updated_at, worker, status in rows:
-        lines.append(f"{filename:24} {updated_at}   {worker:12} {status}")
+        lines.append(f"{filename:54} {updated_at:45} {worker:12} {status}")
     return "\n".join(lines)
 
 
@@ -189,7 +189,7 @@ def showMissingCacheFiles():
         filename_split[4] = 'raw'
         extension = ".".join(extension_parts[1:])
         filename = "_".join(filename_split)
-        expected_path = f"/srv/rms/RMS_data/CALSTARS/{shard}/{filename}.{extension}"
+        expected_path = f"/mnt/rms/cache/RMS_data/CALSTARS/{shard}/{filename}.{extension}"
 
 
         if not os.path.isfile(expected_path):
@@ -347,7 +347,7 @@ def showQueueHealth():
     conn.close()
 
     # --- Count cache files ---
-    cache_root = "/srv/rms/RMS_data/CALSTARS"
+    cache_root = "/mnt/rms/cache/RMS_data/CALSTARS"
     cache_count = 0
     for day_dir in Path(cache_root).iterdir():
         if day_dir.is_dir():
