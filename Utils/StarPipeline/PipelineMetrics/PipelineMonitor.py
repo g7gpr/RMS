@@ -22,11 +22,13 @@ RESET = "\033[0m"
 def printSection(title):
     print(f"{BLUE}=== {title} ==={RESET}")
 
-def showLatestSessions():
-    lines = ["Latest Sessions"]
-    for row in latestSessions():
-        lines.append(str(f"{row[0]}\t{row[1]}"))
+def showLatestSessions(limit=10):
+    rows = latestSessions(limit)
+    lines = ["Latest Sessions", "filename                 updated_at              worker        status"]
+    for filename, updated_at, worker, status in rows:
+        lines.append(f"{filename:24} {updated_at}   {worker:12} {status}")
     return "\n".join(lines)
+
 
 def showFrameCounts():
     lines = ["Frame Counts"]
@@ -243,7 +245,7 @@ def showWorkerLeaderboard():
 
     lines = [
         "=== Worker Leaderboard ===",
-        "hostname        claimed   completed   last_hour"
+        "hostname        claimed   completed   last hour"
     ]
 
     for hostname, claimed, completed, last_hour in rows:
