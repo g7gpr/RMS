@@ -209,11 +209,12 @@ def showMissingCacheFiles():
 
     return "\n".join(lines)
 
-
-
 def showWorkerLeaderboard():
     """
-    Show workers (claimed_by) with number of claimed and completed jobs.
+    Show workers with:
+      - total claimed
+      - total completed
+      - completed in the last hour
     """
 
     conn = getConn()
@@ -222,11 +223,15 @@ def showWorkerLeaderboard():
         SELECT
             claimed_by AS hostname,
             COUNT(*) FILTER (WHERE status = 'claimed') AS number_claimed,
-            COUNT(*) FILTER (WHERE status = 'done') AS number_completed
+            COUNT(*) FILTER (WHERE status = 'done') AS number_completed,
+            COUNT(*) FILTER (
+                WHERE status = 'done'
+                  AND updated_at >= now() - interval '1 hour'
+            ) AS completed_last_hour
         FROM ingest_work
         WHERE claimed_by IS NOT NULL
         GROUP BY claimed_by
-        ORDER BY number_completed DESC;
+        ORDER BY completed_last_hour DESC, number_completed DESC;
     """
 
     with conn.cursor() as cur:
@@ -236,11 +241,16 @@ def showWorkerLeaderboard():
     if not rows:
         return "=== Worker Leaderboard ===\nNo workers have claimed jobs yet"
 
-    lines = ["=== Worker Leaderboard ===", "hostname        claimed   completed"]
-    for hostname, claimed, completed in rows:
-        lines.append(f"{hostname:14} {claimed:7}   {completed:10}")
+    lines = [
+        "=== Worker Leaderboard ===",
+        "hostname        claimed   completed   last_hour"
+    ]
+
+    for hostname, claimed, completed, last_hour in rows:
+        lines.append(f"{hostname:14} {claimed:7}   {completed:10}   {last_hour:9}")
 
     return "\n".join(lines)
+
 
 
 
