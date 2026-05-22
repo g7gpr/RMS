@@ -11,7 +11,7 @@ from Utils.StarPipeline.PipelineMetrics.db import getConn
 from Utils.StarPipeline.PipelineDB import claimNextJob
 from pathlib import Path
 
-INTERVAL = datetime.timedelta(minutes=10)
+INTERVAL = datetime.timedelta(minutes=1)
 
 BLUE = "\033[34m"
 GREEN = "\033[32m"
