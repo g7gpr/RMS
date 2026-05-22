@@ -24,9 +24,9 @@ def printSection(title):
 
 def showLatestSessions(limit=10):
     rows = latestSessions(limit)
-    lines = ["Latest Sessions", "filename                 updated_at              worker        status"]
+    lines = ["Latest Sessions", "filename                                       updated_at                       worker         status"]
     for filename, updated_at, worker, status in rows:
-        lines.append(f"{filename:54} {updated_at:45} {worker:12} {status}")
+        lines.append(f"{filename} {updated_at} {worker:14} {status}")
     return "\n".join(lines)
 
 
