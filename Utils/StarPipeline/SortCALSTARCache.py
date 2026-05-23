@@ -202,6 +202,7 @@ def createDayArchives(log, cache_root: Path):
         cache_day_directory_dt = datetime.datetime.strptime(cache_day_directory, "%Y%m%d")
         if cache_day_directory_dt > cutoff_dt:
             log.info(f"Skipping {cache_day_directory}, too new")
+            continue
 
         remote_file_stub_set = set(createRemoteFileStubList(cache_day_directory))
         day_directory_full_path = os.path.join(cache_root, cache_day_directory)
