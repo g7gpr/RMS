@@ -130,9 +130,11 @@ def buildDayArchive(log, cache_root: Path, day: str, cache_file_list):
                 for i, fname in enumerate(cache_file_list):
                     archive_target = cache_root / day / fname
                     total_to_transfer_mb += os.path.getsize(archive_target) / 1024 ** 2
-                    last_modified_time = datetime.datetime.fromtimestamp(os.path.getmtime(archive_target, tz=datetime.timezone.utc))
+                    mtime = os.path.getmtime(archive_target)
+                    last_modified_time = datetime.datetime.fromtimestamp(mtime, tz=datetime.timezone.utc)
                     if last_modified_time > last_modified_cutoff:
                         log.info(f"Skipping {day} because {archive_target} was modified at {last_modified_time}")
+                        return False
 
                 step = 10
                 start_time = datetime.datetime.now(datetime.timezone.utc)
