@@ -7,16 +7,15 @@ After=network-online.target
 Type=oneshot
 User=star
 WorkingDirectory=/home/star/source/RMS
+
+# Step 1: update code (no venv needed)
 ExecStart=/usr/bin/git pull
-ExecStart=/usr/bin/python3 -m Utils.StarPipeline.Housekeeping
 
-# Prevent concurrent runs
-# systemd guarantees oneshot units do not overlap unless explicitly allowed
+# Step 2: activate venv + run housekeeping
+ExecStart=/bin/bash -c 'source /home/star/vRMS/bin/activate && python -m Utils.StarPipeline.Housekeeping'
+
 RemainAfterExit=no
-
-# Environment (optional)
 Environment=PYTHONUNBUFFERED=1
 
-# Logging
 StandardOutput=journal
 StandardError=journal
