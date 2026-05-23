@@ -223,10 +223,6 @@ def createDayArchives(log, cache_root: Path):
             log.info(f"Ready to archive {cache_day_directory} containing {len(cache_file_list)} files")
             buildDayArchive(log, Path(cache_root), cache_day_directory, cache_file_list)
 
-    if not cache_root.exists():
-        log.info(f"Error: {cache_root} does not exist")
-        sys.exit(1)
-
 
 if __name__ == "__main__":
 
