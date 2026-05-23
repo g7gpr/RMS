@@ -1,9 +1,9 @@
 import argparse
 import psycopg
-from Ingest import getRemoteFileList
+from Utils.StarPipeline.Ingest import getRemoteFileList
 from RMS.Logger import LoggingManager, getLogger
-from PipelineDB import repairMissingCacheEntries, resetStalledJobs
-from SortCALSTARCache import refileArchives, createDayArchives
+from Utils.StarPipeline.PipelineDB import repairMissingCacheEntries, resetStalledJobs
+from Utils.StarPipeline.SortCALSTARCache import refileArchives, createDayArchives
 
 if __name__ == "__main__":
 
