@@ -444,7 +444,7 @@ def repairMissingCacheEntries(log, conn, cache_root):
         # Collect all cache stubs (raw files + dirs)
         cacheStubs = set()
 
-        for dayDir in tqdm.tqdm(sorted(Path(cache_root).iterdir())):
+        for dayDir in sorted(Path(cache_root).iterdir()):
             if not dayDir.is_dir():
                 continue
 
