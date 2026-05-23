@@ -912,11 +912,14 @@ def parseSystem(config, parser):
 
     if parser.has_option(section, "elevation"):
         config.elevation = parser.getfloat(section, "elevation")
-        
 
+    # Safely read cams_code in case it has had a non numeric value in the config
     if parser.has_option(section, "cams_code"):
-        config.cams_code = parser.getint(section, "cams_code")
-
+        cams_code = parser.get(section, "cams_code")
+        if cams_code.isdigit():
+            config.cams_code = int(cams_code)
+        else:
+            config.cams_code = 0
 
     if parser.has_option(section, "weblog_enable"):
         config.weblog_enable = parser.getboolean(section, "weblog_enable")
