@@ -1,0 +1,22 @@
+[Unit]
+Description=StarPipeline Housekeeping
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=star
+WorkingDirectory=/home/star/source/RMS
+ExecStart=/usr/bin/git pull
+ExecStart=/usr/bin/python3 -m Utils.StarPipeline.Housekeeping
+
+# Prevent concurrent runs
+# systemd guarantees oneshot units do not overlap unless explicitly allowed
+RemainAfterExit=no
+
+# Environment (optional)
+Environment=PYTHONUNBUFFERED=1
+
+# Logging
+StandardOutput=journal
+StandardError=journal

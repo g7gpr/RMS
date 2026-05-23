@@ -195,7 +195,12 @@ def createDayArchives(log, cache_root: Path):
             cache_root_dirs_list.append(cache_root_object)
 
     cache_root_dirs_list.sort()
+    cutoff_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=14)
     for cache_day_directory in cache_root_dirs_list:
+        cache_day_directory_dt = datetime.datetime.strptime(cache_day_directory, "%Y%m%d")
+        if cache_day_directory_dt > cutoff_dt:
+            log.info(f"Skipping {cache_day_directory}, too new")
+
         remote_file_stub_set = set(createRemoteFileStubList(cache_day_directory))
         day_directory_full_path = os.path.join(cache_root, cache_day_directory)
         cache_file_list = os.listdir(day_directory_full_path)

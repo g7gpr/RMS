@@ -1,0 +1,11 @@
+[Unit]
+Description=Run StarPipeline Housekeeping every 48 hours
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=48h
+Unit=starpipeline-housekeeping.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
