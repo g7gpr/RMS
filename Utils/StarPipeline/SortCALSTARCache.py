@@ -201,7 +201,7 @@ def createDayArchives(log, cache_root: Path):
     cache_root_dirs_list.sort()
     cutoff_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=14)
     for cache_day_directory in cache_root_dirs_list:
-        cache_day_directory_dt = datetime.datetime.strptime(cache_day_directory, "%Y%m%d")
+        cache_day_directory_dt = datetime.datetime.strptime(cache_day_directory, "%Y%m%d").replace(tzinfo=datetime.timezone.utc)
         if cache_day_directory_dt > cutoff_dt:
             log.info(f"Skipping {cache_day_directory}, too new")
             continue
