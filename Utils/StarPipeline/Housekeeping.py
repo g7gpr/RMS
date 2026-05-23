@@ -25,7 +25,7 @@ if __name__ == "__main__":
     cml_args = parser.parse_args()
     conn = psycopg.connect(cml_args.db_conn)
     cache_root = cml_args.cache_root
-    getRemoteFileList(log, "analysis", "gmn.uwo.ca", path_template="/home/stationID/files/processed")
+    #getRemoteFileList(log, "analysis", "gmn.uwo.ca", path_template="/home/stationID/files/processed")
     repairMissingCacheEntries(log, conn, cache_root)
     resetStalledJobs(log, conn)
     refileArchives(log, cache_root)
