@@ -415,7 +415,7 @@ def extractStub(name):
     parts = name.split("_")
     return "_".join(parts[:4])
 
-def repairMissingCacheEntries(conn, cache_root):
+def repairMissingCacheEntries(log, conn, cache_root):
     sql_fetch = """
         SELECT remote_filename, jd_int
         FROM ingest_work
@@ -589,7 +589,7 @@ def claimNextJob(conn, force_job=None, dry_run=False):
 
 
 
-def resetStalledJobs(conn, this_machine=False):
+def resetStalledJobs(log, conn, this_machine=False):
     """
     Reset any jobs that have been claimed for more than 30 minutes.
     These are considered stalled and returned to the pending queue.
@@ -612,7 +612,6 @@ def resetStalledJobs(conn, this_machine=False):
         sql +=       "AND claimed_at < now() - interval '30 minutes';"
 
     log.info("Resetting stalled jobs")
-    log.info(sql)
 
     with conn.cursor() as cur:
         cur.execute(sql, params)
@@ -868,4 +867,4 @@ if __name__ == "__main__":
 
     if sync_cache is not None:
         with psycopg.connect(host=postgresql_host, dbname="star_data", user="postgres") as conn:
-            repairMissingCacheEntries(conn, sync_cache)
+            repairMissingCacheEntries(log, conn, sync_cache)

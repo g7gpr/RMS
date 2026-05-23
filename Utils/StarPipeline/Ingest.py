@@ -19,18 +19,13 @@
 
 from __future__ import print_function, division, absolute_import
 
-import logging
+
 import math
-from typing import Any
-
-from imageio.core import Format
-
 from RMS.Formats.FFfile import getMiddleTimeFF, filenameToDatetime
-
-
 from PIL import Image, ImageDraw, ImageFont
 import imageio.v2 as imageio
-import matplotlib.pyplot as plt
+
+
 
 """
 Database configuration instructions
@@ -919,7 +914,7 @@ def dictInvert(d):
 
     return out
 
-def lsRemote(host, username, port, remote_path):
+def lsRemote(log, host, username, port, remote_path):
     """Return: list of filenames in remote directory, or empty list if directory does not exist."""
 
     remote = "{}@{}:{}".format(username, host, remote_path)
@@ -1073,7 +1068,7 @@ def downloadFile(host, username, local_path, remote_path, port=PORT,  silent=Fal
 
     return
 
-def getStationList(url=STATION_COORDINATES_JSON, country_code=None):
+def getStationList(log, url=STATION_COORDINATES_JSON, country_code=None):
     """Get a list of stations using the station coordinates json.
 
     Arguments:
@@ -1720,7 +1715,7 @@ def getLatestCalstarFile(conn, station_id):
 
     return row
 
-def discoverRemoteFiles(stations, username, host, port,
+def discoverRemoteFiles(log, stations, username, host, port,
                         remote_processed_dir_template,
                         min_interval_sec=1, target_interval_sec=3):
 
@@ -1745,7 +1740,7 @@ def discoverRemoteFiles(stations, username, host, port,
         while retry > 0:
             retry -= 1
             try:
-                station_files = lsRemote(host, username, port, remote_dir)
+                station_files = lsRemote(log, host, username, port, remote_dir)
                 break
 
             except Exception as e:
@@ -1802,7 +1797,7 @@ def parseServerFileTimestamp(file_name):
 def sortFilesByTime(files):
     return sorted(files, key=parseServerFileTimestamp)
 
-def saveRemoteFiles(remote_files, json_path):
+def saveRemoteFiles(log, remote_files, json_path):
     serialisable = [{"file_name": file_name} for file_name in remote_files]
 
     with open(json_path, "w") as f:
@@ -2688,11 +2683,11 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=21, 
             log.info(f"{remote_file} {size_mb:.1f}MB rate {cumulative_mb_s:.1f}MB/s estimated cache download completion time {completion_time_str} {files_downloaded}/{files_to_download}")
     return
 
-def getRemoteFileList(country_code=""):
+def getRemoteFileList(log, user, hostname, port=22, path_template="/home/stationID/files/incoming/processed", country_code=""):
 
-    station_list = getStationList(country_code=country_code)
-    remote_files = discoverRemoteFiles(station_list, user, hostname, 22, remote_processed_dir_template=path_template)
-    saveRemoteFiles(remote_files, os.path.expanduser("~/RMS_data/remotefiles.json"))
+    station_list = getStationList(log, country_code=country_code)
+    remote_files = discoverRemoteFiles(log, station_list, user, hostname, 22, remote_processed_dir_template=path_template)
+    saveRemoteFiles(log, remote_files, os.path.expanduser("~/RMS_data/remotefiles.json"))
 
 
 if __name__ == "__main__":
