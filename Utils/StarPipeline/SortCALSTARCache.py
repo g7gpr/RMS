@@ -125,12 +125,14 @@ def buildDayArchive(log, cache_root: Path, day: str, cache_file_list):
 
             with tarfile.open(tmp_path, "w:bz2") as tar:
 
-
-
+                last_modified_cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=48)
                 total_to_transfer_mb = 0
                 for i, fname in enumerate(cache_file_list):
                     archive_target = cache_root / day / fname
                     total_to_transfer_mb += os.path.getsize(archive_target) / 1024 ** 2
+                    last_modified_time = datetime.datetime.fromtimestamp(os.path.getmtime(archive_target, tz=datetime.timezone.utc))
+                    if last_modified_time > last_modified_cutoff:
+                        log.info(f"Skipping {day} because {archive_target} was modified at {last_modified_time}")
 
                 step = 10
                 start_time = datetime.datetime.now(datetime.timezone.utc)
