@@ -1089,7 +1089,7 @@ def main():
 
     if cml_args.radec:
         r, d = parseRaDec(cml_args.radec)
-        star_name = lookupBrightestStar(conn, r, d, radius_deg=0.1)[0]
+        star_name = lookupBrightestStar(conn, r, d, radius_deg=0.2)[0]
         print(f"Searched at {r} {d} and found {star_name}")
     else:
         star_name = cml_args.star_name
