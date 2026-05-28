@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import warnings
 import io
 import contextlib
+import tqdm
 
 from scipy.interpolate import SmoothBivariateSpline
 from pathlib import Path
@@ -131,7 +132,7 @@ def binDetections(det, bin_seconds=10.24*10):
     station_bins = []
     n_det_bins = []          # <-- NEW
 
-    for b in np.unique(bin_index):
+    for b in tqdm.tqdm(np.unique(bin_index)):
         idx = np.where(bin_index == b)[0]
         if len(idx) == 0:
             continue
@@ -243,7 +244,7 @@ def loadDetections(conn, jd_start, jd_end, star_name=None):
     params.append(1e6 * jd_start)
     where.append("obs.jd_mid < %s")
     params.append(1e6 * jd_end)
-    where.append("obs.flags = 0")
+    #where.append("obs.flags = 0")
     where.append("obs.intens_sum != 0")
     where.append("abs(obs.mag_err) < 3e6")
 
@@ -441,113 +442,6 @@ def loadCompensatedFrame(conn, frame_name):
         "frame_offset": frame_offset,
         "tps_model": model,
     }
-
-def applyDetectionCorrections(conn, det, dummy_run=False):
-    """
-    Apply frame offset + TPS spatial correction.
-    Uses cached calibration when available.
-    """
-
-    if dummy_run:
-        det_corr = dict(det)
-        det_corr["mag"] = det["mag"].copy()
-        return det_corr
-
-    frame_names = det["frame_name"]
-    x_det = det["x"]
-    y_det = det["y"]
-    mag_det = det["mag"]
-
-    unique_frames = np.unique(frame_names)
-
-    frame_offset_map = {}
-    spatial_model_map = {}
-
-    build_tps_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-    reject_tps, attempted_tps, splines_created, splines_loaded, rejected_frames = 0, 0, 0, 0, []
-    frames_to_process = len(unique_frames)
-
-    for i, fname in enumerate(unique_frames):
-
-        if i % 200 == 0 and i > 0:
-            if len(rejected_frames):
-                insertRejectedFrames(conn, rejected_frames)
-                rejected_frames.clear()
-            time_elapsed = datetime.datetime.now(tz=datetime.timezone.utc) - build_tps_start_time
-            time_per_iteration_seconds = time_elapsed.total_seconds() / i
-            iterations_remaining = len(unique_frames) - i
-            completion_time = datetime.datetime.now(
-                tz=datetime.timezone.utc
-            ) + datetime.timedelta(seconds=time_per_iteration_seconds * iterations_remaining)
-            print(
-                f"Forecast end time={completion_time.replace(microsecond=0).isoformat()} "
-                f"{100*i/frames_to_process:.1f}% frame rejection="
-                f"{100 * reject_tps / max(attempted_tps, 1):.1f}% "
-                f"Splines created/loaded {splines_created}/{splines_loaded}"
-            )
-
-
-        # 1) Try cached calibration
-        cached = loadCompensatedFrame(conn, fname)
-        if cached is not None:
-            frame_offset_map[fname] = cached["frame_offset"]
-            spatial_model_map[fname] = cached["tps_model"]
-            splines_loaded += 1
-            continue
-
-        # 2) Compute calibration fresh
-        frame_data = loadFramePhotometry(conn, fname)
-
-        if frame_data is None or len(frame_data["cat_mag"]) < 40:
-            frame_offset_map[fname] = 0.0
-            spatial_model_map[fname] = None
-            rejected_frames.append(fname)
-            continue
-
-        frame_offset = computeFrameOffset(frame_data)
-        frame_offset_map[fname] = frame_offset
-
-        residuals = frame_data["obs_mag"] - frame_data["cat_mag"] - frame_offset
-        attempted_tps += 1
-
-        result = tryBuildTPS(
-            frame_data["x"],
-            frame_data["y"],
-            residuals,
-            smooth=0.1 * len(frame_data["obs_mag"])
-        )
-
-        if result is None:
-            spatial_model_map[fname] = None
-            rejected_frames.append(fname)
-        else:
-            model, spline = result
-            spatial_model_map[fname] = model
-
-        # Store calibration
-        storeCompensatedFrame(conn, fname, frame_offset, spline if result is not None else None, frame_data)
-        splines_created += 1
-
-    insertRejectedFrames(conn, rejected_frames)
-    conn.commit()
-
-    # Apply corrections
-    mag_corr = np.empty_like(mag_det)
-
-    for i in range(len(mag_det)):
-        fname = frame_names[i]
-        m = mag_det[i] - frame_offset_map.get(fname, 0.0)
-
-        model = spatial_model_map.get(fname)
-        if model is not None and not (np.isnan(x_det[i]) or np.isnan(y_det[i])):
-            m -= model(x_det[i], y_det[i])
-
-        mag_corr[i] = m
-
-    det_corr = dict(det)
-    det_corr["mag"] = mag_corr
-
-    return det_corr
 
 
 
@@ -843,11 +737,7 @@ def plotFoldedWithStations(det_phase_folded_binned, folded, cat_mag=None, base_n
         edgecolor="none"
     )
 
-    ax3.set_ylabel("Detections")
-    ax3.set_xlim(-1, 1)
-    ax3.set_xlabel("Phase")
-
-    ax3.set_ylabel("Detections")
+    ax3.set_ylabel("Observations")
     ax3.set_xlabel("Phase")
     ax3.set_xlim(-1, 1)
 
@@ -1104,6 +994,7 @@ def main():
 
     jd_start, jd_end = resolveJdRange(conn, star_name, jd_start, jd_end)
 
+    print("Loading detections")
     det = loadDetections(
         conn,
         jd_start=jd_start,
@@ -1113,7 +1004,7 @@ def main():
 
 
 
-
+    print("Generating titles")
     titles, ra_cat, dec_cat, mag_cat = generateTitles(conn, star_name=star_name, jd_start=np.min(det['jd']), jd_end=np.max(det['jd']),
                             period_days=period_days, det=det, preferred_name=preferred_name)
 
@@ -1129,20 +1020,15 @@ def main():
     print("Plotting corrected light curve...")
     cat_mag = det['cat_mag'][0]
 
-    # ------------------------------------------------------------
-    # Apply TPS corrections
-    # ------------------------------------------------------------
-    print("Applying TPS corrections...")
-    det_corr = applyDetectionCorrections(conn, det, dummy_run=False)
+    det_corr = det
 
-    # ------------------------------------------------------------
-    # Plot corrected light curve
-    # ------------------------------------------------------------
 
     #plotCorrectedLightCurve(det, base_name=args.output_name, cat_mag=cat_mag)
+    print("Binning detections")
     det_binned = binDetections(det_corr, bin_seconds=5)
     #plotCorrectedLightCurve(det_binned, base_name=args.output_name, cat_mag = cat_mag)
 
+    print("Plotting")
     if cml_args.period_days is not None:
         det_folded = foldLightCurve(det_binned, det, cml_args.period_days)
         det_phase_folded_binned = phaseBinFolded(det_folded, n_phase_bins=200)
