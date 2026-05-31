@@ -2553,7 +2553,7 @@ def populateWorkQueue(conn, file_name_list, log):
                 now = datetime.datetime.now(tz=datetime.timezone.utc)
                 time_elapsed_seconds = (now - start_time).total_seconds()
                 jobs_remaining = file_count - i
-                completion_time = now + datetime.timedelta(seconds = jobs_remaining * (time_elapsed_seconds / i))
+                completion_time = (now + datetime.timedelta(seconds = jobs_remaining * (time_elapsed_seconds / i))).replace(microsecond=0)
                 step *= 2
                 log.info(f"Commited {i} of {file_count} files completion time is {completion_time}")
             # Compute JD for this file
