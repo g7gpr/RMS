@@ -2568,8 +2568,8 @@ def populateWorkQueue(conn, file_name_list, log):
                 ON CONFLICT (remote_filename) DO NOTHING;
             """, (file_name, jd_int))
 
-        log.info("Commiting work queue from cache")
-        conn.commit()
+
+            conn.commit()
 
 
 
