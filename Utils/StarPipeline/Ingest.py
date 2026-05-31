@@ -2580,7 +2580,7 @@ def populateWorkQueue(conn, file_name_list, log):
             """, (file_name, jd_int))
 
 
-            conn.commit()
+        conn.commit()
 
 
 

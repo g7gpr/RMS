@@ -117,54 +117,92 @@ def lookupCatalogueStar(conn, star_name):
 
 
 def binDetections(det, bin_seconds=10.24*10):
-    jd = det["jd"]
-    mag = det["mag"]
-    snr = det["snr"]
+    jd      = det["jd"]
+    mag     = det["mag"]
+    snr     = det["snr"]
     station = det["station"]
 
+    # --- Compute bin indices ------------------------------------------------
     dt_days = bin_seconds / 86400.0
     jd0 = jd.min()
     bin_index = np.floor((jd - jd0) / dt_days).astype(int)
 
-    jd_bins = []
-    mag_bins = []
-    mag_err_bins = []
-    station_bins = []
-    n_det_bins = []          # <-- NEW
+    # Compact bin indices (0..nbins-1)
+    unique_bins, inv = np.unique(bin_index, return_inverse=True)
+    nbins = len(unique_bins)
 
-    for b in tqdm.tqdm(np.unique(bin_index)):
-        idx = np.where(bin_index == b)[0]
+    # --- Convert magnitudes to flux ----------------------------------------
+    flux = 10 ** (-0.4 * mag)
+
+    # Identify valid SNR
+    snr_valid = snr > 0
+
+    # Preallocate outputs
+    mag_mean      = np.zeros(nbins)
+    mag_err_mean  = np.zeros(nbins)
+    jd_mean       = np.zeros(nbins)
+    n_det         = np.zeros(nbins, int)
+    station_bins  = []
+
+    # --- Vectorised JD mean -------------------------------------------------
+    jd_sum = np.bincount(inv, weights=jd, minlength=nbins)
+    counts = np.bincount(inv, minlength=nbins)
+    jd_mean = jd_sum / counts
+    n_det = counts
+
+    # --- Loop only over bins for station lists + error model ---------------
+    for b in range(nbins):
+        idx = np.where(inv == b)[0]
         if len(idx) == 0:
+            station_bins.append(np.array([]))
+            mag_mean[b] = np.nan
+            mag_err_mean[b] = np.nan
             continue
 
-        # Record number of detections in this time bin
-        n_det_bins.append(len(idx))     # <-- NEW
+        # Stations
+        station_bins.append(np.unique(station[idx]))
 
-        unique_stations = np.unique(station[idx])
-        station_bins.append(np.asarray(unique_stations))
+        flux_bin = flux[idx]
+        mag_bin  = mag[idx]
+        snr_bin  = snr[idx]
+        snr_ok   = snr_bin > 0
 
-        flux = 10 ** (-0.4 * mag[idx])
-        sigma_flux_i = flux / snr[idx]
-        w = 1.0 / (sigma_flux_i ** 2)
-        w_sum = np.sum(w)
+        # --- CASE 1: SNR AVAILABLE -----------------------------------------
+        if np.any(snr_ok):
+            flux_ok = flux_bin[snr_ok]
+            snr_ok_vals = snr_bin[snr_ok]
 
-        flux_mean = np.sum(w * flux) / w_sum
-        sigma_flux = np.sqrt(1.0 / w_sum)
+            sigma_flux_i = flux_ok / snr_ok_vals
+            w = 1.0 / (sigma_flux_i ** 2)
+            w_sum = np.sum(w)
 
-        mag_mean = -2.5 * np.log10(flux_mean)
-        mag_err_mean = (2.5 / np.log(10)) * (sigma_flux / flux_mean)
+            flux_mean = np.sum(w * flux_ok) / w_sum
+            sigma_flux = np.sqrt(1.0 / w_sum)
 
-        jd_bins.append(np.mean(jd[idx]))
-        mag_bins.append(mag_mean)
-        mag_err_bins.append(mag_err_mean)
+            mag_mean[b] = -2.5 * np.log10(flux_mean)
+            mag_err_mean[b] = (2.5 / np.log(10)) * (sigma_flux / flux_mean)
+
+        # --- CASE 2: NO SNR USE VARIANCE MODEL ---------------------------
+        else:
+            flux_mean = np.mean(flux_bin)
+            mag_mean[b] = -2.5 * np.log10(flux_mean)
+
+            # RMS scatter of magnitudes
+            mag_mean_bin = mag_mean[b]
+            if len(mag_bin) > 5:
+                pass
+            rms = np.sqrt(np.mean((mag_bin - mag_mean_bin)**2))
+            mag_err_mean[b] = rms / np.sqrt(len(idx))
 
     return {
-        "jd": np.array(jd_bins),
-        "mag": np.array(mag_bins),
-        "mag_err": np.array(mag_err_bins),
+        "jd": jd_mean,
+        "mag": mag_mean,
+        "mag_err": mag_err_mean,
         "station": station_bins,
-        "n_det": np.array(n_det_bins)   # <-- NEW
+        "n_det": n_det
     }
+
+
 
 
 
@@ -244,36 +282,21 @@ def loadDetections(conn, jd_start, jd_end, star_name=None):
     params.append(1e6 * jd_start)
     where.append("obs.jd_mid < %s")
     params.append(1e6 * jd_end)
-    #where.append("obs.flags = 0")
-    where.append("obs.intens_sum != 0")
-    where.append("abs(obs.mag_err) < 3e6")
 
-    where.append("""
-        NOT EXISTS (
-            SELECT 1 FROM rejected_frame rf
-            WHERE rf.frame_name = obs.frame_name
-        )
-    """)
 
     where_clause = "WHERE " + " AND ".join(where)
 
     sql = f"""
         SELECT
-            obs.ra,
-            obs.dec,
             obs.mag,
             obs.snr,
             obs.frame_name,
-            obs.x,
-            obs.y,
-            obs.mag_err,
-            obs.jd_mid,
-            obs.cat_mag,
-            obs.intens_sum
+            obs.jd_mid
         FROM observation AS obs
         {where_clause}
     """
 
+    print(sql, params)
     with conn.cursor() as cur:
         cur.execute(sql, params)
         rows = cur.fetchall()
@@ -281,29 +304,17 @@ def loadDetections(conn, jd_start, jd_end, star_name=None):
     if not rows:
         return None
 
-    ra_deg      = np.array([r[0] for r in rows], float) / 1e6
-    dec_deg     = np.array([r[1] for r in rows], float) / 1e6
-    mag         = np.array([r[2] for r in rows], float) / 1e6
-    snr         = np.array([r[3] for r in rows], float) / 1e6
-    frame_name  = np.array([r[4] for r in rows], str)
-    x           = np.array([r[5] for r in rows], float)
-    y           = np.array([r[6] for r in rows], float)
-    mag_err     = np.array([(r[7] / 1e6) if r[7] is not None else np.nan for r in rows])
-    jd          = np.array([r[8] for r in rows], float) / 1e6
-    cat_mag     = np.array([(r[9] / 1e6) if r[9] is not None else np.nan for r in rows])
+    mag         = np.array([r[0] for r in rows], float) / 1e6
+    snr         = np.array([r[1] for r in rows], float) / 1e6
+    frame_name  = np.array([r[2] for r in rows], str)
+    jd          = np.array([r[3] for r in rows], float) / 1e6
     station     = np.array([fn.split("_")[0] for fn in frame_name], dtype=str)
 
     return {
-        "ra_deg": ra_deg,
-        "dec_deg": dec_deg,
         "jd": jd,
         "mag": mag,
         "snr": snr,
         "frame_name": frame_name,
-        "x": x,
-        "y": y,
-        "cat_mag": cat_mag,
-        "mag_err": mag_err,
         "station": station
     }
 
@@ -501,7 +512,7 @@ def phaseBinFolded(folded, n_phase_bins=50):
             # Error on the mean
             mag_err_mean = rms / np.sqrt(len(idx))
         else:
-            # Only one point → use its own error
+            # Only one point use its own error
             mag_err_mean = mag_err[idx][0]
 
         # Representative phase = bin centre
@@ -570,7 +581,7 @@ def foldLightCurve(binned, raw_det, period_days):
 
 
 
-def plotFoldedWithStations(det_phase_folded_binned, folded, cat_mag=None, base_name=None, nbins=100, titles=None, output_dir=None):
+def plotFoldedWithStationsOld(det_phase_folded_binned, folded, cat_mag=None, base_name=None, nbins=100, titles=None, output_dir=None):
 
 
     # Extract corrected folded data
@@ -768,6 +779,176 @@ def plotFoldedWithStations(det_phase_folded_binned, folded, cat_mag=None, base_n
     #plt.show()
 
 
+def plotFoldedWithStations(det_phase_folded_binned, folded,
+                           cat_mag=None, base_name=None,
+                           nbins=100, titles=None, output_dir=None):
+
+    # ---------------------------------------------------------
+    # Extract corrected folded data
+    # ---------------------------------------------------------
+    phase   = det_phase_folded_binned["phase"]
+    mag     = det_phase_folded_binned["mag"]
+    mag_err = det_phase_folded_binned["mag_err"]
+    station = det_phase_folded_binned["station"]
+    n_det   = det_phase_folded_binned["n_det"]
+
+    # Raw folded data
+    raw_phase = folded["raw_phase"]
+    raw_mag   = folded["raw_mag"]
+
+    # Titles
+    if titles is None:
+        titles = {}
+
+    super_title  = titles.get("super",  None)
+    raw_title    = titles.get("raw",    "Raw folded light curve")
+    top_title    = titles.get("top",    "")
+    bottom_title = titles.get("bottom", "")
+
+    # ---------------------------------------------------------
+    # Figure layout (3 panels, compact)
+    # ---------------------------------------------------------
+    fig = plt.figure(figsize=(12, 10))   # MUCH smaller than 12k×12k
+    gs = fig.add_gridspec(3, 1, height_ratios=[0.8, 3.5, 1.2])
+
+    ax0 = fig.add_subplot(gs[0])  # Raw folded
+    ax1 = fig.add_subplot(gs[1], sharex=ax0)  # Corrected folded
+    ax2 = fig.add_subplot(gs[2], sharex=ax0)  # Combined stations/detections/SNR
+
+    if super_title:
+        fig.suptitle(super_title, fontsize=16, y=0.98)
+
+    plt.tight_layout(rect=[0.04, 0.05, 0.97, 0.95])
+
+    # =========================================================
+    #  PANEL 0 — RAW FOLDED
+    # =========================================================
+    ax0.scatter(raw_phase, raw_mag, s=3, alpha=0.02, color="blue")
+    ax0.invert_yaxis()
+    ax0.set_ylabel("Raw magnitudes")
+    ax0.set_title(raw_title, fontsize=10, color="#666666")
+
+    # Stretch Y‑axis to show full variability
+    mean_raw = np.mean(raw_mag)
+    ax0.set_ylim(mean_raw + 2, mean_raw - 2)
+
+    ax0.tick_params(axis="x", bottom=False, labelbottom=False)
+
+    # =========================================================
+    #  PANEL 1 — CORRECTED FOLDED WITH UNCERTAINTY BAND
+    # =========================================================
+    order = np.argsort(phase)
+
+    # Scatter
+    ax1.scatter(phase, mag, s=10, alpha=0.5, color="black")
+
+    # Connecting line
+    ax1.plot(phase[order], mag[order], color="red", alpha=0.25, linewidth=0.8)
+
+    # Uncertainty band (GP‑style)
+    ax1.fill_between(
+        phase[order],
+        mag[order] - mag_err[order],
+        mag[order] + mag_err[order],
+        color="#88c0ff",
+        alpha=0.25,
+        linewidth=0
+    )
+
+    ax1.invert_yaxis()
+    ax1.set_ylabel("Mean magnitudes")
+    ax1.set_title(top_title, fontsize=10, color="#666666")
+
+    # Catalogue magnitude
+    if cat_mag is not None and np.isfinite(cat_mag):
+        ax1.axhline(cat_mag, color="grey", linestyle=":", linewidth=1.0, alpha=0.5)
+
+    # Stretch Y‑axis
+    ymin = min(np.min(mag - mag_err), cat_mag if cat_mag else np.min(mag))
+    ymax = max(np.max(mag + mag_err), cat_mag if cat_mag else np.max(mag))
+    ax1.set_ylim(ymax + 0.05, ymin - 0.05)
+
+    # =========================================================
+    #  PANEL 2 — STATIONS (histogram) + DETECTIONS (points)
+    # =========================================================
+
+    # Phase bins
+    bins = np.linspace(-1, 1, nbins + 1)
+    bin_centers = 0.5 * (bins[:-1] + bins[1:])
+
+    # Preallocate
+    station_counts = np.zeros(nbins, int)
+    det_counts = np.zeros(nbins, int)
+
+    # Compute station counts + detection counts
+    for i in range(nbins):
+        mask = (phase >= bins[i]) & (phase < bins[i + 1])
+        idx = np.where(mask)[0]
+
+        if len(idx) == 0:
+            continue
+
+        # Unique stations contributing to this phase bin
+        stations_here = []
+        for j in idx:
+            stations_here.extend(station[j])
+        station_counts[i] = len(np.unique(stations_here))
+
+        # Number of detections in this phase bin
+        det_counts[i] = np.sum(n_det[idx])
+
+    # Left axis: station histogram
+    ax2.bar(
+        bin_centers,
+        station_counts,
+        width=(2 / nbins),
+        color="steelblue",
+        alpha=0.7,
+        edgecolor="none",
+        label="Stations"
+    )
+
+    ax2.set_ylabel("Stations")
+    ax2.set_xlim(-1, 1)
+
+    # Right axis: detection counts as points
+    ax2b = ax2.twinx()
+    ax2b.plot(
+        bin_centers,
+        det_counts,
+        "o",
+        markersize=4,
+        color="black",
+        alpha=0.8,
+        label="Observations"
+    )
+
+    ax2b.set_ylabel("Observations")
+
+    # Legends
+    ax2.legend(loc="upper left", fontsize=8)
+    ax2b.legend(loc="upper right", fontsize=8)
+
+    ax2.set_xlabel("Phase")
+
+    # ---------------------------------------------------------
+    # SAVE FIGURE + SIDECAR TEXT
+    # ---------------------------------------------------------
+    if base_name and output_dir:
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        full_path = os.path.join(output_dir, base_name)
+
+        plt.savefig(f"{full_path}.png", dpi=200)
+        print(f"Saved plot: {full_path}.png")
+
+        # Sidecar text file
+        with open(f"{full_path}.txt", "w") as fh:
+            fh.write("Contributing stations:\n")
+            fh.write(bottom_title + "\n")
+            fh.write("\nMedian SNR per bin:\n")
+            fh.write(str(median_snr) + "\n")
+            fh.write("\nCombined SNR per bin:\n")
+            fh.write(str(combined_snr) + "\n")
 
 
 # ============================================================
@@ -916,6 +1097,28 @@ def resolveJdRange(conn, star_name, jd_start=None, jd_end=None):
 
     return jd_start, jd_end
 
+def getObservationsInfo(conn,star_name):
+
+
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT station_name, mag
+            FROM star
+            WHERE star_name = %s;
+        """, (star_name,))
+
+        rows = cur.fetchall()
+
+    if not rows:
+        return None, []
+
+    # Extract station names
+    stations = sorted({row[0] for row in rows})
+
+    mag_scaled = rows[0][1]
+    mag = mag_scaled / 1_000_000.0
+
+    return mag, stations
 
 def main():
     arg_parser = argparse.ArgumentParser(
@@ -1018,7 +1221,7 @@ def main():
         return
 
     print("Plotting corrected light curve...")
-    cat_mag = det['cat_mag'][0]
+    cat_ra, cat_dec, cat_mag = lookupCatalogueStar(conn, star_name)
 
     det_corr = det
 
