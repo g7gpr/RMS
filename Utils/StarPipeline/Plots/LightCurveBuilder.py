@@ -837,35 +837,95 @@ def plotFoldedWithStations(det_phase_folded_binned, folded,
     # =========================================================
     #  PANEL 1 — CORRECTED FOLDED WITH UNCERTAINTY BAND
     # =========================================================
-    order = np.argsort(phase)
+    # =========================================================
+    #  CORRECTED FOLDED PANEL (ax1) — WITH STATION GATING
+    # =========================================================
 
-    # Scatter
-    ax1.scatter(phase, mag, s=10, alpha=0.5, color="black")
+    station_bins = det_phase_folded_binned["station"]
+    station_count = np.array([len(s) for s in station_bins])
 
-    # Connecting line
-    ax1.plot(phase[order], mag[order], color="red", alpha=0.25, linewidth=0.8)
+    # Only plot bins with >= 5 stations
+    mask = station_count >= 5
 
-    # Uncertainty band (GP‑style)
-    ax1.fill_between(
-        phase[order],
-        mag[order] - mag_err[order],
-        mag[order] + mag_err[order],
-        color="#88c0ff",
-        alpha=0.25,
-        linewidth=0
+    # Sort valid points by phase
+    phase_valid = phase[mask]
+    mag_valid = mag[mask]
+    err_valid = mag_err[mask]
+
+    order = np.argsort(phase_valid)
+
+    # --- Scatter points ---
+    ax1.scatter(
+        phase_valid[order],
+        mag_valid[order],
+        s=10,
+        alpha=0.7,
+        color="black"
     )
 
+    # --- Vertical error bars ---
+    ax1.errorbar(
+        phase_valid[order],
+        mag_valid[order],
+        yerr=err_valid[order],
+        fmt='none',
+        ecolor='black',
+        elinewidth=0.8,
+        capsize=2,
+        alpha=0.6
+    )
+
+    # --- Faint orange connecting line (only between adjacent valid bins) ---
+
+    # After sorting:
+    ph = phase_valid[order]
+    mg = mag_valid[order]
+
+    # Find gaps: where the phase difference is large
+    # A gap means bins were removed by the station-count filter
+    gap_idx = np.where(np.diff(ph) > (2.0 / nbins) * 1.5)[0]
+
+    # Split into contiguous segments
+    start = 0
+    segments = []
+
+    for g in gap_idx:
+        segments.append((start, g + 1))
+        start = g + 1
+
+    # Add final segment
+    segments.append((start, len(ph)))
+
+    # Draw each contiguous segment separately
+    for s, e in segments:
+        if e - s > 1:  # need at least 2 points to draw a line
+            ax1.plot(
+                ph[s:e],
+                mg[s:e],
+                color="orange",
+                alpha=0.25,
+                linewidth=0.8,
+                zorder=0
+            )
+
+    # --- Axes formatting ---
     ax1.invert_yaxis()
-    ax1.set_ylabel("Mean magnitudes")
+    ax1.set_ylabel("Compensated magnitude")
     ax1.set_title(top_title, fontsize=10, color="#666666")
 
-    # Catalogue magnitude
+    # Catalogue magnitude line
     if cat_mag is not None and np.isfinite(cat_mag):
-        ax1.axhline(cat_mag, color="grey", linestyle=":", linewidth=1.0, alpha=0.5)
+        ax1.axhline(
+            y=cat_mag,
+            color="grey",
+            linestyle=":",
+            linewidth=1.0,
+            alpha=0.5
+        )
 
-    # Stretch Y‑axis
-    ymin = min(np.min(mag - mag_err), cat_mag if cat_mag else np.min(mag))
-    ymax = max(np.max(mag + mag_err), cat_mag if cat_mag else np.max(mag))
+    # Clamp y-axis to full variability of valid points
+    ymin = np.min(mag_valid - err_valid)
+    ymax = np.max(mag_valid + err_valid)
     ax1.set_ylim(ymax + 0.05, ymin - 0.05)
 
     # =========================================================
@@ -943,13 +1003,17 @@ def plotFoldedWithStations(det_phase_folded_binned, folded,
 
         # Sidecar text file
         with open(f"{full_path}.txt", "w") as fh:
-            fh.write("Contributing stations:\n")
-            fh.write(bottom_title + "\n")
-            fh.write("\nMedian SNR per bin:\n")
-            fh.write(str(median_snr) + "\n")
-            fh.write("\nCombined SNR per bin:\n")
-            fh.write(str(combined_snr) + "\n")
+            fh.write("Contributing stations (summary):\n")
+            fh.write(bottom_title + "\n\n")
 
+            fh.write("Station counts per phase bin:\n")
+            fh.write(str(station_counts) + "\n\n")
+
+            fh.write("Detection counts per phase bin:\n")
+            fh.write(str(det_counts) + "\n\n")
+
+            fh.write("Number of bins with >= 5 stations: ")
+            fh.write(str(np.sum(station_count >= 5)) + "\n")
 
 # ============================================================
 # Command-line interface
@@ -1237,7 +1301,7 @@ def main():
         det_phase_folded_binned = phaseBinFolded(det_folded, n_phase_bins=200)
 
         plotFoldedWithStations(det_phase_folded_binned, det_folded, cat_mag=cat_mag, titles=titles, base_name=base_name, output_dir=output_dir)
-
+        plotFoldedWithStations(det_phase_folded_binned, det_folded, cat_mag=cat_mag, titles=titles, base_name=star_name, output_dir=output_dir)
 
 
     print("Done.")

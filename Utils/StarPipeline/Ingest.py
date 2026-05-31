@@ -1692,12 +1692,14 @@ def discoverRemoteFiles(log, stations, username, host, port,
                         remote_processed_dir_template, postgresql_host="192.168.217.212",
                         min_interval_sec=1, target_interval_sec=3):
 
+
     filtered_files = []
 
     # Initialise cadence
     start_time = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
     next_allowed = start_time
     for idx, station in enumerate(stations, start=1):
+
         # Start of this iteration is the scheduled cadence time
         iteration_start = next_allowed
         remote_dir = remote_processed_dir_template.replace("stationID", station.lower())
@@ -1737,18 +1739,21 @@ def discoverRemoteFiles(log, stations, username, host, port,
         log.info(f"Processing station {idx}/{len(stations)}: {station} had {len(station_files)} file{plural}. Start / Completion {start_time.isoformat()} / {end_time.isoformat()} {seconds_per_download:.1f} sec/station")
 
         # Filter valid tars
+        valid_tars = []
         for file_name in station_files:
             if file_name.endswith("tar.bz2") and len(file_name.split("_")) == 5 and file_name.startswith(station.upper()) and "imgdata" not in file_name:
+                valid_tars.append(file_name)
                 filtered_files.append(file_name)
-        filtered_files = sortFilesByTime(filtered_files)
 
         with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
-            populateWorkQueue(conn, filtered_files, log)
+            populateWorkQueue(conn, valid_tars, log)
             conn.commit()
         next_allowed = iteration_start + datetime.timedelta(seconds=target_interval_sec)
 
         delay = (next_allowed - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
         time.sleep(max(min_interval_sec, delay))
+
+    filtered_files = sortFilesByTime(filtered_files)
 
     return filtered_files
 
