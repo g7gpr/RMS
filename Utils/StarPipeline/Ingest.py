@@ -426,16 +426,9 @@ def buildFrameRows(observation_dict, session_name):
         jd_mid = scale1e6(first_obs["jd"])
 
         quality_flags = observation_dict[fits_file][0]['flag']
-        median_absolute_deviation = scale1e6(observation_dict[fits_file][0]['mad'])
+        mad = scale1e6(observation_dict[fits_file][0]['mad'])
 
-        frame_rows.append((
-            frame_name,
-            session_name,
-            jd_mid,
-                frame_index,
-            quality_flags,
-            median_absolute_deviation
-        ))
+        frame_rows.append((frame_name, session_name, jd_mid, frame_index, quality_flags, mad))
 
     return frame_rows
 
@@ -502,16 +495,7 @@ def buildObservationRows(observation_dict, session_name, station_name):
 
             flags = obs["flag"]
 
-            observation_rows.append((
-                frame_name,       # TEXT
-                star_name,        # TEXT
-                mag_scaled,       # INTEGER (scaled)
-                snr_scaled,       # SMALLINT
-                flags,            # SMALLINT
-                session_name,     # TEXT
-                station_name,     # TEXT
-                jd_mid_scaled     # BIGINT (scaled)
-            ))
+            observation_rows.append((jd_mid_scaled, session_name, station_name, frame_name, star_name, mag_scaled, snr_scaled, flags))
 
     return observation_rows
 
@@ -634,28 +618,18 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
             # Insert observations
             cur.executemany("""
                 INSERT INTO observation (
-                    frame_name,
-                    star_name,
-                    y, x,
-                    intens_sum, ampltd, fwhm, bg_lvl, snr, nsatpx,
-                    mag, obs_mag_corrected, cat_mag, mag_err, mag_cor, ra, dec,
+                    jd_mid,
                     session_name,
                     station_name,
-                    jd_mid,
-                    flags, 
-                    mad,
-                    sun_angle, mean_curvature, max_curvature)
+                    frame_name,
+                    star_name,
+                    mag,
+                    snr,
+                    flags)
                     
-                VALUES (%s, %s,
-                        %s, %s,
-                        %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s,
-                        %s,        -- session_name
-                        %s,        -- station_name
-                        %s,
-                        %s,
-                        %s,
-                        %s, %s, %s, %s)
+                    
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        
                 ON CONFLICT DO NOTHING;
                 """, observation_rows)
 
@@ -1766,9 +1740,10 @@ def discoverRemoteFiles(log, stations, username, host, port,
         for file_name in station_files:
             if file_name.endswith("tar.bz2") and len(file_name.split("_")) == 5 and file_name.startswith(station.upper()) and "imgdata" not in file_name:
                 filtered_files.append(file_name)
+        filtered_files = sortFilesByTime(filtered_files)
 
         with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
-            populateWorkQueue(conn, filtered_files)
+            populateWorkQueue(conn, filtered_files, log)
             conn.commit()
         next_allowed = iteration_start + datetime.timedelta(seconds=target_interval_sec)
 
@@ -2130,198 +2105,8 @@ def fitMagModel(frame_list):
     a, b, c = coeffs
     return a, b, c
 
-def calstarRaDecToDict(config, local_config_path, local_platepar_path,
-                       local_recal_path, local_calstars_path,
-                       catalog_stars=None, auto_fit_on=False,
-                       diagnostic_video=False):
-    """
-    Parse CALSTARS, convert image coords to RA/Dec, match to catalog to get star
-    names, and return a minimal per-frame observation dict with raw values.
-    Heavy modelling (splines, mag surfaces, curvature, etc.) is removed.
-    """
 
-    ob_flag = Flags()
-    obs_con = cr.parse(local_config_path)
-    calstars_name = os.path.basename(local_calstars_path)
-
-    # --- Optional recal platepar JSON ---------------------------------------
-    if os.path.exists(local_recal_path):
-        try:
-            with open(local_recal_path, 'r') as fh:
-                pp_recal_json = json.load(fh)
-        except Exception:
-            pp_recal_json = None
-            log.info(f"{local_recal_path} was corrupted")
-    else:
-        pp_recal_json = None
-
-    # --- Base platepar ------------------------------------------------------
-    pp = Platepar()
-    pp.read(local_platepar_path)
-
-    # --- Load CALSTARS ------------------------------------------------------
-    calstar_return = readCALSTARS(os.path.dirname(local_calstars_path),
-                                  calstars_name)
-    if isinstance(calstar_return, bool):
-        log.info(f"{calstars_name} return boolean, file probably does not exist")
-        return {}, 0, 0
-    else:
-        calstar, chunk = calstar_return
-
-    if not len(calstar):
-        log.info(f"No entries in calstar file for {calstars_name}")
-        return {}, 0, 0
-
-    # --- Start/end JD for metadata -----------------------------------------
-    dt = FFfile.getMiddleTimeFF(calstar[0][0], obs_con.fps,
-                                ret_milliseconds=True, ff_frames=256)
-    start_jd = date2JD(*dt)
-
-    dt = FFfile.getMiddleTimeFF(calstar[-1][0], obs_con.fps,
-                                ret_milliseconds=True, ff_frames=256)
-    end_jd = date2JD(*dt)
-
-    # --- Precompute moon/night flags per FITS file --------------------------
-    fits_files = [entry[0] for entry in calstar]
-    fits_files_without_moon = detectMoon(fits_files, pp, obs_con)
-    astronomical_night_list, _, _, _ = minSunBelowHorizon(
-        fits_files, obs_con, sun_angle=-18
-    )
-
-    # --- Catalog interface --------------------------------------------------
-    # Assuming global or passed-in catalog object `cat`
-    # radius for matching based on platepar
-    pixel_scale_h = pp.fov_h / pp.X_res
-    pixel_scale_v = pp.fov_v / pp.Y_res
-    pixel_scale = max(pixel_scale_h, pixel_scale_v)
-    radius_deg = pixel_scale * 5
-
-    observation_dict = {}
-
-    for (fits_file, star_list), sun_below_horizon_angle in zip(
-            calstar, astronomical_night_list):
-
-        # Per-frame JD
-        dt = FFfile.getMiddleTimeFF(fits_file, obs_con.fps,
-                                    ret_milliseconds=True, ff_frames=256)
-        jd = date2JD(*dt)
-
-        # Apply per-frame recal platepar if present
-        if pp_recal_json is not None and fits_file in pp_recal_json:
-            pp.loadFromDict(pp_recal_json[fits_file])
-
-        # --- Flags ----------------------------------------------------------
-        flags = 0
-
-        if fits_file not in fits_files_without_moon:
-            flags |= ob_flag.MOON_IN_FOV
-        else:
-            flags &= ~ob_flag.MOON_IN_FOV
-
-        if fits_file not in astronomical_night_list:
-            flags |= ob_flag.SKY_NOT_FULLY_DARK
-        else:
-            flags &= ~ob_flag.SKY_NOT_FULLY_DARK
-
-        if len(star_list) < 40:
-            flags |= ob_flag.FEW_STARS
-        else:
-            flags &= ~ob_flag.FEW_STARS
-
-        # --- Convert star_list to arrays -----------------------------------
-        if not len(star_list):
-            continue
-
-        stars = np.array(star_list, dtype=float)
-        # y, x, intensity, ampltd, fwhm, bg_lvl, snr, nsatpx
-        arr_obs_y, arr_obs_x, arr_intens = stars[:, 0], stars[:, 1], stars[:, 2]
-        arr_snr = stars[:, 6]
-
-        arr_jd = np.full_like(arr_obs_x, jd, dtype=float)
-
-        # --- Image coords → RA/Dec + instrumental mag ----------------------
-        _arr_jd, arr_obs_ra, arr_obs_dec, arr_obs_mag = xyToRaDecPP(
-            arr_jd, arr_obs_x, arr_obs_y, arr_intens, pp,
-            jd_time=True, measurement=True,
-            precompute_pointing_corr=True, extinction_correction=True
-        )
-
-        # --- Catalog query to get star names --------------------------------
-        results_query_list = cat.queryRaDec(
-            arr_obs_ra, arr_obs_dec, n_brightest=1, radius_deg=radius_deg
-        )
-
-        # Mask bad matches and large mag errors
-        masked_results_list = []
-        for match, mag_obs in zip(results_query_list, arr_obs_mag):
-
-            if match is None:
-                masked_results_list.append(None)
-                continue
-
-            try:
-                name, ra_c, dec_c, mag_cat, theta = match[0]
-            except Exception:
-                masked_results_list.append(None)
-                continue
-
-            if not np.isfinite(mag_cat) or not np.isfinite(mag_obs):
-                masked_results_list.append(None)
-                continue
-
-            mag_err = mag_obs - mag_cat
-            if abs(mag_err) > 1.0:
-                masked_results_list.append(None)
-            else:
-                masked_results_list.append(match)
-
-        arr_star_name = np.array(
-            [r[0][0] if r is not None else None for r in masked_results_list],
-            dtype=object
-        )
-
-        # Drop duplicate star names within the frame
-        counts = Counter(arr_star_name)
-        duplicated_star_names = {name for name, c in counts.items()
-                                 if name is not None and c > 1}
-        dup_indices = set(np.where(
-            np.isin(arr_star_name, list(duplicated_star_names))
-        )[0])
-
-        # --- Build minimal per-star entries ---------------------------------
-        frame_entries = []
-        for i, (match, o_mag, o_snr, o_intens) in enumerate(
-                zip(masked_results_list, arr_obs_mag, arr_snr, arr_intens)):
-
-            if i in dup_indices:
-                continue
-
-            if o_intens <= 0:
-                continue
-
-            if match is None:
-                name = None
-            else:
-                name = match[0][0]
-
-            # We *need* named stars for folding/aggregation; skip unnamed
-            if name is None:
-                continue
-
-            frame_entries.append({
-                "name": name,
-                "obs_mag": float(o_mag),   # raw instrumental mag
-                "snr": float(o_snr),       # raw SNR (or -1 sentinel)
-                "flag": flags,
-                "jd": float(jd)
-            })
-
-        observation_dict[fits_file] = frame_entries
-
-    return observation_dict, start_jd, end_jd
-
-
-def calstarRaDecToDictOld(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None, auto_fit_on=False, diagnostic_video=False):
+def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None, auto_fit_on=False, diagnostic_video=False):
     """
       Parses a calstar data structures in archived directories path,
       converts to RaDec, corrects magnitude data and writes newer data to database
@@ -2577,12 +2362,7 @@ def calstarRaDecToDictOld(config, local_config_path, local_platepar_path, local_
             log.warning(f"Spline could not be built for {fits_file}")
             flags |= ob_flag.SPLINE_NOT_BUILT
 
-
-
-
-        mean_absolute_deviation = np.median(np.abs(arr_cat_mag - arr_obs_mag))
-
-        if mean_absolute_deviation > 0.2:
+        if mad > 0.2:
             flags |= ob_flag.BAD_MAD
         else:
             flags &= ~ob_flag.BAD_MAD
@@ -2652,7 +2432,7 @@ def calstarRaDecToDictOld(config, local_config_path, local_platepar_path, local_
 
                 "pixel_scale_h": pixel_scale_h,
                 "pixel_scale_v": pixel_scale_v,
-                "mad": mean_absolute_deviation,
+                "mad": mad,
                 "sun_angle": sun_below_horizon_angle,
                 "mean_curvature": mean_curvature,
                 "max_curvature": max_curvature,
@@ -2743,11 +2523,15 @@ def resetIngestion(conn, local_calstars_path, ingestion_marker):
             archiveCalstarDirectories(conn, local_calstars_path, [os.path.basename(calstar_path)], ingested_only=False)
             pass
 
-def populateWorkQueue(conn, file_name_list):
+def populateWorkQueue(conn, file_name_list, log):
     """
     Insert each remote filename into ingest_work with ON CONFLICT DO NOTHING.
     This is the correct simplified version for station-by-station housekeeping.
     """
+
+    log.info(f"Sorting {len(file_name_list)} files by time")
+    file_name_list = sortFilesByTime(file_name_list)
+
 
     now = datetime.datetime.now(tz=datetime.timezone.utc)
     now_jd_int = scale1e6(date2JD(
@@ -2756,6 +2540,7 @@ def populateWorkQueue(conn, file_name_list):
         now.microsecond / 1000
     ))
 
+    log.info("Starting write")
     with conn.cursor() as cur:
 
         for file_name in file_name_list:
@@ -2783,7 +2568,8 @@ def populateWorkQueue(conn, file_name_list):
                 ON CONFLICT (remote_filename) DO NOTHING;
             """, (file_name, jd_int))
 
-    conn.commit()
+        log.info("Commiting work queue from cache")
+        conn.commit()
 
 
 
@@ -2859,11 +2645,28 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=21, 
             log.info(f"{remote_file} {size_mb:.1f}MB rate {cumulative_mb_s:.1f}MB/s estimated cache download completion time {completion_time_str} {files_downloaded}/{files_to_download}")
     return
 
+
+def populateWorkQueueFromJson(log, file_path, postgresql_host):
+
+    file_path = os.path.expanduser(file_path)
+    with open(file_path, "r") as fh:
+        data = json.load(fh)
+
+    file_name_list = [entry["file_name"] for entry in data]
+
+
+    with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
+        populateWorkQueue(conn, file_name_list, log)
+        conn.commit()
+
+
 def getRemoteFileList(log, user, hostname, port=22, path_template="/home/stationID/files/incoming/processed", country_code=""):
 
+    populateWorkQueueFromJson(log, "/mnt/rms/cache/RMS_data/remotefiles.json", "192.168.217.212")
     station_list = getStationList(log, country_code=country_code)
     remote_files = discoverRemoteFiles(log, station_list, user, hostname, 22, remote_processed_dir_template=path_template)
-    saveRemoteFiles(log, remote_files, os.path.expanduser("~/RMS_data/remotefiles.json"))
+    remote_files = sortFilesByTime(remote_files)
+    saveRemoteFiles(log, remote_files, os.path.expanduser("/mnt/rms/cache/RMS_data/remotefiles.json"))
 
 
 if __name__ == "__main__":
@@ -2988,7 +2791,7 @@ if __name__ == "__main__":
                 #saveRemoteFiles(remote_files, os.path.expanduser("~/RMS_data/remotefiles.json"))
                 remote_files = loadRemoteFiles(os.path.expanduser("~/RMS_data/remotefiles.json"))
                 remote_files_sorted = sortFilesByTime(remote_files)
-                populateWorkQueue(conn, remote_files_sorted)
+                populateWorkQueue(conn, remote_files_sorted, log)
                 log.info("Table populated")
 
             if force_error:
