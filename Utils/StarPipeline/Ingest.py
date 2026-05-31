@@ -2540,6 +2540,7 @@ def populateWorkQueue(conn, file_name_list, log):
         now.microsecond / 1000
     ))
 
+    log.info("Starting write")
     with conn.cursor() as cur:
 
         for file_name in file_name_list:
