@@ -28,9 +28,6 @@ if __name__ == "__main__":
 
 
     createDatabaseIfMissing(conn)
-    initialiseDatabase(conn)
-
-
     getRemoteFileList(log, "analysis", "gmn.uwo.ca", path_template="/home/stationID/files/processed")
     repairMissingCacheEntries(log, conn, cache_root)
     resetStalledJobs(log, conn)

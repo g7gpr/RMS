@@ -718,6 +718,7 @@ def createDatabaseIfMissing(conn):
 
         if not exists:
             cur.execute("CREATE DATABASE star_data;")
+            initialiseDatabase(conn)
 
 def initialiseDatabase(conn):
     createIngestUserIfMissing(conn)

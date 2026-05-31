@@ -2649,6 +2649,10 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=21, 
 def populateWorkQueueFromJson(log, file_path, postgresql_host):
 
     file_path = os.path.expanduser(file_path)
+
+    if not os.path.exists(file_path):
+        return
+
     with open(file_path, "r") as fh:
         data = json.load(fh)
 
