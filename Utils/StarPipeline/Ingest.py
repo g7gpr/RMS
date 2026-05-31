@@ -2529,7 +2529,8 @@ def populateWorkQueue(conn, file_name_list, log):
     This is the correct simplified version for station-by-station housekeeping.
     """
 
-    log.info(f"Sorting {len(file_name_list)} files by time")
+    file_count = len(file_name_list)
+    log.info(f"Sorting {file_count} files by time")
     file_name_list = sortFilesByTime(file_name_list)
 
 
@@ -2541,10 +2542,20 @@ def populateWorkQueue(conn, file_name_list, log):
     ))
 
     log.info("Starting write")
+
     with conn.cursor() as cur:
-
+        i, step = 0, 1000
+        start_time = datetime.datetime.now(tz=datetime.timezone.utc)
         for file_name in file_name_list:
+            i += 1
 
+            if i % step == 0:
+                now = datetime.datetime.now(tz=datetime.timezone.utc)
+                time_elapsed_seconds = (now - start_time).total_seconds()
+                jobs_remaining = file_count - i
+                completion_time = now + datetime.timedelta(seconds = jobs_remaining * (time_elapsed_seconds / i))
+                step *= 2
+                log.info(f"Commited {i} of {file_count} files completion time is {completion_time}")
             # Compute JD for this file
             dt = FFfile.getMiddleTimeFF(
                 file_name, fps=25,
