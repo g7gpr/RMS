@@ -348,7 +348,6 @@ def visualiseSpline3d(x, y, r_norm, spline, fits_file):
     plt.savefig(output_file, dpi=150)
     plt.close(fig)
 
-
 def countKnots(spline):
     """
     Return (nx, ny) = number of knots in x and y.
@@ -360,7 +359,6 @@ def countKnots(spline):
 def splineIsValid(spline):
     nx, ny = countKnots(spline)
     return nx >= 4 and ny >= 4
-
 
 def splineCurvatureMetric(spline, x_range, y_range, n=40):
     x_grid = np.linspace(*x_range, n)
@@ -378,7 +376,6 @@ def splineCurvatureMetric(spline, x_range, y_range, n=40):
 
     curvature = np.sqrt(d2x**2 + d2y**2)
     return np.mean(curvature), np.max(curvature)
-
 
 def scale1e6(value):
     # Pass through None
@@ -467,44 +464,43 @@ def buildObservationRows(observation_dict, session_name, station_name):
 
     for fits_file, frame_list in observation_dict.items():
         frame_name = extractFrameName(fits_file)
-        #log.info(f"Building observation row for frame {frame_name}")
+
         if len(frame_list) == 0:
             continue
+
         frame_jd_mid = scale1e6(frame_list[0]["jd"])
 
-        # frame_list is now a list of observation dicts
         for obs in frame_list:
-            if obs["name"] is None:
+            star_name = obs["name"]
+            if star_name is None:
                 continue
+
+            mag = scale1e6(obs["obs_mag"])
+            raw_snr = obs["snr"]
+
+            if raw_snr < 0:
+                snr_scaled = -100
+            else:
+                if raw_snr > 327.67:
+                    raise ValueError(f"SNR {raw_snr} exceeds SMALLINT range after scaling")
+                snr_scaled = int(round(raw_snr * 100))
+
+            flags = obs["flag"]
+
             observation_rows.append((
                 frame_name,
-                obs["name"],
-                scale1e6(obs["obs_y"]),
-                scale1e6(obs["obs_x"]),
-                obs["intens_sum"],
-                obs["ampltd"],
-                scale1e6(obs["fwhm"]),
-                obs["bg_lvl"],
-                scale1e6(obs["snr"]),
-                obs["nsatpx"],
-                scale1e6(obs["obs_mag"]),
-                scale1e6(obs["obs_mag_corrected"]),
-                scale1e6(obs["cat_mag"]),
-                scale1e6(obs["err_mag"]),
-                scale1e6(obs["cor_mag"]),
-                scale1e6(obs["obs_ra"]),
-                scale1e6(obs["obs_dec"]),
+                star_name,
+                mag,
+                snr_scaled,
+                flags,
                 session_name,
                 station_name,
-                frame_jd_mid,
-                obs["flag"],
-                scale1e6(obs["mad"]),
-                scale1e3(obs["sun_angle"]),
-                scale1e6(obs["mean_curvature"]),
-                scale1e6(obs["max_curvature"])
+                frame_jd_mid
             ))
 
     return observation_rows
+
+
 
 def buildAllRows(observation_dict, session_name):
     frame_rows = buildFrameRows(observation_dict, session_name)
@@ -2788,6 +2784,7 @@ if __name__ == "__main__":
             with psycopg.connect(host=postgresql_host, dbname="star_data", user="postgres") as postgress_conn:
                 createDatabaseIfMissing(postgress_conn)
                 initialiseDatabase(postgress_conn)
+                sys.exit()
 
         with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as conn:
 

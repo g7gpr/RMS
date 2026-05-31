@@ -1,12 +1,12 @@
-from RMS.Logger import LoggingManager, getLogger
-
 import RMS.ConfigReader as cr
 import os
 import psycopg
-
 import socket
+import logging
+from pathlib import Path
+from RMS.Logger import LoggingManager, getLogger
 
-import tqdm
+log = logging.getLogger(__name__)
 
 
 # Constants
@@ -80,7 +80,6 @@ def createStationTable(conn):
         cur.execute(sql)
     conn.commit()
 
-
 def createCalstarFilesTable(conn):
     sql = """
           CREATE TABLE IF NOT EXISTS calstar_files \
@@ -96,7 +95,6 @@ def createCalstarFilesTable(conn):
     with conn.cursor() as cur:
         cur.execute(sql)
     conn.commit()
-
 
 def createSessionTable(conn):
     sql = """CREATE TABLE IF NOT EXISTS session \
@@ -137,7 +135,6 @@ def createSessionTable(conn):
         cur.execute(sql)
     conn.commit()
 
-
 def createFrameTable(conn):
     sql = """
           CREATE TABLE IF NOT EXISTS frame \
@@ -162,7 +159,6 @@ def createFrameTable(conn):
     with conn.cursor() as cur:
         cur.execute(sql)
     conn.commit()
-
 
 def createStarTable(conn):
     sql = """
@@ -194,53 +190,28 @@ def createStarTable(conn):
         cur.execute(sql)
     conn.commit()
 
-
 def createObservationTable(conn):
 
-
     with conn.cursor() as cur:
+        # If the table already exists, do nothing
         cur.execute("SELECT to_regclass('public.observation');")
         if cur.fetchone()[0] is not None:
             return
 
         sql = """
-                CREATE TABLE observation (
-        obs_id BIGSERIAL,
-        jd_mid BIGINT,
-        session_name TEXT REFERENCES session(session_name),
-        station_name TEXT,
-        frame_name TEXT REFERENCES frame(frame_name),
-        star_name TEXT,
-    
-        y INTEGER,
-        x INTEGER,
-        intens_sum INTEGER,
-        ampltd INTEGER,
-        fwhm INTEGER,
-        bg_lvl INTEGER,
-        snr INTEGER,
-        nsatpx SMALLINT,
-    
-        mag INTEGER,
-        obs_mag_corrected INTEGER,
-        cat_mag INTEGER,
-        mag_err INTEGER,
-        mag_cor INTEGER,
-        sun_angle INTEGER,
-        mean_curvature INTEGER,
-        max_curvature INTEGER,
-    
-        ra INTEGER,
-        dec INTEGER,
-    
-        flags SMALLINT,
-        mad INTEGER,
-    
-        PRIMARY KEY (star_name, jd_mid)
-    )
-    PARTITION BY HASH (star_name);
-    
-    
+            CREATE TABLE observation (
+                obs_id BIGSERIAL,
+                jd_mid BIGINT NOT NULL,
+                session_name TEXT NOT NULL REFERENCES session(session_name),
+                station_name TEXT NOT NULL,
+                frame_name TEXT NOT NULL REFERENCES frame(frame_name),
+                star_name TEXT NOT NULL,
+                mag INTEGER NOT NULL,
+                snr INTEGER NOT NULL,
+                flags SMALLINT NOT NULL,
+                PRIMARY KEY (star_name, jd_mid)
+            )
+            PARTITION BY HASH (star_name);
         """
 
         cur.execute(sql)
@@ -256,8 +227,6 @@ def createObservationTable(conn):
             )
 
     conn.commit()
-
-
 
 def createSpatialModelTable(conn):
     """
@@ -314,7 +283,6 @@ def createSpatialModelTable(conn):
 
     conn.commit()
 
-
 def createObservationIndexes(conn):
     with conn.cursor() as cur:
         # JD-only index (already have)
@@ -323,11 +291,6 @@ def createObservationIndexes(conn):
                         ON observation (jd_mid);
                     """)
 
-        # JD + RA + DEC (already have)
-        cur.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_observation_jd_ra_dec
-                        ON observation (jd_mid, ra, dec);
-                    """)
 
         # Frame-level lookups (CRITICAL)
         cur.execute("""
@@ -348,8 +311,6 @@ def createObservationIndexes(conn):
                     """)
 
         conn.commit()
-
-
 
 def createIngestWorkTable(conn):
         ddl = """
@@ -378,7 +339,6 @@ def markJobDone(conn, remote_filename):
         )
     conn.commit()
 
-
 def markJobError(conn, remote_filename, msg):
     with conn.cursor() as cur:
         cur.execute(
@@ -404,12 +364,6 @@ def jobsRemaining(conn):
 def extractStub(name):
     parts = name.split("_")
     return "_".join(parts[:4])
-
-
-from pathlib import Path
-import logging
-
-log = logging.getLogger(__name__)
 
 def extractStub(name):
     parts = name.split("_")
@@ -464,10 +418,6 @@ def repairMissingCacheEntries(log, conn, cache_root):
             cur.execute(sql_reset, (missingFile,))
 
         conn.commit()
-
-
-
-
 
 def getNextErrorJob(conn):
     """
@@ -587,8 +537,6 @@ def claimNextJob(conn, force_job=None, dry_run=False):
 
     return row if row else None
 
-
-
 def resetStalledJobs(log, conn, this_machine=False):
     """
     Reset any jobs that have been claimed for more than 30 minutes.
@@ -617,7 +565,6 @@ def resetStalledJobs(log, conn, this_machine=False):
         cur.execute(sql, params)
     conn.commit()
 
-
 def createRejectedFrameTable(conn):
     sql = """
             CREATE TABLE IF NOT EXISTS rejected_frame (
@@ -639,8 +586,6 @@ def createRejectedFrameTable(conn):
         cur.execute(sql)
     conn.commit()
 
-
-
 def createAllTables(conn):
     createStationTable(conn)
     createSessionTable(conn)
@@ -652,17 +597,14 @@ def createAllTables(conn):
     createIngestWorkTable(conn)
     createRejectedFrameTable(conn)
 
-
 def createAllIndexes(conn):
     createObservationIndexes(conn)
-
 
 def revokeCreatesIngestUser(conn):
     with conn.cursor() as cur:
         cur.execute("REVOKE CREATE ON DATABASE star_data FROM ingest_user;")
         cur.execute("REVOKE CREATE ON SCHEMA public FROM ingest_user;")
     conn.commit()
-
 
 def createIngestUserIfMissing(conn):
     with conn.cursor() as cur:
@@ -676,7 +618,6 @@ def createIngestUserIfMissing(conn):
             cur.execute("CREATE ROLE ingest_user LOGIN;")
 
     conn.commit()
-
 
 def grantIngestUserPrivileges(conn):
     with conn.cursor() as cur:
@@ -696,7 +637,6 @@ def grantIngestUserPrivileges(conn):
         """)
 
     conn.commit()
-
 
 def auditIngestUserPrivileges(conn):
     print("\n=== INGEST USER PRIVILEGE AUDIT ===")
@@ -750,7 +690,6 @@ def auditIngestUserPrivileges(conn):
 
     print("=== END AUDIT ===\n")
 
-
 def ensureCalstarFilePrivileges(conn):
     """Ensure ingest_user has the privileges required for ON CONFLICT DO UPDATE."""
     with conn.cursor() as cur:
@@ -759,18 +698,15 @@ def ensureCalstarFilePrivileges(conn):
         cur.execute("GRANT UPDATE (ingestion_time) ON public.calstar_files TO ingest_user;")
     conn.commit()
 
-
 def grantSequencePrivileges(conn):
     with conn.cursor() as cur:
         cur.execute("GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ingest_user;")
     conn.commit()
 
-
 def setIngestUserSearchPath(conn):
     with conn.cursor() as cur:
         cur.execute("ALTER ROLE ingest_user SET search_path = public;")
     conn.commit()
-
 
 def createDatabaseIfMissing(conn):
     # Connect to the default database
@@ -783,7 +719,6 @@ def createDatabaseIfMissing(conn):
 
         if not exists:
             cur.execute("CREATE DATABASE star_data;")
-
 
 def initialiseDatabase(conn):
     createIngestUserIfMissing(conn)
