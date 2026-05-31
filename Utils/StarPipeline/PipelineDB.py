@@ -291,7 +291,6 @@ def createObservationIndexes(conn):
                         ON observation (jd_mid);
                     """)
 
-
         # Frame-level lookups (CRITICAL)
         cur.execute("""
                     CREATE INDEX IF NOT EXISTS idx_observation_frame_name
