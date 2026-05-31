@@ -2555,7 +2555,7 @@ def populateWorkQueue(conn, file_name_list, log):
                 jobs_remaining = file_count - i
                 completion_time = (now + datetime.timedelta(seconds = jobs_remaining * (time_elapsed_seconds / i))).replace(microsecond=0)
                 step *= 2
-                log.info(f"Commited {i} of {file_count} files completion time is {completion_time}")
+                log.info(f"Prepared {i} of {file_count} files completion time is {completion_time}")
             # Compute JD for this file
             dt = FFfile.getMiddleTimeFF(
                 file_name, fps=25,
@@ -2579,9 +2579,9 @@ def populateWorkQueue(conn, file_name_list, log):
                 ON CONFLICT (remote_filename) DO NOTHING;
             """, (file_name, jd_int))
 
-
+        log.info("Starting commit")
         conn.commit()
-
+        log.info("Commit completed")
 
 
 def archiveWholeDir(full_path_to_dir, verbose=False):
