@@ -116,41 +116,48 @@ def lookupCatalogueStar(conn, star_name):
 
 
 
-def binDetections(det, bin_seconds=10.24*10):
+def binDetections(det, bin_seconds=10.24 * 10):
     jd      = det["jd"]
     mag     = det["mag"]
     snr     = det["snr"]
     station = det["station"]
 
-    # --- Compute bin indices ------------------------------------------------
+    # ---------------------------------------------------------
+    # Compute bin indices
+    # ---------------------------------------------------------
     dt_days = bin_seconds / 86400.0
     jd0 = jd.min()
     bin_index = np.floor((jd - jd0) / dt_days).astype(int)
 
-    # Compact bin indices (0..nbins-1)
     unique_bins, inv = np.unique(bin_index, return_inverse=True)
     nbins = len(unique_bins)
 
-    # --- Convert magnitudes to flux ----------------------------------------
+    # ---------------------------------------------------------
+    # Convert magnitudes to flux
+    # ---------------------------------------------------------
     flux = 10 ** (-0.4 * mag)
 
-    # Identify valid SNR
-    snr_valid = snr > 0
-
+    # ---------------------------------------------------------
     # Preallocate outputs
-    mag_mean      = np.zeros(nbins)
-    mag_err_mean  = np.zeros(nbins)
-    jd_mean       = np.zeros(nbins)
-    n_det         = np.zeros(nbins, int)
-    station_bins  = []
+    # ---------------------------------------------------------
+    mag_mean     = np.zeros(nbins)
+    mag_err_mean = np.zeros(nbins)
+    jd_mean      = np.zeros(nbins)
+    n_det        = np.zeros(nbins, int)
+    station_bins = []
 
-    # --- Vectorised JD mean -------------------------------------------------
+    # ---------------------------------------------------------
+    # Vectorised JD mean and detection counts
+    # ---------------------------------------------------------
     jd_sum = np.bincount(inv, weights=jd, minlength=nbins)
     counts = np.bincount(inv, minlength=nbins)
-    jd_mean = jd_sum / counts
-    n_det = counts
 
-    # --- Loop only over bins for station lists + error model ---------------
+    jd_mean = jd_sum / counts
+    n_det   = counts
+
+    # ---------------------------------------------------------
+    # Loop over bins for station lists + error model
+    # ---------------------------------------------------------
     for b in range(nbins):
         idx = np.where(inv == b)[0]
         if len(idx) == 0:
@@ -159,15 +166,19 @@ def binDetections(det, bin_seconds=10.24*10):
             mag_err_mean[b] = np.nan
             continue
 
-        # Stations
-        station_bins.append(np.unique(station[idx]))
+        # Stations in this bin
+        stations_bin = station[idx]
+        station_bins.append(np.unique(stations_bin))
 
         flux_bin = flux[idx]
         mag_bin  = mag[idx]
         snr_bin  = snr[idx]
-        snr_ok   = snr_bin > 0
 
-        # --- CASE 1: SNR AVAILABLE -----------------------------------------
+        snr_ok = snr_bin > 0
+
+        # -----------------------------------------------------
+        # CASE 1 — SNR AVAILABLE: weighted flux mean
+        # -----------------------------------------------------
         if np.any(snr_ok):
             flux_ok = flux_bin[snr_ok]
             snr_ok_vals = snr_bin[snr_ok]
@@ -182,18 +193,29 @@ def binDetections(det, bin_seconds=10.24*10):
             mag_mean[b] = -2.5 * np.log10(flux_mean)
             mag_err_mean[b] = (2.5 / np.log(10)) * (sigma_flux / flux_mean)
 
-        # --- CASE 2: NO SNR USE VARIANCE MODEL ---------------------------
+        # -----------------------------------------------------
+        # CASE 2 — NO SNR: variance/RMS fallback
+        # -----------------------------------------------------
         else:
             flux_mean = np.mean(flux_bin)
             mag_mean[b] = -2.5 * np.log10(flux_mean)
 
             # RMS scatter of magnitudes
             mag_mean_bin = mag_mean[b]
-            if len(mag_bin) > 5:
-                pass
-            rms = np.sqrt(np.mean((mag_bin - mag_mean_bin)**2))
-            mag_err_mean[b] = rms / np.sqrt(len(idx))
+            rms = np.sqrt(np.mean((mag_bin - mag_mean_bin) ** 2))
 
+            # Effective N: stations matter more than repeated frames
+            unique_stations, counts_per_station = np.unique(stations_bin, return_counts=True)
+            n_eff = np.sum(np.sqrt(counts_per_station))
+
+            if n_eff > 0:
+                mag_err_mean[b] = rms / np.sqrt(n_eff)
+            else:
+                mag_err_mean[b] = np.nan
+
+    # ---------------------------------------------------------
+    # Return structure
+    # ---------------------------------------------------------
     return {
         "jd": jd_mean,
         "mag": mag_mean,
@@ -296,7 +318,7 @@ def loadDetections(conn, jd_start, jd_end, star_name=None):
         {where_clause}
     """
 
-    print(sql, params)
+
     with conn.cursor() as cur:
         cur.execute(sql, params)
         rows = cur.fetchall()
@@ -693,7 +715,7 @@ def plotFoldedWithStationsOld(det_phase_folded_binned, folded, cat_mag=None, bas
         zorder=0
     )
 
-    ax1.errorbar(phase, mag, yerr=mag_err[order], fmt='none', ecolor='#88c0ff', alpha=0.1)
+    # ax1.errorbar(phase, mag, yerr=mag_err[order], fmt='none', ecolor='#88c0ff', alpha=0.1)
 
     # =========================================================
     #  STATION PARTICIPATION PANEL (ax2)
@@ -858,21 +880,23 @@ def plotFoldedWithStations(det_phase_folded_binned, folded,
     ax1.scatter(
         phase_valid[order],
         mag_valid[order],
-        s=10,
-        alpha=0.7,
-        color="black"
+        s=6,
+        alpha=0.5,
+        color="orange"
     )
 
     # --- Vertical error bars ---
+
+
     ax1.errorbar(
         phase_valid[order],
         mag_valid[order],
         yerr=err_valid[order],
         fmt='none',
-        ecolor='black',
-        elinewidth=0.8,
-        capsize=2,
-        alpha=0.6
+        ecolor='orange',
+        elinewidth=0.5,
+        alpha=0.25,
+        capsize=0
     )
 
     # --- Faint orange connecting line (only between adjacent valid bins) ---
@@ -1292,12 +1316,13 @@ def main():
 
     #plotCorrectedLightCurve(det, base_name=args.output_name, cat_mag=cat_mag)
     print("Binning detections")
-    det_binned = binDetections(det_corr, bin_seconds=5)
+    det_binned = binDetections(det_corr, bin_seconds=256/25)
     #plotCorrectedLightCurve(det_binned, base_name=args.output_name, cat_mag = cat_mag)
 
     print("Plotting")
     if cml_args.period_days is not None:
         det_folded = foldLightCurve(det_binned, det, cml_args.period_days)
+        n_phase_bins = int(np.floor(cml_args.period_days * 24 * 3600 / (256 / 25)))
         det_phase_folded_binned = phaseBinFolded(det_folded, n_phase_bins=200)
 
         plotFoldedWithStations(det_phase_folded_binned, det_folded, cat_mag=cat_mag, titles=titles, base_name=base_name, output_dir=output_dir)

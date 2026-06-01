@@ -708,6 +708,8 @@ def extractCalstarArchives(root, archives_list, remove_archives=True):
                 top_levels = {m.name.split("/")[0] for m in tar.getmembers() if m.name}
                 tar.extractall(root)
                 if output_dir.exists():
+                    # Make the directory world writeable, so that any worker can delete
+                    os.chmod(output_dir, 0o777)
                     output_dir_list.append(output_dir)
                     for dirpath, dirnames, filenames in os.walk(output_dir):
                         os.chmod(dirpath, 0o777)
