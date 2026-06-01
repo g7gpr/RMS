@@ -1606,6 +1606,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
         session_name = extractSessionNameFromCalstar(local_calstars_path)
         frame_rows, star_rows, observation_rows = buildAllRows(observation_session_dict, session_name)
 
+        database_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
         writeSessionBatch(
             conn,
             session_name=session_name,
@@ -1621,8 +1622,9 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
         )
 
         processing_end_time = datetime.datetime.now(tz=datetime.timezone.utc)
+        database_time_seconds = (processing_end_time - database_start_time).total_seconds()
         processing_time_seconds = (processing_end_time - processing_start_time).total_seconds()
-        log.info(f"Write completed for {session_name} in {processing_time_seconds:.1f} seconds")
+        log.info(f"Write completed for {session_name} in {processing_time_seconds:.1f} seconds of which {database_time_seconds} seconds were conumser by postgres")
 
 
     # Put back in an archive in all cases
