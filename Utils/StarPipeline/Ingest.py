@@ -638,7 +638,7 @@ def writeSessionBatch(conn, session_name, station_id, start_jd, end_jd, pixel_sc
     except Exception:
         conn.rollback()
         raise
-    log.info("Write completed")
+
     return observation_count
 
 def ensureList(value):
@@ -1544,6 +1544,8 @@ def runParallel(remote_station_processed_dir=None, username=None, host=None,
 def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=None, username=None, host=None, port=None,
                       calstars_data_full_path=None, write_db=True, catalog_stars=None, bw_limit=None):
 
+
+    processing_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
     station_name = remote_file.split("_")[0]
     remote_dir = remote_station_processed_dir.replace("stationID", station_name.lower())
 
@@ -1618,7 +1620,9 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
             session_config=observation_session_config
         )
 
-
+        processing_end_time = datetime.datetime.now(tz=datetime.timezone.utc)
+        processing_time_seconds = (processing_end_time - processing_start_time).total_seconds()
+        log.info(f"Write completed for {session_name} in {processing_time_seconds:.1f} seconds")
 
 
     # Put back in an archive in all cases

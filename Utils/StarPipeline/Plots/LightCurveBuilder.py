@@ -976,7 +976,7 @@ def plotFoldedWithStations(det_phase_folded_binned, folded,
     ax2b.plot(
         bin_centers,
         det_counts,
-        "o",
+        "+",
         markersize=4,
         color="black",
         alpha=0.8,
