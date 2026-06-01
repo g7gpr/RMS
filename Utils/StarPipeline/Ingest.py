@@ -476,7 +476,7 @@ def buildObservationRows(observation_dict, session_name, station_name):
                 continue
 
             # --- Magnitude scaling (float → scaled int) ----------------------
-            mag_raw = obs["obs_mag"]
+            mag_raw = obs["mag_comp"]
             mag_scaled = scale1e6(mag_raw)
 
             # --- SNR scaling (float → SMALLINT) ------------------------------
@@ -2089,34 +2089,56 @@ def plotMagScatter(frame_list, title=None, height_px=1440, width_px=2560, dpi=10
     fig.tight_layout()
     return fig
 
-def fitMagModel(frame_list):
+def fitMagModelQuadratic(frame_list):
     cat_mag = []
     obs_mag = []
-    fwhm = []
-    n_sat = []
 
     for s in frame_list:
         if s["cat_mag"] is not None and s["obs_mag"] is not None:
             cat_mag.append(s["cat_mag"])
             obs_mag.append(s["obs_mag"])
-            fwhm.append(s["fwhm"])
-            n_sat.append(s["nsatpx"])
 
     if len(cat_mag) < 3:
         return None  # not enough stars
 
     cat_mag = np.array(cat_mag)
     obs_mag = np.array(obs_mag)
-    fwhm = np.array(fwhm)
-    n_sat = np.array(n_sat)
 
     delta_mag = obs_mag - cat_mag
 
-    X = np.column_stack([fwhm, n_sat, np.ones_like(fwhm)])
+    # Quadratic model: delta_mag = a*x^2 + b*x + c
+    X = np.column_stack([cat_mag**2, cat_mag, np.ones_like(cat_mag)])
+
+    coeffs, _, _, _ = np.linalg.lstsq(X, delta_mag, rcond=None)
+    a, b, c = coeffs
+
+    return a, b, c
+
+
+def fitMagModel(frame_list):
+    cat_mag = []
+    obs_mag = []
+
+    for s in frame_list:
+        if s["cat_mag"] is not None and s["obs_mag"] is not None:
+            cat_mag.append(s["cat_mag"])
+            obs_mag.append(s["obs_mag"])
+
+    if len(cat_mag) < 3:
+        return None  # not enough stars
+
+    cat_mag = np.array(cat_mag)
+    obs_mag = np.array(obs_mag)
+
+    delta_mag = obs_mag - cat_mag
+
+    # Model: delta_mag = c   (constant offset)
+    X = np.ones((len(delta_mag), 1))
+
     coeffs, _, _, _ = np.linalg.lstsq(X, delta_mag, rcond=None)
 
-    a, b, c = coeffs
-    return a, b, c
+    c = coeffs[0]
+    return c
 
 
 def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_recal_path, local_calstars_path, catalog_stars=None, auto_fit_on=False, diagnostic_video=False):
@@ -2385,10 +2407,6 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
         else:
             flags &= ~ob_flag.BAD_MAD
 
-        if flags != 0:
-            #log.info(f"For {fits_file} flags are {flags} - {Flags.decode(flags)}")
-            pass
-
         for i, (query_results, o_ra, o_dec, o_mag, o_x, o_y, o_intens_sum,
 
                 o_az, o_alt, o_ampltd, o_fwhm, o_bg_lvl, o_snr, o_nsatpx, o_corrected_mag) in enumerate(zip(
@@ -2458,21 +2476,19 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
             frame_list.append(per_star_data)
 
-        coeffs = fitMagModel(frame_list)
+        coeffs = fitMagModelQuadratic(frame_list)
         if coeffs is None:
             a, b, c = 0, 0, 0
         else:
             a, b, c = coeffs
 
         for s in frame_list:
-            if s["obs_mag"] is None:
+            if s["obs_mag"] is None or s["cat_mag"] is None:
                 continue
+            cat_mag = s["cat_mag"]
+            delta_model = a * cat_mag ** 2 + b * cat_mag + c
+            s["mag_comp"] = s["obs_mag"] - delta_model
 
-            fwhm = s["fwhm"]
-            n_sat = s["nsatpx"]
-
-            delta_model = a * fwhm + b * n_sat + c
-            s["obs_mag_corrected"] = s["obs_mag"] - delta_model
 
         if diagnostic_video:
             writeDiagnosticVideo(fits_file, fits_station_id, frame_list, star_list, writer)
