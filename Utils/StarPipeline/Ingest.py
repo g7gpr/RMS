@@ -1624,7 +1624,7 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
         processing_end_time = datetime.datetime.now(tz=datetime.timezone.utc)
         database_time_seconds = (processing_end_time - database_start_time).total_seconds()
         processing_time_seconds = (processing_end_time - processing_start_time).total_seconds()
-        log.info(f"Write completed for {session_name} in {processing_time_seconds:.1f} seconds of which {database_time_seconds:.1f} seconds were conumser by postgres")
+        log.info(f"Write completed for {session_name} in {processing_time_seconds:.1f} seconds. Batch write took {database_time_seconds:.1f} seconds")
 
 
     # Put back in an archive in all cases
