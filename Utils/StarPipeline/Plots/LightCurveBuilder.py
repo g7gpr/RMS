@@ -304,7 +304,7 @@ def loadDetections(conn, jd_start, jd_end, star_name=None):
     params.append(1e6 * jd_start)
     where.append("obs.jd_mid < %s")
     params.append(1e6 * jd_end)
-
+    where.append("flags<2")
 
     where_clause = "WHERE " + " AND ".join(where)
 
@@ -603,202 +603,7 @@ def foldLightCurve(binned, raw_det, period_days):
 
 
 
-def plotFoldedWithStationsOld(det_phase_folded_binned, folded, cat_mag=None, base_name=None, nbins=100, titles=None, output_dir=None):
 
-
-    # Extract corrected folded data
-    phase   = det_phase_folded_binned["phase"]
-    mag     = det_phase_folded_binned["mag"]
-    station = det_phase_folded_binned["station"]
-
-    # Extract raw folded data (must exist in folded dict)
-    raw_phase = folded["raw_phase"]
-    raw_mag   = folded["raw_mag"]
-    mag_err = folded["mag_err"]
-
-    # Titles dict with safe defaults
-    if titles is None:
-        titles = {}
-
-    raw_title    = titles.get("raw",    "Raw Folded Light Curve (Uncorrected)")
-    top_title    = titles.get("top",    "")
-    bottom_title = titles.get("bottom", "Station Participation")
-    super_title  = titles.get("super",  None)
-    footer_text  = titles.get("footer", None)
-
-    # ---------------------------------------------------------
-    # Create figure with THREE vertically stacked axes
-    # ---------------------------------------------------------
-    fig = plt.figure(figsize=(20, 20))
-    gs = fig.add_gridspec(4, 1, height_ratios=[0.5, 3, 0.75, 0.75])
-    ax0 = fig.add_subplot(gs[0])  # Raw folded
-    ax1 = fig.add_subplot(gs[1], sharex=ax0)  # Corrected folded
-    ax2 = fig.add_subplot(gs[2], sharex=ax0)  # Station participation
-    ax3 = fig.add_subplot(gs[3], sharex=ax0)  # NEW: detections per folded bin
-
-    # ---------------------------------------------------------
-    # SUPERTITLE (optional)
-    # ---------------------------------------------------------
-    if super_title:
-        fig.suptitle(
-            super_title,
-            fontsize=20,
-            fontweight="normal",
-            y=0.965,
-            color="black"
-        )
-
-    plt.tight_layout(rect=[0.04, 0.1, 0.975, 0.95])
-
-    # =========================================================
-    #  RAW TOP PANEL (ax0)
-    # =========================================================
-    ax0.scatter(raw_phase, raw_mag, s=2, alpha=0.0025, color="blue")
-    ax0.invert_yaxis()
-    ax0.set_ylabel("Magnitude")
-
-    ax0.set_title(
-        raw_title,
-        fontsize=10,
-        color="#666666",
-        fontweight="normal"
-    )
-
-    # Clamp y-axis
-    ax0.set_ylim(np.mean(raw_mag) + 2, np.mean(raw_mag) - 2)
-
-    ax0.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-    ax1.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-
-    ax0.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
-    ax1.tick_params(axis="x", which="both", bottom=True, top=False, labelbottom=True)
-    ax2.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
-    ax3.tick_params(axis="x", which="both", bottom=False, top=False, labelbottom=False)
-
-    # =========================================================
-    #  CORRECTED FOLDED PANEL (ax1)
-    # =========================================================
-    ax1.scatter(phase, mag, s=12, alpha=0.7, color="black")
-    ax1.invert_yaxis()
-    ax1.set_ylabel("Compensated magnitude")
-
-    ax1.set_title(
-        top_title,
-        fontsize=10,
-        color="#666666",
-        fontweight="normal"
-    )
-
-    # Catalogue magnitude line
-    if cat_mag is not None and np.isfinite(cat_mag):
-        ax1.axhline(
-            y=cat_mag,
-            color="grey",
-            linestyle=":",
-            linewidth=1.0,
-            alpha=0.5,
-            label="Catalogue magnitude"
-        )
-        ax1.legend(fontsize=8)
-
-    # Clamp y-axis
-    ax1.set_ylim(max(max(mag), cat_mag) + 0.05, min(min(mag), cat_mag) - 0.05)
-
-    # Faint red connecting line
-    order = np.argsort(phase)
-    ax1.plot(
-        phase[order],
-        mag[order],
-        color="red",
-        alpha=0.25,
-        linewidth=0.8,
-        zorder=0
-    )
-
-    # ax1.errorbar(phase, mag, yerr=mag_err[order], fmt='none', ecolor='#88c0ff', alpha=0.1)
-
-    # =========================================================
-    #  STATION PARTICIPATION PANEL (ax2)
-    # =========================================================
-    bins = np.linspace(-1, 1, nbins + 1)
-    station_counts = []
-
-    for i in range(nbins):
-        mask = (phase >= bins[i]) & (phase < bins[i + 1])
-        idx = np.where(mask)[0]
-
-        if len(idx) == 0:
-            station_counts.append(0)
-            continue
-
-        stations_here = []
-        for j in idx:
-            stations_here.extend(station[j])
-
-        unique_stations = np.unique(stations_here)
-        station_counts.append(len(unique_stations))
-
-    ax2.bar(
-        (bins[:-1] + bins[1:]) / 2,
-        station_counts,
-        width=(2 / nbins),
-        color="steelblue",
-        alpha=0.7,
-        edgecolor="none"
-    )
-
-    ax2.set_ylabel("Stations")
-    ax1.set_xlabel("Phase")
-    ax2.set_xlim(-1, 1)
-
-    # =========================================================
-    #  DETECTION COUNT PER FOLDED BIN (ax3)
-    # =========================================================
-    det_counts = []
-
-    # =========================================================
-    #  DETECTIONS PER TIME BIN (ax3)
-    # =========================================================
-    n_det = det_phase_folded_binned["n_det"]
-
-    ax3.bar(
-        phase,  # phase of each binned point
-        n_det,  # number of detections in that bin
-        width=0.02,  # small width so bars don't overlap
-        color="lightgrey",
-        alpha=0.8,
-        edgecolor="none"
-    )
-
-    ax3.set_ylabel("Observations")
-    ax3.set_xlabel("Phase")
-    ax3.set_xlim(-1, 1)
-
-    # ---------------------------------------------------------
-    # FOOTER (optional)
-    # ---------------------------------------------------------
-    if footer_text:
-        fig.text(
-            0.95, 0.01,
-            footer_text,
-            ha="right",
-            va="bottom",
-            fontsize=8,
-            color="#666666"
-        )
-
-    fig.text(0.057, 0.033,f"Contributing stations\n\n{bottom_title}", ha="left", va="bottom", fontsize=6, color="#666666")
-
-    # ---------------------------------------------------------
-    # SAVE
-    # ---------------------------------------------------------
-    if base_name and output_dir:
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-        full_path = os.path.expanduser(os.path.join(output_dir, base_name))
-        plt.savefig(f"{full_path}.png", dpi=600)
-        print(f"Saved as {full_path}.png")
-
-    #plt.show()
 
 
 def plotFoldedWithStations(det_phase_folded_binned, folded,
@@ -850,9 +655,18 @@ def plotFoldedWithStations(det_phase_folded_binned, folded,
     ax0.set_ylabel("Raw magnitudes")
     ax0.set_title(raw_title, fontsize=10, color="#666666")
 
-    # Stretch Y‑axis to show full variability
-    mean_raw = np.mean(raw_mag)
-    ax0.set_ylim(mean_raw + 2, mean_raw - 2)
+
+    # Set y axis so the mean is in the centre, but the full range of points is shown
+    mean_raw_mag = np.mean(raw_mag)
+    mean_to_max = np.max(raw_mag) - mean_raw_mag
+    mean_to_min = mean_raw_mag - np.min(raw_mag)
+    distance_to_mid = max(mean_to_max, mean_to_min)
+    axis_bottom = np.ceil(mean_raw_mag + distance_to_mid)
+    axis_top = np.floor(mean_raw_mag - distance_to_mid)
+    ax0.set_ylim(axis_bottom, axis_top)
+
+
+    ax0.yaxis.set_major_formatter(plt.FormatStrFormatter('%.1f'))
 
     ax0.tick_params(axis="x", bottom=False, labelbottom=False)
 
@@ -934,7 +748,7 @@ def plotFoldedWithStations(det_phase_folded_binned, folded,
 
     # --- Axes formatting ---
     ax1.invert_yaxis()
-    ax1.set_ylabel("Compensated magnitude")
+    ax1.set_ylabel("Binned and folded magnitude")
     ax1.set_title(top_title, fontsize=10, color="#666666")
 
     # Catalogue magnitude line
@@ -944,13 +758,22 @@ def plotFoldedWithStations(det_phase_folded_binned, folded,
             color="grey",
             linestyle=":",
             linewidth=1.0,
-            alpha=0.5
+            alpha=0.5,
+            label="Catalogue magnitude"
         )
 
-    # Clamp y-axis to full variability of valid points
-    ymin = np.min(mag_valid - err_valid)
-    ymax = np.max(mag_valid + err_valid)
-    ax1.set_ylim(ymax + 0.05, ymin - 0.05)
+    ax1.legend(loc="upper right", fontsize=8)
+
+    # Clamp y-axis to full variability of valid points forcing the mean to the centre
+    mean_valid_mag = np.mean(mag_valid)
+    mean_to_max = np.max(mag_valid) - mean_valid_mag
+    mean_to_min = mean_valid_mag - np.min(mag_valid)
+    distance_to_mid = max(mean_to_max, mean_to_min)
+    axis_bottom = mean_valid_mag + distance_to_mid * 1.1
+    axis_top = mean_valid_mag - distance_to_mid * 1.1
+
+    ax1.set_ylim(axis_bottom, axis_top)
+    ax1.yaxis.set_major_formatter(plt.FormatStrFormatter('%.1f'))
 
     # =========================================================
     #  PANEL 2 — STATIONS (histogram) + DETECTIONS (points)

@@ -2204,20 +2204,25 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
     dir_path = os.path.dirname(local_calstars_path)
 
+    flags = 0
     if auto_fit_on:
 
         auto_pp, matched_star_pairs, used_ff = autoFitPlatepar(dir_path, obs_con, catalog_stars=catalog_stars,
                                                            platepar_template=pp, verbose=False)
-    else:
-        auto_pp = None
+        if auto_pp is None:
+            # if autoFitPlatepar can't make sense of the best observation, then set the bad autoFitPlatepar bit and never unset it for this calstar
+            flags |= ob_flag.BAD_AUTO_PP
+        else:
+            flags &= ~ob_flag.BAD_AUTO_PP
+            pp = auto_pp
 
-    flags = 0
-    if auto_pp is None:
-        # if autoFitPlatepar can't make sense of the best observation, then set the bad autoFitPlatepar bit and never unset it for this calstar
-        flags |= ob_flag.BAD_AUTO_PP
+
     else:
+        # Auto platepar is not enabled, so don't set autoplatepar as bad
+        auto_pp = None
         flags &= ~ob_flag.BAD_AUTO_PP
-        pp = auto_pp
+
+
 
     if len(calstar) != len(sun_below_horizon_angle_list):
         log.warning(f"Calstar list is length {len(calstar)} sun_below_horizon_angle_list is {len(sun_below_horizon_angle_list)}")
