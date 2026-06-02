@@ -304,7 +304,7 @@ def loadDetections(conn, jd_start, jd_end, star_name=None):
     params.append(1e6 * jd_start)
     where.append("obs.jd_mid < %s")
     params.append(1e6 * jd_end)
-    where.append("flags<2")
+    where.append("flags=0")
 
     where_clause = "WHERE " + " AND ".join(where)
 
@@ -666,7 +666,7 @@ def plotFoldedWithStations(det_phase_folded_binned, folded,
     ax0.set_ylim(axis_bottom, axis_top)
 
 
-    ax0.yaxis.set_major_formatter(plt.FormatStrFormatter('%.1f'))
+    ax0.yaxis.set_major_formatter(plt.FormatStrFormatter('%.2f'))
 
     ax0.tick_params(axis="x", bottom=False, labelbottom=False)
 
@@ -708,8 +708,8 @@ def plotFoldedWithStations(det_phase_folded_binned, folded,
         yerr=err_valid[order],
         fmt='none',
         ecolor='orange',
-        elinewidth=0.5,
-        alpha=0.25,
+        elinewidth=0.75,
+        alpha=1,
         capsize=0
     )
 
@@ -768,12 +768,12 @@ def plotFoldedWithStations(det_phase_folded_binned, folded,
     mean_valid_mag = np.mean(mag_valid)
     mean_to_max = np.max(mag_valid) - mean_valid_mag
     mean_to_min = mean_valid_mag - np.min(mag_valid)
-    distance_to_mid = max(mean_to_max, mean_to_min)
+    distance_to_mid = max(0.2, mean_to_max, mean_to_min)
     axis_bottom = mean_valid_mag + distance_to_mid * 1.1
     axis_top = mean_valid_mag - distance_to_mid * 1.1
 
     ax1.set_ylim(axis_bottom, axis_top)
-    ax1.yaxis.set_major_formatter(plt.FormatStrFormatter('%.1f'))
+    ax1.yaxis.set_major_formatter(plt.FormatStrFormatter('%.2f'))
 
     # =========================================================
     #  PANEL 2 — STATIONS (histogram) + DETECTIONS (points)
@@ -1145,8 +1145,7 @@ def main():
     print("Plotting")
     if cml_args.period_days is not None:
         det_folded = foldLightCurve(det_binned, det, cml_args.period_days)
-        n_phase_bins = int(np.floor(cml_args.period_days * 24 * 3600 / (256 / 25)))
-        det_phase_folded_binned = phaseBinFolded(det_folded, n_phase_bins=200)
+        det_phase_folded_binned = phaseBinFolded(det_folded, n_phase_bins=100)
 
         plotFoldedWithStations(det_phase_folded_binned, det_folded, cat_mag=cat_mag, titles=titles, base_name=base_name, output_dir=output_dir)
         plotFoldedWithStations(det_phase_folded_binned, det_folded, cat_mag=cat_mag, titles=titles, base_name=star_name, output_dir=output_dir)
