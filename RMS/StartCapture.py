@@ -1,3 +1,4 @@
+# RPi Meteor Station
 # Copyright (C) 2017 Dario Zubovic, Denis Vida
 # 
 # This program is free software: you can redistribute it and/or modify
