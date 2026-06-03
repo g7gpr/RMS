@@ -6,6 +6,7 @@ ExecStart=/bin/bash -c '~/source/RMS/Scripts/RMS_Update.sh ; source ~/vRMS/bin/a
 RuntimeMaxSec=48h
 RestartSec=30
 Restart=always
+KillMode=process
 WorkingDirectory=/home/$STATION_CODE_LOWER/source/RMS/
 SyslogIdentifier=$STATION_CODE_LOWER
 User=$STATION_CODE_LOWER

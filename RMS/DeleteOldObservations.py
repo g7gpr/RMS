@@ -722,13 +722,14 @@ def deleteFilesHeldOnServer(config, verbose=False):
         return
 
 
+    remote_unprocessed_files = []
     try:
         with ssh.open_sftp() as sftp:
             remote_processed_files = sftp.listdir(os.path.join(config.remote_dir, "processed"))
             remote_unprocessed_files = sftp.listdir(os.path.join(config.remote_dir))
     except:
-        log.info(f"Unable to open sftp connection for {username}")
-
+        log.info(f"Unable to open sftp connection for {username} - aborting deleting files found on remote")
+        return
 
     ssh.close()
     full_paths_to_files_to_delete_list, full_paths_to_dirs_to_delete_list = [], []
