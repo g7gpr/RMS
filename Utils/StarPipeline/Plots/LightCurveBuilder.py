@@ -1,4 +1,3 @@
-import datetime
 import argparse
 import psycopg
 import os
@@ -7,14 +6,14 @@ import matplotlib.pyplot as plt
 import warnings
 import io
 import contextlib
-import tqdm
 
 from scipy.interpolate import SmoothBivariateSpline
 from pathlib import Path
 from scipy.spatial import ConvexHull
 from collections import Counter
 from urllib.parse import urlparse
-from matplotlib.ticker import FormatStrFormatter
+from numba import njit
+
 
 
 def storeCompensatedFrame(conn, frame_name, frame_offset, tps_spline, frame_data):
@@ -116,7 +115,7 @@ def lookupCatalogueStar(conn, star_name):
 
 
 
-def binDetections(det, bin_seconds=10.24 * 10):
+def binDetectionsOld(det, bin_seconds=10.24 * 10):
     jd      = det["jd"]
     mag     = det["mag"]
     snr     = det["snr"]
@@ -225,6 +224,158 @@ def binDetections(det, bin_seconds=10.24 * 10):
     }
 
 
+@njit
+def _bin_core(inv, flux, mag, snr, station_id, nbins):
+    mag_mean     = np.empty(nbins, dtype=np.float64)
+    mag_err_mean = np.empty(nbins, dtype=np.float64)
+    n_det        = np.zeros(nbins, dtype=np.int32)
+
+    # Count detections per bin
+    for i in range(len(inv)):
+        n_det[inv[i]] += 1
+
+    # Preallocate temporary arrays for per-bin accumulation
+    # (max stations per bin is small, so fixed-size is fine)
+    max_stations = 64
+    station_seen = np.empty(max_stations, dtype=np.int32)
+    station_count = np.zeros(max_stations, dtype=np.int32)
+
+    for b in range(nbins):
+        count = n_det[b]
+        if count == 0:
+            mag_mean[b] = np.nan
+            mag_err_mean[b] = np.nan
+            continue
+
+        # Reset station counters
+        for k in range(max_stations):
+            station_seen[k] = -1
+            station_count[k] = 0
+
+        # Weighted flux accumulators
+        w_sum = 0.0
+        flux_w_sum = 0.0
+
+        # RMS fallback accumulators
+        mag_sum = 0.0
+        mag_sq_sum = 0.0
+
+        # Loop over detections
+        for i in range(len(inv)):
+            if inv[i] != b:
+                continue
+
+            f = flux[i]
+            m = mag[i]
+            s = snr[i]
+            st = station_id[i]
+
+            # Track station counts
+            placed = False
+            for k in range(max_stations):
+                if station_seen[k] == st:
+                    station_count[k] += 1
+                    placed = True
+                    break
+                if station_seen[k] == -1:
+                    station_seen[k] = st
+                    station_count[k] = 1
+                    placed = True
+                    break
+
+            # Weighted flux path
+            if s > 0:
+                sigma_f = f / s
+                w = 1.0 / (sigma_f * sigma_f)
+                w_sum += w
+                flux_w_sum += w * f
+            else:
+                # RMS fallback accumulators
+                mag_sum += m
+                mag_sq_sum += m * m
+
+        # Finalise bin
+        if w_sum > 0:
+            flux_mean = flux_w_sum / w_sum
+            sigma_flux = np.sqrt(1.0 / w_sum)
+            mag_mean[b] = -2.5 * np.log10(flux_mean)
+            mag_err_mean[b] = (2.5 / np.log(10)) * (sigma_flux / flux_mean)
+        else:
+            # RMS fallback
+            mean_mag = mag_sum / count
+            rms = np.sqrt(mag_sq_sum / count - mean_mag * mean_mag)
+
+            # Effective N
+            n_eff = 0.0
+            for k in range(max_stations):
+                if station_seen[k] == -1:
+                    break
+                n_eff += np.sqrt(station_count[k])
+
+            mag_mean[b] = mean_mag
+            mag_err_mean[b] = rms / np.sqrt(n_eff)
+
+    return mag_mean, mag_err_mean, n_det
+
+def convertInt32Array(item_list):
+    mapping = {}
+    unique_list = []
+    indices = np.empty(len(item_list), dtype=np.int32)
+
+    next_id = 0
+    for i, item in enumerate(item_list):
+        if item not in mapping:
+            mapping[item] = next_id
+            unique_list.append(item)
+            next_id += 1
+        indices[i] = mapping[item]
+
+    return indices, unique_list
+
+
+def binDetections(det, bin_seconds=10.24 * 10):
+    jd      = det["jd"]
+    mag     = det["mag"]
+    snr     = det["snr"]
+    station, station_list = convertInt32Array(det["station"])   # MUST be int32 array
+
+    # Compute bin indices
+    dt_days = bin_seconds / 86400.0
+    jd0 = jd.min()
+    bin_index = np.floor((jd - jd0) / dt_days).astype(np.int32)
+
+    unique_bins, inv = np.unique(bin_index, return_inverse=True)
+    nbins = len(unique_bins)
+
+    # Flux conversion
+    flux = 10 ** (-0.4 * mag)
+
+    # JD mean via bincount (already optimal)
+    jd_sum = np.bincount(inv, weights=jd, minlength=nbins)
+    counts = np.bincount(inv, minlength=nbins)
+    jd_mean = jd_sum / counts
+
+    # Call compiled core
+    mag_mean, mag_err_mean, n_det = _bin_core(
+        inv, flux, mag, snr, station, nbins
+    )
+
+    # Rebuild station lists (Python side)
+    station_bins = []
+    for b in range(nbins):
+        idx = np.where(inv == b)[0]
+        if len(idx) == 0:
+            station_bins.append(np.array([], dtype=np.int32))
+        else:
+            station_bins.append(np.unique(station[idx]))
+
+    return {
+        "jd": jd_mean,
+        "mag": mag_mean,
+        "mag_err": mag_err_mean,
+        "station": station_bins,
+        "n_det": n_det
+    }
 
 
 
@@ -762,18 +913,87 @@ def plotFoldedWithStations(det_phase_folded_binned, folded,
             label="Catalogue magnitude"
         )
 
-    ax1.legend(loc="upper right", fontsize=8)
 
     # Clamp y-axis to full variability of valid points forcing the mean to the centre
+
+    mag_min = np.min(mag_valid)
+    mag_max = np.max(mag_valid)
     mean_valid_mag = np.mean(mag_valid)
-    mean_to_max = np.max(mag_valid) - mean_valid_mag
-    mean_to_min = mean_valid_mag - np.min(mag_valid)
+    mean_to_max = mag_max - mean_valid_mag
+    mean_to_min = mean_valid_mag - mag_min
     distance_to_mid = max(0.2, mean_to_max, mean_to_min)
     axis_bottom = mean_valid_mag + distance_to_mid * 1.1
     axis_top = mean_valid_mag - distance_to_mid * 1.1
 
     ax1.set_ylim(axis_bottom, axis_top)
     ax1.yaxis.set_major_formatter(plt.FormatStrFormatter('%.2f'))
+
+    # ---------------------------------------------------------
+    # Add reference lines: mean, min, max magnitudes
+    # ---------------------------------------------------------
+
+    # Mean magnitude (solid grey)
+    ax1.axhline(
+        y=mean_valid_mag,
+        color="grey",
+        linestyle="--",
+        linewidth=1.0,
+        alpha=0.7,
+        label="Mean magnitude"
+    )
+
+    # Minimum magnitude (faint dotted)
+    ax1.axhline(
+        y=mag_min,
+        color="green",
+        linestyle=":",
+        linewidth=0.8,
+        alpha=0.6,
+        label="Min magnitude"
+    )
+
+    # Maximum magnitude (faint dotted)
+    ax1.axhline(
+        y=mag_max,
+        color="red",
+        linestyle=":",
+        linewidth=0.8,
+        alpha=0.6,
+        label="Max magnitude"
+    )
+    # ---------------------------------------------------------
+    # Annotate max and min values (Panel 1)
+    # ---------------------------------------------------------
+
+    y_range = axis_bottom - axis_top
+    offset = 0.02 * y_range  # 2% of axis height, in data units
+
+    # Use: x in axes coords (0–1), y in data coords (magnitudes)
+    ytrans = ax1.get_yaxis_transform()
+
+    # Max magnitude label (faintest point, lower on screen; label just above it)
+    ax1.text(
+        0.02,  # x: 2% from left (axes fraction)
+        mag_max - offset,  # y: slightly brighter than max (above line)
+        f"Min: {mag_max:.2f}",
+        transform=ytrans,
+        color="red",
+        fontsize=9,
+        verticalalignment="bottom"
+    )
+
+    # Min magnitude label (brightest point, higher on screen; label just below it)
+    ax1.text(
+        0.02,
+        mag_min + offset,  # y: slightly fainter than min (below line)
+        f"Max: {mag_min:.2f}",
+        transform=ytrans,
+        color="green",
+        fontsize=9,
+        verticalalignment="top"
+    )
+
+    ax1.legend(loc="upper right", fontsize=8)
 
     # =========================================================
     #  PANEL 2 — STATIONS (histogram) + DETECTIONS (points)
@@ -1145,7 +1365,7 @@ def main():
     print("Plotting")
     if cml_args.period_days is not None:
         det_folded = foldLightCurve(det_binned, det, cml_args.period_days)
-        det_phase_folded_binned = phaseBinFolded(det_folded, n_phase_bins=100)
+        det_phase_folded_binned = phaseBinFolded(det_folded, n_phase_bins=200)
 
         plotFoldedWithStations(det_phase_folded_binned, det_folded, cat_mag=cat_mag, titles=titles, base_name=base_name, output_dir=output_dir)
         plotFoldedWithStations(det_phase_folded_binned, det_folded, cat_mag=cat_mag, titles=titles, base_name=star_name, output_dir=output_dir)
