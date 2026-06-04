@@ -27,8 +27,7 @@ from RMS.Math import angularSeparation
 from RMS.Logger import LoggingManager, getLogger
 
 pyximport.install(setup_args={'include_dirs':[np.get_include()]})
-from RMS.Astrometry.CyFunctions import subsetCatalog
-from RMS.Astrometry.MatchStars import matchStars
+from RMS.Astrometry.CyFunctions import matchStars, subsetCatalog
 
 
 # Get the logger from the main module
