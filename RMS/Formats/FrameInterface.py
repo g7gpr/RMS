@@ -192,6 +192,30 @@ class InputType(object):
     def currentFrameTime(self, frame_no=None, dt_obj=False):
         pass
 
+    def getTargetDtype(self, first_frame_data=None):
+        """ Determine the target dtype based on the target bit depth of the input images and the
+            processing configuration.
+
+        If binning with 'sum' method is used, the target dtype is forced to uint16 to prevent overflow.
+        Otherwise, it depends on the input data's bit depth.
+        """
+
+        # Check if bit depth should be at least uint16 to handle potential overflow from sum binning
+        if hasattr(self, 'config'):
+            if self.config.detection_binning_factor > 1 and \
+                self.config.detection_binning_method == 'sum':
+                return np.uint16
+
+        # Check the bit depth of input data
+        if first_frame_data is not None:
+            if first_frame_data.dtype == np.uint8:
+                return np.uint8
+            else:
+                return np.uint16
+
+        # Standard default is uint16 for robustness
+        return np.uint16
+
 
 
 class InputTypeFRFF(InputType):
@@ -410,7 +434,11 @@ class InputTypeFRFF(InputType):
             else:
 
                 # Init an empty FF structure
-                ff = FFMimickInterface(self.nrows, self.ncols, np.uint8)
+                # For multiple FFs, determine the dtype from the first reconstructed FF
+                ref_ff = readFF(self.dir_path, ffs_to_read[0])
+                target_dtype = self.getTargetDtype(ref_ff.maxpixel)
+
+                ff = FFMimickInterface(self.nrows, self.ncols, target_dtype)
 
                 # Store maxpixel selections, avepixels, stdpixels
                 maxpixel_list = []
@@ -958,8 +986,11 @@ class InputTypeVideo(InputType):
             frame, self.current_fr_chunk_size = self.cache[cache_id]
             return frame
 
+        # Determine target dtype (assume uint16 if not yet initialized, then update)
+        target_dtype = self.getTargetDtype()
+
         # Init making the FF structure
-        ff_struct_fake = FFMimickInterface(self.nrows, self.ncols, np.uint8)
+        ff_struct_fake = FFMimickInterface(self.nrows, self.ncols, target_dtype)
 
         # If there are no frames to read, return an empty array
         if frames_to_read == 0 or frames_to_read == -1:
@@ -968,6 +999,7 @@ class InputTypeVideo(InputType):
 
         print('Frames to read: ' + str(frames_to_read), end='')
 
+        # Load the chunk of frames
         # Load the chunk of frames
         for i in range(frames_to_read):
 
