@@ -585,12 +585,38 @@ def createRejectedFrameTable(conn):
         cur.execute(sql)
     conn.commit()
 
+import psycopg
+
+def createPipelineConfigTable(conn):
+
+    with conn.cursor() as cur:
+
+        # 1. Create table if missing
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS pipeline_config (
+                id INTEGER PRIMARY KEY,
+                downloads_enabled BOOLEAN NOT NULL
+            );
+        """)
+
+        # 2. Insert default row if missing
+        cur.execute("""
+            INSERT INTO pipeline_config (id, downloads_enabled)
+            VALUES (1, TRUE)
+            ON CONFLICT (id) DO NOTHING;
+        """)
+
+    conn.commit()
+
+
+
 def createAllTables(conn):
     createStationTable(conn)
     createSessionTable(conn)
     createFrameTable(conn)
     createStarTable(conn)
     createObservationTable(conn)
+    createPipelineConfigTable(conn)
     #createCalstarFilesTable(conn)
     #createSpatialModelTable(conn)
     createIngestWorkTable(conn)
