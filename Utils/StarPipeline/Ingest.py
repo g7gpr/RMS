@@ -2323,7 +2323,9 @@ def calstarRaDecToDict(config, local_config_path, local_platepar_path, local_rec
 
             # match is a list of one element: [name, ra, dec, mag_cat, theta]
             try:
-                name, ra_c, dec_c, mag_cat, theta = match[0]
+                name, ra_c, dec_c, mag_cat, theta, b, v, r = match[0]
+                if True:
+                    log.info(f"Name :{name} mag:{mag_cat} b:{b} v:{v} r:{r}")
             except Exception:
                 # Defensive: malformed match structure
                 masked_results_list.append(None)

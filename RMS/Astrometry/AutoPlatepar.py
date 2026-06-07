@@ -736,7 +736,7 @@ def loadCatalogStars(config, lim_mag, jd=None):
 
     catalog_results = StarCatalog.readStarCatalog(
         star_catalog_path, config.star_catalog_file,
-        lim_mag=lim_mag, mag_band_ratios=config.star_catalog_band_ratios,
+        lim_mag=lim_mag, mag_band_ratios=None,
         years_from_J2000=years_from_J2000
     )
 

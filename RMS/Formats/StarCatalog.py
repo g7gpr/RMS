@@ -69,7 +69,7 @@ class Catalog:
             lim_mag=lim_mag,
             years_from_J2000=years_from_J2000,
             mag_band_ratios=config.star_catalog_band_ratios,
-            additional_fields=['preferred_name', 'common_name', 'bayer_name'])
+            additional_fields=['preferred_name', 'common_name', 'bayer_name', 'B', 'V', 'R'])
 
         pass
 
@@ -96,6 +96,9 @@ class Catalog:
 
         self.cat = catalog_stars[mask]
         self.names = extras['preferred_name'][mask]
+        self.b = extras['B']
+        self.v = extras['V']
+        self.r = extras['R']
 
         # Convert to arrays of radians
         ra, dec = np.radians(self.cat[:, ra_col]), np.radians(self.cat[:, dec_col])
@@ -144,12 +147,14 @@ class Catalog:
             ras = [float(x) for x in self.cat[chosen, self.ra_col]]
             decs = [float(x) for x in self.cat[chosen, self.dec_col]]
             mags = [float(x) for x in self.cat[chosen, self.mag_col]]
+            b, v, r = [float(x) for x in self.b[chosen]], [float(x) for x in self.v[chosen]], [float(x) for x in self.r[chosen]]
+
 
             thetas = angularSeparationDeg(ra0, dec0, ras, decs)
             thetas = [float(t) for t in thetas]
 
             matched = [
-                [names[i], ras[i], decs[i], mags[i], thetas[i]]
+                [names[i], ras[i], decs[i], mags[i], thetas[i], b[i], v[i], r[i]]
                 for i in range(len(names))
             ]
 
