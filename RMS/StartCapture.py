@@ -29,7 +29,7 @@ import threading
 import multiprocessing
 import traceback
 import git
-from RMS.Formats.ObservationSummary import getObsDBConn, addObsParam
+from RMS.Formats.ObservationSummary import addObsParam, getObservationSummaryDict
 
 import numpy as np
 
@@ -611,7 +611,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
             # Open the observation summary report
             if video_file is None:
-                log.info(startObservationSummaryReport(config, duration, force_delete=False))
+                log.info(startObservationSummaryReport(config, night_data_dir, duration, force_delete=False))
 
             # Start the compressor
             compressor.start()
@@ -716,9 +716,10 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
             log.debug('Capture stopped')
 
             log.info('Total number of late or dropped frames: ' + str(dropped_frames))
-            obs_db_conn = getObsDBConn(config)
-            addObsParam(obs_db_conn, "dropped_frames", dropped_frames)
-            obs_db_conn.close()
+            log.info(f"Starting an observation summary in {night_data_dir}")
+            obs_dict = getObservationSummaryDict(night_data_dir)
+            addObsParam(obs_dict, "dropped_frames", dropped_frames)
+
 
             # Free shared memory after the compressor is done
             try:
