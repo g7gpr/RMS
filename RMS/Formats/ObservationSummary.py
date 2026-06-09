@@ -44,8 +44,6 @@ import ephem
 import traceback
 import argparse
 
-from astropy.modeling.fitting import fitter_to_model_params_array
-
 from RMS.ConfigReader import parse
 from RMS.Misc import niceFormat, isRaspberryPi, sanitise, getRMSStyleFileName, getRmsRootDir, UTCFromTimestamp
 from RMS.Formats.FFfits import filenameToDatetimeStr
