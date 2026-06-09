@@ -329,6 +329,8 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
     print("- Zoran Dragic (d. 2025)")
     print("- Romke Schievink (d. 2025)")
     print("- Seppe Canonaco (d. 2025)")
+    print("- Simon Lewis (d. 2026)")
+    print("- William Harvey (d. 2026)")
     print()
     print("Memento mori")
     print("Each of us, a fleeting flame")
@@ -1240,8 +1242,10 @@ if __name__ == "__main__":
 
             # Calculate when and how should the capture run
             start_time, duration = captureDuration(config.latitude, config.longitude, config.elevation)
-            log.info('Next start time: ' + str(start_time) + ' UTC')
-
+            if isinstance(start_time, bool):
+                log.info(f'captureDuration returned {start_time}')
+            else:
+                log.info(f'Next start time: {start_time} UTC')
 
         # Reboot the computer after processing is done for the previous night
         if ran_once and config.reboot_after_processing:
