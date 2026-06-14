@@ -744,18 +744,26 @@ def createDatabaseIfMissing(conn):
 
         if not exists:
             cur.execute("CREATE DATABASE star_data;")
-            initialiseDatabase(conn)
 
-def initialiseDatabase(conn):
-    createIngestUserIfMissing(conn)
-    setIngestUserSearchPath(conn)
-    createAllTables(conn)
-    createAllIndexes(conn)
-    grantIngestUserPrivileges(conn)
-    grantSequencePrivileges(conn)
-    revokeCreatesIngestUser(conn)
 
-    pass
+def initialiseDatabase(host="192.168.217.212"):
+
+    # Do the work requiring the postgres user
+    with psycopg.connect(host=host, dbname="postgres", user="postgres", autocommit=True) as pg_conn:
+        # Ensure the target database exists
+        createDatabaseIfMissing(pg_conn)
+        createIngestUserIfMissing(pg_conn)
+        setIngestUserSearchPath(pg_conn)
+
+    # Do the balance of the work
+    with psycopg.connect(host=host, dbname="star_data", user="postgres") as conn:
+        createAllTables(conn)
+        createAllIndexes(conn)
+        grantIngestUserPrivileges(conn)
+        grantSequencePrivileges(conn)
+        revokeCreatesIngestUser(conn)
+
+
 
 def resetDatabaseForReingest(conn):
     """
@@ -805,6 +813,8 @@ if __name__ == "__main__":
     arg_parser.add_argument('-r', '--reset_ingestion', dest='reset_ingestion', default=False, action="store_true",
                             help="Reset ingestion")
 
+    arg_parser.add_argument('--initialise_database', dest='initialise_database', default=False, action="store_true", help="Create database")
+
     arg_parser.add_argument(
         '-s', '--sync_cache',
         dest='sync_cache',
@@ -818,6 +828,11 @@ if __name__ == "__main__":
     reset_ingestion = cml_args.reset_ingestion
     postgresql_host = cml_args.postgresql_host
     sync_cache = cml_args.sync_cache
+    initialise_database = cml_args.initialise_database
+
+    if cml_args.initialise_database:
+        log.info(f"Creating database on {postgresql_host}")
+        initialiseDatabase(postgresql_host)
 
     if cml_args.reset_ingestion:
         log.info("Resetting ingestion")
