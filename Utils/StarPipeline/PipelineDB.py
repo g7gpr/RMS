@@ -65,20 +65,17 @@ class Flags:
 
 def createStationTable(conn):
     sql = """
-          CREATE TABLE IF NOT EXISTS station \
-          ( \
-              station_name \
-              CHAR \
-          ( \
-              6 \
-          ) PRIMARY KEY,
-              name TEXT,
-              notes TEXT
-              ); \
-          """
+        CREATE TABLE IF NOT EXISTS station (
+            station_id   SERIAL PRIMARY KEY,
+            station_name TEXT NOT NULL UNIQUE,
+            name         TEXT,
+            notes        TEXT
+        );
+    """
     with conn.cursor() as cur:
         cur.execute(sql)
     conn.commit()
+
 
 def createCalstarFilesTable(conn):
     sql = """
@@ -97,43 +94,27 @@ def createCalstarFilesTable(conn):
     conn.commit()
 
 def createSessionTable(conn):
-    sql = """CREATE TABLE IF NOT EXISTS session \
-             ( \
-                 session_id \
-                 SERIAL \
-                 PRIMARY \
-                 KEY, \
-                 session_name \
-                 TEXT \
-                 NOT \
-                 NULL \
-                 UNIQUE, \
-                 station_name \
-                 TEXT \
-                 NOT \
-                 NULL, \
+    sql = """
+        CREATE TABLE IF NOT EXISTS session (
+            session_id      SERIAL PRIMARY KEY,
+            session_name    TEXT NOT NULL UNIQUE,
+            station_id      INT NOT NULL REFERENCES station(station_id),
 
-                 start_jd \
-                 BIGINT, \
-                 end_jd \
-                 BIGINT, \
+            start_jd        BIGINT,
+            end_jd          BIGINT,
 
-                 pixel_scale_h \
-                 INTEGER, \
-                 pixel_scale_v \
-                 INTEGER, \
+            pixel_scale_h   INTEGER,
+            pixel_scale_v   INTEGER,
 
-                 lat \
-                 INTEGER, \
-                 lon \
-                 INTEGER, \
-                 elevation \
-                 INTEGER \
-             );"""
-
+            lat             INTEGER,
+            lon             INTEGER,
+            elevation       INTEGER
+        );
+    """
     with conn.cursor() as cur:
         cur.execute(sql)
     conn.commit()
+
 
 def createFrameTable(conn):
     sql = """
@@ -200,18 +181,18 @@ def createObservationTable(conn):
 
         sql = """
             CREATE TABLE observation (
-                obs_id BIGSERIAL,
-                jd_mid BIGINT NOT NULL,
-                session_name TEXT NOT NULL REFERENCES session(session_name),
-                station_name TEXT NOT NULL,
-                frame_name TEXT NOT NULL REFERENCES frame(frame_name),
-                star_name TEXT NOT NULL,
-                mag INTEGER NOT NULL,
-                snr INTEGER NOT NULL,
-                flags SMALLINT NOT NULL,
-                PRIMARY KEY (star_name, jd_mid)
+                obs_id      BIGSERIAL PRIMARY KEY,
+                star_id     INT NOT NULL REFERENCES star(star_id),
+                station_id  INT NOT NULL REFERENCES station(station_id),
+                session_id  INT NOT NULL REFERENCES session(session_id),
+                frame_id    BIGINT NOT NULL REFERENCES frame(frame_id),
+
+                jd_mid      INT NOT NULL,
+                mag         SMALLINT NOT NULL,
+                snr         SMALLINT NOT NULL,
+                flags       SMALLINT NOT NULL
             )
-            PARTITION BY HASH (star_name);
+            PARTITION BY HASH (star_id);
         """
 
         cur.execute(sql)
@@ -227,6 +208,7 @@ def createObservationTable(conn):
             )
 
     conn.commit()
+
 
 def createSpatialModelTable(conn):
     """
@@ -631,18 +613,39 @@ def revokeCreatesIngestUser(conn):
         cur.execute("REVOKE CREATE ON SCHEMA public FROM ingest_user;")
     conn.commit()
 
-def createIngestUserIfMissing(conn):
+import os
+
+def createIngestUserIfMissing(conn, pgpass_path=os.path.expanduser("~/.pgpass")):
+    # Extract password for ingest_user from .pgpass
+    ingest_pass = None
+    if os.path.exists(pgpass_path):
+        with open(pgpass_path, "r") as f:
+            for line in f:
+                parts = line.strip().split(":")
+                if len(parts) == 5 and parts[3] == "ingest_user":
+                    ingest_pass = parts[4]
+                    break
+
+    if ingest_pass is None:
+        raise RuntimeError("Password for ingest_user not found in .pgpass")
+
     with conn.cursor() as cur:
         # Check if role exists
         cur.execute("SELECT 1 FROM pg_roles WHERE rolname='ingest_user';")
         exists = cur.fetchone()
 
         if not exists:
-            # Create the role WITHOUT a password
-            # Operator sets the password manually once
-            cur.execute("CREATE ROLE ingest_user LOGIN;")
+            cur.execute(
+                "CREATE ROLE ingest_user LOGIN PASSWORD %s;",
+                (ingest_pass,)
+            )
+        else:
+            # Ensure password stays in sync with .pgpass
+            cur.execute(f"ALTER ROLE ingest_user WITH PASSWORD '{ingest_pass}';")
+
 
     conn.commit()
+
 
 def grantIngestUserPrivileges(conn):
     with conn.cursor() as cur:
