@@ -23,9 +23,6 @@
 """ Summary text and json files for station and observation session
 """
 
-from __future__ import print_function, division, absolute_import
-
-
 import os
 import sys
 import socket
@@ -56,29 +53,53 @@ from RMS.CaptureModeSwitcher import SWITCH_HORIZON_DEG
 from RMS.Formats.FTPdetectinfo import findFTPdetectinfoFile, readFTPdetectinfo
 from RMS.Logger import getLogger
 from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 import RMS.ConfigReader as cr
+import subprocess
+
+import dvrip as dvr
+
+# File locking for the per-night working JSON (POSIX only; degrade gracefully elsewhere)
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 # Get the logger from the main module
 log = getLogger("rmslogger")
 
-if sys.version_info.major > 2:
-    import dvrip as dvr
-else:
-    # Python2 compatible version
-    import Utils.CameraControl27 as dvr
-
-
-
-
 DEBUG_PRINT = False
+RUNNING_FROM_CONSOLE = False
 
 OBSERVATION_SUMMARY_WORKING_NAME_JSON = "observation_summary_working.json"
 OBSERVATION_SUMMARY_NAME_JSON = "observation_summary.json"
 OBSERVATION_SUMMARY_NAME_TXT = "observation_summary.txt"
+OBSERVATION_SUMMARY_NAME_PNG = "observation_summary.png"
 OBSERVATIONS_TABLE_NAME = "observations"
 OBSERVATION_DB_FILE_NAME = "observation.db"
 NIGHT_DATA_DIR_COL = "night_data_dir"
+
+
+def pingOnce(host):
+    """Quickly detect if a host is pingable
+
+    Arguments:
+        host: [str} ip address of host to be pinged.
+
+    Return:
+        [bool]: True if pinged, otherwise False.
+
+    """
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", "1", host],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 
 def getObsDBConn(config, force_delete=False):
@@ -98,7 +119,7 @@ def getObsDBConn(config, force_delete=False):
     # Create the Observation Summary database
     observation_records_db_path = os.path.join(config.data_dir,OBSERVATION_DB_FILE_NAME)
     log.info(f"Opening database at {observation_records_db_path}")
-    if force_delete:
+    if force_delete and os.path.exists(observation_records_db_path):
         os.unlink(observation_records_db_path)
 
     if not os.path.exists(os.path.dirname(observation_records_db_path)):
@@ -145,20 +166,53 @@ def getObsDBConn(config, force_delete=False):
     return conn
 
 def getColumns(conn):
+    """Get the columns in the observation table.
+
+    Arguments:
+        conn: connection to database.
+
+    Return:
+        [set]: Set of columns in table.
+    """
 
     cursor = conn.execute(f"PRAGMA table_info({OBSERVATIONS_TABLE_NAME})")
     return {row[1] for row in cursor.fetchall()}
 
 def addRequiredColumns(conn, d):
+    """For each key in d if not already a column in table, add as a column.
+
+    Arguments:
+        conn: connection to database.
+        d: [dict] Dictionary of keys and values for the observation summary.
+
+     Return:
+        Nothing.
+    """
 
     existing = getColumns(conn)
     for key in d:
+        # SQLite cannot bind identifiers in DDL, so guard against anything that is not a plain
+        # column name before interpolating it into the ALTER TABLE statement.
+        if not re.match(r'^[A-Za-z0-9_]+$', key):
+            log.warning("Skipping observation summary key with unsafe column name: {!r}".format(key))
+            continue
         if key.lower() not in existing:
             sql_command = f"ALTER TABLE {OBSERVATIONS_TABLE_NAME} ADD COLUMN {key.lower()} TEXT"
-            print(sql_command)
             conn.execute(sql_command)
 
 def storeDictInDB(conn, d, debug=False):
+    """
+    Store the dict d in the observation summary database.
+
+    Arguments:
+        conn: connection to database.
+        d: [dict] Dictionary of keys and values for the observation summary.
+
+
+    Return:
+        Nothing.
+    """
+
     # Ensure schema is up to date
     addRequiredColumns(conn, d)
 
@@ -172,19 +226,15 @@ def storeDictInDB(conn, d, debug=False):
     if "night_data_dir" in clean:
         clean["night_data_dir"] = os.path.basename(clean["night_data_dir"])
 
-
     columns = list(clean.keys())
     placeholders = ", ".join("?" for _ in columns)
     values = [clean[col] for col in columns]
 
-
     assignments = ", ".join(f"{col}=excluded.{col}" for col in columns if col != "night_data_dir")
-
 
     if debug:
         for c, v in zip(columns, values):
             print(f"{c:40} -> {repr(v)}")
-
 
     sql_command = ""
     sql_command += f"INSERT INTO {OBSERVATIONS_TABLE_NAME} ({', '.join(columns)})\n"
@@ -221,7 +271,6 @@ def roundWithoutTrailingZero(value, no):
 def getObservationDurationNightTime(config, start_time):
     """Get the duration of an observation session not in continuous capture mode.
 
-
     Arguments:
         conn: [object] database connection instance.
         config: [object] RMS configuration instance.
@@ -230,12 +279,26 @@ def getObservationDurationNightTime(config, start_time):
         duration: [float] duration of observation in seconds.
     """
 
-    ephemeris_start_time, duration = captureDuration(config.latitude, config.longitude, config.elevation,start_time)
+    original_start_time = start_time
+    ephemeris_start_time, duration = captureDuration(config.latitude, config.longitude, config.elevation, start_time)
 
-    while isinstance(ephemeris_start_time, bool):
+    # captureDuration returns a bool (not a datetime) as the first element when it cannot pin a
+    # concrete sunset (we are already inside the dark window, or it is polar day/night). Walk back
+    # to find the sunset that began the current dark period, but cap the search - during polar
+    # night captureDuration always returns a bool regardless of start_time, so an unbounded loop
+    # would spin forever.
+    max_backoff_minutes = 24*60
+    backoff = 0
+    while isinstance(ephemeris_start_time, bool) and backoff < max_backoff_minutes:
         start_time -= datetime.timedelta(minutes=1)
+        backoff += 1
         # Go backwards through time until we are before the start time
         ephemeris_start_time, duration = captureDuration(config.latitude, config.longitude, config.elevation, start_time)
+
+    if isinstance(ephemeris_start_time, bool):
+        # No concrete sunset within the search window (e.g. polar night) - fall back to the passed time.
+        log.warning("getObservationDurationNightTime: no concrete sunset found; falling back to start_time")
+        ephemeris_start_time = original_start_time
 
     end_time = ephemeris_start_time + datetime.timedelta(seconds=duration)
 
@@ -345,13 +408,11 @@ def getTimeClient():
     return "Not recognized"
 
 def timeSyncStatus(config, d, force_client=None):
-
-    """
-    Add time sync information to the observation summary.
+    """Add time sync information to the observation summary.
 
     Arguments:
         config: [Config] Configuration object.
-        d: [Connection] Observation summary dictionary
+        d: [dict] Observation summary dictionary
 
     Keyword arguments:
         force_client: [string] optional, string to force resolution by ntpd, chrony, or a query on a remote server.
@@ -410,13 +471,23 @@ def timeSyncStatus(config, d, force_client=None):
     return ahead_ms
 
 def getDaysSinceLastDetection(config, data_dir, d=None, debug=False):
+    """Get the number of days since the last meteor detection
 
+    Arguments:
+        config: [config] RMS configuration instance.
+        data_dir: [path] path to the data_dir.
+        d: [dict] Obseravation summary dictonary.
+        debug: [bool] Run in debug mode.
+
+    Returns:
+        days_since_last_detection: [int].
+    """
 
 
     last_fits_file_for_session_sql = ""
     last_fits_file_for_session_sql += f"SELECT time_last_fits_file\n"
     last_fits_file_for_session_sql += f"        FROM {OBSERVATIONS_TABLE_NAME}\n"
-    last_fits_file_for_session_sql += f"        WHERE night_data_dir = '{os.path.basename(data_dir)}'\n"
+    last_fits_file_for_session_sql += f"        WHERE night_data_dir = ?\n"
     last_fits_file_for_session_sql += f"        LIMIT 1; "
 
 
@@ -426,7 +497,7 @@ def getDaysSinceLastDetection(config, data_dir, d=None, debug=False):
 
     try:
         conn = getObsDBConn(config)
-        result = conn.execute(last_fits_file_for_session_sql).fetchone()
+        result = conn.execute(last_fits_file_for_session_sql, (os.path.basename(data_dir),)).fetchone()
         if result is None:
             return "Unknown"
         else:
@@ -462,13 +533,17 @@ def getDaysSinceLastDetection(config, data_dir, d=None, debug=False):
 
     try:
         conn = getObsDBConn(config)
-        storeDictInDB(conn,d, debug=True)
+        storeDictInDB(conn,d, debug=False)
 
         cursor = conn.execute(last_detection_time_for_session_sql)
         result =  cursor.fetchone()[0]
         last_detection_time_for_session = datetime.datetime.strptime(result, "%Y-%m-%d %H:%M:%S")
-        seconds_since_last_detection = (time_last_fits_file_for_session - last_detection_time_for_session).total_seconds()
-        days_since_last_detection = seconds_since_last_detection / (60 * 60 * 23.934)
+
+        # Guard against missing fits files causing negative time since last detection
+        seconds_since_last_detection = max((time_last_fits_file_for_session - last_detection_time_for_session).total_seconds(), 0)
+
+        # Express the gap in solar days (24 h), which is the intuitive unit for "days since".
+        days_since_last_detection = seconds_since_last_detection / (60 * 60 * 24.0)
         conn.close()
 
     except Exception as e:
@@ -740,37 +815,54 @@ def getEphemTimesFromCaptureDirectory(config, capture_directory):
 
     return start_time, duration, end_time
 
-def getNextStartTime(conn, time_point, tz_naive=True):
-    """Query the database to discover the next start time.
+def countKeyStringsInLogs(session_start, config, key_string="Traceback (most recent call last)"):
+    """Count the number of occurences of key_string in log files from the current session.
+
+    Scans all log files in the log directory that were modified after the session's
+    start_time (from the observation database) for lines containing 'Traceback
+    (most recent call last)'.
 
     Arguments:
-        conn: [connection] connection to database.
-        obs_time: [datetime] A time before an observation session.
+        session_start: [datetime] Time object for session start
+        config: [config] RMS configuration instance.
+
+    Keyword arguments:
+        key_string: [str] Optional default "Traceback (most recent call last)" - string to be sought
 
     Return:
-        result: [string] the first entry in the next observation.
-
+        count: [int] Number of tracebacks found, or 0 if logs cannot be read.
     """
 
+    log_dir = os.path.join(config.data_dir, config.log_dir)
 
-    sql_statement = ""
-    sql_statement += "SELECT Value from records \n"
-    sql_statement += "      WHERE Key = 'start_time' \n"
-    sql_statement += "      AND Value > '{}'\n".format(time_point)
-    sql_statement += "      ORDER BY TimeStamp asc \n"
+    if not os.path.isdir(log_dir):
+        return 0
 
-    # print(sql_statement)
-    result_list = conn.cursor().execute(sql_statement).fetchall()
-    # print(result_list)
-    
-    if len(result_list) > 2:
-        result = result_list[1]
-        return result[0]
-    
-    else:
+    # Find log files modified after the session start
+    key_string_count = 0
+    log_pattern = "log_{}_".format(config.stationID)
 
-        result = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        return result
+    for filename in sorted(os.listdir(log_dir)):
+        if not filename.endswith(".log") or log_pattern not in filename:
+            continue
+
+        filepath = os.path.join(log_dir, filename)
+
+        # Only consider log files modified after the session started
+        file_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(filepath),tz=datetime.timezone.utc)
+        if file_mtime < session_start:
+            continue
+
+        try:
+            with open(filepath, 'r', errors='replace') as f:
+                for line in f:
+                    if key_string in line:
+                        key_string_count += 1
+        except Exception:
+            continue
+
+    return key_string_count
+
 
 def gatherCameraInformation(config, attempts=6, delay=10, sock_timeout=3):
     """ Gather information about the sensor in use.
@@ -785,24 +877,34 @@ def gatherCameraInformation(config, attempts=6, delay=10, sock_timeout=3):
         sock_timeout: [float] optional, default 3, socket timeout in seconds.
 
     Return:
-        sensor type: [string] sensor type.
+        (sensor, firmware, build_date): [tuple of strings]
+            sensor: hardware/sensor identifier
+            firmware: firmware version string, or "" if not available
+            build_date: firmware build date string, or "" if not available
 
     """
 
     ip = re.search(r'(?:\d{1,3}\.){3}\d{1,3}', config.deviceID).group()
+
+    if RUNNING_FROM_CONSOLE and not pingOnce(ip):
+        return ("Unavailable", "Unavailable", "Unavailable")
+
     for _ in range(attempts):
         try:
             cam = dvr.DVRIPCam(ip, timeout=sock_timeout)
             if cam.login():
-                sensor = cam.get_upgrade_info()['Hardware']
+                sys_info = cam.get_system_info()
                 cam.close()
-                return sensor
+                sensor = sys_info.get('HardWare', 'Unknown')
+                fw = sys_info.get('SoftWareVersion', '')
+                build_time = sys_info.get('BuildTime', '')
+                return (sensor, fw, build_time)
         except (socket.timeout, OSError, ConnectionError):
             # Camera may still be rebooting - ignore and retry
             pass
         time.sleep(delay)
 
-    return "Unavailable"
+    return ("Unavailable", "Unavailable", "Unavailable")
 
 def captureDirectories(captured_dir, stationID):
     """Counts the captured directories.
@@ -1038,9 +1140,12 @@ def getRemoteBranchNameForCommit(repo, commit):
         remote_branch_name: [str] the full name of the remote branch where commit exists.
     """
 
+
+    # This is the simple case, our latest commit is the HEAD
+
     local_branch_list = []
     try:
-        local_branch_list = subprocess.check_output(["git", "branch", "-a", "--contains", commit], cwd=repo).decode(
+        local_branch_list = subprocess.check_output(["git", "branch", "-r", "--points-at", commit], cwd=repo).decode(
             "utf-8").split("\n")
     except:
         pass
@@ -1051,6 +1156,27 @@ def getRemoteBranchNameForCommit(repo, commit):
         if branch_stripped.startswith("remotes/"):
             remote_branch_name = branch_stripped
 
+    # If we are not at the HEAD, then get all the branches which contain the commit.
+
+    # 2. Branches that *contain* the commit
+    try:
+        contains = subprocess.check_output(
+            ["git", "branch", "-r", "--contains", commit],
+            cwd=repo
+        ).decode().splitlines()
+    except Exception:
+        contains = []
+
+    contains = [c.strip() for c in contains if c.strip()]
+
+    if contains:
+        # If the branch is origin/main or origin/pre-release; then that is almost certainly where we are
+        for preferred in ["origin/master", "origin/prerelease"]:
+            if preferred in contains:
+                return preferred
+        return contains[0]
+
+    # Fall back return
     return remote_branch_name
 
 def daysBehind():
@@ -1105,13 +1231,13 @@ def serialize(config, format_nicely=True, as_json=False, night_directory=None, d
     if ordering is None:
         ordering = ['stationID',
                     'commit_date', 'commit_hash', 'remote_branch', 'repository_lag_remote_days',
-                    'media_backend','star_catalog_file',
+                    'star_catalog_file',
                     'hardware_version',
                     'captured_directories',
                     'storage_used_gb', 'storage_free_gb', 'storage_total_gb',
                     'camera_lens','camera_fov_h','camera_fov_v',
                     'camera_pointing_alt','camera_pointing_az',
-                    'camera_information',
+                    'camera_information', 'camera_firmware_build_date', 'camera_firmware_version',
                     'clock_measurement_source', 'clock_synchronized', 'clock_ahead_ms', 'clock_error_uncertainty_ms',
                     'start_time', 'duration_from_start_of_observation', 'continuous_capture',
                     'photometry_good', 'star_catalog_file',
@@ -1123,7 +1249,15 @@ def serialize(config, format_nicely=True, as_json=False, night_directory=None, d
                     'capture_duration_from_ephemeris', 'total_expected_fits_ephemeris', 'fits_file_shortfall_ephemeris',
                     'fits_file_shortfall_as_time_ephemeris',
                     'detections_after_ml',
-                    'media_backend','protocol_in_use','jitter_quality','dropped_frame_rate']
+                    'media_backend','protocol_in_use','jitter_quality','dropped_frame_rate','kht_wrapper_count',
+                    'traceback_count']
+
+    # Dedupe while preserving first occurrence - the ordering list contains a few repeats
+    # (e.g. media_backend, star_catalog_file) which would otherwise produce duplicate output lines.
+    ordering = list(dict.fromkeys(ordering))
+
+    # Use this print call to check the ordering
+    # print("Ordering {}".format(ordering))
 
     if drop_keys_list:
         if isinstance(drop_keys_list, str):
@@ -1191,7 +1325,8 @@ def writeToFile(config, file_path_and_name, night_dir):
 
     Arguments:
         config: [config] station config file.
-        file_path_and_name: [path full path to the target file.
+        file_path_and_name: [path] full path to the target file.
+        night_dir: [path] path to capture directory for the night
 
     Return:
         [string] string of key value pairs committed to the database since the start of the observation session.
@@ -1203,8 +1338,101 @@ def writeToFile(config, file_path_and_name, night_dir):
         summary_file_handle.write(as_ascii)
         summary_file_handle.flush()
 
-def writeToJSON(config, file_path_and_name, night_dir):
 
+def writeToPNG(config, file_path_and_name, night_dir, font_size=16, line_gap=4, padding=10,
+               col_gap=20, char_height=15, char_width=10,
+               text_colour=(255, 140, 0), bg_colour=(25, 10, 0), alpha_blur=0.8, radius_blur=2.0):
+
+    """Write colon delimited text to png image.
+
+    Arguments:
+        config: [config] station config file.
+        file_path_and_name: [path full path to the target file.
+        night_dir: [path] path to capture directory for the night.
+
+    Keyword arguments:
+        font_size: [int] Font size.
+        line_gap: [int] Gap between lines.
+        padding: [int] Border around image.
+        col_gap: [int] gap between columns.
+        char_height: [int] height of characters.
+        char_width: [int] width of characters used to compute column width.
+        text_colour: (r,g,b) Colour for text, optional default (255,140,0)
+        bg_colour: (r,g,b) Colour for text, optional default (25,10,0) - VT320 style
+        alpha_blur: [float] alpha for blurring overlay
+        radius_blur: [float] pixel radius for blurring
+
+    Return:
+        [string] string of key value pairs committed to the database since the start of the observation session.
+        """
+
+    # Rendering the PNG is a nice-to-have for the weblog; never let it break finalization.
+    try:
+        as_ascii = serialize(
+            config,
+            night_directory=night_dir,
+            drop_keys_list="night_data_dir"
+        ).encode("ascii", errors="ignore").decode("ascii")
+
+        lines_list = as_ascii.split("\n")
+
+        # Remove final empty line if present
+        if lines_list and lines_list[-1].strip() == "":
+            lines_list.pop()
+
+        # Split into two columns
+        mid = (len(lines_list) + 1) // 2
+        col1_list, col2_list = lines_list[:mid], lines_list[mid:]
+
+
+        # Monospace font - fall back to the PIL default if the DejaVu font is not installed.
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", font_size)
+        except Exception:
+            font = ImageFont.load_default()
+
+        # Measure column widths
+        col1_width = max(char_width * len(line) for line in col1_list) if col1_list else 0
+        col2_width = max(char_width * len(line) for line in col2_list) if col2_list else 0
+
+        # Total image size
+        img_width = padding + col1_width + col_gap + col2_width + padding
+        img_height = padding + (char_height + line_gap) * max(len(col1_list), len(col2_list)) + padding
+
+        # Background
+        img = Image.new("RGB", (img_width, img_height), bg_colour)
+        draw = ImageDraw.Draw(img)
+
+        # Draw column 1
+        y = padding
+        for line in col1_list:
+            draw.text((padding, y), line, font=font, fill=text_colour)
+            y += char_height + line_gap
+
+        # Draw column 2
+        x2 = padding + col1_width + col_gap
+        y = padding
+        for line in col2_list:
+            draw.text((x2, y), line, font=font, fill=text_colour)
+            y += char_height + line_gap
+
+
+        glow = img.filter(ImageFilter.GaussianBlur(radius=radius_blur))
+        img = Image.blend(glow, img, alpha=alpha_blur)
+
+        img.save(file_path_and_name)
+
+        return os.path.basename(file_path_and_name)
+
+    except Exception as e:
+        log.warning("Could not render observation summary PNG: {}".format(e))
+        return None
+
+
+
+
+
+def writeToJSON(config, file_path_and_name, night_dir):
     """Write as a json.
     Arguments:
         config: [config] station config file.
@@ -1221,7 +1449,16 @@ def writeToJSON(config, file_path_and_name, night_dir):
 
 
 def getTimeOfFirstAndLastDetectionInDir(data_dir):
+    """Get the time of the first and last meteor detections in the data_dir
 
+    Arguments:
+        data_dir:[path] Path to the data_dir to be checked
+
+    Return:
+        [str] First detection time
+        [str] Last detection time
+
+    """
 
     first_detection, last_detection = "0", "0"
     log.info(f"Looking for FTP file in {data_dir}")
@@ -1259,9 +1496,7 @@ def getObservationSummaryDict(data_dir, final=False, config=None):
         [dict]: Observation summary dict.
     """
 
-    log.info("Entered getObservationSummaryDict")
     if data_dir is None and config is not None:
-        log.info("Attempting to guess captured files directory")
         p = Path(os.path.join(config.data_dir, config.captured_dir))
         regex = re.compile(rf"^{config.stationID}_[0-9]{{8}}_[0-9]{{6}}_[0-9]{{6}}$")
 
@@ -1271,9 +1506,8 @@ def getObservationSummaryDict(data_dir, final=False, config=None):
             candidate_dirs.sort(key=lambda d: d.stat().st_ctime, reverse=True)
             if len(candidate_dirs):
                 data_dir = str(candidate_dirs[0].resolve())
-                log.info(f"Guessed directory {data_dir}")
             else:
-                log.warning("Found no matching captured dirs, unable to guess")
+                log.warning("Found no matching captured dirs, unable to determine directory to use")
                 return {}
         else:
             return {}
@@ -1285,12 +1519,20 @@ def getObservationSummaryDict(data_dir, final=False, config=None):
         if os.path.isfile(observation_summary_json_path):
             with open(observation_summary_json_path, "r") as f:
                 try:
-                    log.info(f"Found an existing {observation_summary_json_path}")
                     d = json.load(f)
-                    log.info(f"Loaded")
+                    log.info(f"Loaded {os.path.basename(observation_summary_json_path)}")
 
                 except:
-                    os.remove(observation_summary_json_path)
+                    # Don't silently delete - back up the unparseable file so data is not lost,
+                    # then start fresh.
+                    corrupt_path = observation_summary_json_path + ".corrupt"
+                    try:
+                        os.replace(observation_summary_json_path, corrupt_path)
+                        log.warning("Could not parse {}; backed up to {}".format(
+                            os.path.basename(observation_summary_json_path), os.path.basename(corrupt_path)))
+                    except Exception as e:
+                        log.warning("Could not parse {}; backup failed: {}".format(
+                            os.path.basename(observation_summary_json_path), e))
                     d = {'night_data_dir': data_dir}
                     saveObservationSummaryDict(d, data_dir)
 
@@ -1300,27 +1542,76 @@ def getObservationSummaryDict(data_dir, final=False, config=None):
     d = {'night_data_dir': data_dir}
     saveObservationSummaryDict(d, data_dir)
 
-
     return d
 
 def saveObservationSummaryDict(d, night_dir=None):
+    """Save the observation summary dictionary as a json.
 
-    """
+    The working JSON is read-modify-written by several processes (the capture child writes
+    media_backend while the main process writes the start-of-session values, and Reprocess runs
+    later). To avoid lost updates and torn reads (the failure class behind issue #882) this:
+      - takes an exclusive file lock (POSIX; degrades gracefully where fcntl is unavailable),
+      - merges the in-memory dict on top of whatever is already on disk (so concurrent writers
+        adding distinct keys do not clobber each other),
+      - writes to a temp file and atomically replaces the target.
+    The caller's dict is updated in place to stay consistent with what was written.
 
     Arguments:
         d: Observation summary dict.
+
+    Keyword arguments:
+        night_dir: [path] optional, the night directory; if None it is taken from d['night_data_dir'].
 
     Return:
         Nothing
     """
     if night_dir is None:
-        if "night_data_dir" in d:
-            night_dir = d["night_data_dir"]
+        night_dir = d.get("night_data_dir")
+
+    if night_dir is None:
+        log.warning("saveObservationSummaryDict: no night_data_dir available; skipping save")
+        return
 
     observation_summary_json_path = os.path.join(night_dir, getRMSStyleFileName(night_dir, OBSERVATION_SUMMARY_WORKING_NAME_JSON))
-    with open(observation_summary_json_path, "w") as f:
-        json.dump(d, f, default=lambda o: o.__dict__, indent=4, sort_keys=True)
-        f.flush()
+    lock_path = observation_summary_json_path + ".lock"
+
+    lock_f = open(lock_path, "w")
+    try:
+        if fcntl is not None:
+            fcntl.flock(lock_f, fcntl.LOCK_EX)
+
+        # Merge with whatever is already on disk; in-memory values win for the keys they set.
+        merged = {}
+        if os.path.isfile(observation_summary_json_path):
+            try:
+                with open(observation_summary_json_path, "r") as rf:
+                    merged = json.load(rf)
+            except Exception:
+                merged = {}
+        merged.update(d)
+
+        # Keep the caller's dict consistent with what is persisted.
+        d.clear()
+        d.update(merged)
+
+        tmp_path = observation_summary_json_path + ".tmp"
+        with open(tmp_path, "w") as f:
+            json.dump(merged, f, default=lambda o: o.__dict__, indent=4, sort_keys=True)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, observation_summary_json_path)
+
+    except Exception as e:
+        log.error("Saving observation summary working JSON failed: " + repr(e))
+        log.error("".join(traceback.format_exception(*sys.exc_info())))
+
+    finally:
+        if fcntl is not None:
+            try:
+                fcntl.flock(lock_f, fcntl.LOCK_UN)
+            except Exception:
+                pass
+        lock_f.close()
 
 def startObservationSummaryReport(config, night_data_dir, duration, force_delete=False):
     """ Enters the parameters known at the start of observation into the database.
@@ -1383,15 +1674,16 @@ def startObservationSummaryReport(config, night_data_dir, duration, force_delete
     captured_directories = captureDirectories(os.path.join(config.data_dir, config.captured_dir), config.stationID)
     addObsParam(d, "captured_directories", captured_directories)
     try:
-        addObsParam(d, "camera_information", gatherCameraInformation(config))
+        sensor, firmware, build_date = gatherCameraInformation(config)
+        addObsParam(d, "camera_information", sensor)
+        addObsParam(d, "camera_firmware_version", firmware)
+        addObsParam(d, "camera_firmware_build_date", build_date)
     except:
         addObsParam(d, "camera_information", "Unavailable")
+        addObsParam(d, "camera_firmware_version", "Unavailable")
+        addObsParam(d, "camera_firmware_build_date", "Unavailable")
 
-    # Hardcoded for now, but should be calculated based on the config value
-    no_of_frames_per_fits_file = 256
 
-    # Calculate the number of fits files expected for the duration
-    fps = config.fps
     saveObservationSummaryDict(d)
     try:
         conn = getObsDBConn(config)
@@ -1405,8 +1697,7 @@ def startObservationSummaryReport(config, night_data_dir, duration, force_delete
     return "Opening a new observations summary"
 
 def finalizeObservationSummary(config, night_data_dir, platepar=None):
-
-    """ Enters the parameters known at the end of observation into the database.
+    """Enters the parameters known at the end of observation into the database.
 
     Arguments:
         config: [config] config file.
@@ -1429,7 +1720,11 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
     time_first_fits_file, time_last_fits_file, \
     total_expected_fits, total_expected_fits_ephemeris = nightSummaryData(config, night_data_dir)
 
-
+    # Convert AU0004_20260612_100206_674582 into a python time object
+    _, time_section = os.path.basename(d['night_data_dir']).split("_",maxsplit=1)
+    session_start_time = datetime.datetime.strptime(time_section, "%Y%m%d_%H%M%S_%f").replace(tzinfo=datetime.timezone.utc)
+    addObsParam(d, "traceback_count", countKeyStringsInLogs(session_start_time, config, key_string="Traceback (most recent call last)"))
+    addObsParam(d, "kht_wrapper_count", countKeyStringsInLogs(session_start_time, config, key_string="undefined symbol: kht_wrapper"))
 
     try:
         timeSyncStatus(config, d)
@@ -1479,9 +1774,10 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
     except:
         addObsParam(d, "repository_lag_remote_days", "Not determined")
 
+    # Persist the values gathered so far so getDaysSinceLastDetection can query time_last_fits_file.
     try:
         conn = getObsDBConn(config, force_delete=False)
-        storeDictInDB(conn, d, debug=True)
+        storeDictInDB(conn, d, debug=False)
         conn.close()
 
     except Exception as e:
@@ -1494,6 +1790,7 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
 
     writeToFile(config, getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_NAME_TXT), night_data_dir)
     writeToJSON(config, getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_NAME_JSON), night_data_dir)
+    writeToPNG(config, getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_NAME_PNG), night_data_dir)
     working_json_path = getRMSStyleFileName(night_data_dir, OBSERVATION_SUMMARY_WORKING_NAME_JSON)
     if os.path.exists(working_json_path):
         if os.path.isfile(working_json_path):
@@ -1501,7 +1798,7 @@ def finalizeObservationSummary(config, night_data_dir, platepar=None):
 
     try:
         conn = getObsDBConn(config, force_delete=False)
-        storeDictInDB(conn, d, debug=True)
+        storeDictInDB(conn, d, debug=False)
         conn.close()
 
     except Exception as e:
@@ -1527,13 +1824,14 @@ if __name__ == "__main__":
 
     #########################
 
+    RUNNING_FROM_CONSOLE = True
+
     # Load the config file
 
     config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
 
     conn = getObsDBConn(config, force_delete=False)
     full_path_capture_directory = os.path.join(config.data_dir, config.captured_dir)
-    start_time = datetime.datetime.strptime("2025-06-25 08:03:37", "%Y-%m-%d %H:%M:%S")
     d = getObservationSummaryDict(None, config=config)
 
     ftp_detect_info_file = None
@@ -1561,7 +1859,10 @@ if __name__ == "__main__":
     print("Duration time was {:.2f} hours".format(duration/3600))
     print("End time was {}".format(end_time))
     print(f"Days since last detection {getDaysSinceLastDetection(config, latest_dir, debug=True)}")
-    print(getTimeOfFirstAndLastDetectionInDir(latest_dir))
+    try:
+        print(getTimeOfFirstAndLastDetectionInDir(latest_dir))
+    except:
+        pass
 
     startObservationSummaryReport(config, latest_dir, duration, force_delete=False)
     pp = Platepar()

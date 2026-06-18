@@ -652,7 +652,7 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
         log.info("Returned from finalize observation summary")
         extra_files.append(observation_summary_path_file_name)
         extra_files.append(observation_summary_json_path_file_name)
-        
+
 
     except Exception as e:
         log.debug('Finalizing Observation Summary failed with message:\n' + repr(e))
@@ -779,6 +779,19 @@ def processFramesFiles(config):
         timelapse_results,
         remove_source=(config.frame_cleanup == "delete")
     )
+
+    # -- 4. prune empty directories left behind by per-block cleanup --------
+    # Per-block cleanup may fail to rmdir shared parent directories (e.g. year
+    # or day dirs) when sibling blocks still have files at the time of pruning.
+    # Walk bottom-up and remove any empty subdirectories under frame_dir.
+    if config.frame_cleanup in ('delete', 'tar'):
+        for root, dirs, files in os.walk(frame_dir, topdown=False):
+            if root == frame_dir:
+                continue
+            try:
+                os.rmdir(root)  # succeeds only if empty
+            except OSError:
+                pass
 
     return archive_paths
 

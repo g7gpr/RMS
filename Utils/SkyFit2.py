@@ -150,7 +150,8 @@ except Exception as exc:
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP, raDecToXYPP, \
     rotationWrtHorizon, rotationWrtHorizonToPosAngle, computeFOVSize, photomLine, photometryFit, \
     rotationWrtStandard, rotationWrtStandardToPosAngle, correctVignetting, \
-    extinctionCorrectionTrueToApparent, applyAstrometryFTPdetectinfo, getFOVSelectionRadius
+    extinctionCorrectionTrueToApparent, applyAstrometryFTPdetectinfo, getFOVSelectionRadius, \
+    limitingMagnitude
 from RMS.Astrometry.AtmosphericExtinction import atmosphericExtinctionCorrection
 from RMS.Astrometry.StarClasses import CatalogStar, GeoPoint, PlanetPoint, PairedStars
 from RMS.Astrometry.StarFilters import filterPhotometricOutliers, filterBlendedStars
@@ -3602,7 +3603,6 @@ class PlateTool(QtWidgets.QMainWindow):
             self._original_catalog_file = self.config.star_catalog_file
             self._original_band_ratios = self.config.star_catalog_band_ratios
 
-            self.initMaskFromFile()
             self.detectInputType(use_fr_files=self.use_fr_files)
 
             if self.img_handle is None:
@@ -3618,7 +3618,9 @@ class PlateTool(QtWidgets.QMainWindow):
             self.img_zoom.changeHandle(self.img_handle)
             self.tab.hist.setLevels(0, 2**(8*self.img.data.itemsize) - 1)
 
-            # Now that image data is available, render the mask overlay
+            # Now that the new image dimensions are available, load this station's mask (or clear a
+            #   previous station's mask if this one has none), then render the overlay
+            self.initMaskFromFile()
             self.updateMaskOverlayImage()
 
             self.catalog_stars = self.loadCatalogStars(self.config.catalog_mag_limit)
@@ -5184,20 +5186,20 @@ class PlateTool(QtWidgets.QMainWindow):
             # Early bail-out check after Phase 1
             # With high intensity threshold (bright stars only), we expect good precision.
             # If false positive ratio > 80%, the calibration is likely wrong.
-            if best_fp_ratio_seg > 0.80:
+            if best_fp_ratio_seg > 0.50:
                 precision_seg = (1.0 - best_fp_ratio_seg) * 100
 
                 print(f"\n  *** TUNING ABORTED ***")
                 print(f"  Only {best_true_pos_seg} true positive(s) with "
                       f"{best_fp_ratio_seg:.0%} false positive ratio.")
-                print(f"  Precision: {precision_seg:.1f}% (expected >20% with bright stars)")
+                print(f"  Precision: {precision_seg:.1f}% (expected >50% with bright stars)")
                 print(f"  This suggests the platepar calibration is incorrect or the image has issues.")
                 self.status_bar.showMessage("Tuning aborted: calibration appears invalid")
                 qmessagebox(
                     message="Tuning aborted: could not find enough matching stars.\n\n"
                             f"Only {best_true_pos_seg} star(s) matched catalog positions "
                             f"({precision_seg:.1f}% precision).\n\n"
-                            "With bright stars only (high threshold), precision should be >20%.\n\n"
+                            "With bright stars only (high threshold), precision should be >50%.\n\n"
                             "This usually means:\n"
                             "• The platepar calibration is incorrect\n"
                             "• The image pointing doesn't match the platepar\n"
@@ -5270,18 +5272,20 @@ class PlateTool(QtWidgets.QMainWindow):
             # If precision is very low, the calibration is likely wrong
             if n_detected > 0:
                 precision = n_true_pos / n_detected
-                # Bail out if precision < 10% - even with many detections, this means
-                # most detections are noise/artifacts, not real stars matching catalog
-                if precision < 0.10:
+                # Bail out if precision < 50% or fewer than 8 true positives. Either means the
+                # detections are noise-dominated / too sparse to fit reliably - which on a bad or
+                # uncalibrated platepar otherwise drives Phase 3 to chase coincidental matches.
+                if (precision < 0.50) or (n_true_pos < 8):
                     print(f"\n  *** TUNING ABORTED ***")
                     print(f"  Only {n_true_pos} true positive(s) out of {n_detected} detections ({precision:.1%} precision).")
+                    print(f"  Need >=8 true positives at >=50% precision for a reliable tune.")
                     print(f"  This suggests the platepar calibration is incorrect or the image has issues.")
                     self.status_bar.showMessage("Tuning aborted: calibration appears invalid")
                     qmessagebox(
-                        message="Tuning aborted: very low detection precision.\n\n"
+                        message="Tuning aborted: detection quality too low.\n\n"
                                 f"Only {n_true_pos} star(s) out of {n_detected} detections "
                                 f"matched catalog positions ({precision:.1%} precision).\n\n"
-                                "Expected precision >10% for a valid calibration.\n\n"
+                                "A reliable tune needs at least 8 matched stars at >=50% precision.\n\n"
                                 "This usually means:\n"
                                 "• The platepar calibration is incorrect\n"
                                 "• The image pointing doesn't match the platepar\n"
@@ -5308,6 +5312,24 @@ class PlateTool(QtWidgets.QMainWindow):
             QtWidgets.QApplication.processEvents()
 
             best_lm = self._findOptimalCatalogLM(jd, tp_x, tp_y, n_true_pos)
+
+            # Success gate: _findOptimalCatalogLM returns None when no reliable LM was found (the
+            #   detections could only be matched via a spurious, over-deep catalog). Abort rather
+            #   than apply a junk LM that explodes the catalog and masquerades as a good optimum.
+            if best_lm is None:
+                print(f"\n  *** TUNING ABORTED ***")
+                print(f"  Could not find a reliable catalog LM - detections only matched via an "
+                      f"over-deep (coincidental) catalog.")
+                self.status_bar.showMessage("Tuning aborted: no reliable catalog LM")
+                qmessagebox(
+                    message="Tuning aborted: could not find a reliable catalog limiting magnitude.\n\n"
+                            "The detected stars could only be matched by resorting to an over-deep\n"
+                            "catalog (coincidental matches). This usually means the platepar pointing\n"
+                            "is off.\n\n"
+                            "Please verify your calibration before trying again.",
+                    title="Tuning Aborted", message_type="warning")
+                return
+
             print(f"\n  Selected catalog LM: {best_lm:.1f}")
 
             # Restore original config
@@ -5851,6 +5873,12 @@ class PlateTool(QtWidgets.QMainWindow):
         print("    Coarse pass (0.5 mag steps):")
         coarse_lm_values = np.arange(3.0, 10.1, 0.5)
 
+        # Guardrails so a bad/uncalibrated platepar can't drive the LM to the max chasing
+        #   coincidental matches: never explore a catalog deeper than COST_CEILING cat/match per
+        #   added match (spurious), nor larger than CATALOG_CAP stars (cause-agnostic bound).
+        COST_CEILING = 100      # catalog stars per added match above which a match is coincidental
+        CATALOG_CAP = 8000      # max catalog stars to consider during the LM search
+
         prev_matched, prev_catalog = 0, 0
         best_lm = coarse_lm_values[0]
         best_matches = 0
@@ -5858,6 +5886,12 @@ class PlateTool(QtWidgets.QMainWindow):
 
         for i, test_lm in enumerate(coarse_lm_values):
             n_matched, n_catalog = count_matches_at_lm(test_lm)
+
+            # Hard catalog-count cap: stop before pulling in an absurd catalog
+            if n_catalog > CATALOG_CAP:
+                print(f"    -> Catalog cap reached at LM={test_lm:.1f} "
+                      f"({n_catalog} > {CATALOG_CAP} stars); stopping")
+                break
 
             # Calculate diminishing returns metrics
             match_gain = n_matched - prev_matched
@@ -5870,6 +5904,14 @@ class PlateTool(QtWidgets.QMainWindow):
                 cost = catalog_gain / match_gain
                 print(f"      LM={test_lm:.1f}: {n_matched}/{target_matches} ({coverage:.0%}), "
                       f"+{match_gain} matches, cost={cost:.0f} cat/match")
+
+                # Absolute cost ceiling: a match that costs this many catalog stars is coincidental,
+                #   not real. Applied even with <2 prior costs, which is exactly the sparse-match
+                #   case (bad platepar) that the relative knee below cannot catch.
+                if cost > COST_CEILING:
+                    print(f"    -> Spurious match at LM={test_lm:.1f} "
+                          f"(cost={cost:.0f} > {COST_CEILING} cat/match); stopping")
+                    break
 
                 # Detect cost knee: cost jumps dramatically relative to prior steps
                 if len(prev_costs) >= 2:
@@ -5917,6 +5959,17 @@ class PlateTool(QtWidgets.QMainWindow):
             if n_matched > final_matches:
                 final_lm = test_lm
                 final_matches = n_matched
+
+        # Success gate: a good calibration often detects many stars fainter than the cost-effective
+        #   catalog LM, so a low coverage *fraction* is normal (the faint detections legitimately
+        #   have no bright catalog counterpart). Only fail if too few real (low-cost) matches were
+        #   found in absolute terms to align on. The spurious / bad-platepar cases are already
+        #   stopped by the cost ceiling and the Phase 1/2 precision gates upstream.
+        min_matches = 5
+        if final_matches < min_matches:
+            print(f"    -> Only {final_matches} reliable matches found (< {min_matches}); "
+                  f"no reliable catalog LM")
+            return None
 
         print(f"    -> Selected LM={final_lm:.1f} with {final_matches} matches")
         return final_lm
@@ -6044,11 +6097,19 @@ class PlateTool(QtWidgets.QMainWindow):
     ###################################################################################################
 
     def initMaskFromFile(self):
-        """Auto-load mask.bmp if it exists in the working directory."""
+        """Auto-load mask.bmp if present, else clear any mask carried over from a previous station.
 
-        # Reset brush state (critical when switching stations/directories)
+        Must be called after the new station's image handle is in place, since the mask is rendered
+        against the current image dimensions.
+        """
+
+        # Reset ALL mask state - critical when switching stations/directories. Clearing only the
+        #   paint layer (not the polygons or the rendered overlay) left the previous station's mask
+        #   visible whenever the new station had no mask file.
         if self.mask_brush_mode:
             self._exitBrushMode()
+        self.mask_polygons = []
+        self.mask_current_polygon = []
         self.mask_paint_layer = None
         self.mask_brush_stroke_history = []
         self.tab.mask.setUndoEnabled(False)
@@ -6056,6 +6117,13 @@ class PlateTool(QtWidgets.QMainWindow):
         mask_path = os.path.join(self.dir_path, "mask.bmp")
         if os.path.exists(mask_path):
             self.loadMaskFromFile(mask_path)
+        else:
+            # No mask for this station - clear any leftover overlay/outlines from the previous one
+            self.updateMaskDisplay()
+
+        # Sync the detection mask to the loaded-or-cleared state so it doesn't leak across stations
+        if self.img.data is not None:
+            self.mask = MaskStructure(self.generateMaskImage())
 
     def toggleMaskDrawMode(self):
         """Toggle mask polygon drawing mode."""
@@ -6531,8 +6599,19 @@ class PlateTool(QtWidgets.QMainWindow):
 
         # Composite brush paint layer on top
         if self.mask_paint_layer is not None:
-            mask_img[self.mask_paint_layer == 1] = 1   # painted → masked
-            mask_img[self.mask_paint_layer == 2] = 0   # erased  → clear
+            paint_layer = self.mask_paint_layer
+
+            # The paint layer may have been saved at a different resolution than the current image
+            #   (e.g. a mask carried over from a sensor with a different frame height). Resample it
+            #   (nearest-neighbour, to preserve the 0/1/2 labels) so loading doesn't crash.
+            if paint_layer.shape != mask_img.shape:
+                print("Mask paint layer {} != image {}; resampling to fit".format(
+                    paint_layer.shape, mask_img.shape))
+                paint_layer = cv2.resize(paint_layer, (img_width, img_height),
+                                         interpolation=cv2.INTER_NEAREST)
+
+            mask_img[paint_layer == 1] = 1   # painted → masked
+            mask_img[paint_layer == 2] = 0   # erased  → clear
 
         # Transpose to (width, height) for pyqtgraph ImageItem
         self.mask_overlay.setImage(mask_img.T)
@@ -6737,8 +6816,16 @@ class PlateTool(QtWidgets.QMainWindow):
         #   paint pixels (1) → masked (0)
         #   erase pixels  (2) → unmasked (255), overrides polygon fill
         if self.mask_paint_layer is not None:
-            mask[self.mask_paint_layer == 1] = 0
-            mask[self.mask_paint_layer == 2] = 255
+            paint_layer = self.mask_paint_layer
+
+            # Resample if the paint layer was saved at a different resolution than the current image
+            #   (nearest-neighbour preserves the 0/1/2 labels), so a stale mask doesn't crash here.
+            if paint_layer.shape != mask.shape:
+                paint_layer = cv2.resize(paint_layer, (img_width, img_height),
+                                         interpolation=cv2.INTER_NEAREST)
+
+            mask[paint_layer == 1] = 0
+            mask[paint_layer == 2] = 255
 
         return mask
 
@@ -7049,6 +7136,32 @@ class PlateTool(QtWidgets.QMainWindow):
             self.distortion_center_marker2.setData(x=[x_centre], y=[y_centre])
 
 
+    def screenPlotDPI(self):
+        """ Compute a matplotlib figure DPI scaled to the screen resolution so that the
+            astrometry and photometry plot windows (and their fonts, markers and lines) stay
+            legible on high-resolution displays. Scaling the DPI grows the whole figure
+            uniformly, leaving the layout unchanged. The 1080p screen height is the baseline
+            (scale = 1), and the scale is clamped so plots never shrink below the baseline nor
+            become unwieldy on very large screens.
+
+        Return:
+            [float] Figure DPI to use when creating the plot.
+        """
+
+        base_dpi = plt.rcParams['figure.dpi']
+
+        try:
+            screen_height = QtWidgets.QApplication.primaryScreen().geometry().height()
+            scale = screen_height/1080.0
+        except Exception:
+            scale = 1.0
+
+        # Keep the plots at least baseline size and cap the growth on very large screens
+        scale = max(1.0, min(scale, 2.5))
+
+        return base_dpi*scale
+
+
     def photometry(self, show_plot=False, force_update=False):
         """
         Perform the photometry on selected stars. Updates residual text above and below picked stars
@@ -7194,6 +7307,14 @@ class PlateTool(QtWidgets.QMainWindow):
         self.platepar.mag_lev_stddev = self.photom_fit_stddev
         self.platepar.vignetting_coeff = vignetting_coeff
 
+        # Fit the limiting magnitude model: log10(S/N) vs the calibrated (vignetting + extinction
+        # corrected) apparent magnitude. The predicted magnitude per star equals the catalog
+        # magnitude minus the fit residual. Saturated stars are excluded (their flux is capped).
+        predicted_mags = np.array(catalog_mags) - np.array(self.photom_fit_resids)
+        self.limiting_mag_info = limitingMagnitude(
+            predicted_mags, np.array(snr_list), snr_targets=(5, 10),
+            exclude_mask=np.array(saturation_list))
+
         # Update the values in the platepar tab in the GUI
         self.tab.param_manager.updatePlatepar()
 
@@ -7297,18 +7418,19 @@ class PlateTool(QtWidgets.QMainWindow):
             #                                    gridspec_kw={'height_ratios': [3, 1, 1]})
 
             # Init plot for photometry
-            self.fig_photometry = plt.figure(figsize=(10, 5))  # Adjust the figure size as needed
+            self.fig_photometry = plt.figure(figsize=(10, 5), dpi=self.screenPlotDPI())
             fig_p = self.fig_photometry
 
-            # Create a grid with 2 columns and 2 rows
-            gs = gridspec.GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[1, 1])
+            # Create a grid with 2 columns and 3 rows
+            gs = gridspec.GridSpec(3, 2, width_ratios=[1, 1], height_ratios=[1, 1, 1])
 
-            # Large plot on the left
+            # Large plot on the left, spans all 3 rows
             ax_p = fig_p.add_subplot(gs[:, 0])
 
-            # Two smaller plots on the right, one on top of the other
+            # Three smaller plots on the right, stacked vertically
             ax_r = fig_p.add_subplot(gs[0, 1])
             ax_e = fig_p.add_subplot(gs[1, 1])
+            ax_m = fig_p.add_subplot(gs[2, 1])
 
             # Set photometry window title
             try:
@@ -7368,6 +7490,9 @@ class PlateTool(QtWidgets.QMainWindow):
             print()
             print('Photometric fit:')
             print(fit_info)
+            if self.limiting_mag_info is not None:
+                print('Limiting magnitude fit:')
+                print(self.limiting_mag_info['eqn_str'])
             print()
 
             # Plot the line fit
@@ -7472,6 +7597,47 @@ class PlateTool(QtWidgets.QMainWindow):
             ax_e.set_ylabel("Fit res. (mag)")
             ax_e.set_xlabel("Elevation (deg)")
 
+            ### PLOT MAG DIFFERENCE BY CATALOG MAGNITUDE (gamma diagnostic)
+
+            catalog_mags_arr = np.array(catalog_mags)
+
+            # Plot catalog magnitude vs. fit residual, colored by SNR
+            snr_color = np.clip(snr_list, 0, 15)
+            sc_m = ax_m.scatter(catalog_mags_arr, self.photom_fit_resids, s=10, c=snr_color,
+                            cmap='viridis', vmin=0, vmax=15, alpha=0.7, zorder=3, picker=5)
+
+            # Add a colorbar for the SNR, with notches at the limiting-magnitude S/N targets
+            cbar_m = fig_p.colorbar(sc_m, ax=ax_m, ticks=[0, 5, 10, 15])
+            cbar_m.set_label("S/N")
+            for snr_notch in (5, 10):
+                cbar_m.ax.axhline(snr_notch, color='r', linewidth=1.2)
+
+            # Zero line
+            mag_min, mag_max = np.min(catalog_mags_arr), np.max(catalog_mags_arr)
+            ax_m.plot([mag_min, mag_max], [0, 0], linestyle='dashed', alpha=0.5, color='k')
+
+            # Draw the limiting magnitude at the target S/N values
+            if self.limiting_mag_info is not None:
+
+                # Colors set so the yellower line (higher S/N, brighter LM) is on the left and the
+                # greener line (lower S/N, fainter LM) is on the right
+                lm_colors = {5: 'green', 10: 'darkorange'}
+                for snr_target, lm_mag in self.limiting_mag_info['lm'].items():
+                    ax_m.axvline(lm_mag, linestyle='dashed', alpha=0.8,
+                                    color=lm_colors.get(snr_target, 'm'),
+                                    label="LM = {:.2f} mag @ S/N = {:g}".format(lm_mag, snr_target))
+
+                # Show the model equation so users can compute the LM for any S/N
+                ax_m.text(0.02, 0.03, self.limiting_mag_info['eqn_str'].split('\n')[0],
+                            transform=ax_m.transAxes, fontsize=7, va='bottom', ha='left',
+                            bbox=dict(boxstyle='round', fc='white', alpha=0.6, ec='none'))
+
+                ax_m.legend(fontsize=7, loc='upper right')
+
+            ax_m.grid()
+            ax_m.set_ylabel("Fit res. (mag)")
+            ax_m.set_xlabel("Catalog mag")
+
             ###
 
             self.photometry_fit_x_list = [sc[0] for sc in star_coords]
@@ -7480,13 +7646,15 @@ class PlateTool(QtWidgets.QMainWindow):
             self.photometry_plot_highlight_artists = {
                 'ax_p': ax_p.plot([], [], 'ro', mfc='none', markersize=10, zorder=10)[0],
                 'ax_r': ax_r.plot([], [], 'ro', mfc='none', markersize=10, zorder=10)[0],
-                'ax_e': ax_e.plot([], [], 'ro', mfc='none', markersize=10, zorder=10)[0]
+                'ax_e': ax_e.plot([], [], 'ro', mfc='none', markersize=10, zorder=10)[0],
+                'ax_m': ax_m.plot([], [], 'ro', mfc='none', markersize=10, zorder=10)[0]
             }
 
             self.photometry_fit_data = {
                 'ax_p': (-2.5*lsp_arr, catalog_mags),
                 'ax_r': (radius_list, self.photom_fit_resids),
                 'ax_e': (elevation_list, self.photom_fit_resids),
+                'ax_m': (catalog_mags_arr.tolist(), self.photom_fit_resids),
             }
 
             fig_p.canvas.mpl_connect('pick_event', self.onPhotometryPlotPick)
@@ -8239,6 +8407,58 @@ class PlateTool(QtWidgets.QMainWindow):
         return removed_count
 
 
+    def filterPositionalOutliers(self, sigma_threshold=3.0, abs_floor_px=3.0):
+        """
+        Remove paired stars whose image position is far from the catalog projection.
+
+        Run *after* a fit: re-projects each paired catalog star with the current platepar and drops
+        pairs whose positional residual is a gross outlier - typically a wrong or duplicate match
+        that survived NN/RANSAC and otherwise inflates the final RMSD. The threshold is robust
+        (median + sigma*MAD) and floored at abs_floor_px so a tight fit is never over-clipped.
+
+        Arguments:
+            sigma_threshold: [float] Robust-sigma multiplier for outlier detection.
+            abs_floor_px: [float] Minimum residual (px) to consider an outlier, protecting tight fits.
+
+        Returns:
+            int: Number of stars removed.
+        """
+        if len(self.paired_stars) < 15:
+            return 0
+
+        img_coords = np.array(self.paired_stars.imageCoords())
+        catalog_stars = np.array(self.paired_stars.skyCoords())
+        if len(catalog_stars) == 0:
+            return 0
+
+        jd = date2JD(*self.img_handle.currentTime())
+        cat_x, cat_y, _ = getCatalogStarsImagePositions(catalog_stars, jd, self.platepar)
+
+        errs = np.hypot(img_coords[:, 0] - cat_x, img_coords[:, 1] - cat_y)
+
+        # Robust threshold (MAD-based), floored so a clean fit isn't trimmed
+        med = np.median(errs)
+        mad = np.median(np.abs(errs - med))
+        robust_std = 1.4826*mad
+        thresh = max(abs_floor_px, med + sigma_threshold*robust_std)
+
+        outlier_indices = set(np.where(errs > thresh)[0].tolist())
+
+        if len(outlier_indices) > 0:
+            new_paired_stars = PairedStars()
+            for i, (x, y, fwhm, intens_acc, obj, snr, saturated) in enumerate(
+                    self.paired_stars.paired_stars):
+                if i not in outlier_indices:
+                    new_paired_stars.addPair(x, y, fwhm, intens_acc, obj, snr, saturated)
+            self.paired_stars = new_paired_stars
+
+        removed_count = len(outlier_indices)
+        if removed_count > 0:
+            print("Removed {} positional outliers (>{:.1f} px)".format(removed_count, thresh))
+
+        return removed_count
+
+
     def filterBlendedStars(self, fwhm_mult=2.0, mag_margin=0.3):
         """
         Filter paired_stars by removing likely blended stars.
@@ -8762,6 +8982,12 @@ class PlateTool(QtWidgets.QMainWindow):
         for k, v in variables.items():
             setattr(self, k, v)
         
+        # Init matplotlib figure references (stripped from saved state, not picklable)
+        if not hasattr(self, 'fig_astrometry'):
+            self.fig_astrometry = None
+        if not hasattr(self, 'fig_photometry'):
+            self.fig_photometry = None
+
         # Init catalog_stars_spectral_type if it doesn't exist (loading old state files)
         if not hasattr(self, 'catalog_stars_spectral_type'):
             self.catalog_stars_spectral_type = None
@@ -9078,6 +9304,32 @@ class PlateTool(QtWidgets.QMainWindow):
             #   taken into account during the astrometry calibration procedure
             self.updateMeasurementRefractionCorrection()
 
+
+        # Add the missing mask drawing/brush state variables (old states predate them)
+        if not hasattr(self, "mask_draw_mode"):
+            self.mask_draw_mode = False
+        if not hasattr(self, "mask_current_polygon"):
+            self.mask_current_polygon = []
+        if not hasattr(self, "mask_polygons"):
+            self.mask_polygons = []
+        if not hasattr(self, "mask_dragging_vertex"):
+            self.mask_dragging_vertex = None
+        if not hasattr(self, "mask_brush_mode"):
+            self.mask_brush_mode = False
+        if not hasattr(self, "mask_brush_radius"):
+            self.mask_brush_radius = 20
+        if not hasattr(self, "mask_brush_painting"):
+            self.mask_brush_painting = False
+        if not hasattr(self, "mask_brush_erasing"):
+            self.mask_brush_erasing = False
+        if not hasattr(self, "mask_brush_last_pos"):
+            self.mask_brush_last_pos = None
+        if not hasattr(self, "mask_paint_layer"):
+            self.mask_paint_layer = None
+        if not hasattr(self, "mask_brush_stroke_history"):
+            self.mask_brush_stroke_history = []
+        if not hasattr(self, "mask_brush_max_undo"):
+            self.mask_brush_max_undo = 50
 
         # If setupUI hasn't already been called, call it
         if not hasattr(self, 'central'):
@@ -11851,6 +12103,17 @@ class PlateTool(QtWidgets.QMainWindow):
         catalog_stars_filtered, _ = self.filterCatalogStarsByMask(
             catalog_x_filtered, catalog_y_filtered, catalog_stars_filtered)
 
+        # Cap the catalog fed to NN matching to the brightest stars. Guards against a mis-inferred
+        #   over-deep catalog LM (e.g. a wide FOV at LM 10 -> 100k+ stars) bogging down the fit. The
+        #   detected stars are the brightest in the image, so the brightest catalog stars are the
+        #   matchable ones; cause-agnostic (works regardless of why the LM came out deep).
+        nn_catalog_cap = 8000
+        if len(catalog_stars_filtered) > nn_catalog_cap:
+            print("  Capping catalog from {:d} to brightest {:d} stars for NN fit".format(
+                len(catalog_stars_filtered), nn_catalog_cap))
+            brightest_idx = np.argsort(catalog_stars_filtered[:, 2])[:nn_catalog_cap]
+            catalog_stars_filtered = catalog_stars_filtered[brightest_idx]
+
         if pointing_only:
             # --- Pointing-only mode: use recalibrateFF (same as night processing) ---
             print()
@@ -12032,6 +12295,13 @@ class PlateTool(QtWidgets.QMainWindow):
             else:
                 print("Final refinement with user settings (distortion={})...".format(user_distortion_type))
             self.fitPickedStars()
+
+            # Sigma-clip gross positional mispairs that survived NN/RANSAC (a detection matched to a
+            #   wrong/duplicate catalog star inflates the RMSD), then refit once on the clean set.
+            removed = self.filterPositionalOutliers(sigma_threshold=3.0, abs_floor_px=3.0)
+            if removed > 0:
+                print("Pairs after positional filtering: {}".format(len(self.paired_stars)))
+                self.fitPickedStars()
 
         # Restore fit_only_pointing after pointing-only fit
         self.fit_only_pointing = user_fit_only_pointing
@@ -12989,6 +13259,12 @@ class PlateTool(QtWidgets.QMainWindow):
             QtWidgets.QApplication.processEvents()
             self.first_platepar_fit = True
             self.fitPickedStars()
+
+            # Sigma-clip gross positional mispairs that survived NN/RANSAC, then refit once
+            removed = self.filterPositionalOutliers(sigma_threshold=3.0, abs_floor_px=3.0)
+            if removed > 0:
+                print("Pairs after positional filtering: {}".format(len(self.paired_stars)))
+                self.fitPickedStars()
 
             # Note: catalog LM restoration is handled by the caller (autoFitAstrometryNet)
 
@@ -13990,7 +14266,8 @@ class PlateTool(QtWidgets.QMainWindow):
             img_crop_orig = self.img.data[x_min:x_max, y_min:y_max]
 
         # Perform gamma correction
-        img_crop = gammaCorrectionImage(img_crop_orig, self.config.gamma, out_type=np.float32)
+        img_crop = gammaCorrectionImage(img_crop_orig, self.config.gamma,
+                                        bp=0, wp=(2**self.config.bit_depth - 1), out_type=np.float32)
 
 
         ######################################################################################################
@@ -14761,7 +15038,7 @@ class PlateTool(QtWidgets.QMainWindow):
             (ax_azim, ax_elev, ax_skyradius),
             (ax_x, ax_y, ax_radius),
             (ax_snr, ax_mag, ax_fwhm)
-        ) = plt.subplots(ncols=3, nrows=3, facecolor=None, figsize=(12, 9))
+        ) = plt.subplots(ncols=3, nrows=3, facecolor=None, figsize=(12, 9), dpi=self.screenPlotDPI())
         fig_a = self.fig_astrometry
 
         # Set figure title
