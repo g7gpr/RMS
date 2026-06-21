@@ -758,9 +758,10 @@ def addObsParam(d, key, value):
         if d['night_data_dir'] != value:
             log.warning("Observation summary night_data_dir is changing - this is unexpected")
 
-
+    log.info(f"Adding f{key}:f{value} to observation summary")
     d[key] = str(value)
     saveObservationSummaryDict(d)
+    log.info(f"Observation summary update saved")
 
 def estimateLens(fov_h):
     """Estimate the focal length of the lens in use.
