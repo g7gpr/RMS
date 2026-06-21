@@ -1572,6 +1572,10 @@ def saveObservationSummaryDict(d, night_dir=None):
         log.warning("saveObservationSummaryDict: no night_data_dir available; skipping save")
         return
 
+    if not os.path.isdir(night_dir):
+        log.warning("saveObservationSummaryDict: night_data_dir does not exist, skipping save: {}".format(night_dir))
+        return
+
     observation_summary_json_path = os.path.join(night_dir, getRMSStyleFileName(night_dir, OBSERVATION_SUMMARY_WORKING_NAME_JSON))
     lock_path = observation_summary_json_path + ".lock"
 

@@ -1104,13 +1104,14 @@ class BufferedCapture(Process):
             ).format(protocol_str, device_url)
 
         # Branch for processing
+        queue_size = self.config.gst_queue_size
         processing_branch = (
             "t. ! queue ! {:s} ! "
-            "queue leaky=downstream max-size-buffers=100 max-size-bytes=0 max-size-time=0 ! "
+            "queue leaky=downstream max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! "
             "videoconvert ! video/x-raw,format={:s} ! "
-            "queue max-size-buffers=100 max-size-bytes=0 max-size-time=0 ! "
-            "appsink max-buffers=100 drop=true sync=0 name=appsink"
-            ).format(gst_decoder, video_format)
+            "queue max-size-buffers={:d} max-size-bytes=0 max-size-time=0 ! "
+            "appsink max-buffers={:d} drop=true sync=0 name=appsink"
+            ).format(gst_decoder, queue_size, video_format, queue_size, queue_size)
         
          # Branch for storage - if video_file_dir is not None, save the raw stream to a file
         if video_file_dir is not None:
@@ -1422,7 +1423,7 @@ class BufferedCapture(Process):
                     # Set the video device type
                     self.video_device_type = "gst"
 
-                    if self.night_data_dir is not None:
+                    if self.night_data_dir is not None and os.path.isdir(self.night_data_dir):
                         try:
                             addObsParam(getObservationSummaryDict(self.night_data_dir), "media_backend", "gst")
                         except Exception as e:
@@ -1447,7 +1448,7 @@ class BufferedCapture(Process):
                     # Note: video_device_type stays "cv2" - downstream logic (isOpened check,
                     # first-frame skipping) treats v4l2 as an OpenCV device. Only the recorded
                     # media_backend label is "v4l2".
-                    if self.night_data_dir is not None:
+                    if self.night_data_dir is not None and os.path.isdir(self.night_data_dir):
                         try:
                             addObsParam(getObservationSummaryDict(self.night_data_dir), "media_backend", "v4l2")
                         except Exception as e:
@@ -1466,7 +1467,7 @@ class BufferedCapture(Process):
                 log.info("Initialize OpenCV Device.")
                 self.device = cv2.VideoCapture(self.config.deviceID)
 
-                if self.night_data_dir is not None:
+                if self.night_data_dir is not None and os.path.isdir(self.night_data_dir):
                     try:
                         addObsParam(getObservationSummaryDict(self.night_data_dir), "media_backend", "cv2")
                     except Exception as e:
@@ -2210,14 +2211,16 @@ class BufferedCapture(Process):
                             # Force device re-initialization by releasing and reconnecting
                             log.info("Releasing resources to re-initialize video device with GStreamer")
                             self.releaseResources()
+
                             wait_for_reconnect = True
                             break
 
                         self.last_daytime_mode = current_daytime
 
                         # Calculate buffer fill percentage based on max frame age
-                        # The appsink has max-buffers=100, so at fps rate, max capacity is ~100/fps seconds
-                        max_buffer_time = 100.0 / self.config.fps  # Theoretical max buffer time in seconds
+                        # The appsink has max-buffers=gst_queue_size, so at fps rate, max
+                        # capacity is ~gst_queue_size/fps seconds
+                        max_buffer_time = float(self.config.gst_queue_size) / self.config.fps  # Theoretical max buffer time in seconds
                         buffer_fill_percent = min(100, (max_frame_age_seconds / max_buffer_time) * 100)
 
                         # Calculate dropped frames in last 10 minutes
