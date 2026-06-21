@@ -1589,7 +1589,6 @@ def saveObservationSummaryDict(d, night_dir=None):
     observation_summary_json_path = os.path.join(night_dir, getRMSStyleFileName(night_dir, OBSERVATION_SUMMARY_WORKING_NAME_JSON))
     lock_path = observation_summary_json_path + ".lock"
 
-    log.info(f"Creating lock file at {lock_path}")
     lock_f = open(lock_path, "w")
     try:
         if fcntl is not None:
