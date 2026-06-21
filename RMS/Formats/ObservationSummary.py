@@ -758,7 +758,6 @@ def addObsParam(d, key, value):
         if d['night_data_dir'] != value:
             log.warning("Observation summary night_data_dir is changing - this is unexpected")
 
-    log.info(f"Adding {key}:{value} to observation summary")
     d[key] = str(value)
     saveObservationSummaryDict(d)
     log.info("Observation summary update saved")
@@ -1626,7 +1625,6 @@ def saveObservationSummaryDict(d, night_dir=None):
                 fcntl.flock(lock_f, fcntl.LOCK_UN)
             except Exception:
                 pass
-        log.info(f"Closing lock file at {lock_path}")
         lock_f.close()
 
 def startObservationSummaryReport(config, night_data_dir, duration, force_delete=False):
