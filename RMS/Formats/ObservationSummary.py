@@ -1626,7 +1626,7 @@ def saveObservationSummaryDict(d, night_dir=None):
                 fcntl.flock(lock_f, fcntl.LOCK_UN)
             except Exception:
                 pass
-        log.info("Closing lock file")
+        log.info(f"Closing lock file at {lock_f}")
         lock_f.close()
 
 def startObservationSummaryReport(config, night_data_dir, duration, force_delete=False):
