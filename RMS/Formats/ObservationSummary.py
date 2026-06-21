@@ -191,6 +191,7 @@ def addRequiredColumns(conn, d):
 
     # If d has not yet been initialised, return to prevent interating over None
     if d is None:
+        log.info("Not adding columns for an empty obseration summary dictionary")
         return
 
     existing = getColumns(conn)
@@ -222,6 +223,7 @@ def storeDictInDB(conn, d, debug=False):
     addRequiredColumns(conn, d)
 
     if d is None:
+        log.info("Not storing an empty observation summary in the database")
         return
 
     # Normalise booleans safely (TEXT columns expect strings)
