@@ -295,6 +295,12 @@ class Config:
         # Transport Layer Protocol: tcp or udp
         self.protocol = "tcp"
 
+        # Per-socket UDP receive buffer size in bytes for the rtspsrc element (gst
+        # backend). Larger values give RTP bursts more room and prevent UDP
+        # RcvbufErrors -> dropped frames. Requires net.core.rmem_max >= this value
+        # (see Scripts/UpdateBuffers.sh) or the kernel clamps it back.
+        self.udp_buffer_size = 16777216
+
         # Media backend to use for capture. Options are gst, cv2, or v4l2
         self.media_backend = "gst"
 
@@ -325,6 +331,9 @@ class Config:
         self.height = 720
         self.width_device = self.width
         self.height_device = self.height
+        self.video_scale_width = None
+        self.video_scale_height = None
+        self.video_crop = None
         self.fps = 25.0
 
         # Camera buffer in number of frames. This will applied a buffer/fps correction to
@@ -1092,6 +1101,20 @@ def parseCapture(config, parser):
         config.height_device = config.height
 
 
+    # for scaling and or cropping source raw video for further processing
+    if parser.has_option(section, "video_scale_width"):
+        config.video_scale_width = parser.getint(section, "video_scale_width")
+
+    if parser.has_option(section, "video_scale_height"):
+        config.video_scale_height = parser.getint(section, "video_scale_height")
+
+    if parser.has_option(section, "video_crop"):
+        config.video_crop = parser.get(section, "video_crop").strip()
+        # Treat an empty value or the literal "none" as disabled
+        if config.video_crop == "" or config.video_crop.lower() == "none":
+            config.video_crop = None
+
+
     if parser.has_option(section, "report_dropped_frames"):
         config.report_dropped_frames = parser.getboolean(section, "report_dropped_frames")
 
@@ -1161,7 +1184,10 @@ def parseCapture(config, parser):
 
     if parser.has_option(section, "protocol"):
         config.protocol = parser.get(section, "protocol")
-    
+
+    if parser.has_option(section, "udp_buffer_size"):
+        config.udp_buffer_size = parser.getint(section, "udp_buffer_size")
+
     if parser.has_option(section, "media_backend"):
         config.media_backend = parser.get(section, "media_backend")
 

@@ -55,6 +55,13 @@
 #   0 2 * * * /path/to/GRMSUpdater.sh --term gnome-terminal --force
 # This eliminates permission issues and follows the principle of least privilege.
 #
+# OPTIONAL gnome-terminal PROFILE: pass --profile <name> to launch restarted
+# stations with a specific gnome-terminal profile (e.g. a fixed-size profile so
+# windows tile predictably). Ignored by other terminals; if the profile doesn't
+# exist gnome-terminal warns and falls back to its default, so it is safe to
+# pass everywhere. Example:
+#   0 2 * * * /path/to/GRMSUpdater.sh --term gnome-terminal --profile StartCapture --force
+#
 # OPTIONAL REBOOT: pass --reboot (always) or --reboot-if-needed (only when a reboot
 # is pending, e.g. after a kernel update). The capture user needs passwordless sudo
 # for shutdown, or the reboot is skipped with a warning. Stock Raspberry Pi OS grants
@@ -274,7 +281,10 @@ launch_term() {                            # $1 = title, $2… = cmd+args
             # build one properly-quoted payload string
             local payload
             payload=$(printf '%q ' "$@")          # quote every arg
-            cmd=(gnome-terminal --title="$title" \
+            # optional profile (matches the --profile=... the autostart entries use)
+            local profile_args=()
+            [[ -n "$GTERM_PROFILE" ]] && profile_args=(--profile="$GTERM_PROFILE")
+            cmd=(gnome-terminal "${profile_args[@]}" --title="$title" \
                  -- bash -lc "export GRMS_AUTO=1; exec $payload")
             ;;
         tmux)
@@ -345,6 +355,40 @@ restart_stations() {
     done
 }
 
+# ------------------------------------------------------------
+#  usage() – print help and exit
+# ------------------------------------------------------------
+usage() {
+    cat <<'EOF'
+Usage: GRMSUpdater.sh [options]
+
+Stops running RMS stations, updates RMS, then restarts them. With no
+positional argument all configured stations (in ~/source/Stations) are
+restarted; with any positional argument only the previously-running
+stations are restarted.
+
+Options:
+  --term <terminal>   Terminal to launch stations in (default: lxterminal).
+                      One of: lxterminal, kitty, foot, footclient,
+                      gnome-terminal, tmux.
+  --profile <name>    gnome-terminal profile to launch with. Ignored by
+                      other terminals; gnome-terminal falls back to its
+                      default profile if <name> does not exist.
+  --force             Restart stations even if RMS is already up to date.
+  --reboot            Always reboot after updating.
+  --reboot-if-needed  Reboot only when one is pending (e.g. kernel update).
+  -h, --help          Show this help and exit.
+EOF
+}
+
+# Handle help before acquiring the lock or touching anything, so it works
+# even when another instance is running.
+for _arg in "$@"; do
+    case "$_arg" in
+        -h|--help) usage; exit 0 ;;
+    esac
+done
+
 # Log script start
 log_message "GRMSUpdater.sh started with args: $*"
 
@@ -359,6 +403,7 @@ fi
 # Parse command line arguments
 FORCE_UPDATE=false
 PREFERRED_TERM="lxterminal"     # default terminal
+GTERM_PROFILE=""                # gnome-terminal profile to launch with (empty = terminal's default)
 REBOOT_MODE="none"
 REBOOT_KERNEL_TARGET=""          # kernel that should_reboot() flagged (for the loop-guard stamp)
 POSITIONAL_ARGS=()
@@ -367,6 +412,13 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --term)
             PREFERRED_TERM="$2"
+            shift 2
+            ;;
+        --profile)
+            # gnome-terminal profile name (ignored by other terminals).
+            # gnome-terminal warns and falls back to its default if the profile
+            # doesn't exist, so passing this on a host without it is harmless.
+            GTERM_PROFILE="$2"
             shift 2
             ;;
         --force)
@@ -380,6 +432,15 @@ while [[ $# -gt 0 ]]; do
         --reboot)
             REBOOT_MODE="always"
             shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --*)
+            log_message "Error: unknown option '$1'"
+            usage >&2
+            exit 1
             ;;
         *)
             POSITIONAL_ARGS+=("$1")

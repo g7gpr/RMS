@@ -195,7 +195,7 @@ def getAllPoints(np.ndarray[UINT16_TYPE_t, ndim=2] point_list, x1, y1, z1, x2, y
     point1_index = np.where(np.all(point_list == np.array((x1, y1, z1)), axis=1))[0]
 
     # Check if the first point exists, if not start from the point closes to the given point
-    if not point1_index:
+    if point1_index.size == 0:
 
         best_distance = np.inf
 
