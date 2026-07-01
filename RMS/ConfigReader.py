@@ -19,15 +19,9 @@ from __future__ import absolute_import, division, print_function
 import math
 import os
 import sys
-from RMS.Misc import getRmsRootDir, pythonSetup
+from RMS.Misc import getRmsRootDir
 from Utils.GenerateTimelapse import isFfmpegWorking
 import matplotlib.colors as mcolors
-import traceback
-
-import ctypes
-import numpy as np
-import numpy.ctypeslib as npct
-
 
 # Consolidated version-specific imports and definitions
 if sys.version_info[0] == 3:
@@ -72,91 +66,6 @@ def choosePlatform(win_conf, rpi_conf, linux_pc_conf):
 
         else:
             return linux_pc_conf
-
-
-
-def findBinaryPath(config, dir_path, binary_name, binary_extension):
-    """ Given the path of the build directory and the name of the binary (without the extension!), the
-        function will find the path to the binary file.
-
-    Arguments:
-        dir_path: [str] The build directory with binaries.
-        binary_name: [str] The name of the binary without the extension.
-        binary_extension: [str] The extension of the binary (e.g. 'so'), without the dot.
-
-    Return:
-        file_path: [str] Relative path to the binary.
-    """
-
-
-    if binary_extension is not None:
-        binary_extension = '.' + binary_extension
-
-
-    # If the directory path from the config file doesn't exist, use the default path
-    if not os.path.exists(dir_path):
-        dir_path = config.rms_root_dir
-
-
-    file_candidates = []
-
-    # Recursively find all files with the given extension in the given directory
-    for file_path in os.walk(dir_path):
-        for file_name in file_path[-1]:
-
-            found = False
-
-            # Check if the files correspond to the search pattern
-            if file_name.startswith(binary_name):
-
-                if binary_extension is not None:
-                    if file_name.endswith(binary_extension):
-                        found = True
-
-                else:
-                    found = True
-
-
-            if found:
-                file_path = os.path.join(file_path[0], file_name)
-                file_candidates.append(file_path)
-
-
-    # If there is only one file candiate, take that one
-    if len(file_candidates) == 0:
-        return None
-
-    elif len(file_candidates) == 1:
-        return file_candidates[0]
-
-    else:
-        # If there are more candidates, find the right one for the running version of python, platform, and
-        #   bits
-
-
-        # Find the compiled module for the correct python version
-        for file_path in file_candidates:
-            
-            # Extract the name of the dir where the binary is located
-            binary_dir = os.path.split(os.path.split(file_path)[0])[1]
-            # take the final section as the version
-            binary_dir_version = binary_dir.split('-')[-1]
-
-
-            # the binary directory may or may not contain a dot in the version
-            # e.g lib.linux-x86_64-3.7 vs lib.linux-x86_64-cpython-311
-            if '.' in binary_dir_version:
-                py_version = "{:d}.{:d}".format(sys.version_info.major, sys.version_info.minor)
-            else:
-                py_version = "{:d}{:d}".format(sys.version_info.major, sys.version_info.minor)
-
-            # If the directory ends with the correct python version, take that binary
-            if binary_dir_version == py_version:
-                return file_path
-
-
-        # If no appropriate binary was found, give up
-        return None
 
 
 
@@ -288,7 +197,9 @@ class Config:
 
         self.reboot_after_processing = False
         self.reboot_lock_file = ".reboot_lock"
-        
+
+        self.time_server = "time.cloudflare.com"
+
         ##### Capture
         self.deviceID = 0
 
@@ -595,9 +506,6 @@ class Config:
         self.max_lines_det = 30 # maximum number of lines to be found on the time segment with KHT
         self.line_min_dist = 40 # Minimum distance between KHT lines in Cartesian space to merge them (used for merging similar lines after KHT)
         self.stripe_width = 20 # width of the stripe around the line
-        self.kht_build_dir = os.path.join(self.rms_root_dir, 'RMS', 'build')
-        self.kht_binary_name = 'kht_module'
-        self.kht_binary_extension = 'so'
 
         # 3D line finding for meteor detection
         self.max_points_det = 600 # maximum number of points during 3D line search in faint meteor detection (used to minimize runtime)
@@ -976,6 +884,10 @@ def parseSystem(config, parser):
     if parser.has_option(section, "reboot_lock_file"):
         config.reboot_lock_file = parser.get(section, "reboot_lock_file")
 
+    if parser.has_option(section, "time_server"):
+        time_server = parser.get(section, "time_server").strip()
+        if time_server != '':
+            config.time_server = time_server
 
     if parser.has_option(section, "event_monitor_db_name"):
         config.event_monitor_db_name = parser.get(section, "event_monitor_db_name")
@@ -1664,76 +1576,10 @@ def parseMeteorDetection(config, parser):
     if parser.has_option(section, "max_points_det"):
         config.max_points_det = parser.getint(section, "max_points_det")
 
-    
-    # Read in the KHT library path for both the PC and the RPi, but decide which one to take based on the 
-    # system this is running on
-
-    if parser.has_option(section, "kht_build_dir"):
-        config.kht_build_dir = parser.get(section, "kht_build_dir")
-
-    if parser.has_option(section, "kht_binary_name"):
-        config.kht_binary_name = parser.get(section, "kht_binary_name")
-
-    if parser.has_option(section, "kht_binary_extension"):
-        config.kht_binary_extension = parser.get(section, "kht_binary_extension")
-
-    kht_lib_path, tries_remaining = None, 2
-
-
-
-    kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name,
-        config.kht_binary_extension)
-    if kht_lib_path is None:
-        try:
-            pythonSetup()
-            kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name,
-                                          config.kht_binary_extension)
-        except Exception as e:
-            print(e)
-            print(traceback.format_exc())
-
-    try:
-        print(f"Attempting test load of {kht_lib_path}")
-        kht = ctypes.cdll.LoadLibrary(kht_lib_path)
-        kht.kht_wrapper.argtypes = [npct.ndpointer(dtype=np.double, ndim=2),
-                                    npct.ndpointer(dtype=np.byte, ndim=1),
-                                    ctypes.c_size_t,
-                                    ctypes.c_size_t,
-                                    ctypes.c_size_t,
-                                    ctypes.c_size_t,
-                                    ctypes.c_double,
-                                    ctypes.c_double,
-                                    ctypes.c_double,
-                                    ctypes.c_double]
-        kht.kht_wrapper.restype = ctypes.c_size_t
-        print("KHT loaded successfully")
-
-    # If loading KHT library fails get the OSError subclass
-    except Exception as e:
-        # If the file exists remove it
-        if os.path.exists(kht_lib_path):
-            if os.path.isfile(kht_lib_path):
-                os.unlink(kht_lib_path)
-
-        # Convert traceback into ASCII for logger safety
-        traceback_ascii = traceback.format_exc().encode("ascii", "replace").decode("ascii")
-        # Convert e into ASCII for logger safety
-        e_ascii = str(e).encode("ascii", "replace").decode("ascii")
-        print("Unable to load KHT library")
-        print(e_ascii)
-        print(traceback_ascii)
-        print("Rebuilding kht")
-        pythonSetup()
-        kht_lib_path = findBinaryPath(config, config.kht_build_dir, config.kht_binary_name,
-                                      config.kht_binary_extension)
-        print(f"Kernel Hough Transform library found at {kht_lib_path}")
-        # This thread can never reload the library correctly because of namespace contamination - so restart
-        os.execv(sys.executable, [sys.executable] + sys.argv)
-
-
-
-
-    config.kht_lib_path = kht_lib_path
+    # Note: the legacy kht_build_dir / kht_binary_name / kht_binary_extension options are
+    # no longer used. KHT is now a regular Cython extension (RMS.Routines.Kht) imported
+    # through the normal Python import machinery, so these options are silently ignored if
+    # present in an existing config file.
 
     if parser.has_option(section, "vect_angle_thresh"):
         config.vect_angle_thresh = parser.getint(section, "vect_angle_thresh")
