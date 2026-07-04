@@ -1286,6 +1286,7 @@ if __name__ == "__main__":
                         if runningUnderSystemd():
                             log.info(f"Running under systemd so terminating (SIGTERM) own process group PID:{pid} in 10 seconds")
                             time.sleep(10)
+                            os.system("pkill python")
                             os.killpg(0, signal.SIGTERM)
                             sys.exit(0)
                         else:
