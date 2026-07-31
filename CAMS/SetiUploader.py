@@ -31,7 +31,7 @@ from RMS.Formats.FTPdetectinfo import readFTPdetectinfo, writeFTPdetectinfo
 # Credentials
 
 setisite = 'camsftp.seti.org'
-setiuser = 'camsuploader'
+setiuser = 'camsuploader@seti.org'
 setipass = 'Cams_Started_2010'
 setidir = '/incoming/'
 
