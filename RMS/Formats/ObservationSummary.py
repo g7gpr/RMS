@@ -1040,7 +1040,7 @@ def updateCommitHistoryDirectory(remote_urls, target_directory):
     """ Clone only the commit history of a remote repository.
 
     Arguments:
-        remote_urls: [url] the remote url to be cloned/
+        remote_urls: [url] the remote url to be cloned
         target_directory: [path] the directory into which to clone.
 
     Return:
@@ -1055,25 +1055,28 @@ def updateCommitHistoryDirectory(remote_urls, target_directory):
     first_remote = True
     for remote_url in remote_urls:
         local_name, url = remote_url[0], remote_url[1]
-        log.info(f"Working on remote url {url}")
         if first_remote:
             first_remote = False
-            log.info(f"git clone {url}  --filter=blob:none --no-checkout")
             p = subprocess.Popen(["git", "clone", url, "--filter=blob:none", "--no-checkout"], cwd=target_directory,
                              stdout=subprocess.PIPE)
-            p.wait()
-            # this first remote might have been pulled in with the wrong local_name so rename it
+            try:
+                p.wait(timeout=120)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                raise
+
+            # this first remote might have been pulled in with the wrong local_name so check and rename if required
             commit_repo_directory = os.path.join(target_directory, os.listdir(target_directory)[0])
             downloaded_remote_name = subprocess.check_output(["git", "remote"], cwd = commit_repo_directory).strip().decode('utf-8')
 
             if downloaded_remote_name != local_name:
-                log.info("Detected downloaded remote name does not match local name")
-                log.info(f"Downloaded remote name: {downloaded_remote_name}")
-                log.info(f"            Local name: {local_name}")
-                log.info(f"Commit repo directory : {commit_repo_directory}")
-                log.info(f"git remote rename {downloaded_remote_name} {local_name}")
                 p = subprocess.Popen(["git", "remote", "rename", downloaded_remote_name, local_name], cwd = commit_repo_directory)
-                p.wait()
+
+                try:
+                    p.wait(timeout=120)
+                except subprocess.TimeoutExpired:
+                    p.kill()
+                    raise
 
         else:
             # this is not the first remote so add another remote
