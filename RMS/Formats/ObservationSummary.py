@@ -1055,11 +1055,11 @@ def updateCommitHistoryDirectory(remote_urls, target_directory):
     first_remote = True
     for remote_url in remote_urls:
         local_name, url = remote_url[0], remote_url[1]
-        log.info(f"Working on remote url {remote_url}")
+        log.info(f"Working on remote url {url}")
         if first_remote:
             first_remote = False
             log.info(f"git clone {url}  --filter=blob:none --no-checkout")
-            p = subprocess.Popen(["git", "clone", remote_url, "--filter=blob:none", "--no-checkout"], cwd=target_directory,
+            p = subprocess.Popen(["git", "clone", url, "--filter=blob:none", "--no-checkout"], cwd=target_directory,
                              stdout=subprocess.PIPE)
             p.wait()
             # this first remote might have been pulled in with the wrong local_name so rename it
@@ -1071,6 +1071,7 @@ def updateCommitHistoryDirectory(remote_urls, target_directory):
                 log.info(f"Downloaded remote name: {downloaded_remote_name}")
                 log.info(f"            Local name: {local_name}")
                 log.info(f"Commit repo directory : {commit_repo_directory}")
+                log.info(f"git remote rename {downloaded_remote_name} {local_name}")
                 p = subprocess.Popen(["git", "remote", "rename", downloaded_remote_name, local_name], cwd = commit_repo_directory)
                 p.wait()
 
@@ -1204,9 +1205,8 @@ def getRemoteBranchNameForCommit(repo, commit):
         if branch_stripped.startswith("remotes/"):
             remote_branch_name = branch_stripped
 
-    # If we are not at the HEAD, then get all the branches which contain the commit.
+    # Get all the branches that contain the commit and pick the most likely
 
-    # 2. Branches that *contain* the commit
     try:
         contains = subprocess.check_output(
             ["git", "branch", "-r", "--contains", commit],
@@ -1215,7 +1215,7 @@ def getRemoteBranchNameForCommit(repo, commit):
     except Exception:
         contains = []
 
-    contains = [c.strip() for c in contains if c.strip()]
+    contains = [c.strip() for c in contains if c.strip() and "->" not in c.strip()]
 
     if contains:
         # If the branch is origin/main or origin/pre-release; then that is almost certainly where we are
