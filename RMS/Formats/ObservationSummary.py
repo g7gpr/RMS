@@ -1055,7 +1055,7 @@ def updateCommitHistoryDirectory(remote_urls, target_directory):
     first_remote = True
     for remote_url in remote_urls:
         local_name, url = remote_url[0], remote_url[1]
-
+        log.info(f"Working on remote url {remote_url}")
         if first_remote:
             first_remote = False
             p = subprocess.Popen(["git", "clone", url, "--filter=blob:none", "--no-checkout"], cwd=target_directory,
