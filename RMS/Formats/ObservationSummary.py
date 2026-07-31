@@ -1218,6 +1218,7 @@ def getRemoteBranchNameForCommit(repo, commit):
     except Exception:
         contains = []
 
+    # Eliminate any symbolic references
     contains = [c.strip() for c in contains if c.strip() and "->" not in c.strip()]
 
     if contains:
