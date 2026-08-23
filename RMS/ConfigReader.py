@@ -16,9 +16,11 @@
 
 from __future__ import absolute_import, division, print_function
 
+import logging
 import math
 import os
 import sys
+from RMS.CompileArgs import getCompileArgs
 from RMS.Misc import getRmsRootDir
 from Utils.GenerateTimelapse import isFfmpegWorking
 import matplotlib.colors as mcolors
@@ -30,6 +32,11 @@ else:
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     from ConfigParser import NoOptionError, RawConfigParser
     FileNotFoundError = IOError  # Map FileNotFoundError to IOError in Python 2
+
+# Module logger - propagates to the root logger, so warnings end up in the night log once logging is
+# initialized, and on the console before that
+log = logging.getLogger(__name__)
+
 
 # Used to determine if ML filtering is available
 TFLITE_AVAILABLE = False
@@ -50,22 +57,9 @@ except ImportError:
             pass
 
 
-def choosePlatform(win_conf, rpi_conf, linux_pc_conf):
-    """ Choose the setting depending on if this is running on the RPi or a Linux PC. """
-
-    # Check if running on Windows.
-    # ``startswith`` ensures the platform string actually begins with ``"win"``
-    # instead of matching other identifiers that merely contain that substring.
-    if sys.platform.startswith('win'):
-        return win_conf
-
-    else:
-
-        if 'arm' in os.uname()[4]:
-            return rpi_conf
-
-        else:
-            return linux_pc_conf
+# Platform selection of compile arguments lives in RMS.CompileArgs so that setup.py
+# and the .pyxbld files can use it without importing this module's heavy dependencies
+choosePlatform = getCompileArgs
 
 
 
@@ -388,6 +382,19 @@ class Config:
         # Automatically reprocess broken capture directories
         self.auto_reprocess = True
 
+        # Give up on a capture directory after this many failed auto-reprocess attempts. 0 disables
+        #   the guard and retries forever
+        self.auto_reprocess_max_attempts = 3
+
+        # Also auto-reprocess nights which look processed but have no directory in ArchivedFiles.
+        #   Off by default because retention and quota management delete ArchivedFiles independently
+        #   of CapturedFiles, so a missing archive does not reliably mean the night is unprocessed
+        self.reprocess_if_archive_missing = False
+
+        # File in the captured directory which records how far processing got and how many
+        #   auto-reprocess attempts have failed
+        self.processing_status_file = ".rms_processing_status"
+
         # Flag file which indicates that the previously processed files are loaded during capture resume
         self.capture_resume_flag_file = ".capture_resuming"
 
@@ -452,7 +459,7 @@ class Config:
 
 
         ##### Weave compilation arguments
-        self.extra_compile_args = ["-O3"]
+        self.extra_compile_args = getCompileArgs()
         
         ##### FireballDetection
 
@@ -612,6 +619,11 @@ class Config:
         # Maximum number of stars to use for recalibration on a single FF
         self.recalibration_max_stars = 200
 
+        # Minimum fraction of detected stars that a per-FF recalibration fit
+        #   must match to be accepted (guards against sparse spurious fits
+        #   chaining forward on cloudy nights)
+        self.recalibration_min_match_fraction = 0.6
+
         ##### Thumbnails
         self.thumb_bin = 4
         self.thumb_stack = 5
@@ -763,7 +775,7 @@ def parse(path, strict=True):
 
     # Disable upload if the default station name is used
     if config.stationID == "XX0001":
-        print("Disabled upload because the default station code is used!")
+        log.warning("Disabled upload because the default station code is used!")
         config.upload_enabled = False
     
 
@@ -1153,8 +1165,7 @@ def parseCapture(config, parser):
         # Limit the FPS to 1 million, as the time precision of datetime is 1 us
         if config.fps > 1000000:
             config.fps = 1000000
-            print()
-            print("WARNING! The FPS has been limited to 1,000,000!")
+            log.warning("The FPS has been limited to 1,000,000!")
 
     if parser.has_option(section, "camera_buffer"):
         config.camera_buffer = parser.getint(section, "camera_buffer")
@@ -1173,8 +1184,8 @@ def parseCapture(config, parser):
 
 
     if (config.fov_w <= 0) or (config.fov_h <= 0):
-        print('The field of view in the config file (fov_h and fov_w) have to be positive numbers!')
-        print('Make sure to set the approximate FOV size correctly!')
+        log.error('The field of view in the config file (fov_h and fov_w) have to be positive numbers!')
+        log.error('Make sure to set the approximate FOV size correctly!')
         sys.exit()
 
 
@@ -1208,7 +1219,7 @@ def parseCapture(config, parser):
     # If the option is absent from the config, fall back to the class default.
     save_requested = parser.getboolean(section, "save_frames", fallback=config.save_frames)
     if save_requested and not config.ffmpeg_binary:
-        print("save_frames requested but FFmpeg not available - disabling.")
+        log.warning("save_frames requested but FFmpeg not available - disabling.")
         config.save_frames = False
     else:
         config.save_frames = save_requested
@@ -1223,8 +1234,7 @@ def parseCapture(config, parser):
         # Must be an integer between 0 and 100
         if not 0 <= config.jpgs_quality <= 100:
             config.jpgs_quality = 90
-            print()
-            print("WARNING! The jpgs_quality must be between 0 and 100. It has been reset to 90!")
+            log.warning("The jpgs_quality must be between 0 and 100. It has been reset to 90!")
 
     # Load the PNG compression
     if parser.has_option(section, "png_compression"):
@@ -1233,8 +1243,7 @@ def parseCapture(config, parser):
         # Must be an integer between 0 and 9
         if not 0 <= config.png_compression <= 9:
             config.png_compression = 3
-            print()
-            print("WARNING! The png_compression must be between 0 and 9. It has been reset to 3!")
+            log.warning("The png_compression must be between 0 and 9. It has been reset to 3!")
 
 
     # Load the interval for saving video frame
@@ -1253,6 +1262,18 @@ def parseCapture(config, parser):
     # Enable/disable auto reprocessing
     if parser.has_option(section, "auto_reprocess"):
         config.auto_reprocess = parser.getboolean(section, "auto_reprocess")
+
+    # Load the cap on failed auto-reprocess attempts per capture directory
+    if parser.has_option(section, "auto_reprocess_max_attempts"):
+        config.auto_reprocess_max_attempts = int(parser.get(section, "auto_reprocess_max_attempts"))
+
+        if config.auto_reprocess_max_attempts < 0:
+            config.auto_reprocess_max_attempts = 0
+
+    # Enable/disable reprocessing nights whose ArchivedFiles directory is missing
+    if parser.has_option(section, "reprocess_if_archive_missing"):
+        config.reprocess_if_archive_missing = parser.getboolean(section,
+            "reprocess_if_archive_missing")
 
     # Load name of the capture resume flag file
     if parser.has_option(section, "capture_resume_flag_file"):
@@ -1371,9 +1392,9 @@ def parseBuildArgs(config, parser):
         win_pc_weave = parser.get(section, "win_pc_weave").split()
         
 
-    # Read in the KHT library path for both the PC and the RPi, but decide which one to take based on the 
-    # system this is running on
-    config.extra_compile_args = choosePlatform(win_pc_weave, rpi_weave, linux_pc_weave)
+    # Pick the compile arguments for the system this is running on, keeping the
+    # defaults for any option not set in the config file
+    config.extra_compile_args = getCompileArgs(win_pc_weave, rpi_weave, linux_pc_weave)
 
 
 
@@ -1485,8 +1506,7 @@ def parseMeteorDetection(config, parser):
         # Check that the given bin size is a factor of 2
         if bin_factor > 1:
             if math.log(bin_factor, 2)/int(math.log(bin_factor, 2)) != 1:
-                print('Warning! The given binning factor is not a factor of 2!')
-                print('Defaulting to 1...')
+                log.warning('The given binning factor is not a factor of 2! Defaulting to 1...')
                 bin_factor = 1
         
         config.detection_binning_factor = bin_factor
@@ -1497,8 +1517,8 @@ def parseMeteorDetection(config, parser):
 
         bin_method_list = ['sum', 'avg']
         if bin_method not in bin_method_list:
-            print('Warning! The binning method {:s} is not an allowed binning method: ', bin_method_list)
-            print('Defaulting to avg...')
+            log.warning('The binning method {:s} is not an allowed binning method: {}. '
+                        'Defaulting to avg...'.format(bin_method, bin_method_list))
             bin_method = 'avg'
 
         config.detection_binning_method = bin_method
@@ -1720,7 +1740,7 @@ def parseCalibration(config, parser):
         # If they're all zero, use the V band
         if all([x == 0 for x in config.star_catalog_band_ratios]):
             config.star_catalog_band_ratios[1] = 1.0
-            print('Warning! All band ratios are zero! Using the V band as the default band ratio...')
+            log.warning('All band ratios are zero! Using the V band as the default band ratio...')
 
 
     if parser.has_option(section, "platepar_name"):
@@ -1761,6 +1781,10 @@ def parseCalibration(config, parser):
 
     if parser.has_option(section, "recalibration_max_stars"):
         config.recalibration_max_stars = parser.getint(section, "recalibration_max_stars")
+
+    if parser.has_option(section, "recalibration_min_match_fraction"):
+        config.recalibration_min_match_fraction = parser.getfloat(
+            section, "recalibration_min_match_fraction")
 
     if parser.has_option(section, "mask_download_permissive"):
         config.mask_download_permissive = parser.getboolean(section, "mask_download_permissive")
