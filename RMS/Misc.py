@@ -32,6 +32,8 @@ else:
 
 import numpy as np
 import itertools
+import fcntl
+import getpass
 
 from matplotlib import scale as mscale
 from matplotlib import transforms as mtransforms
