@@ -491,7 +491,7 @@ def thresholdAndSubsample(np.ndarray[UINT8_TYPE_t, ndim=3] frames, \
             avg_std = <float> (
                     <double> compressed[2, y, x]
                     + k1 * <double> compressed[3, y, x]
-            ) + j1
+            ) + <float> j1
 
             # Make sure the threshold limit is not above the maximum possible value
             if avg_std > 255:
