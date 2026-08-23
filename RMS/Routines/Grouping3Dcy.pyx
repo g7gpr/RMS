@@ -488,6 +488,7 @@ def thresholdAndSubsample(np.ndarray[UINT8_TYPE_t, ndim=3] frames, \
             max_val = compressed[0, y, x]
 
             # Compute the threshold limit
+            # This line no longer supported in Cython 3.3.0
             # avg_std = int(float(compressed[2, y, x]) + k1*float(compressed[3, y, x])) + j1
 
             avg_std = <unsigned int> (<double> compressed[2, y, x] + k1 * <double> compressed[3, y, x] + <double> j1)
