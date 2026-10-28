@@ -5,7 +5,11 @@ from __future__ import print_function, division, absolute_import
 import os
 import zlib
 import sys
-import tempfile
+import argparse
+import time
+
+from RMS.Math import angularSeparationDeg
+from RMS.Logger import LoggingManager, getLogger
 
 # Import the requests library for downloading the GMN star catalog
 try:
@@ -16,94 +20,216 @@ except ImportError:
     from urllib2 import URLError, HTTPError
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 from RMS.Decorators import memoizeSingle
 from RMS.Misc import RmsDateTime
-from datetime import datetime
+from datetime import datetime, timezone
+
+J2000 = datetime(2000, 1, 1, 12, 0, 0).replace(tzinfo=timezone.utc)
+
+class Catalog:
+    """
+    Load a star catalogue, build a spherical KD-tree, and expose query methods.
+    """
+
+    def __init__(self, config, catalogue_time=None, ra_col=0, dec_col=1, mag_col=2, name_col=0, lim_mag=None):
+
+        """Initialise a catalog in a spherical tree object/
+
+        Arguments:
+            config[config]: RMS config instance.
+
+        Keyword Arguments:
+            catalogue_time: Time point for the catalogue generation if none build for now.
+            ra_col: Optional, default 0 - array column with ra data in degrees.
+            dec_col: Optional, default 1 - array column with dec data in degrees.
+            mag_col: Optional, default 2 - array column of magnitude data.
+            name_col: Optional, default 3 - array column of star names.
+
+        """
+
+        self.ra_col, self.dec_col, self.mag_col = ra_col, dec_col, mag_col
+        self.name_col = name_col
+
+        if catalogue_time is None:
+            catalogue_time = datetime.now(timezone.utc)
+
+        # Compute the number of years from J2000
+        years_from_J2000 = (catalogue_time - J2000).total_seconds() / (365.25 * 24 * 3600)
 
 
-# Data structure for the GMN catalog (v1 - 18 columns, legacy format)
-GMN_CATALOG_DTYPE_V1 = np.dtype([
-    ('designation', 'S30'),
-    ('ra', 'f8'),
-    ('dec', 'f8'),
-    ('pmra', 'f8'),
-    ('pmdec', 'f8'),
-    ('phot_g_mean_mag', 'f4'),
-    ('phot_bp_mean_mag', 'f4'),
-    ('phot_rp_mean_mag', 'f4'),
-    ('classprob_dsc_specmod_star', 'f4'),
-    ('classprob_dsc_specmod_binarystar', 'f4'),
-    ('spectraltype_esphs', 'S8'),
-    ('B', 'f4'),
-    ('V', 'f4'),
-    ('R', 'f4'),
-    ('Ic', 'f4'),
-    ('oid', 'i4'),
-    ('preferred_name', 'S30'),
-    ('Simbad_OType', 'S30')
-])
-
-# Data structure for the GMN catalog (v2 - 20 columns, with common_name and bayer_name)
-GMN_CATALOG_DTYPE_V2 = np.dtype([
-    ('designation', 'S30'),
-    ('ra', 'f8'),
-    ('dec', 'f8'),
-    ('pmra', 'f8'),
-    ('pmdec', 'f8'),
-    ('phot_g_mean_mag', 'f4'),
-    ('phot_bp_mean_mag', 'f4'),
-    ('phot_rp_mean_mag', 'f4'),
-    ('classprob_dsc_specmod_star', 'f4'),
-    ('classprob_dsc_specmod_binarystar', 'f4'),
-    ('spectraltype_esphs', 'S8'),
-    ('B', 'f4'),
-    ('V', 'f4'),
-    ('R', 'f4'),
-    ('Ic', 'f4'),
-    ('oid', 'i4'),
-    ('preferred_name', 'S30'),
-    ('common_name', 'S30'),
-    ('bayer_name', 'S30'),
-    ('Simbad_OType', 'S30')
-])
+        iau_csn_coordinates, iau_mag_band, iau_mag_band_ratios, iau_extras  = loadIAUCSN(additional_fields=['Name/ASCII'])
 
 
-def gmnCatalogDtype(num_columns):
-    """ Select the GMN catalog dtype based on the number of columns declared in the header. """
-    if num_columns >= 20:
-        return GMN_CATALOG_DTYPE_V2
-    return GMN_CATALOG_DTYPE_V1
 
+        star_catalog_status = readStarCatalog(
+            config.star_catalog_path,
+            config.star_catalog_file,
+            lim_mag=lim_mag,
+            years_from_J2000=years_from_J2000,
+            mag_band_ratios=config.star_catalog_band_ratios,
+            additional_fields=['preferred_name', 'common_name', 'bayer_name', 'B', 'V', 'R'])
 
-def removeFileSilently(path):
-    """ Remove a file, ignoring the error if it does not exist. """
-    try:
-        os.remove(path)
-    except OSError:
         pass
+
+        if not star_catalog_status:
+            print("Could not load star catalogue")
+
+        catalog_stars, _, config.star_catalog_band_ratios, extras = star_catalog_status
+
+        combined_extras = {}
+        combined_catalog_stars = np.vstack((iau_csn_coordinates, catalog_stars))
+        combined_extras['preferred_name'] = np.hstack((iau_extras['Name/ASCII'], extras['preferred_name']))
+
+        if False:
+            catalog_stars, extras = combined_catalog_stars, combined_extras
+
+        # Do some cleaning on the data - this is not required at present
+        maskFinite = np.isfinite(catalog_stars[:, 0:3]).all(axis=1)
+        maskRange = (
+                (catalog_stars[:, 0] >= 0.0) & (catalog_stars[:, 0] < 360.0) &  # RA
+                (catalog_stars[:, 1] >= -90.0) & (catalog_stars[:, 1] <= 90.0)  # Dec
+        )
+
+        mask = maskFinite & maskRange
+
+        self.cat = catalog_stars[mask]
+        self.names = extras['preferred_name'][mask]
+        self.b = extras['B']
+        self.v = extras['V']
+        self.r = extras['R']
+
+        # Convert to arrays of radians
+        ra, dec = np.radians(self.cat[:, ra_col]), np.radians(self.cat[:, dec_col])
+
+        # Build tree of spherical unit vectors
+        self.tree = cKDTree(np.column_stack((np.cos(dec) * np.cos(ra), np.cos(dec) * np.sin(ra), np.sin(dec))))
+        self.entry_count = len(self.names)
+
+    def queryRaDec(self, ra_deg, dec_deg, radius_deg=0.1, n_brightest=1):
+        """
+        KD-tree search for RA/Dec coordinates.
+
+        Always returns a list of length N (one per detection):
+            None  -> no match
+            [ [name, ra, dec, mag, theta], ... ]  -> matches
+        """
+
+        # Normalize inputs to arrays of radians
+        ra_deg, dec_deg = np.atleast_1d(ra_deg), np.atleast_1d(dec_deg)
+        ra, dec = np.radians(ra_deg), np.radians(dec_deg)
+
+        # Build query vectors
+        query_vectors = np.column_stack((
+            np.cos(dec) * np.cos(ra),
+            np.cos(dec) * np.sin(ra),
+            np.sin(dec)
+        ))
+
+        # Euclidean chord distance for spherical radius
+        ecd = 2 * np.sin(np.radians(radius_deg) / 2)
+
+        results = []
+
+        for qvec, ra0, dec0 in zip(query_vectors, ra_deg, dec_deg):
+
+            idx = np.array(self.tree.query_ball_point(qvec, ecd), dtype=int)
+
+            if len(idx) == 0:
+                results.append(None)
+                continue
+
+            mags = self.cat[idx, self.mag_col]
+            chosen = idx[np.argsort(mags)[:n_brightest]]
+
+            names = [x.decode("utf-8", errors="replace").strip() for x in self.names[chosen]]
+            ras = [float(x) for x in self.cat[chosen, self.ra_col]]
+            decs = [float(x) for x in self.cat[chosen, self.dec_col]]
+            mags = [float(x) for x in self.cat[chosen, self.mag_col]]
+            b, v, r = [float(x) for x in self.b[chosen]], [float(x) for x in self.v[chosen]], [float(x) for x in self.r[chosen]]
+
+
+            thetas = angularSeparationDeg(ra0, dec0, ras, decs)
+            thetas = [float(t) for t in thetas]
+
+            matched = [
+                [names[i], ras[i], decs[i], mags[i], thetas[i], b[i], v[i], r[i]]
+                for i in range(len(names))
+            ]
+
+            results.append(matched)
+
+
+        return results
+
+    def queryRaDecOld(self, ra_deg, dec_deg, radius_deg=0.1, n_brightest=1):
+        """
+        Tree search for RA/Dec coordinates, search is in a Euclidean space.
+
+        Returns:
+            A list of rows: [name, ra, dec, mag, theta]
+            Missing entries are simply omitted.
+        """
+
+        # Normalize inputs to arrays of radians
+        ra_deg, dec_deg = np.atleast_1d(ra_deg), np.atleast_1d(dec_deg)
+        ra, dec = np.radians(ra_deg), np.radians(dec_deg)
+
+        # Build query vectors
+        query_vectors = np.column_stack((
+            np.cos(dec) * np.cos(ra),
+            np.cos(dec) * np.sin(ra),
+            np.sin(dec)
+        ))
+
+        # Euclidean chord distance for spherical radius
+        ecd = 2 * np.sin(np.radians(radius_deg) / 2)
+
+        results = []
+
+        for qvec, ra0, dec0 in zip(query_vectors, ra_deg, dec_deg):
+
+            # KD-tree search
+            idx = np.array(self.tree.query_ball_point(qvec, ecd), dtype=int)
+
+            if len(idx) == 0:
+                # No matches -> return empty list for this query
+                results.append([])
+                continue
+
+            # Sort by magnitude ascending (brightest first)
+            mags = self.cat[idx, self.mag_col]
+            chosen = idx[np.argsort(mags)[:n_brightest]]
+
+            # Extract fields as Python types
+            names = [x.decode("utf-8", errors="replace").strip() for x in self.names[chosen]]
+            ras   = [float(x) for x in self.cat[chosen, self.ra_col]]
+            decs  = [float(x) for x in self.cat[chosen, self.dec_col]]
+            mags  = [float(x) for x in self.cat[chosen, self.mag_col]]
+
+            # Angular separation
+            thetas = angularSeparationDeg(ra0, dec0, ras, decs)
+            thetas = [float(t) for t in thetas]
+
+            # Build matched rows
+            matched = [
+                [names[i], ras[i], decs[i], mags[i], thetas[i]]
+                for i in range(len(names))
+            ]
+
+            results.append(matched)
+
+        # Scalar input -> return a single list of rows
+        if len(ra_deg) == 1:
+            return results[0]
+
+        return results
+
 
 
 def downloadCatalog(url, dir_path, file_name):
-    """ Download a catalog file from a given URL and save it to the specified directory.
-
-    The file is first written to a unique temporary ".part" file in the same directory and only
-    moved into its final location once the download has completed (and, when the server reports a
-    Content-Length, once the full size has been received). This guarantees that an interrupted
-    download can never leave a partial/corrupt catalog at the destination path. The temp name is
-    made unique (via tempfile.mkstemp) so concurrent processes downloading the same catalog do not
-    clobber each other's temp file.
-
-    Note: if the server reports no Content-Length and closes the connection cleanly but early, the
-    truncation cannot be detected here (there is no expected size to check against).
-    """
-
-    dest_path = os.path.join(dir_path, file_name)
-
-    # Create a unique temp file in the same directory (so os.replace stays atomic on one filesystem).
-    # Close the descriptor immediately and reopen by path below, so an early failure cannot leak the fd.
-    tmp_fd, tmp_path = tempfile.mkstemp(prefix=file_name + ".", suffix=".part", dir=dir_path)
-    os.close(tmp_fd)
+    """ Download a catalog file from a given URL and save it to the specified directory. """
 
     try:
         response = urlopen(url)
@@ -111,109 +237,27 @@ def downloadCatalog(url, dir_path, file_name):
         block_size = 1024 * 1024  # 1 MB
         downloaded_size = 0
 
-        with open(tmp_path, 'wb') as f:
+        with open(os.path.join(dir_path, file_name), 'wb') as f:
             while True:
                 data = response.read(block_size)
                 if not data:
                     break
                 downloaded_size += len(data)
                 f.write(data)
-                if total_size > 0:
-                    print("\rDownloading: {:.2f}%".format(100 * float(downloaded_size) / total_size), end='')
-                    sys.stdout.flush()
-
-        # If the server declared the size, make sure the whole file was received
-        if (total_size > 0) and (downloaded_size != total_size):
-            print("\nIncomplete download: received {} of {} bytes.".format(downloaded_size, total_size))
-            removeFileSilently(tmp_path)
-            return False
-
-        # Atomically move the completed file into place (atomic when on the same filesystem)
-        try:
-            os.replace(tmp_path, dest_path)
-        except AttributeError:
-            # Python 2 fallback: os.replace is unavailable, emulate the overwrite
-            removeFileSilently(dest_path)
-            os.rename(tmp_path, dest_path)
+                print("\rDownloading: {:.2f}%".format(100 * float(downloaded_size) / total_size), end='')
+                sys.stdout.flush()
 
         print(" - Done!")  # Move to the next line after download completes
 
         return True
-
+    
     except HTTPError as e:
         print("HTTP Error: ", e.code, url)
-        removeFileSilently(tmp_path)
         return False
-
+    
     except URLError as e:
         print("URL Error: ", e.reason, url)
-        removeFileSilently(tmp_path)
         return False
-
-    except Exception as e:
-        # Any other failure (e.g. a connection reset mid-stream) must not leave a partial file
-        print("\nError downloading catalog: {}".format(e))
-        removeFileSilently(tmp_path)
-        return False
-
-
-# Exceptions raised by loadGMNStarCatalog when the catalog file is truncated or corrupt
-# (bad header, failed zlib decompression, buffer smaller than the declared record count, etc.).
-CORRUPT_CATALOG_ERRORS = (zlib.error, ValueError, OSError, EOFError, IndexError)
-
-
-def loadGMNCatalog(dir_path, use_full_catalog, full_name, full_url, fallback_name, load_kwargs):
-    """ Load the GMN star catalog, lazily downloading and repairing the full catalog as needed.
-
-    The full (LM+12.0) catalog is downloaded only if it is missing. Integrity is checked lazily:
-    the file is simply loaded, and only if the load fails (a truncated/corrupt file, e.g. from an
-    interrupted download) is it deleted and downloaded once more. This avoids reading and
-    decompressing the catalog twice on every start-up, which matters on worn SD cards. If the full
-    catalog still cannot be loaded, the bundled LM+9.0 catalog is used instead.
-
-    Arguments:
-        dir_path: [str] Directory holding the catalog files.
-        use_full_catalog: [bool] Whether the full (LM+12.0) catalog is required.
-        full_name: [str] File name of the full (LM+12.0) catalog.
-        full_url: [str] URL to download the full catalog from.
-        fallback_name: [str] File name of the catalog to use if the full one is unavailable.
-        load_kwargs: [dict] Keyword arguments passed through to loadGMNStarCatalog.
-
-    Return:
-        Whatever loadGMNStarCatalog returns for the catalog that was successfully loaded.
-    """
-
-    if use_full_catalog:
-
-        full_path = os.path.join(dir_path, full_name)
-
-        # Download the full catalog if it is not present yet
-        if not os.path.exists(full_path):
-            print("The full catalog ({}) is being downloaded from the GMN server...".format(full_name))
-            downloadCatalog(full_url, dir_path, full_name)
-
-        # Try to load the full catalog; repair it once if the load reveals corruption
-        if os.path.exists(full_path):
-
-            try:
-                return loadGMNStarCatalog(full_path, catalog_file=full_name, **load_kwargs)
-
-            except CORRUPT_CATALOG_ERRORS as e:
-                print("Full star catalog '{}' is corrupt ({}) - re-downloading.".format(full_name, e))
-                removeFileSilently(full_path)
-
-                if downloadCatalog(full_url, dir_path, full_name):
-                    try:
-                        return loadGMNStarCatalog(full_path, catalog_file=full_name, **load_kwargs)
-                    except CORRUPT_CATALOG_ERRORS as e2:
-                        print("Re-downloaded catalog still unreadable ({}).".format(e2))
-                        removeFileSilently(full_path)
-
-        print("Could not obtain the full catalog, loading '{}' instead.".format(fallback_name))
-
-    # Load the fallback (LM+9.0) catalog
-    fallback_path = os.path.join(dir_path, fallback_name)
-    return loadGMNStarCatalog(fallback_path, catalog_file=fallback_name, **load_kwargs)
 
 @memoizeSingle
 def readBSC(file_path, file_name, years_from_J2000=0):
@@ -308,6 +352,115 @@ def readBSC(file_path, file_name, years_from_J2000=0):
 
 
 
+def inferColumnPositions(line):
+    """
+    From a line of text infer column positions
+
+    Arguments:
+        line: [str] line of text
+
+    Return:
+        names: [list] list of column names
+        positions: [list] list of column positions
+    """
+
+    positions,names = [], []
+    field_count = 0
+    in_field = False
+    for i, char in enumerate(line):
+        if not in_field and not char.isspace():
+            field_count += 1
+            if field_count > 1:
+                end = i
+                field_name = line[start:end].strip()
+                if field_name.replace("#","") != "":
+                    field_name = field_name.replace("#","")
+                names.append(field_name)
+                positions.append((start, end))
+            if i > 0:
+                start = i - 1
+            else:
+                start = i
+            in_field = True
+        elif in_field and char.isspace():
+            in_field = False
+    end = i
+    names.append(line[start:end].strip())
+    positions.append((start, len(line)))
+
+    if in_field:
+        positions.append((start, len(line)))
+    return names, positions
+
+
+
+def loadIAUCSN(catalog_path=os.path.expanduser("~/source/RMS/Catalogs/"), catalog_name="IAU-CSN.txt", additional_fields = []):
+    """
+
+    Arguments:
+        catalog_path: [str] path to catalog
+        catalog_name: [str] name of catalog file
+        additional_fields: [list] names of additional fields to return
+
+    Returns:
+        star_data: [list] of star data [ra, dec. m]
+        mag_band: [list] of mag band data per star
+        mag_band_ratios: [list] each entry zero, not supported for this catalog
+        extra_values_dict:[dict] dictionary indexed of extra values
+    """
+
+    extra_values_dict = {}
+
+    for field in additional_fields:
+        extra_values_dict[field] = []
+
+
+    star_data, name_list, mag_band, mag_band_ratios = [], [], [], []
+    with open(os.path.join(os.path.expanduser(catalog_path), catalog_name), 'r') as catalog_file:
+
+        for line in catalog_file:
+            line_counter = 0
+            if line.startswith('#') or line.startswith('$') or line == '\n':
+                pass
+            else:
+                break
+            header_line = line
+        names, positions = inferColumnPositions(header_line)
+
+        for line in catalog_file:
+            if line.startswith('#') or line.startswith('$'):
+                continue
+            if not line[0].isalnum():
+                continue
+            f = []
+            for col in range(0,len(positions)):
+                f.append(line[positions[col][0]:positions[col][1]].strip())
+            try:
+                r, d, m, mb = float(f[12]), float(f[13]), float(f[8]), f[9]
+                star_data.append(np.array([float(r), float(d), float(m)]))
+                mag_band.append(mb)
+                mag_band_ratios.append(0)
+                for additional_field in additional_fields:
+                    additional_field_column = names.index(additional_field)
+                    value = line[positions[additional_field_column][0]:positions[additional_field_column][1]].strip()
+                    if "name" in additional_field.lower():
+                        extra_values_dict[additional_field].append(value.encode('utf-8'))
+                    else:
+                        extra_values_dict[additional_field].append(value)
+            except:
+                print("Error loading IAU-CSN line {}".format(line))
+
+        star_data = np.array(star_data)
+
+        for field in additional_fields:
+            extra_values_dict[field] = np.array(extra_values_dict[field])
+
+
+    return star_data, mag_band, mag_band_ratios, extra_values_dict
+
+
+
+
 def loadGaiaCatalog(dir_path, file_name, lim_mag=None):
     """ Read star data from the GAIA catalog in the .npy format. 
     
@@ -382,6 +535,52 @@ def loadGMNStarCatalog(file_path,
     # Step 1: Cache the catalog data to avoid repeated decompression
     if not hasattr(loadGMNStarCatalog, cache_name):
 
+        # Define the data structure for the catalog (v1 - 18 columns, legacy format)
+        data_types_v1 = [
+            ('designation', 'S30'),
+            ('ra', 'f8'),
+            ('dec', 'f8'),
+            ('pmra', 'f8'),
+            ('pmdec', 'f8'),
+            ('phot_g_mean_mag', 'f4'),
+            ('phot_bp_mean_mag', 'f4'),
+            ('phot_rp_mean_mag', 'f4'),
+            ('classprob_dsc_specmod_star', 'f4'),
+            ('classprob_dsc_specmod_binarystar', 'f4'),
+            ('spectraltype_esphs', 'S8'),
+            ('B', 'f4'),
+            ('V', 'f4'),
+            ('R', 'f4'),
+            ('Ic', 'f4'),
+            ('oid', 'i4'),
+            ('preferred_name', 'S30'),
+            ('Simbad_OType', 'S30')
+        ]
+
+        # Define the data structure for the catalog (v2 - 20 columns, with common_name and bayer_name)
+        data_types_v2 = [
+            ('designation', 'S30'),
+            ('ra', 'f8'),
+            ('dec', 'f8'),
+            ('pmra', 'f8'),
+            ('pmdec', 'f8'),
+            ('phot_g_mean_mag', 'f4'),
+            ('phot_bp_mean_mag', 'f4'),
+            ('phot_rp_mean_mag', 'f4'),
+            ('classprob_dsc_specmod_star', 'f4'),
+            ('classprob_dsc_specmod_binarystar', 'f4'),
+            ('spectraltype_esphs', 'S8'),
+            ('B', 'f4'),
+            ('V', 'f4'),
+            ('R', 'f4'),
+            ('Ic', 'f4'),
+            ('oid', 'i4'),
+            ('preferred_name', 'S30'),
+            ('common_name', 'S30'),
+            ('bayer_name', 'S30'),
+            ('Simbad_OType', 'S30')
+        ]
+
         with open(file_path, 'rb') as fid:
 
             # Read the catalog header
@@ -391,7 +590,10 @@ def loadGMNStarCatalog(file_path,
             fid.read(declared_header_size - 12)  # Skip column names
 
             # Select data types based on number of columns (v1=18, v2=20)
-            data_types = gmnCatalogDtype(num_columns)
+            if num_columns >= 20:
+                data_types = data_types_v2
+            else:
+                data_types = data_types_v1
 
             # Read and decompress the catalog data
             compressed_data = fid.read()
@@ -453,6 +655,8 @@ def loadGMNStarCatalog(file_path,
         # Stars where ALL requested bands are missing get ~75 mag and are filtered by LM cut
         total_flux = np.maximum(total_flux, 1e-30)
         synthetic_mag = -2.5 * np.log10(total_flux)
+        if lim_mag is None:
+            lim_mag = np.inf
         mag_mask = synthetic_mag <= lim_mag
 
     else:
@@ -602,6 +806,9 @@ def readStarCatalog(dir_path, file_name, years_from_J2000=0, lim_mag=None,
         gmn_starcat_lm9 = "GMN_StarCatalog_LM9.0.bin"
         gmn_starcat_lm12 = "GMN_StarCatalog_LM12.0.bin"
 
+        # Check the existence of the LM 12.0 catalog file
+        gmn_starcat_lm12_exists = os.path.exists(os.path.join(dir_path, gmn_starcat_lm12))
+
         # Ensure mag_band_ratios is a tuple for caching
         if (mag_band_ratios is not None) and isinstance(mag_band_ratios, list):
             mag_band_ratios = tuple(mag_band_ratios)
@@ -610,24 +817,46 @@ def readStarCatalog(dir_path, file_name, years_from_J2000=0, lim_mag=None,
         if (additional_fields is not None) and isinstance(additional_fields, list):
             additional_fields = tuple(additional_fields)
 
-        # URL to the LM+12.0 catalog
-        gmn_starcat_lm12_url = "https://globalmeteornetwork.org/projects/gmn_star_catalog/GMN_StarCatalog_LM12.0.bin"
+        # Determine which catalog file to use based on the limiting magnitude
+        if (lim_mag is not None) and (lim_mag <= 9.0):
+            catalog_to_load = gmn_starcat_lm9
 
-        # The full (LM+12.0) catalog is only needed when stars fainter than mag 9.0 are requested
-        use_full_catalog = (lim_mag is None) or (lim_mag > 9.0)
+        else:
 
-        # Lazily load the catalog: the full catalog is downloaded if missing, and re-downloaded
-        # only if a load attempt reveals it is corrupt (e.g. an interrupted download), falling
-        # back to the LM+9.0 catalog if it cannot be obtained.
-        load_kwargs = dict(
-            years_from_J2000=years_from_J2000,
-            lim_mag=lim_mag,
+            # If the full catalog is missing, post a notification and load the LM9.0 catalog
+            if gmn_starcat_lm12_exists:
+
+                catalog_to_load = gmn_starcat_lm12
+
+            else:
+
+                # URL to the LM+12.0 catalog
+                gmn_starcat_lm12_url = "https://globalmeteornetwork.org/projects/gmn_star_catalog/GMN_StarCatalog_LM12.0.bin"
+
+                # Display a warning message that the catalog will be downloaded
+                print("The full catalog (LM+12.0) is beind downloaded from the GMN server... ")
+
+                # Download the full catalog from the GMN server
+                download_status = downloadCatalog(gmn_starcat_lm12_url, dir_path, gmn_starcat_lm12)
+
+                if download_status:
+                    catalog_to_load = gmn_starcat_lm12
+
+                else:
+                    print("Error downloading the full catalog, loading the LM+9.0 catalog instead. ")
+                    catalog_to_load = gmn_starcat_lm9
+
+
+        file_path = os.path.join(dir_path, catalog_to_load)
+
+        return loadGMNStarCatalog(
+            file_path, 
+            years_from_J2000=years_from_J2000, 
+            lim_mag=lim_mag, 
             mag_band_ratios=mag_band_ratios,
-            additional_fields=additional_fields,
+            catalog_file=catalog_to_load,
+            additional_fields=additional_fields
         )
-
-        return loadGMNCatalog(dir_path, use_full_catalog, gmn_starcat_lm12,
-                              gmn_starcat_lm12_url, gmn_starcat_lm9, load_kwargs)
 
 
     ### Default to loading the SKY2000 catalog ###
@@ -727,16 +956,109 @@ def readStarCatalog(dir_path, file_name, years_from_J2000=0, lim_mag=None,
 
     return star_data, mag_band_string, mag_band_ratios
 
+def testCatQueryRaDec():
 
+
+    test_star_names = np.array([
+        "Sirius", "Canopus", "Alpha Centauri", "Arcturus", "Vega",
+        "Capella", "Rigel", "Procyon", "Achernar", "Betelgeuse",
+        "Altair", "Aldebaran", "Antares", "Spica", "Fomalhaut",
+        "Deneb", "Pollux", "Castor", "Regulus", "Bellatrix"
+    ])
+
+    test_star_mag = np.array([
+        -1.46, -0.74, -0.27, -0.05, 0.03,
+        0.08, 0.18, 0.38, 0.46, 0.50,
+        0.77, 0.85, 1.06, 1.04, 1.16,
+        1.25, 1.14, 1.58, 1.35, 1.64
+    ])
+
+
+    test_star_ra_deg = np.array([
+        101.25, 96.00, 220.00, 214.00, 279.25,
+        79.00, 78.75, 114.75, 24.50, 88.75,
+        297.75, 69.00, 247.25, 201.25, 344.50,
+        310.25, 116.25, 113.75, 152.00, 81.25
+    ])
+
+    test_star_dec_deg = np.array([
+        -16.7, -52.7, -60.8, 19.2, 38.8,
+        45.9, -8.2, 5.2, -57.2, 7.4,
+        8.9, 16.5, -26.4, -11.2, -29.6,
+        45.3, 28.0, 31.9, 12.0, 6.3
+    ])
+
+    cat = Catalog(config, lim_mag=6)
+    log.info(serializeQueryResults(cat.queryRaDec(test_star_ra_deg, test_star_dec_deg, radius_deg=2, n_brightest=3), test_star_names, test_star_mag))
+
+
+def serializeQueryResults(results, star_names=None, star_mag=None):
+
+    output = []
+    if len(results) == 0:
+        output.append("\tNo results returned")
+        return output
+
+    last_searched_name = None
+    for i, r in enumerate(results):
+        for name, ra, dec, mag, theta in r:
+            if star_mag is not None:
+                searched_mag = star_mag[i]
+            if star_names is not None:
+                searched_name = star_names[i]
+                if last_searched_name != searched_name:
+                    output.append(f"\n\tNew search for {searched_name:20} of magnitude {float(searched_mag):4.2f}")
+                    last_searched_name = searched_name
+
+
+            output.append(
+                f"\t\tReturned name: {name:20s} RA={float(ra):8.3f}  Dec={float(dec):8.3f}  Mag={float(mag):5.2f}  Sep={float(theta):6.3f}")
+
+    return "\n".join(output) + "\n\n"
 
 
 if __name__ == "__main__":
 
     import RMS.ConfigReader as cr
 
-    # Load the configuration file
-    config = cr.parse(".config")
 
-    # Test open the file
-    print(readStarCatalog(config.star_catalog_path, config.star_catalog_file, \
-        mag_band_ratios=config.star_catalog_band_ratios))
+    ### COMMAND LINE ARGUMENTS
+
+    # Init the command line arguments parser
+    arg_parser = argparse.ArgumentParser(description=""" Test routines for catalogue""")
+
+
+    arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str, \
+        help="Path to a config file which will be used instead of the default one.")
+
+    arg_parser.add_argument('--radec', metavar='radec', nargs=4, help="""Search in radec space (degrees) RA DEC Radius Lim Mag""")
+
+    arg_parser.add_argument('-t', '--test', action="store_true", help="""Run tests""")
+
+    # Parse the command line arguments
+    cml_args = arg_parser.parse_args()
+
+    # Load the config file
+    config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
+
+    #Initialize the logger
+    log_manager = LoggingManager()
+    log_manager.initLogging(config)
+
+
+    #Get the logger handle
+    log = getLogger("rmslogger")
+
+    if cml_args.test:
+        test = testCatQueryRaDec()
+
+
+    if cml_args.radec is not None:
+        ra, dec, radius = float(cml_args.radec[0]), float(cml_args.radec[1]), float(cml_args.radec[2])
+        lim_mag = float(cml_args.radec[3])
+        log.info(f"Querying RA={ra:.3f} DEC={dec:.3f} Radius={radius:.3f} degrees Limiting mag={lim_mag:.1f}")
+        cat = Catalog(config, lim_mag=float(cml_args.radec[2]))
+        results = cat.queryRaDec(ra, dec, lim_mag)
+        log.info(serializeQueryResults(results))
+        # Allow logger time to write
+        time.sleep(1)

@@ -92,7 +92,6 @@ def extractStars(img, img_median=None, mask=None, gamma=1.0, max_star_candidates
 
     """
 
-
     # Compute the image median if not given
     if img_median is None:
         img_median = np.median(img)
@@ -181,7 +180,8 @@ def extractStars(img, img_median=None, mask=None, gamma=1.0, max_star_candidates
             title='PSF fitting result ({:d}/{:d} fitted)'.format(len(x_arr), num_objects),
             x_fitted=x_arr, y_fitted=y_arr
         )
-    
+    sigma_x_fitted, sigma_y_fitted = x_init, y_init
+
     # x_arr, y_arr, amplitude, intensity = list(x), list(y), [], [] # Skip PSF fit
 
     # # Plot stars after PSF fit filtering
@@ -193,6 +193,7 @@ def extractStars(img, img_median=None, mask=None, gamma=1.0, max_star_candidates
     sigma_y_fitted = np.array(sigma_y_fitted)
     sigma_fitted = np.sqrt(sigma_x_fitted**2 + sigma_y_fitted**2)
     fwhm = 2.355*sigma_fitted
+    x_arr, y_arr = x_init, y_init
 
     return x_arr, y_arr, amplitude, intensity, fwhm, background, snr, saturated_count
 
