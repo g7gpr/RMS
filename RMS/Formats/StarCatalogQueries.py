@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 import numpy as np
+import cv2
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
@@ -280,9 +281,9 @@ def renderStarsGaussian(
         shape,
         sigma=1.0,
         min_brightness=20,
-        max_brightness=2048,
-        sensor_saturation=255,
-        add_noise=True,
+        max_brightness=250,
+        sensor_saturation=240,
+        add_noise=False,
         noise_sigma=1,
         sky_background=5, label=False):
     """
@@ -328,12 +329,14 @@ def renderStarsGaussian(
     x = np.round(x_array).astype(int)
     y = np.round(y_array).astype(int)
 
+
+
     #
     # Clip to image bounds
     #
     mask = (
-        (x >= 0) & (x < W) &
-        (y >= 0) & (y < H)
+        (x >= 10) & (x < W - 10) &
+        (y >= 10) & (y < H - 10)
     )
 
     #
@@ -342,7 +345,7 @@ def renderStarsGaussian(
     # Bright stars have SMALL magnitudes,
     # so invert the scale.
     #
-    brightness = np.interp(
+    flux = np.interp(
         mag_array,
         (mag_array.min(), mag_array.max()),
         (max_brightness, min_brightness)
@@ -351,8 +354,19 @@ def renderStarsGaussian(
     #
     # Render delta-function stars
     #
-    image[y[mask], x[mask]] += brightness[mask]
+    image[y[mask], x[mask]] += flux[mask]
 
+    #x0 = np.floor(x[mask]).astype(int)
+    #y0 = np.floor(y[mask]).astype(int)
+    #flux = flux[mask]
+
+    #dx = x[mask] - x0
+    #dy = y[mask] - y0
+
+    #image[y0, x0] += flux * (1 - dx) * (1 - dy)
+    #image[y0, x0 + 1] += flux * dx * (1 - dy)
+    #image[y0 + 1, x0] += flux * (1 - dx) * dy
+    #image[y0 + 1, x0 + 1] += flux * dx * dy
 
 
     #
@@ -398,27 +412,27 @@ def renderStarsGaussian(
 
         draw = ImageDraw.Draw(pil_img)
 
-    try:
-        font = ImageFont.truetype(
-            "DejaVuSans.ttf",
-            12
-        )
-    except:
-        font = ImageFont.load_default()
+        try:
+            font = ImageFont.truetype(
+                "DejaVuSans.ttf",
+                12
+            )
+        except:
+            font = ImageFont.load_default()
 
-    for i in range(min(10, len(names_array))):
+        for i in range(min(10, len(names_array))):
 
-        if not mask[i]:
-            continue
+            if not mask[i]:
+                continue
 
-        draw.text(
-            (x[i] + 5, y[i] - 5),
-            str(names_array[i]),
-            fill=255,
-            font=font
-        )
+            draw.text(
+                (x[i] + 5, y[i] - 5),
+                str(names_array[i]),
+                fill=255,
+                font=font
+            )
 
-    image = np.array(pil_img)
+        image = np.array(pil_img)
 
 
 
@@ -503,5 +517,57 @@ if __name__ == "__main__":
     az_el_angle_error = angularSeparationDeg(az, el, pp.az_centre, pp.alt_centre)
 
     print(f"Computed azimuth elevation angle error of {az_el_angle_error:.2f}")
+
+
+    fps = 25
+    speed_up = 255
+    duration_seconds = 60 * 60 * 0.5
+
+    video = cv2.VideoWriter(
+        "synthetic_sky.mp4",
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        fps,
+        (pp.X_res, pp.Y_res),
+        isColor=False
+    )
+
+    jd_image = jd_now
+
+    for frame_num in range(int(fps * duration_seconds / speed_up)):
+        if frame_num % 10 == 0:
+            print(f"Frame {frame_num} / {int(fps * duration_seconds / speed_up)}")
+        pp, ra_array, dec_array, x_array, y_array, mag_array, names_array = \
+            cat.queryPlatepar(
+                pp,
+                jd_image,
+                az=175,
+                el=-0.5
+            )
+
+        img = renderStarsGaussian(
+            x_array,
+            y_array,
+            mag_array,
+            names_array,
+            (pp.Y_res, pp.X_res), label=False
+        )
+
+        #hd_108903_mask = (names_array == "HD 108903")
+        #hd_108903_ra = ra_array[hd_108903_mask]
+        #hd_108903_dec = dec_array[hd_108903_mask]
+        #hd_108903_mag = mag_array[hd_108903_mask]
+        #hd_108903_x = x_array[hd_108903_mask]
+        #hd_108903_y = y_array[hd_108903_mask]
+
+        #print(hd_108903_ra, hd_108903_dec, hd_108903_mag, hd_108903_x, hd_108903_y)
+
+        video.write(img)
+
+        #
+        # Advance by one frame time
+        #
+        jd_image += speed_up * (1.0 / fps) / 86400.0
+
+    video.release()
 
     pass
