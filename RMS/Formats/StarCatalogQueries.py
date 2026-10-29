@@ -284,7 +284,7 @@ def renderStarsGaussian(
         sensor_saturation=255,
         add_noise=True,
         noise_sigma=1,
-        sky_background=5):
+        sky_background=5, label=False):
     """
     Render a synthetic star field.
 
@@ -393,9 +393,10 @@ def renderStarsGaussian(
     #
     # Burn labels into image
     #
-    pil_img = Image.fromarray(image.astype(np.uint8))
+    if label:
+        pil_img = Image.fromarray(image.astype(np.uint8))
 
-    draw = ImageDraw.Draw(pil_img)
+        draw = ImageDraw.Draw(pil_img)
 
     try:
         font = ImageFont.truetype(
