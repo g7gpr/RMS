@@ -1,3 +1,23 @@
+# RPi Meteor Station
+# Copyright (C) 2026 David Rollinson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+
+from __future__ import print_function, absolute_import
+
 import numpy as np
 import cv2
 import os
@@ -179,7 +199,7 @@ def drawConstellations(pp, frame_time, intensity=150, roll_back=20):
 
     from_ra, from_dec = from_ra[line_mask], from_dec[line_mask]
     to_ra, to_dec = to_ra[line_mask], to_dec[line_mask]
-    ang_sep_from, ang_sep_to = ang_sep_from[line_mask], ang_sep_to[line_mask]
+
 
     from_x, from_y = raDecToXYPP(from_ra, from_dec, jd, pp)
     to_x, to_y = raDecToXYPP(to_ra, to_dec, jd, pp)
