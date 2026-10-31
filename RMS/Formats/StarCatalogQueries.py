@@ -76,18 +76,40 @@ def getPlateparSkyParameters(pp, jd):
 
     return ra_c, dec_c, max_separation, ra_array, dec_array
 
-def computeNormals(corner_vecs, centre_vec):
+def computePolygonNormals(corner_vecs, inside_vec):
 
+    """ Given vectors to the corners of a convex spherical polygon and a
+    vector to a point within the polygon (typically, but not essentially
+    the centre), compute inward-pointing unit normals to the great-circle planes
+    defining the polygon edges.
+
+    Arguments:
+        corner_vecs: [array] Array of vectors to the polygon corners.
+        inside_vec: [vector] Vector to a point within the polygon.
+
+    Return:
+        normals: [ndarray] Array of inward-pointing unit vectors.
+
+    """
+
+    # Initialise the list of normals
     normals = []
 
-    for i in range(4):
+    # Compute the number of sides
+    n_sides = len(corner_vecs)
 
-        p1, p2 = corner_vecs[i], corner_vecs[(i + 1) % 4]
+    # Iterate over the polygon corners
+    for i in range(n_sides):
 
+        # Extract adjacent polygon corners
+        p1, p2 = corner_vecs[i], corner_vecs[(i + 1) % n_sides]
+
+        # Compute normal to each edge plane and normalize
         n = np.cross(p1, p2)
         n /= np.linalg.norm(n)
 
-        if np.dot(n, centre_vec) < 0:
+        # If required, invert the vector
+        if np.dot(n, inside_vec) < 0:
             n *= -1
 
         normals.append(n)
@@ -312,7 +334,7 @@ class Catalog:
         centre_vec = radecToUnitVector(np.array([ra_c]),np.array([dec_c]))[0]
 
         # Compute normals to vertices, pointing towards region of interest
-        normals = computeNormals(corner_vecs, centre_vec)
+        normals = computePolygonNormals(corner_vecs, centre_vec)
 
         # Extract into arrays
         names_array, ra_array, dec_array, mag_array, theta_array, b_array, v_array, r_array = map(np.array, zip(*stars_list))
