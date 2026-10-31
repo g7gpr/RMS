@@ -117,20 +117,29 @@ def computePolygonNormals(corner_vecs, inside_vec):
     return np.array(normals)
 
 
-def radecToUnitVector(ra_deg, dec_deg):
+def radecToUnitVectors(ra_deg, dec_deg):
 
-    ra = np.radians(ra_deg)
-    dec = np.radians(dec_deg)
+    """ Given one or more RA/Dec coordinates, return the
+    corresponding Cartesian unit vectors.
 
-    cos_dec = np.cos(dec)
+    Arguments:
+        ra_deg: [array] Right ascension (degrees)
+        dec_deg: [array] Declination (degrees)
 
-    return np.column_stack((
-        cos_dec * np.cos(ra),
-        cos_dec * np.sin(ra),
-        np.sin(dec)
-    ))
+    Return:
+        [array] unit vector pointing to the sky coordinates.
+
+    """
 
 
+    ra = np.radians(np.atleast_1d(ra_deg))
+    dec = np.radians(np.atleast_1d(dec_deg))
+
+    x = np.cos(dec) * np.cos(ra)
+    y = np.cos(dec) * np.sin(ra)
+    z = np.sin(dec)
+
+    return np.column_stack((x, y, z))
 
 
 class Catalog:
@@ -138,9 +147,9 @@ class Catalog:
     Load a star catalogue, build a spherical KD-tree, and expose query methods.
     """
 
-    def __init__(self, config, catalogue_time=None, ra_col=0, dec_col=1, mag_col=2, name_col=0, lim_mag=None):
+    def __init__(self, config, catalogue_time=None, ra_col=0, dec_col=1, mag_col=2, lim_mag=None):
 
-        """Initialise a catalog in a spherical tree object/
+        """Initialise a star catalog, expose Cartesian unit vectors, and construct a spherical KD-tree
 
         Arguments:
             config[config]: RMS config instance.
@@ -155,16 +164,13 @@ class Catalog:
         """
 
         self.ra_col, self.dec_col, self.mag_col = ra_col, dec_col, mag_col
-        self.name_col = name_col
 
         if catalogue_time is None:
             catalogue_time = datetime.now(timezone.utc)
 
-        # Compute the number of years from J2000
         years_from_J2000 = (catalogue_time - J2000).total_seconds() / (365.25 * 24 * 3600)
 
-        iau_csn_coordinates, iau_mag_band, iau_mag_band_ratios, iau_extras = loadIAUCSN(additional_fields=['Name/ASCII'])
-
+        # Read in the star catalog
         star_catalog_status = readStarCatalog(
             config.star_catalog_path,
             config.star_catalog_file,
@@ -178,38 +184,33 @@ class Catalog:
 
         catalog_stars, _, config.star_catalog_band_ratios, extras = star_catalog_status
 
-        combined_extras = {}
-        combined_catalog_stars = np.vstack((iau_csn_coordinates, catalog_stars))
-        combined_extras['preferred_name'] = np.hstack((iau_extras['Name/ASCII'], extras['preferred_name']))
-
-        if False:
-            catalog_stars, extras = combined_catalog_stars, combined_extras
-
-        # Do some cleaning on the data - this is not required at present
-        maskFinite = np.isfinite(catalog_stars[:, 0:3]).all(axis=1)
+        # Produce a mask for stars in expected coordinate ranges and finite
+        mask_finite = np.isfinite(catalog_stars[:, 0:3]).all(axis=1)
         maskRange = (
-                (catalog_stars[:, 0] >= 0.0) & (catalog_stars[:, 0] < 360.0) &  # RA
-                (catalog_stars[:, 1] >= -90.0) & (catalog_stars[:, 1] <= 90.0)  # Dec
+                # Right ascension
+                (catalog_stars[:, 0] >= 0.0) & (catalog_stars[:, 0] < 360.0) &
+                # Declination
+                (catalog_stars[:, 1] >= -90.0) & (catalog_stars[:, 1] <= 90.0)
         )
 
-        mask = maskFinite & maskRange
+        mask = mask_finite & maskRange
 
+        # Apply the mask
         self.cat = catalog_stars[mask]
         self.names = extras['preferred_name'][mask]
-        self.b = extras['B']
-        self.v = extras['V']
-        self.r = extras['R']
+        self.b, self.v, self.r = extras['B'][mask], extras['V'][mask], extras['R'][mask]
 
-        # Convert to arrays of radians
-        ra, dec = np.radians(self.cat[:, ra_col]), np.radians(self.cat[:, dec_col])
+        # Expose the unit vectors
+        self.unit_vecs = radecToUnitVectors(self.cat[:, ra_col],self.cat[:, dec_col])
 
-        # Build tree of spherical unit vectors
-        self.tree = cKDTree(np.column_stack((np.cos(dec) * np.cos(ra), np.cos(dec) * np.sin(ra), np.sin(dec))))
-        self.entry_count = len(self.names)
+        # Build the tree
+        self.tree = cKDTree(self.unit_vecs)
 
     def queryRaDec(self, ra_deg, dec_deg, radius_deg=0.1, n_brightest=1):
         """
         KD-tree search for RA/Dec coordinates.
+
+
 
         Always returns a list of length N (one per detection):
             None  -> no match
@@ -330,8 +331,8 @@ class Catalog:
         stars_list = cat.queryRaDec(ra_c, dec_c, max_separation, n_brightest=n_brightest * 4)[0]
 
         # Compute the Euclidean vectors in sky coordinates of the platepar corners and centre
-        corner_vecs = radecToUnitVector(corner_ra_array,corner_dec_array)
-        centre_vec = radecToUnitVector(np.array([ra_c]),np.array([dec_c]))[0]
+        corner_vecs = radecToUnitVectors(corner_ra_array, corner_dec_array)
+        centre_vec = radecToUnitVectors(np.array([ra_c]), np.array([dec_c]))[0]
 
         # Compute normals to vertices, pointing towards region of interest
         normals = computePolygonNormals(corner_vecs, centre_vec)
@@ -339,7 +340,7 @@ class Catalog:
         # Extract into arrays
         names_array, ra_array, dec_array, mag_array, theta_array, b_array, v_array, r_array = map(np.array, zip(*stars_list))
 
-        star_vecs = radecToUnitVector(ra_array, dec_array)
+        star_vecs = radecToUnitVectors(ra_array, dec_array)
 
         inside = np.ones(len(star_vecs),dtype=bool)
 
