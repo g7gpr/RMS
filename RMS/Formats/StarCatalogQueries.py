@@ -37,198 +37,44 @@ from RMS.ConfigReader import loadConfigFromDirectory
 from RMS.Formats.Platepar import Platepar
 from RMS.Formats.StarCatalog import readStarCatalog
 from RMS.Astrometry.Conversions import datetime2JD, raDec2AltAz, altAz2RADec
-from RMS.Math import angularSeparationDeg
-
-
+from RMS.Math import angularSeparationDeg, vectShort
 
 J2000 = datetime(2000, 1, 1, 12, 0, 0).replace(tzinfo=timezone.utc)
 
 
+def getPlateparSkyParameters(pp, jd):
 
-def inferColumnPositions(line):
-    """
-    From a line of text infer column positions
+    """ Given a platepar and a julian date calculate the sky coordinates
+    of the centre of the image and the maximum angular distance between corners.
 
     Arguments:
-        line: [str] line of text
+        pp: [platepar] RMS platepar object.
+        jd: [float] Julian date.
 
     Return:
-        names: [list] list of column names
-        positions: [list] list of column positions
+        ra_c: [array] Right ascension (degrees) of centre.
+        dec_c: [array] Declination (degrees) of centre.
+        max_separation: [float] Maximum angular separation (degrees) between corners.
+        ra_array: [array] Array of corner right ascension coordinates (degrees).
+        dec_array: [array] Array of corner declination coordinates (degrees).
+
     """
 
-    positions,names = [], []
-    field_count = 0
-    in_field = False
-    for i, char in enumerate(line):
-        if not in_field and not char.isspace():
-            field_count += 1
-            if field_count > 1:
-                end = i
-                field_name = line[start:end].strip()
-                if field_name.replace("#","") != "":
-                    field_name = field_name.replace("#","")
-                names.append(field_name)
-                positions.append((start, end))
-            if i > 0:
-                start = i - 1
-            else:
-                start = i
-            in_field = True
-        elif in_field and char.isspace():
-            in_field = False
-    end = i
-    names.append(line[start:end].strip())
-    positions.append((start, len(line)))
-
-    if in_field:
-        positions.append((start, len(line)))
-    return names, positions
-
-
-def loadIAUCSN(catalog_path=os.path.expanduser("~/source/RMS/Catalogs/"), catalog_name="IAU-CSN.txt", additional_fields = []):
-    """
-
-    Arguments:
-        catalog_path: [str] path to catalog
-        catalog_name: [str] name of catalog file
-        additional_fields: [list] names of additional fields to return
-
-    Returns:
-        star_data: [list] of star data [ra, dec. m]
-        mag_band: [list] of mag band data per star
-        mag_band_ratios: [list] each entry zero, not supported for this catalog
-        extra_values_dict:[dict] dictionary indexed of extra values
-    """
-
-    extra_values_dict = {}
-
-    for field in additional_fields:
-        extra_values_dict[field] = []
-
-
-    star_data, name_list, mag_band, mag_band_ratios = [], [], [], []
-    with open(os.path.join(os.path.expanduser(catalog_path), catalog_name), 'r') as catalog_file:
-
-        for line in catalog_file:
-            line_counter = 0
-            if line.startswith('#') or line.startswith('$') or line == '\n':
-                pass
-            else:
-                break
-            header_line = line
-        names, positions = inferColumnPositions(header_line)
-
-        for line in catalog_file:
-            if line.startswith('#') or line.startswith('$'):
-                continue
-            if not line[0].isalnum():
-                continue
-            f = []
-            for col in range(0,len(positions)):
-                f.append(line[positions[col][0]:positions[col][1]].strip())
-            try:
-                r, d, m, mb = float(f[12]), float(f[13]), float(f[8]), f[9]
-                star_data.append(np.array([float(r), float(d), float(m)]))
-                mag_band.append(mb)
-                mag_band_ratios.append(0)
-                for additional_field in additional_fields:
-                    additional_field_column = names.index(additional_field)
-                    value = line[positions[additional_field_column][0]:positions[additional_field_column][1]].strip()
-                    if "name" in additional_field.lower():
-                        extra_values_dict[additional_field].append(value.encode('utf-8'))
-                    else:
-                        extra_values_dict[additional_field].append(value)
-            except:
-                print("Error loading IAU-CSN line {}".format(line))
-
-        star_data = np.array(star_data)
-
-        for field in additional_fields:
-            extra_values_dict[field] = np.array(extra_values_dict[field])
-
-
-    return star_data, mag_band, mag_band_ratios, extra_values_dict
-
-
-def shortenV(p1, p2, trim):
-
-    """ Symmetrically shorten a vector in an arbitrary number of dimensions.
-
-    This algorithm uses vector mathematics so can handle lines which are
-    orthogonal or parallel to any axis. If a vector is shorter than twice
-    the length to be trimmed then a vector of 90% of the original length
-    is returned by trimming 5% from each end.
-
-    Arguments:
-        p1: (x,y, ...) tuple of points.
-        p2: (x,y, ...) tuple of points.
-        trim: [int] integer number of pixels to shorten line by
-
-    Returns
-        p1: (x,y, ...) tuple of points.
-        p2: (x,y, ...) tuple of points.
-    """
-
-    p1,p2 = np.asarray(p1, dtype=float), np.asarray(p2, dtype=float)
-    v = p2 - p1
-    length = np.linalg.norm(v)
-
-    if length < 2*trim:
-        trim = length * 0.05
-
-    v /= length
-
-    p1_, p2_ = np.round(p1 + trim * v).astype(int), np.round(p2 - trim * v).astype(int)
-
-    return tuple(p1_), tuple(p2_)
-
-def drawConstellations(pp, frame_time, intensity=150, roll_back=20):
-
-
-    # Get the time of the frame in jd
-    jd = datetime2JD(frame_time)
-
-    # Find the corners
-    cx_array, cy_array = np.array([0, pp.X_res, pp.X_res, 0]), np.array([0, 0, pp.Y_res, pp.Y_res])
-    jd_array, mag_array = np.full_like(cy_array, jd, dtype=float), np.full_like(cy_array, 1, dtype=float)
-    _, ra_array, dec_array, _ = xyToRaDecPP(jd_array, cx_array, cy_array, mag_array, pp, jd_time=True)
-
-    # Get the optical centre in sky coordinates
+    # Get the optical centre of the platepar in sky coordinates
     x_c, y_c = pp.getDistortionCentre()
     _, ra_c, dec_c, _ = xyToRaDecPP([jd], [x_c], [y_c], [1], pp, jd_time=True)
 
-    # Compute the maximum angular radius from the centre to the furthest corner.
-    max_separation = max(angularSeparationDeg(ra_c, dec_c, ra_array, dec_array))
-    constellations_path = os.path.expanduser("~/source/RMS/share/constellation_lines.csv")
-    lines = np.loadtxt(constellations_path, delimiter=",")
-    from_ra, from_dec = lines[:, 0], lines[:, 1]
-    to_ra, to_dec = lines[:, 2], lines[:, 3]
-    ang_sep_to = angularSeparationDeg(to_ra, to_dec, ra_c, dec_c)
-    ang_sep_from = angularSeparationDeg(from_ra, from_dec, ra_c, dec_c)
-    line_mask = (ang_sep_to < max_separation) & (ang_sep_from < max_separation)
+    # Find the corners of the platepar in image coordinates
+    cx_array, cy_array = np.array([0, pp.X_res, pp.X_res, 0]), np.array([0, 0, pp.Y_res, pp.Y_res])
 
-    from_ra, from_dec = from_ra[line_mask], from_dec[line_mask]
-    to_ra, to_dec = to_ra[line_mask], to_dec[line_mask]
+    # Convert the corners to sky coordinates (represented as an array)
+    jd_array, mag_array = np.full_like(cy_array, jd, dtype=float), np.full_like(cy_array, 1, dtype=float)
+    _, ra_array, dec_array, _ = xyToRaDecPP(jd_array, cx_array, cy_array, mag_array, pp, jd_time=True)
 
+    # Compute the all the angular separations, and take the maximum
+    max_separation = np.max(angularSeparationDeg(ra_c, dec_c, ra_array, dec_array))
 
-    from_x, from_y = raDecToXYPP(from_ra, from_dec, jd, pp)
-    to_x, to_y = raDecToXYPP(to_ra, to_dec, jd, pp)
-
-    img = np.zeros((pp.Y_res, pp.X_res), dtype=np.uint8)
-
-
-    for i in range(len(to_x)):
-            ok, p1, p2 = cv2.clipLine((0, 0, pp.X_res, pp.Y_res),(int(round(from_x[i])), int(round(from_y[i]))), (int(round(to_x[i])), int(round(to_y[i]))))
-            try:
-                p1, p2 = shortenV(p1, p2, roll_back)
-                cv2.line(img, p1, p2, color=150, thickness=1)
-            except:
-                continue
-
-    return img
-
-
+    return ra_c, dec_c, max_separation, ra_array, dec_array
 
 def computeNormals(corner_vecs, centre_vec):
 
@@ -250,6 +96,7 @@ def computeNormals(corner_vecs, centre_vec):
 
 
 def radecToUnitVector(ra_deg, dec_deg):
+
     ra = np.radians(ra_deg)
     dec = np.radians(dec_deg)
 
@@ -696,6 +543,120 @@ def repointPlatepar(pp, jd, az, alt):
 
     return pp
 
+
+    pass
+
+    pass
+
+
+
+### TEST CODE START ###
+
+def inferColumnPositions(line):
+    """
+    From a line of text infer column positions
+
+    Arguments:
+        line: [str] line of text
+
+    Return:
+        names: [list] list of column names
+        positions: [list] list of column positions
+    """
+
+    positions,names = [], []
+    field_count = 0
+    in_field = False
+    for i, char in enumerate(line):
+        if not in_field and not char.isspace():
+            field_count += 1
+            if field_count > 1:
+                end = i
+                field_name = line[start:end].strip()
+                if field_name.replace("#","") != "":
+                    field_name = field_name.replace("#","")
+                names.append(field_name)
+                positions.append((start, end))
+            if i > 0:
+                start = i - 1
+            else:
+                start = i
+            in_field = True
+        elif in_field and char.isspace():
+            in_field = False
+    end = i
+    names.append(line[start:end].strip())
+    positions.append((start, len(line)))
+
+    if in_field:
+        positions.append((start, len(line)))
+    return names, positions
+
+
+def loadIAUCSN(catalog_path=os.path.expanduser("~/source/RMS/Catalogs/"), catalog_name="IAU-CSN.txt", additional_fields = []):
+    """
+
+    Arguments:
+        catalog_path: [str] path to catalog
+        catalog_name: [str] name of catalog file
+        additional_fields: [list] names of additional fields to return
+
+    Returns:
+        star_data: [list] of star data [ra, dec. m]
+        mag_band: [list] of mag band data per star
+        mag_band_ratios: [list] each entry zero, not supported for this catalog
+        extra_values_dict:[dict] dictionary indexed of extra values
+    """
+
+    extra_values_dict = {}
+
+    for field in additional_fields:
+        extra_values_dict[field] = []
+
+
+    star_data, name_list, mag_band, mag_band_ratios = [], [], [], []
+    with open(os.path.join(os.path.expanduser(catalog_path), catalog_name), 'r') as catalog_file:
+
+        for line in catalog_file:
+            line_counter = 0
+            if line.startswith('#') or line.startswith('$') or line == '\n':
+                pass
+            else:
+                break
+            header_line = line
+        names, positions = inferColumnPositions(header_line)
+
+        for line in catalog_file:
+            if line.startswith('#') or line.startswith('$'):
+                continue
+            if not line[0].isalnum():
+                continue
+            f = []
+            for col in range(0,len(positions)):
+                f.append(line[positions[col][0]:positions[col][1]].strip())
+            try:
+                r, d, m, mb = float(f[12]), float(f[13]), float(f[8]), f[9]
+                star_data.append(np.array([float(r), float(d), float(m)]))
+                mag_band.append(mb)
+                mag_band_ratios.append(0)
+                for additional_field in additional_fields:
+                    additional_field_column = names.index(additional_field)
+                    value = line[positions[additional_field_column][0]:positions[additional_field_column][1]].strip()
+                    if "name" in additional_field.lower():
+                        extra_values_dict[additional_field].append(value.encode('utf-8'))
+                    else:
+                        extra_values_dict[additional_field].append(value)
+            except:
+                print("Error loading IAU-CSN line {}".format(line))
+
+        star_data = np.array(star_data)
+
+        for field in additional_fields:
+            extra_values_dict[field] = np.array(extra_values_dict[field])
+
+
+    return star_data, mag_band, mag_band_ratios, extra_values_dict
+
 def renderIAUNames(iau_csn_coordinates, iau_extras, ra_array, dec_array, x_array, y_array, pp, max_sep_deg=0.05):
 
     iau_ra, iau_dec = iau_csn_coordinates[:, 0], iau_csn_coordinates[:, 1]
@@ -703,53 +664,61 @@ def renderIAUNames(iau_csn_coordinates, iau_extras, ra_array, dec_array, x_array
 
     results = []
 
-    for ra, dec, x, y in zip(
-            ra_array,
-            dec_array,
-            x_array,
-            y_array):
+    for ra, dec, x, y in zip(ra_array, dec_array, x_array, y_array):
 
-        sep = angularSeparationDeg(
-            ra,
-            dec,
-            iau_ra,
-            iau_dec
-        )
+        sep = angularSeparationDeg(ra, dec, iau_ra, iau_dec)
 
         idx = np.argmin(sep)
 
         if sep[idx] < max_sep_deg:
-            results.append(
-                (
-                    iau_names[idx],
-                    x,
-                    y
-                )
-            )
+            results.append((iau_names[idx], x, y))
 
-        label_img = np.zeros(
-            (pp.Y_res, pp.X_res),
-            dtype=np.uint8
-        )
+        label_img = np.zeros((pp.Y_res, pp.X_res), dtype=np.uint8)
 
         for name, x, y in results:
-            cv2.putText(
-                label_img,
-                name.decode("utf-8"),
-                (int(x) + 5, int(y) - 5),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.4,
-                255,
-                1,
-                cv2.LINE_AA
-            )
-
-
-
+            cv2.putText(label_img, name.decode("utf-8"), (int(x) + 5, int(y) - 5), cv2.FONT_HERSHEY_SIMPLEX,
+                0.4,255,1, cv2.LINE_AA)
     return label_img
 
 
-    pass
+def drawConstellations(pp, frame_time, intensity=150, roll_back=20, constellation_data=None):
+
+    if constellation_data is None:
+        constellations_path = os.path.expanduser("~/source/RMS/share/constellation_lines.csv")
+        lines = np.loadtxt(constellations_path, delimiter=",")
+    else:
+        lines = constellation_data
+
+    # Get the time of the frame in jd
+    jd = datetime2JD(frame_time)
+
+    ra_c, dec_c, max_separation = getPlateparSkyParameters(pp, jd)
+
+    from_ra, from_dec = lines[:, 0], lines[:, 1]
+    to_ra, to_dec = lines[:, 2], lines[:, 3]
+    ang_sep_to = angularSeparationDeg(to_ra, to_dec, ra_c, dec_c)
+    ang_sep_from = angularSeparationDeg(from_ra, from_dec, ra_c, dec_c)
+    line_mask = (ang_sep_to < max_separation) & (ang_sep_from < max_separation)
+
+    from_ra, from_dec = from_ra[line_mask], from_dec[line_mask]
+    to_ra, to_dec = to_ra[line_mask], to_dec[line_mask]
+
+
+    from_x, from_y = raDecToXYPP(from_ra, from_dec, jd, pp)
+    to_x, to_y = raDecToXYPP(to_ra, to_dec, jd, pp)
+
+    img = np.zeros((pp.Y_res, pp.X_res), dtype=np.uint8)
+
+
+    for i in range(len(to_x)):
+            ok, p1, p2 = cv2.clipLine((0, 0, pp.X_res, pp.Y_res),(int(round(from_x[i])), int(round(from_y[i]))), (int(round(to_x[i])), int(round(to_y[i]))))
+            try:
+                p1, p2 = vectShort(p1, p2, roll_back)
+                cv2.line(img, p1, p2, color=150, thickness=1)
+            except:
+                continue
+
+    return img
 
 def renderVideo(start_time, end_time, seconds_per_frame, fps, pp):
 
@@ -800,63 +769,9 @@ def renderVideo(start_time, end_time, seconds_per_frame, fps, pp):
 
     video.release()
 
-    pass
-
-
-def testshortenVectorSegment(n_tests=20):
-
-    for i in range(n_tests):
-
-        dims = np.random.randint(2, 20)
-
-        p1 = np.random.uniform(-10, 10, dims)
-        p2 = np.random.uniform(-10, 10, dims)
-
-        trim = np.random.uniform(0.1, 5.0)
-
-        p1_new, p2_new = shortenV(p1,p2,trim)
-        p1_new = np.asarray(p1_new, dtype=float)
-        p2_new = np.asarray(p2_new, dtype=float)
-
-        original_length = np.linalg.norm(p2 - p1)
-        new_length = np.linalg.norm(p2_new - p1_new)
-
-        actual_shortening = (
-            original_length - new_length
-        )
-
-        if original_length < 2*trim:
-
-            expected_trim = original_length*0.05
-            expected_shortening = 2*expected_trim
-
-            mode = "fallback"
-
-        else:
-
-            expected_shortening = 2*trim
-
-            mode = "normal"
-
-        error = (
-            actual_shortening
-            - expected_shortening
-        )
-
-        print(
-            f"{mode:8s} "
-            f"dims={dims:2d} "
-            f"length={original_length:8.4f} "
-            f"shortened={actual_shortening:8.4f} "
-            f"expected={expected_shortening:8.4f} "
-            f"error={error:+.2e}"
-        )
-
-
 
 if __name__ == "__main__":
 
-    testshortenVectorSegment()
 
     config = loadConfigFromDirectory(".config", ".")
     datetime_now = datetime.now(UTC)
