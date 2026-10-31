@@ -151,26 +151,37 @@ def loadIAUCSN(catalog_path=os.path.expanduser("~/source/RMS/Catalogs/"), catalo
     return star_data, mag_band, mag_band_ratios, extra_values_dict
 
 
+def shortenV(p1, p2, trim):
 
+    """ Symmetrically shorten a vector in an arbitrary number of dimensions.
 
+    This algorithm uses vector mathematics so can handle lines which are
+    orthogonal or parallel to any axis. If a vector is shorter than twice
+    the length to be trimmed then a vector of 90% of the original length
+    is returned by trimming 5% from each end.
 
-def shortenLine(p1, p2, trim_pixels):
+    Arguments:
+        p1: (x,y, ...) tuple of points.
+        p2: (x,y, ...) tuple of points.
+        trim: [int] integer number of pixels to shorten line by
 
-
+    Returns
+        p1: (x,y, ...) tuple of points.
+        p2: (x,y, ...) tuple of points.
+    """
 
     p1,p2 = np.asarray(p1, dtype=float), np.asarray(p2, dtype=float)
     v = p2 - p1
     length = np.linalg.norm(v)
 
-    if length < 2*trim_pixels:
-        return None
+    if length < 2*trim:
+        trim = length * 0.05
 
     v /= length
 
-    p1_new, p2_new = np.round(p1 + trim_pixels*v).astype(int), np.round(p2 - trim_pixels*v).astype(int)
+    p1_, p2_ = np.round(p1 + trim * v).astype(int), np.round(p2 - trim * v).astype(int)
 
-
-    return tuple(p1_new), tuple(p2_new)
+    return tuple(p1_), tuple(p2_)
 
 def drawConstellations(pp, frame_time, intensity=150, roll_back=20):
 
@@ -210,7 +221,7 @@ def drawConstellations(pp, frame_time, intensity=150, roll_back=20):
     for i in range(len(to_x)):
             ok, p1, p2 = cv2.clipLine((0, 0, pp.X_res, pp.Y_res),(int(round(from_x[i])), int(round(from_y[i]))), (int(round(to_x[i])), int(round(to_y[i]))))
             try:
-                p1, p2 = shortenLine(p1, p2, roll_back)
+                p1, p2 = shortenV(p1, p2, roll_back)
                 cv2.line(img, p1, p2, color=150, thickness=1)
             except:
                 continue
@@ -792,8 +803,60 @@ def renderVideo(start_time, end_time, seconds_per_frame, fps, pp):
     pass
 
 
+def testshortenVectorSegment(n_tests=20):
+
+    for i in range(n_tests):
+
+        dims = np.random.randint(2, 20)
+
+        p1 = np.random.uniform(-10, 10, dims)
+        p2 = np.random.uniform(-10, 10, dims)
+
+        trim = np.random.uniform(0.1, 5.0)
+
+        p1_new, p2_new = shortenV(p1,p2,trim)
+        p1_new = np.asarray(p1_new, dtype=float)
+        p2_new = np.asarray(p2_new, dtype=float)
+
+        original_length = np.linalg.norm(p2 - p1)
+        new_length = np.linalg.norm(p2_new - p1_new)
+
+        actual_shortening = (
+            original_length - new_length
+        )
+
+        if original_length < 2*trim:
+
+            expected_trim = original_length*0.05
+            expected_shortening = 2*expected_trim
+
+            mode = "fallback"
+
+        else:
+
+            expected_shortening = 2*trim
+
+            mode = "normal"
+
+        error = (
+            actual_shortening
+            - expected_shortening
+        )
+
+        print(
+            f"{mode:8s} "
+            f"dims={dims:2d} "
+            f"length={original_length:8.4f} "
+            f"shortened={actual_shortening:8.4f} "
+            f"expected={expected_shortening:8.4f} "
+            f"error={error:+.2e}"
+        )
+
+
 
 if __name__ == "__main__":
+
+    testshortenVectorSegment()
 
     config = loadConfigFromDirectory(".config", ".")
     datetime_now = datetime.now(UTC)
