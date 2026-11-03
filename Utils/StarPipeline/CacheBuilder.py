@@ -25,50 +25,29 @@ from RMS.Formats.FFfile import getMiddleTimeFF, filenameToDatetime
 from PIL import Image, ImageDraw, ImageFont
 import imageio.v2 as imageio
 
-import inspect
 import traceback
 import os
 import tempfile
 import tarfile
 
-import paramiko
 import subprocess
 import json
 import requests
-from Cython.Compiler.ExprNodes import infer_sequence_item_type
 
 import RMS.ConfigReader as cr
 import shutil
 import sys
 import datetime
-import numpy as np
 import time
 import random
 import socket
-import ephem
 
 
-from RMS.Formats import FFfile, Platepar
-from RMS.Astrometry.CheckFit import starListToDict
-from RMS.Astrometry.Conversions import J2000_JD, date2JD
-from RMS.Formats.StarCatalog import Catalog
-from RMS.Astrometry.Conversions import latLonAlt2ECEF
-from RMS.Routines.MaskImage import getMaskFile
-from RMS.Formats.Platepar import Platepar
-from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP, raDec2AltAz
-from RMS.Formats.CALSTARS import readCALSTARS, maxCalstarsToPNG, calstarsToMP4
+from RMS.Formats import FFfile
+from RMS.Astrometry.Conversions import date2JD
 from RMS.Misc import mkdirP
 from RMS.Logger import LoggingManager, getLogger
 from pathlib import Path
-from RMS.Astrometry.AutoPlatepar import autoFitPlatepar, loadCatalogStars
-from Utils.Flux import detectMoon
-from multiprocessing import Pool, Process, cpu_count
-from collections import defaultdict
-from Utils.StarPipeline.PipelineDB import createDatabaseIfMissing, initialiseDatabase, Flags, auditIngestUserPrivileges, claimNextJob, markJobDone, markJobError, resetStalledJobs, jobsRemaining, getNextErrorJob
-from collections import Counter
-from scipy.interpolate import SmoothBivariateSpline
-
-from Utils.StarPipeline.PipelineDB import PG_INT_MAG_LIMIT, PG_BIGINT_MAG_LIMIT
 
 # url
 STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
@@ -957,65 +936,7 @@ def resetIngestion(conn, local_calstars_path, ingestion_marker):
             archiveCalstarDirectories(conn, local_calstars_path, [os.path.basename(calstar_path)], ingested_only=False)
             pass
 
-def populateWorkQueue(conn, file_name_list, log):
-    """
-    Insert each remote filename into ingest_work with ON CONFLICT DO NOTHING.
-    This is the correct simplified version for station-by-station housekeeping.
-    """
 
-    file_count = len(file_name_list)
-    log.info(f"Sorting {file_count} files by time")
-    file_name_list = sortFilesByTime(file_name_list)
-
-
-    now = datetime.datetime.now(tz=datetime.timezone.utc)
-    now_jd_int = scale1e6(date2JD(
-        now.year, now.month, now.day,
-        now.hour, now.minute, now.second,
-        now.microsecond / 1000
-    ))
-
-    log.info("Starting write")
-
-    with conn.cursor() as cur:
-        i, step = 0, 1000
-        start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-        for file_name in file_name_list:
-            i += 1
-
-            if i % step == 0:
-                now = datetime.datetime.now(tz=datetime.timezone.utc)
-                time_elapsed_seconds = (now - start_time).total_seconds()
-                jobs_remaining = file_count - i
-                completion_time = (now + datetime.timedelta(seconds = jobs_remaining * (time_elapsed_seconds / i))).replace(microsecond=0)
-                step *= 2
-                log.info(f"Prepared {i} of {file_count} files completion time is {completion_time}")
-            # Compute JD for this file
-            dt = FFfile.getMiddleTimeFF(
-                file_name, fps=25,
-                ret_milliseconds=True, ff_frames=256
-            )
-            jd = date2JD(*dt)
-            jd_int = scale1e6(jd)
-
-            if jd_int is None:
-                continue
-
-            # Reject future-dated files
-            if jd_int > now_jd_int:
-                log.info(f"Rejecting file {file_name} as observation start time is in the future")
-                continue
-
-            # Insert directly into ingest_work
-            cur.execute("""
-                INSERT INTO ingest_work (remote_filename, jd_int)
-                VALUES (%s, %s)
-                ON CONFLICT (remote_filename) DO NOTHING;
-            """, (file_name, jd_int))
-
-        log.info("Starting commit")
-        conn.commit()
-        log.info("Commit completed")
 
 
 def archiveWholeDir(full_path_to_dir, verbose=False):
