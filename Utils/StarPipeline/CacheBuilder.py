@@ -45,7 +45,6 @@ import numpy as np
 import time
 import random
 import socket
-import psycopg
 import ephem
 
 
@@ -772,53 +771,6 @@ def extractSessionNameFromCalstar(calstars_path):
 
     return f"{station_id}_{date}_{time}"
 
-def ingestWorker(remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db=True, catalog_stars=None, bw_limit=None, break_on_exception=True, force_job=None, force_error=False):
-
-    # Each worker must open its own DB connection
-    with psycopg.connect(host=postgresql_host, dbname="star_data", user="ingest_user") as worker_conn:
-
-        if force_error:
-            job_to_force = getNextErrorJob(worker_conn)
-            if job_to_force is None:
-                log.info("No error jobs found - returning")
-                return
-        else:
-            job_to_force = force_job
-
-
-        # Claim the job (forced or normal)
-        row = claimNextJob(worker_conn, force_job=job_to_force)
-
-        # If no job was returned, exit cleanly
-        if row is None:
-            log.info("No job available for this worker")
-            return
-
-        remote_file, jd_scaled = row
-
-        if remote_file is None:
-            return
-
-
-        if break_on_exception:
-            processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port,
-                              calstars_data_full_path, write_db, catalog_stars, bw_limit=bw_limit)
-            markJobDone(worker_conn, remote_file)
-
-        else:
-
-            try:
-                processServerFile(worker_conn, remote_file, remote_station_processed_dir, username, host, port, calstars_data_full_path, write_db, catalog_stars, bw_limit=bw_limit)
-                markJobDone(worker_conn, remote_file)
-
-            except Exception as e:
-                tb = traceback.format_exc()
-                error_msg = f"{type(e).__name__}: {e}\n{tb}"
-                log.error(error_msg)
-                # Put back in an archive in all cases
-                local_dir_name = "_".join(remote_file.split("_")[0:4])
-                archiveCalstarDirectories(worker_conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
-                markJobError(worker_conn, remote_file, str(e))
 
 def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=None, username=None, host=None, port=None,
                       calstars_data_full_path=None, bw_limit=None):
@@ -1158,7 +1110,7 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="""Ingest CALSTAR data \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
-    arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. user@host:/home/stationID/files/ """)
+    arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. user@host:/home/stationID/files/processed """)
 
     arg_parser.add_argument('-t', '--threads', type=int,  default=2, help="""Number of concurrent threads to run """)
 
@@ -1231,8 +1183,9 @@ if __name__ == "__main__":
         getRemoteFileList(log, user, hostname, path_template=path_template, country_code=country_code)
 
     if build_cache:
-        remote_files = loadRemoteFile(os.path.join(ARCHIVE, REMOTE_FILES_JSON), country_code=country_code)
+        remote_files = loadRemoteFiles(os.path.join(ARCHIVE, REMOTE_FILES_JSON), country_code=country_code)
         remote_files_sorted = sortFilesByTime(remote_files)
         buildCache(config, remote_files_sorted, calstars_data_dir, username=user, host=hostname, remote_station_processed_dir=path_template)
         sys.exit()
+
 
