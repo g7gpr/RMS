@@ -975,6 +975,7 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
 
         if os.path.exists(local_calstars_archive_path):
             files_to_download -= 1
+            print(f"{os.path.basename(local_calstars_archive_path)} already downloaded")
             continue
 
         calstars_name = f"CALSTARS_{local_dir_name}.txt"
