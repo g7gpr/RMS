@@ -1001,7 +1001,7 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
             total_download_time_seconds = file_download_time_seconds * files_to_download
             cumulative_mb_s = downloaded_mb / time_elapsed.total_seconds()
             completion_time_str = (datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(seconds=total_download_time_seconds)).replace(microsecond=0).isoformat()
-            log.info(f"Downloaded {remote_file} of size {size_mb:.1f}MB rate {cumulative_mb_s:.1f}MB/s estimated cache download completion time {completion_time_str} {files_downloaded}/{files_to_download}")
+            log.info(f"Downloaded {remote_file} ({files_downloaded}/{files_to_download}) of size {size_mb:.1f}MB rate {cumulative_mb_s:.1f}MB/s estimated cache download completion time {completion_time_str} ")
     return
 
 
