@@ -958,7 +958,7 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
     downloaded_mb = 0
     files_to_download = len(remote_files_sorted)
     for remote_file in remote_files_sorted:
-        print(f"Downloading {remote_file}")
+
         station_name = remote_file.split("_")[0]
         remote_dir = remote_station_processed_dir.replace("stationID", station_name.lower())
 
@@ -979,6 +979,7 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
             print(f"{os.path.basename(local_calstars_archive_path)} already downloaded")
             continue
 
+        print(f"Downloading {remote_file}")
         calstars_name = f"CALSTARS_{local_dir_name}.txt"
         local_config_path = os.path.join(local_target, os.path.basename(config.config_file_name))
         if os.path.basename(config.config_file_name) != ".config":
