@@ -19,12 +19,6 @@
 
 from __future__ import print_function, division, absolute_import
 
-
-import math
-from RMS.Formats.FFfile import getMiddleTimeFF, filenameToDatetime
-from PIL import Image, ImageDraw, ImageFont
-import imageio.v2 as imageio
-
 import traceback
 import os
 import tempfile
@@ -33,7 +27,6 @@ import tarfile
 import subprocess
 import json
 import requests
-
 import RMS.ConfigReader as cr
 import shutil
 import sys
@@ -42,11 +35,7 @@ import time
 import random
 import socket
 
-
-from RMS.Formats import FFfile
-from RMS.Astrometry.Conversions import date2JD
 from RMS.Misc import mkdirP
-from RMS.Logger import LoggingManager, getLogger
 from pathlib import Path
 
 # url
@@ -67,50 +56,6 @@ STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
 CHARTS = "charts"
 PORT = 22
 MINIMAL_ARCHIVE_SUFFIX = "min"
-
-
-import numpy as np
-import matplotlib.pyplot as plt
-
-from mpl_toolkits.mplot3d import Axes3D
-
-
-
-def waitForDownloadWindow(start_hour_utc: int, end_hour_utc: int):
-    now = datetime.datetime.now(datetime.timezone.utc)
-    current_hour = now.hour
-
-    # Case 1: window does not wrap midnight (e.g., 02–06 UTC)
-    if start_hour_utc < end_hour_utc:
-        in_window = start_hour_utc <= current_hour < end_hour_utc
-    else:
-        # Case 2: window wraps midnight (e.g., 22–04 UTC)
-        in_window = current_hour >= start_hour_utc or current_hour < end_hour_utc
-
-    if in_window:
-        return  # safe to download now
-
-    # Compute next allowed time in UTC
-    today = now.date()
-    if start_hour_utc > current_hour:
-        next_start = datetime.datetime.combine(
-            today, datetime.time(start_hour_utc, 0), tzinfo=datetime.timezone.utc
-        )
-    else:
-        tomorrow = today + datetime.timedelta(days=1)
-        next_start = datetime.datetime.combine(
-            tomorrow, datetime.time(start_hour_utc, 0), tzinfo=datetime.timezone.utc
-        )
-
-    sleep_seconds = (next_start - now.replace(tzinfo=datetime.timezone.utc)).total_seconds()
-
-    # Add jitter (0–2 minutes)
-    sleep_seconds += random.uniform(0, 120)
-
-    log.info(f"Outside download window. Sleeping for {sleep_seconds/3600:.2f} hours")
-    time.sleep(sleep_seconds)
-
-
 
 
 def makeTarBz2(source_dir, output_file):
@@ -160,15 +105,13 @@ def extractCalstarArchives(root, archives_list, remove_archives=True):
         dir_name = arc_name.name.replace(f"_{MINIMAL_ARCHIVE_SUFFIX}.tar.bz2", "")
         output_dir = root / dir_name
 
-        # Ensure output directory does not already exist
+        # Remove output directory if it exists
         if output_dir.exists():
-            log.warning(f"Output directory {output_dir} already exists, removing it first")
+            print(f"Output directory {output_dir} already exists, removing it first")
             shutil.rmtree(output_dir)
 
-        # Extract archive (no filter argument!)
         with tarfile.open(archive_full_path, "r:*") as tar:
             try:
-                top_levels = {m.name.split("/")[0] for m in tar.getmembers() if m.name}
                 tar.extractall(root, filter="fully_trusted")
                 if output_dir.exists():
                     # Make the directory world writeable, so that any worker can delete
@@ -180,22 +123,21 @@ def extractCalstarArchives(root, archives_list, remove_archives=True):
                             os.chmod(os.path.join(dirpath, f), 0o666)
 
                 else:
-                    log.error(f"Expected extracted directory {output_dir} but it does not exist")
+                    print(f"Expected extracted directory {output_dir} but it does not exist")
 
             except Exception as e:
                 msg = "Exception: {}".format(str(e))
                 tb = traceback.format_exc().encode("ascii", "replace").decode("ascii")
 
-                log.error(msg)
-                log.error(tb)
+                print(msg)
+                print(tb)
 
-                log.warning(f"{archive_full_path.name} was corrupted and could not be extracted - removing")
+                print(f"{archive_full_path.name} was corrupted and could not be extracted - removing")
                 archive_full_path.unlink()
                 continue
 
         # Optionally remove the archive
         if remove_archives and archive_full_path.exists():
-            #log.info(f"Removing archive {archive_path}")
             archive_full_path.unlink()
 
     return output_dir_list
@@ -247,7 +189,7 @@ def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True, 
         tar_file_name = Path(f"{d}_{MINIMAL_ARCHIVE_SUFFIX}.tar.bz2")
         output_file = Path(d / Path(os.path.basename(tar_file_name).split('_')[1])  / Path(tar_file_name))
 
-        #log.info(f"Creating {os.path.basename(output_file)}")
+
         makeTarBz2(d, output_file)
         os.chmod(output_file,0o666)
 
@@ -256,7 +198,7 @@ def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True, 
         # compute compressed size
         compressed_size = output_file.stat().st_size / (1024 **2)
         if uncompressed_size > 0 and verbose:
-            log.info(f"Removing {os.path.basename(source_dir)} of size {uncompressed_size:.1f} MB and replaced with archive of size {compressed_size:.1f} MB - ratio {compressed_size / uncompressed_size:.2f}")
+            print(f"Removing {os.path.basename(source_dir)} of size {uncompressed_size:.1f} MB and replaced with archive of size {compressed_size:.1f} MB - ratio {compressed_size / uncompressed_size:.2f}")
         shutil.rmtree(d, ignore_errors=True)
 
 def connectionProblem(host, port=22, timeout=3):
@@ -292,32 +234,7 @@ def connectionProblem(host, port=22, timeout=3):
         # Can't connect at all return True
         return True
 
-def dropTable(conn, table_name):
-    """If a table exists, drop it.
-    Arguments:
-        conn: [object] Connection to database.
-        table_name: [string] Name of the table.
-    Returns:
-        Nothing."""
-
-    sql_command = f"DROP TABLE IF EXISTS {table_name};"
-    #log.info(f"Dropping table {table_name}")
-    #log.info(f"Executing sql command {sql_command}")
-
-    with conn.cursor() as cur:
-        cur.execute(sql_command)
-    conn.commit()
-
-def buildCalstarFilename(calstar_directory_path):
-    base = os.path.basename(calstar_directory_path)
-    parts = base.split("_")
-
-    # Expecting: YYYYMMDD_HHMMSS_STATIONID_SEQUENCE
-    # Produces:  CALSTARS_YYYYMMDD_HHMMSS_STATIONID_SEQUENCE
-    return f"CALSTARS_{parts[0]}_{parts[1]}_{parts[2]}_{parts[3]}"
-
-
-def lsRemote(log, host, username, port, remote_path):
+def lsRemote(host, username, port, remote_path):
     """Return: list of filenames in remote directory, or empty list if directory does not exist."""
 
     remote = "{}@{}:{}".format(username, host, remote_path)
@@ -336,7 +253,7 @@ def lsRemote(log, host, username, port, remote_path):
     if result.returncode != 0:
         stderr = result.stderr.lower()
         if "no such file" in stderr or "failed to open" in stderr:
-            log.info("Remote directory {} does not exist".format(remote_path))
+            print("Remote directory {} does not exist".format(remote_path))
             return []
         # Any other error is real
         raise RuntimeError("rsync failed: {}".format(result.stderr.strip()))
@@ -347,8 +264,6 @@ def lsRemote(log, host, username, port, remote_path):
         if parts:
             files.append(parts[-1])
     remote_file_count = len(files)
-    word = "file" if remote_file_count == 1 else "files"
-    # log.info(f"Remote directory {remote_path} contained {remote_file_count} {word}")
 
     return files
 
@@ -409,7 +324,7 @@ def extractBz2Files(bz2_list, input_directory, working_directory, silent=True, h
             continue
         mkdirP(bz2_directory)
         if not silent:
-            log.info("Extracting {}".format(bz2))
+            print("Extracting {}".format(bz2))
 
         try:
             with tarfile.open(os.path.join(input_directory, bz2), 'r:bz2') as tar:
@@ -417,7 +332,7 @@ def extractBz2Files(bz2_list, input_directory, working_directory, silent=True, h
                 tar.extractall(path=bz2_directory, filter="fully_trusted")
         except:
             if not silent:
-                log.info("Unable to extract".format(basename_bz2))
+                print("Unable to extract".format(basename_bz2))
 
 def downloadFile(host, username, local_path, remote_path, port=PORT,  silent=False, bw_limit=None):
     """Download a single file try compressed rsync first, then fall back to Paramiko.
@@ -454,7 +369,7 @@ def downloadFile(host, username, local_path, remote_path, port=PORT,  silent=Fal
 
             if bw_limit is not None:
                 cmd.append(f'--bwlimit={bw_limit}')
-                log.info(f"Starting rsync with a band width limit of {bw_limit}")
+                print(f"Starting rsync with a band width limit of {bw_limit}")
 
             cmd.extend([remote, os.path.join(local_path, os.path.basename(remote_path))])
 
@@ -471,7 +386,7 @@ def downloadFile(host, username, local_path, remote_path, port=PORT,  silent=Fal
 
     return
 
-def getStationList(log, url=STATION_COORDINATES_JSON, country_code=None):
+def getStationList(url=STATION_COORDINATES_JSON, country_code=None):
     """Get a list of stations using the station coordinates json.
 
     Arguments:
@@ -482,7 +397,7 @@ def getStationList(log, url=STATION_COORDINATES_JSON, country_code=None):
     """
 
 
-    log.info(f"Downloading station list from {url}")
+    print(f"Downloading station list from {url}")
 
     response = requests.get(url)
     response.raise_for_status()  # fail fast if the JSON is unreachable
@@ -533,7 +448,7 @@ def filterByDate(files_list, earliest_date=None, latest_date=None, station=None,
 
         if station is not None:
             if not file.startswith(station):
-                log.info(f"Unexpected file {file}")
+                print(f"Unexpected file {file}")
                 continue
 
         try:
@@ -547,7 +462,7 @@ def filterByDate(files_list, earliest_date=None, latest_date=None, station=None,
 
 
         except Exception:
-            log.warning(f"Skipping malformed filename: {file}")
+            print(f"Skipping malformed filename: {file}")
             continue
 
         if earliest_date < file_date < latest_date:
@@ -570,11 +485,6 @@ def getFileType(file_name):
     """
     return file_name.split(".")[0].split("_")[4]
 
-def makePlatePar(captured_directory):
-
-    print("No platepar found - this is a placeholder for automatic platepar creation")
-    pass
-
 def getRemoteFiles(username, host, port, remote_dir, delay_retry=True):
 
     remote_files = []
@@ -586,7 +496,7 @@ def getRemoteFiles(username, host, port, remote_dir, delay_retry=True):
                 reverse=True
             )
         except Exception as e:
-            log.warning(f"lsRemote failed for {host}:{remote_dir}: {e}")
+            print(f"lsRemote failed for {host}:{remote_dir}: {e}")
             remote_files = []
 
         if remote_files:
@@ -594,13 +504,13 @@ def getRemoteFiles(username, host, port, remote_dir, delay_retry=True):
 
         if connectionProblem(host):
             if not delay_retry:
-                log.info(f"Connection problem for {host}, not delaying")
+                print(f"Connection problem for {host}, not delaying")
                 break
             delay = random.randint(600, 900)
 
             time.sleep(delay)
         else:
-            log.info(f"No remote files found in {remote_dir} for {host}")
+            print(f"No remote files found in {remote_dir} for {host}")
             break
 
     return remote_files
@@ -612,7 +522,7 @@ def downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=22, max
     download_count = 0
     target_path = os.path.join(t, os.path.basename(full_remote_path_to_bz2))
     if verbose:
-        log.info(f"Downloading {full_remote_path_to_bz2} to {target_path}")
+        print(f"Downloading {full_remote_path_to_bz2} to {target_path}")
 
     while not os.path.exists(target_path) and download_count < max_tries:
         downloadFile(host, username, t, full_remote_path_to_bz2, port=port, bw_limit=bw_limit)
@@ -623,18 +533,17 @@ def downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=22, max
             downloaded_size = os.path.getsize(os.path.join(t, remote_file)) / (1000 ** 2)
             rate_mb_s = downloaded_size / (download_end_time - download_start_time).total_seconds()
             if verbose:
-             log.info(
-                    f"Downloaded {remote_file} of size {downloaded_size:.2f}MB at {rate_mb_s:.2f} MB/s after {download_count} try")
+             print(f"Downloaded {remote_file} of size {downloaded_size:.2f}MB at {rate_mb_s:.2f} MB/s after {download_count} try")
             return True
 
         delay = random.randint(600, 900)
         resume_time = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=delay)).isoformat()
-        log.info(f"Waiting {delay/60:.1f} minutes until {resume_time} for {os.path.basename(target_path)}")
+        print(f"Waiting {delay/60:.1f} minutes until {resume_time} for {os.path.basename(target_path)}")
         time.sleep(delay)
 
 
 
-    log.warning(f"Failed to download {remote_file} after {download_count} tries")
+    print(f"Failed to download {remote_file} after {download_count} tries")
 
     return False
 
@@ -642,7 +551,7 @@ def moveFiles(local_target, path_source_list, path_local_list):
 
     files_available = []
     mkdirP(local_target)
-    log.info(f"Setting permissions on {local_target}")
+    print(f"Setting permissions on {local_target}")
     try:
         os.chmod(os.path.dirname(local_target), 0o777)
         os.chmod(local_target, 0o777)
@@ -662,7 +571,7 @@ def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_f
 
     parts = remote_file.split("_")
     if len(parts) < 4:
-        log.error(f"Unexpected remote filename format: {remote_file}")
+        print(f"Unexpected remote filename format: {remote_file}")
         return None, None, None, None, 0
 
     local_dir_name = os.path.join("_".join(remote_file.split("_")[1:2]), "_".join(remote_file.split("_")[0:4]))
@@ -675,10 +584,9 @@ def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_f
         # Download from remote
         if downloadWithRetries(t, host, username, full_remote_path_to_bz2, port=port, bw_limit=bw_limit):
             pass
-            #log.info(f"Downloaded {full_remote_path_to_bz2} to {local_target}")
             size_mb = os.path.getsize(os.path.join(t, remote_file)) / 1024 ** 2
         else:
-            log.warning(f"Failed to download {full_remote_path_to_bz2} to {local_target}")
+            print(f"Failed to download {full_remote_path_to_bz2} to {local_target}")
             return None, None, None, None, 0
         # Create a directory
         extraction_dir = os.path.join(t, "extracted")
@@ -691,7 +599,7 @@ def getFromRemote(conn, host, username, port, station_name, remote_dir, remote_f
         extracted_files_path = os.path.join(extraction_dir, station_name.lower(), remote_file.split(".")[0])
 
         if not os.path.exists(extracted_files_path):
-            log.error(f"Extraction failed or unexpected structure: {extracted_files_path}")
+            print(f"Extraction failed or unexpected structure: {extracted_files_path}")
             return None, None, None, None, 0
 
         extracted_config_path = os.path.join(extracted_files_path, ".config")
@@ -751,42 +659,8 @@ def extractSessionNameFromCalstar(calstars_path):
 
     return f"{station_id}_{date}_{time}"
 
-
-def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=None, username=None, host=None, port=None,
-                      calstars_data_full_path=None, bw_limit=None):
-
-
-    processing_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-    station_name = remote_file.split("_")[0]
-    remote_dir = remote_station_processed_dir.replace("stationID", station_name.lower())
-
-    file_type = getFileType(remote_file)
-    if file_type != "metadata" and file_type != "detected":
-        log.info(f"File of type {file_type} not required")
-        return
-
-    local_dir_name = "_".join(remote_file.split("_")[0:4])
-    local_target = os.path.join(calstars_data_full_path, f"{local_dir_name.split('_')[1]}", local_dir_name)
-
-    # If we already have a .bz2 file, extract it so we can work on it
-    local_calstars_archive_path = f"{local_target}_{MINIMAL_ARCHIVE_SUFFIX}.tar.bz2"
-    extractCalstarArchives(os.path.dirname(local_calstars_archive_path), [os.path.basename(local_calstars_archive_path)], remove_archives=True)
-
-
-    # If we don't have a directory, then get from remote working in a temporary directory
-    if not os.path.exists(os.path.join(calstars_data_full_path, local_dir_name.split("_")[1], local_dir_name)):
-        log.info(f"Retrieving {remote_file} from {username}@{host}:/{remote_dir}")
-        getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=bw_limit)
-    else:
-        log.info(f"Cache hit for {remote_file}")
-
-    archiveCalstarDirectories(conn, calstars_data_full_path, [local_dir_name], ingested_only=True)
-
-    return
-
-
-def discoverRemoteFiles(log, stations, username, host, port,
-                        remote_processed_dir_template, postgresql_host="192.168.217.212",
+def discoverRemoteFiles(stations, username, host, port,
+                        remote_processed_dir_template,
                         min_interval_sec=1, target_interval_sec=3):
 
 
@@ -807,7 +681,7 @@ def discoverRemoteFiles(log, stations, username, host, port,
         while retry > 0:
             retry -= 1
             try:
-                station_files = lsRemote(log, host, username, port, remote_dir)
+                station_files = lsRemote(host, username, port, remote_dir)
                 break
 
             except Exception as e:
@@ -816,15 +690,15 @@ def discoverRemoteFiles(log, stations, username, host, port,
                 # Detect Fail2ban / SSH refusal
                 if "connection refused" in msg or "unexpectedly closed" in msg:
                     pause = random.uniform(600, 900)
-                    log.warning(
+                    print(
                         f"Fail2ban likely active for {station}. "
                         f"Sleeping until {(datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0) + datetime.timedelta(seconds=pause)).replace(microsecond=0).isoformat()} before retrying."
                     )
                     time.sleep(pause)
                     continue
 
-                # Log and skip
-                log.warning(f"Failed to list remote files for {station}: {e}")
+                # Skip
+                print(f"Failed to list remote files for {station}: {e}")
                 station_files = []
                 break
 
@@ -833,7 +707,7 @@ def discoverRemoteFiles(log, stations, username, host, port,
         seconds_per_download = elapsed_time_seconds / idx
         end_time = (start_time + datetime.timedelta(seconds = len(stations) * seconds_per_download)).replace(microsecond=0)
         plural = '' if len(stations) == 1 else 's'
-        log.info(f"Processing station {idx}/{len(stations)}: {station} had {len(station_files)} file{plural}. Start / Completion {start_time.isoformat()} / {end_time.isoformat()} {seconds_per_download:.1f} sec/station")
+        print(f"Processing station {idx}/{len(stations)}: {station} had {len(station_files)} file{plural}. Start / Completion {start_time.isoformat()} / {end_time.isoformat()} {seconds_per_download:.1f} sec/station")
 
         # Filter valid tars
         valid_tars = []
@@ -852,6 +726,7 @@ def discoverRemoteFiles(log, stations, username, host, port,
     return filtered_files
 
 def parseServerFileTimestamp(file_name):
+
     parts = file_name.split("_")
     if len(parts) < 4:
         return None
@@ -868,7 +743,7 @@ def parseServerFileTimestamp(file_name):
 def sortFilesByTime(files):
     return sorted(files, key=parseServerFileTimestamp)
 
-def saveRemoteFiles(log, remote_files, json_path):
+def saveRemoteFiles(remote_files, json_path):
 
     serialisable = [{"file_name": file_name} for file_name in remote_files]
 
@@ -885,34 +760,6 @@ def loadRemoteFiles(json_path, country_code=""):
         data = json.load(f)
     return [item["file_name"] for item in data]
 
-def extractMedianPixelScale(observation_dict):
-    pixel_scale_h_values = []
-    pixel_scale_v_values = []
-
-    for frame in observation_dict.values():
-        for obs in frame:
-            pixel_scale_h_values.append(obs["pixel_scale_h"])
-            pixel_scale_v_values.append(obs["pixel_scale_v"])
-
-    median_h = float(np.median(pixel_scale_h_values))
-    median_v = float(np.median(pixel_scale_v_values))
-
-    return median_h, median_v
-
-
-
-def createSavePathName(file_path, file_name, extension='png'):
-
-
-
-    save_path_name = os.path.join(file_path, f"{file_name.split('.')[0]}.{extension}")
-
-    return save_path_name
-
-def fmt(val, fmt_str):
-    return fmt_str.format(val) if val is not None else "—"
-
-
 def archiveWholeDir(full_path_to_dir, verbose=False):
 
     dirs_to_archive = []
@@ -925,7 +772,7 @@ def archiveWholeDir(full_path_to_dir, verbose=False):
             for calstar_dir in date_dir_list:
 
                 if verbose:
-                    log.info(f"Adding directory {object} to archive list")
+                    print(f"Adding directory {object} to archive list")
                 dirs_to_archive.append(os.path.join(full_path_to_date_dir, calstar_dir))
 
     archiveCalstarDirectories(conn, full_path_to_dir, dirs_to_archive, ingested_only=False)
@@ -964,7 +811,7 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
 
         file_type = getFileType(remote_file)
         if file_type != "metadata" and file_type != "detected":
-            log.info(f"File of type {file_type} not required")
+            print(f"File of type {file_type} not required")
             continue
 
         local_dir_name = "_".join(remote_file.split("_")[0:4])
@@ -976,14 +823,14 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
 
         if os.path.exists(local_calstars_archive_path):
             files_to_download -= 1
-            print(f"{os.path.basename(local_calstars_archive_path)} already downloaded")
+            print(f"{remote_file} already downloaded as {os.path.basename(local_calstars_archive_path)}")
             continue
 
         print(f"Downloading {remote_file}")
         calstars_name = f"CALSTARS_{local_dir_name}.txt"
         local_config_path = os.path.join(local_target, os.path.basename(config.config_file_name))
         if os.path.basename(config.config_file_name) != ".config":
-            log.warning(f"Unusual .config filename {config.config_file_name}")
+            print(f"Unusual .config filename {config.config_file_name}")
             pass
 
         full_path_to_downloaded_file = os.path.join(calstars_data_full_path, local_dir_name.split("_")[1], f"{local_dir_name}_{MINIMAL_ARCHIVE_SUFFIX}.tar.bz2")
@@ -1001,20 +848,15 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
             total_download_time_seconds = file_download_time_seconds * files_to_download
             cumulative_mb_s = downloaded_mb / time_elapsed.total_seconds()
             completion_time_str = (datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(seconds=total_download_time_seconds)).replace(microsecond=0).isoformat()
-            log.info(f"Downloaded {remote_file} ({files_downloaded}/{files_to_download}) of size {size_mb:.1f}MB rate {cumulative_mb_s:.1f}MB/s estimated cache download completion time {completion_time_str} ")
+            print(f"Downloaded {remote_file} ({files_downloaded}/{files_to_download}) of size {size_mb:.1f}MB rate {cumulative_mb_s:.1f}MB/s estimated cache download completion time {completion_time_str} ")
     return
 
+def getRemoteFileList(user, hostname, port=22, path_template="/home/stationID/files/incoming/processed", country_code=""):
 
-
-
-
-
-def getRemoteFileList(log, user, hostname, port=22, path_template="/home/stationID/files/incoming/processed", country_code=""):
-
-    station_list = getStationList(log, country_code=country_code)
-    remote_files = discoverRemoteFiles(log, station_list, user, hostname, 22, remote_processed_dir_template=path_template)
+    station_list = getStationList(country_code=country_code)
+    remote_files = discoverRemoteFiles(station_list, user, hostname, 22, remote_processed_dir_template=path_template)
     remote_files = sortFilesByTime(remote_files)
-    saveRemoteFiles(log, remote_files, os.path.join(ARCHIVE,REMOTE_FILES_JSON))
+    saveRemoteFiles(remote_files, os.path.join(ARCHIVE,REMOTE_FILES_JSON))
 
 
 if __name__ == "__main__":
@@ -1026,30 +868,11 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. user@host:/home/stationID/files/processed """)
 
-    arg_parser.add_argument('-t', '--threads', type=int,  default=2, help="""Number of concurrent threads to run """)
-
-
-    arg_parser.add_argument('--write_db', dest='write_db', default=False, action="store_true",
-                            help="Write to db")
-
-    arg_parser.add_argument('-r', '--reset_ingestion', dest='reset_ingestion', default=False, action="store_true",
-                            help="Reset all ingestion markers")
-
-    arg_parser.add_argument('-p', '--populate_ingestion_table', dest='populate_ingestion_table', default=False, action="store_true",
-                            help="Populate ingestion table and then quit immediately")
-
-    arg_parser.add_argument('-s', '--reset_stalled', dest='reset_stalled', default=False, action="store_true",
-                            help="Reset stalled jobs and then quit immediately")
-
     arg_parser.add_argument('-b', '--build_cache', dest='build_cache', default=False, action="store_true",
                             help="Build local files cache")
 
     arg_parser.add_argument('-g', '--get_remote_file_list', dest='get_remote_file_list', default=False, action="store_true",
                             help="Build the list of remote files")
-
-    arg_parser.add_argument('--create_db', dest='create_db', default=False,
-                            action="store_true",
-                            help="Create the database")
 
     arg_parser.add_argument('--country_code', metavar='COUNTRY_CODE', help="""Country code to work on""")
 
@@ -1057,54 +880,27 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('--calstars_data_dir', metavar='CALSTARS_DATA_DIR', help="""Calstars data dir""")
 
-    arg_parser.add_argument('--force_error', dest='force_error', default=False,
-                            action="store_true",
-                            help="Sisyphus mode - only work on the jobs which show error with exception handling disabled. This is to assist debugging.")
-
-
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
     country_code = cml_args.country_code
-    create_db = cml_args.create_db
     build_cache = cml_args.build_cache
-    write_db = cml_args.write_db
     get_remote_file_list = cml_args.get_remote_file_list
     bw_limit = cml_args.bw_limit
-    force_error = cml_args.force_error
+
 
     os.makedirs(ARCHIVE, exist_ok=True)
-    calstars_data_dir = os.path.join(ARCHIVE, CALSTARS_DATA_DIR) if cml_args.calstars_data_dir is None else cml_args.calstars_data_dir
-
-    os.makedirs(calstars_data_dir, exist_ok=True)
-
+    calstars_directory_path = os.path.join(ARCHIVE, CALSTARS_DATA_DIR) if cml_args.calstars_data_dir is None else cml_args.calstars_data_dir
+    os.makedirs(calstars_directory_path, exist_ok=True)
 
     user, _, remainder = cml_args.path_template.partition("@")
     hostname, _, path_template = remainder.partition(":")
 
-    calstars_directory_path = calstars_data_dir
-
-    print(f"Checking for {calstars_directory_path}")
-    if not os.path.exists(calstars_directory_path):
-        Path(calstars_directory_path).mkdir(parents=True, exist_ok=True)
-
-    directories_list = os.listdir(calstars_directory_path)
-
-
-    # Initialize the logger
-    log_manager = LoggingManager()
-
-
-    # Get the logger handle
-    log = getLogger("rmslogger")
-
     if get_remote_file_list:
-        getRemoteFileList(log, user, hostname, path_template=path_template, country_code=country_code)
+        getRemoteFileList(user, hostname, path_template=path_template, country_code=country_code)
 
     if build_cache:
         remote_files = loadRemoteFiles(os.path.join(ARCHIVE, REMOTE_FILES_JSON), country_code=country_code)
         remote_files_sorted = sortFilesByTime(remote_files)
-        buildCache(config, remote_files_sorted, calstars_data_dir, username=user, host=hostname, remote_station_processed_dir=path_template)
+        buildCache(config, remote_files_sorted, calstars_directory_path, username=user, host=hostname, remote_station_processed_dir=path_template)
         sys.exit()
-
-
