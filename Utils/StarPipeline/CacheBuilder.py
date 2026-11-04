@@ -14,12 +14,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
-
-
 from __future__ import print_function, division, absolute_import
 
-import traceback
 import os
 import tempfile
 import tarfile
@@ -40,23 +36,21 @@ from pathlib import Path
 
 # url
 STATION_COORDINATES_JSON = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
+PORT = 22
 
-# Paths and names
-ARCHIVE = "/archive"
-REMOTE_FILES_JSON = "remotefiles.json"
+# Remote paths
 REMOTE_PATH_TEMPLATE = "/home/stationID/files/incoming/processed"
+
+# Local directories
+ARCHIVE = "/archive"
 CALSTARS_DATA_DIR = "CALSTARS"
+
+# Filenames and suffixes
 PLATEPARS_ALL_RECALIBRATED_JSON = "platepars_all_recalibrated.json"
 PLATEPARS_FLUX_RECALIBRATED_JSON = "platepars_flux_recalibrated.json"
 FTP_DETECT_INFO_TEMPLATE = "FTPdetectinfo_"
-DIRECTORY_INGESTED_MARKER = ".processed"
-FILE_SYSTEM_MARKERS_ENABLED = False
-CALSTAR_FILES_TABLE_NAME = "calstar_files"
-STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
-CHARTS = "charts"
-PORT = 22
+REMOTE_FILES_JSON = "remotefiles.json"
 MINIMAL_ARCHIVE_SUFFIX = "min"
-
 
 def makeTarBz2(source_dir, output_file):
     """ Archive a directory to a tar.bz2 file.
@@ -73,74 +67,6 @@ def makeTarBz2(source_dir, output_file):
 
     with tarfile.open(output_file, "w:bz2") as tar:
         tar.add(source_dir, arcname=dir_name)
-
-def extractCalstarArchives(root, archives_list, remove_archives=True):
-    """Extract files from a tar archive, and optionally remove the archive. Lists or a string can be passed. If an
-    archive does not exist, skip it.
-
-    Arguments:
-        root: [str] Path to a directory containing archives.
-        archives_list: [list | str] List of archive files or a string.
-
-    Keyword arguments:
-        remove_archives: [bool] Optional, default True, remove the archive file after detection
-
-    Returns:
-        output_dir_list: [list] List of the paths to the extracted directories
-    """
-
-    root = Path(root)
-    output_dir_list = []
-
-    for archive_name in archives_list:
-        arc_name = Path(archive_name)
-        archive_full_path = root / arc_name
-        if not archive_full_path.exists():
-            continue
-
-        if not archive_full_path.is_file():
-            continue
-
-        # Derive original directory name
-        dir_name = arc_name.name.replace(f"_{MINIMAL_ARCHIVE_SUFFIX}.tar.bz2", "")
-        output_dir = root / dir_name
-
-        # Remove output directory if it exists
-        if output_dir.exists():
-            print(f"Output directory {output_dir} already exists, removing it first")
-            shutil.rmtree(output_dir)
-
-        with tarfile.open(archive_full_path, "r:*") as tar:
-            try:
-                tar.extractall(root, filter="fully_trusted")
-                if output_dir.exists():
-                    # Make the directory world writeable, so that any worker can delete
-                    os.chmod(output_dir, 0o777)
-                    output_dir_list.append(output_dir)
-                    for dirpath, dirnames, filenames in os.walk(output_dir):
-                        os.chmod(dirpath, 0o777)
-                        for f in filenames:
-                            os.chmod(os.path.join(dirpath, f), 0o666)
-
-                else:
-                    print(f"Expected extracted directory {output_dir} but it does not exist")
-
-            except Exception as e:
-                msg = "Exception: {}".format(str(e))
-                tb = traceback.format_exc().encode("ascii", "replace").decode("ascii")
-
-                print(msg)
-                print(tb)
-
-                print(f"{archive_full_path.name} was corrupted and could not be extracted - removing")
-                archive_full_path.unlink()
-                continue
-
-        # Optionally remove the archive
-        if remove_archives and archive_full_path.exists():
-            archive_full_path.unlink()
-
-    return output_dir_list
 
 def getDirectorySize(path):
     """Returns the size of all files and directories in a directory.
@@ -162,7 +88,7 @@ def getDirectorySize(path):
                 pass
     return total
 
-def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True, verbose=False):
+def archiveCalstarDirectories(root, directories_list, verbose=False):
 
     """Given a list of directories, archive them named e.g. AU0004_20260317_111157_992974_raw.tar.bz2,
     and remove the source directory.
@@ -551,7 +477,6 @@ def moveFiles(local_target, path_source_list, path_local_list):
 
     files_available = []
     mkdirP(local_target)
-    print(f"Setting permissions on {local_target}")
     try:
         os.chmod(os.path.dirname(local_target), 0o777)
         os.chmod(local_target, 0o777)
@@ -559,8 +484,6 @@ def moveFiles(local_target, path_source_list, path_local_list):
         pass
     for p_source, p_local in zip(path_source_list, path_local_list):
         if os.path.exists(p_source):
-
-
             shutil.move(p_source, p_local)
             os.chmod(p_local, 0o666)
             files_available.append(os.path.basename(p_local))
@@ -775,7 +698,7 @@ def archiveWholeDir(full_path_to_dir, verbose=False):
                     print(f"Adding directory {object} to archive list")
                 dirs_to_archive.append(os.path.join(full_path_to_date_dir, calstar_dir))
 
-    archiveCalstarDirectories(conn, full_path_to_dir, dirs_to_archive, ingested_only=False)
+    archiveCalstarDirectories(full_path_to_dir, dirs_to_archive)
 
 def archiveFilenameToDatetime(filename):
     _, date_str, time_str, us_str, *_ = filename.split('_')
@@ -826,14 +749,9 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
             print(f"{remote_file} already downloaded as {os.path.basename(local_calstars_archive_path)}")
             continue
 
-        print(f"Downloading {remote_file}")
-        calstars_name = f"CALSTARS_{local_dir_name}.txt"
-        local_config_path = os.path.join(local_target, os.path.basename(config.config_file_name))
-        if os.path.basename(config.config_file_name) != ".config":
-            print(f"Unusual .config filename {config.config_file_name}")
-            pass
 
         full_path_to_downloaded_file = os.path.join(calstars_data_full_path, local_dir_name.split("_")[1], f"{local_dir_name}_{MINIMAL_ARCHIVE_SUFFIX}.tar.bz2")
+
         # If we don't have an archive, then get from remote working in a temporary directory
         if not os.path.exists(full_path_to_downloaded_file):
             _, _, _, _, size_mb = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=bw_limit)
@@ -878,8 +796,6 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('--bw_limit', metavar='BANDWIDTH_LIMIT', help="""Bandwidth limit per thread""")
 
-    arg_parser.add_argument('--calstars_data_dir', metavar='CALSTARS_DATA_DIR', help="""Calstars data dir""")
-
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
@@ -890,7 +806,7 @@ if __name__ == "__main__":
 
 
     os.makedirs(ARCHIVE, exist_ok=True)
-    calstars_directory_path = os.path.join(ARCHIVE, CALSTARS_DATA_DIR) if cml_args.calstars_data_dir is None else cml_args.calstars_data_dir
+    calstars_directory_path = os.path.join(ARCHIVE, CALSTARS_DATA_DIR)
     os.makedirs(calstars_directory_path, exist_ok=True)
 
     user, _, remainder = cml_args.path_template.partition("@")
