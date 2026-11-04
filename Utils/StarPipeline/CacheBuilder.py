@@ -230,7 +230,7 @@ def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True, 
         directories_list: [list] List of names of directories to archive.
 
     Keyword Arguments:
-        ingested_only: Optional, default true, if true then only arhive directories containing the ingested marker.
+        ingested_only: Optional, default true, if true then only archive directories containing the ingested marker.
 
     Returns:
         Nothing.
@@ -239,15 +239,16 @@ def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True, 
     root = Path(root)
 
     for d in sorted(directories_list):
-        source_dir = root / os.path.basename(d).split('_')[1] / d
-        if not os.path.isdir(source_dir):
+        source_dir = Path(os.path.basename(d))
+        if not os.path.isdir(d):
             continue
 
-        tar_file_name = f"{d}_raw.tar.bz2"
-        output_file = root / os.path.basename(tar_file_name).split('_')[1]  / tar_file_name
+        d = Path(d)
+        tar_file_name = Path(f"{d}_raw.tar.bz2")
+        output_file = Path(d / Path(os.path.basename(tar_file_name).split('_')[1])  / Path(tar_file_name))
 
         #log.info(f"Creating {os.path.basename(output_file)}")
-        makeTarBz2(source_dir, output_file)
+        makeTarBz2(d, output_file)
         os.chmod(output_file,0o666)
 
         # compute uncompressed size
@@ -256,7 +257,7 @@ def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True, 
         compressed_size = output_file.stat().st_size / (1024 **2)
         if uncompressed_size > 0 and verbose:
             log.info(f"Removing {os.path.basename(source_dir)} of size {uncompressed_size:.1f} MB and replaced with archive of size {compressed_size:.1f} MB - ratio {compressed_size / uncompressed_size:.2f}")
-        shutil.rmtree(source_dir, ignore_errors=True)
+        shutil.rmtree(d, ignore_errors=True)
 
 def connectionProblem(host, port=22, timeout=3):
     """Report connection problems.
@@ -945,15 +946,18 @@ def archiveWholeDir(full_path_to_dir, verbose=False):
     conn = None
     local_dir_list =  os.listdir(full_path_to_dir)
     for object in local_dir_list:
-        full_path_to_object = os.path.join(full_path_to_dir, object)
-        if os.path.isdir(full_path_to_object):
-            if verbose:
-                log.info(f"Adding directory {object} to archive list")
-            dirs_to_archive.append(full_path_to_object)
+        full_path_to_date_dir = os.path.join(full_path_to_dir, object)
+        if os.path.isdir(full_path_to_date_dir):
+            date_dir_list = os.listdir(full_path_to_date_dir)
+            for calstar_dir in date_dir_list:
+
+                if verbose:
+                    log.info(f"Adding directory {object} to archive list")
+                dirs_to_archive.append(os.path.join(full_path_to_date_dir, calstar_dir))
 
     archiveCalstarDirectories(conn, full_path_to_dir, dirs_to_archive, ingested_only=False)
 
-def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=21, username=None, host=None, remote_station_processed_dir=None, port=22, bw_limit=None):
+def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None, username=None, host=None, remote_station_processed_dir=None, port=22, bw_limit=None):
 
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
@@ -961,7 +965,12 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=21, 
 
     archiveWholeDir(calstars_data_full_path)
 
-    remote_files_sorted = filterByDate(remote_files_sorted, earliest_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(history_days))
+    if history_days is None:
+        earliest_date = datetime.datetime(year=2000, month=1, day=1).astimezone(datetime.timezone.utc)
+    else:
+        earliest_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=history_days)
+
+    remote_files_sorted = filterByDate(remote_files_sorted, earliest_date = earliest_date)
     remote_files_sorted = sortFilesByTime(remote_files_sorted)
 
     cache_build_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
@@ -993,7 +1002,7 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=21, 
             log.warning(f"Unusual .config filename {config.config_file_name}")
             pass
 
-        full_path_to_downloaded_file = os.path.join(calstars_data_full_path, f"{local_dir_name}_CALSTAR.tar.bz2")
+        full_path_to_downloaded_file = os.path.join(calstars_data_full_path, local_dir_name.split("_")[1], f"{local_dir_name}_CALSTAR.tar.bz2")
         # If we don't have an archive, then get from remote working in a temporary directory
         if not os.path.exists(full_path_to_downloaded_file):
             _, _, _, _, size_mb = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=bw_limit)
@@ -1068,6 +1077,7 @@ if __name__ == "__main__":
                             action="store_true",
                             help="Sisyphus mode - only work on the jobs which show error with exception handling disabled. This is to assist debugging.")
 
+
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
@@ -1079,7 +1089,11 @@ if __name__ == "__main__":
     bw_limit = cml_args.bw_limit
     force_error = cml_args.force_error
 
-    calstars_data_dir = os.path.join(config.data_dir, CALSTARS_DATA_DIR) if cml_args.calstars_data_dir is None else cml_args.calstars_data_dir
+    os.makedirs(ARCHIVE, exist_ok=True)
+    calstars_data_dir = os.path.join(ARCHIVE, CALSTARS_DATA_DIR) if cml_args.calstars_data_dir is None else cml_args.calstars_data_dir
+
+    os.makedirs(calstars_data_dir, exist_ok=True)
+
 
     user, _, remainder = cml_args.path_template.partition("@")
     hostname, _, path_template = remainder.partition(":")
