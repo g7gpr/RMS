@@ -66,7 +66,7 @@ CALSTAR_FILES_TABLE_NAME = "calstar_files"
 STAR_OBSERVATIONS_TABLE_NAME = "star_observations"
 CHARTS = "charts"
 PORT = 22
-
+MINIMAL_ARCHIVE_SUFFIX = "min"
 
 
 import numpy as np
@@ -157,7 +157,7 @@ def extractCalstarArchives(root, archives_list, remove_archives=True):
             continue
 
         # Derive original directory name
-        dir_name = arc_name.name.replace("_raw.tar.bz2", "")
+        dir_name = arc_name.name.replace(f"_{MINIMAL_ARCHIVE_SUFFIX}.tar.bz2", "")
         output_dir = root / dir_name
 
         # Ensure output directory does not already exist
@@ -244,7 +244,7 @@ def archiveCalstarDirectories(conn, root, directories_list, ingested_only=True, 
             continue
 
         d = Path(d)
-        tar_file_name = Path(f"{d}_raw.tar.bz2")
+        tar_file_name = Path(f"{d}_{MINIMAL_ARCHIVE_SUFFIX}.tar.bz2")
         output_file = Path(d / Path(os.path.basename(tar_file_name).split('_')[1])  / Path(tar_file_name))
 
         #log.info(f"Creating {os.path.basename(output_file)}")
@@ -769,14 +769,14 @@ def processServerFile(conn=None, remote_file=None, remote_station_processed_dir=
     local_target = os.path.join(calstars_data_full_path, f"{local_dir_name.split('_')[1]}", local_dir_name)
 
     # If we already have a .bz2 file, extract it so we can work on it
-    local_calstars_archive_path = f"{local_target}_raw.tar.bz2"
+    local_calstars_archive_path = f"{local_target}_{MINIMAL_ARCHIVE_SUFFIX}.tar.bz2"
     extractCalstarArchives(os.path.dirname(local_calstars_archive_path), [os.path.basename(local_calstars_archive_path)], remove_archives=True)
-    calstars_name = f"CALSTARS_{local_dir_name}.txt"
+
 
     # If we don't have a directory, then get from remote working in a temporary directory
     if not os.path.exists(os.path.join(calstars_data_full_path, local_dir_name.split("_")[1], local_dir_name)):
         log.info(f"Retrieving {remote_file} from {username}@{host}:/{remote_dir}")
-        local_config_path, local_platepar_path, local_recalibrated_path, calstars_name, size_mb = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=bw_limit)
+        getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=bw_limit)
     else:
         log.info(f"Cache hit for {remote_file}")
 
@@ -913,33 +913,6 @@ def fmt(val, fmt_str):
     return fmt_str.format(val) if val is not None else "—"
 
 
-def resetIngestion(conn, local_calstars_path, ingestion_marker):
-
-    dir_contents = sorted(os.listdir(local_calstars_path))
-    for object in dir_contents:
-        object_full_path = os.path.join(local_calstars_path, object)
-        if os.path.isdir(object_full_path):
-            calstar_dir_contents = os.listdir(object_full_path)
-            if ingestion_marker in calstar_dir_contents:
-                os.unlink(os.path.join(object_full_path, ingestion_marker))
-
-
-        elif os.path.isfile(object_full_path):
-            extractCalstarArchives(local_calstars_path, object)
-            dir_name = object.replace("_CALSTAR.tar.bz2", "")
-
-            calstar_path = os.path.join(local_calstars_path, dir_name)
-
-            log.info(f"Extracted {object} to {os.path.basename(calstar_path)}")
-            calstar_dir_contents = os.listdir(calstar_path)
-            if ingestion_marker in calstar_dir_contents:
-                os.unlink(os.path.join(calstar_path, ingestion_marker))
-            archiveCalstarDirectories(conn, local_calstars_path, [os.path.basename(calstar_path)], ingested_only=False)
-            pass
-
-
-
-
 def archiveWholeDir(full_path_to_dir, verbose=False):
 
     dirs_to_archive = []
@@ -957,6 +930,11 @@ def archiveWholeDir(full_path_to_dir, verbose=False):
 
     archiveCalstarDirectories(conn, full_path_to_dir, dirs_to_archive, ingested_only=False)
 
+def archiveFilenameToDatetime(filename):
+    _, date_str, time_str, us_str, *_ = filename.split('_')
+
+    return datetime.datetime.strptime(f"{date_str}_{time_str}_{us_str}","%Y%m%d_%H%M%S_%f").astimezone(datetime.timezone.utc)
+
 def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None, username=None, host=None, remote_station_processed_dir=None, port=22, bw_limit=None):
 
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
@@ -964,9 +942,11 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
     conn = None
 
     archiveWholeDir(calstars_data_full_path)
+    remote_files_sorted = sortFilesByTime(remote_files_sorted)
 
     if history_days is None:
-        earliest_date = datetime.datetime(year=2000, month=1, day=1).astimezone(datetime.timezone.utc)
+        earliest_date = archiveFilenameToDatetime(remote_files_sorted[0])
+        print(f"Building cache from {earliest_date}")
     else:
         earliest_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=history_days)
 
@@ -988,10 +968,11 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
 
         local_dir_name = "_".join(remote_file.split("_")[0:4])
 
-        local_target = os.path.join(calstars_data_full_path, local_dir_name)
+        local_target = os.path.join(calstars_data_full_path, local_dir_name.split("_")[1], local_dir_name)
 
         # If we already have a .bz2 file then skip this
-        local_calstars_archive_path = f"{local_target}_CALSTAR.tar.bz2"
+        local_calstars_archive_path = f"{local_target}_{MINIMAL_ARCHIVE_SUFFIX}.tar.bz2"
+
         if os.path.exists(local_calstars_archive_path):
             files_to_download -= 1
             continue
@@ -1002,7 +983,7 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
             log.warning(f"Unusual .config filename {config.config_file_name}")
             pass
 
-        full_path_to_downloaded_file = os.path.join(calstars_data_full_path, local_dir_name.split("_")[1], f"{local_dir_name}_CALSTAR.tar.bz2")
+        full_path_to_downloaded_file = os.path.join(calstars_data_full_path, local_dir_name.split("_")[1], f"{local_dir_name}_{MINIMAL_ARCHIVE_SUFFIX}.tar.bz2")
         # If we don't have an archive, then get from remote working in a temporary directory
         if not os.path.exists(full_path_to_downloaded_file):
             _, _, _, _, size_mb = getFromRemote(conn, host, username, port, station_name, remote_dir, remote_file, calstars_data_full_path, bw_limit=bw_limit)
