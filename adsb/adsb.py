@@ -122,15 +122,21 @@ def parse_sbs(fields, metric, pp):
         ra_c, dec_c, max_sep, _, _ = getPlateparSkyParameters(pp, jd_message)
         ra_aircraft, dec_aircraft = altAz2RADec(az, alt, jd_message, pp.lat, pp.lon)
         ang_sep_deg = angularSeparationDeg(ra_aircraft, dec_aircraft, ra_c, dec_c)[0]
-        log.info(
-            f"{generated_dt} {aircraft_id} {icao} observed at Az:{az:.2f}, Alt:{alt:.2f} lat:{latitude:.3f}, lon:{longitude:.3f}, alt:{altitude:.0f}metres angle:{ang_sep_deg:.0f} degrees")
+        ts = generated_dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+        log_message = f"{ts} {aircraft_id} {icao} observed at az:{az:05.1f}, alt:{alt:04.1f} lat:{latitude:+08.3f}, lon:{longitude:+08.3f}, alt:{altitude:05.0f} metres angle:{ang_sep_deg:03.0f} degrees"
         if ang_sep_deg > max_sep:
-            #log.info(f"Angular separation from camera boresight is {ang_sep_deg} - cannot be in fov of camera")
+            log.info(log_message)
             return
         x, y = raDecToXYPP(np.array([ra_aircraft]), np.array([dec_aircraft]), jd_message, pp)
-        x, y = x[0], y[0]
-        log.info(f"{aircraft_id} {icao} at image coordinates of {x},{y}")
-        pass
+        x, y = int(x[0]), int(y[0])
+        print(x, y)
+        if 0 < x < pp.X_res and 0 < y < pp.Y_res:
+            log_message += f" - image {x}, {y}"
+
+        log.info(log_message)
+
+
 
 if __name__ == "__main__":
 
@@ -150,7 +156,9 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('--port', metavar='PORT', help="""dump1090 port """)
 
-    arg_parser.add_argument("--av", metavar='PORT', help="""Display in aviation units (ft / kts)""")
+    arg_parser.add_argument("--av", metavar='UNITS', help="""Display in aviation units (ft / kts)""")
+
+    arg_parser.add_argument( '--testfile',metavar='FILE', help='Read SBS messages from a file instead of a dump1090 socket.')
 
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
@@ -159,6 +167,10 @@ if __name__ == "__main__":
     config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
     pp = Platepar()
     pp.read(config.platepar_name)
+
+    if cml_args.testfile:
+        with open(os.path.expanduser(cml_args.testfile)) as f:
+            replay_data = [line.strip() for line in f if line.strip()]
 
     host, port = cml_args.host, cml_args.port
     metric = not cml_args.av
@@ -169,12 +181,18 @@ if __name__ == "__main__":
     host = "127.0.0.1" if host is None else host
     port = 30003 if port is None else port
 
+    # Initialize the logger
+    log_manager = LoggingManager()
+    log_manager.initLogging(config)
+
     log = getLogger("rmslogger")
 
     log.info(f"For {config.stationID} starting adsb logging with {host}:{port} with {units} units.")
-    # Test data
-    test = "MSG,3,1,1,7C4A07,1,2026/11/09,21:14:11.828,2026/11/09,21:14:11.861,,650,,,-32.12770,115.86243,,,0,,0,0"
+    log.info(f"Logging to {config.data_dir}")
 
-    parse_sbs(test.strip().split(","), metric, pp)
-
-    loop(host, port, metric, pp)
+    if cml_args.testfile:
+        for line in replay_data:
+            fields = line.strip().split(",")
+            parse_sbs(fields, metric, pp)
+    else:
+        loop(host, port, metric, pp)
