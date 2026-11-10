@@ -92,7 +92,7 @@ class ADSBRecorder(multiprocessing.Process):
 
 def writeOutTracks(config, last_hour, tracks):
 
-    filename = f"{config.stationID}_{last_hour}_adsb_data.json"
+    filename = f"{config.stationID}_{last_hour}_adsb.json"
     filepath = os.path.expanduser(os.path.join(config.data_dir, config.adsb_dir))
     filename_path = os.path.join(filepath, filename)
     log.info(f"Writing out ADSB data to {filename}")
