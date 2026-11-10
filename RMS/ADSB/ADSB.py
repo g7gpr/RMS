@@ -121,7 +121,7 @@ def loopADSB(config, pp, host=None, port=None, metric=None):
 
 def doIteration(config, pp, s, buffer, tracks, last_hour, metric=True):
 
-    hour = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H0000")
+    hour = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M00")
 
     if last_hour is None:
         last_hour = hour
@@ -159,7 +159,7 @@ def doIteration(config, pp, s, buffer, tracks, last_hour, metric=True):
                 x, y = d["x"], d["y"]
                 log_message += f" - image {x}, {y}"
 
-            log.info(log_message)
+            #log.info(log_message)
 
             if icao not in tracks:
                 tracks[icao] = []
