@@ -35,6 +35,8 @@ class ADSBRecorder(multiprocessing.Process):
         self.config = config
         self.pp = Platepar()
         self.exit = multiprocessing.Event()
+        self.tracks = {}
+        self.last_hour = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H0000")
 
         platepar_path = os.path.join(config.config_file_path, config.platepar_name)
         if os.path.exists(platepar_path):
@@ -67,6 +69,8 @@ class ADSBRecorder(multiprocessing.Process):
 
         """ Stops the ADSB recorder. """
         time.sleep(2)
+
+        writeOutTracks(self.config, self.last_hour, self.tracks)
         self.exit.set()
         self.join()
         log.info("ADSB recorder has stopped")
@@ -78,11 +82,10 @@ class ADSBRecorder(multiprocessing.Process):
 
         s = socket.create_connection((self.config.dump1090_host, self.config.dump1090_port))
         buffer = b""
-        tracks = {}
-        last_hour = None
-        print("Loop running")
+        self.tracks = {}
+        log.info("Loop running")
         while not self.exit.is_set():
-            last_hour, tracks = doIteration(self.config, self.pp, s, buffer, tracks, last_hour)
+            last_hour, self.tracks = doIteration(self.config, self.pp, s, buffer, self.tracks, self.last_hour)
 
 
 
@@ -291,7 +294,7 @@ if __name__ == "__main__":
     cml_args = arg_parser.parse_args()
 
     # Load the config
-    config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('../../adsb'))
+    config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
     pp = Platepar()
     pp.read(config.platepar_name)
 
