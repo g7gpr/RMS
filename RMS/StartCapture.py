@@ -185,6 +185,7 @@ from RMS.EventMonitor import EventMonitor
 from RMS.DownloadMask import downloadNewMask
 from RMS.Formats.ObservationSummary import startObservationSummaryReport
 from Utils.AuditConfig import compareConfigs
+from RMS.ADSB.ADSB import ADSBRecorder
 
 # Flag indicating that capturing should be stopped
 STOP_CAPTURE = False
@@ -1875,6 +1876,12 @@ if __name__ == "__main__":
         eventmonitor = EventMonitor(config)
         eventmonitor.start()
 
+    if config.adsb_enabled:
+        log.info("Starting the adsb recorder...")
+        adsb_recorder = ADSBRecorder(config)
+        adsb_recorder.start()
+
+
     # Automatic running and stopping the capture at sunrise and sunset
     ran_once = False
     slideshow_view = None
@@ -2017,6 +2024,14 @@ if __name__ == "__main__":
                         del eventmonitor
 
 
+                if adsb_recorder is not None:
+
+                    # Stop the eventmonitor
+                    if adsb_recorder.is_alive():
+                        log.debug('Closing ADSB recorder...')
+                        adsb_recorder.stop()
+                        del adsb_recorder
+
 
                 sys.exit()
 
@@ -2121,6 +2136,7 @@ if __name__ == "__main__":
                              eventmonitor.stop()
                              del eventmonitor
 
+
                         # Stop the slideshow if it was on
                         if slideshow_view is not None:
 
@@ -2129,6 +2145,14 @@ if __name__ == "__main__":
                             slideshow_view.join()
                             del slideshow_view
                             slideshow_view = None
+
+                    if adsb_recorder is not None:
+
+                        # Stop the eventmonitor
+                        if adsb_recorder.is_alive():
+                            log.debug('Closing ADSB recorder...')
+                            adsb_recorder.stop()
+                            del adsb_recorder
 
                     sys.exit()
 
@@ -2258,3 +2282,10 @@ if __name__ == "__main__":
 
              del eventmonitor
 
+    if adsb_recorder is not None:
+
+        # Stop the eventmonitor
+        if adsb_recorder.is_alive():
+            log.debug('Closing ADSB recorder...')
+            adsb_recorder.stop()
+            del adsb_recorder

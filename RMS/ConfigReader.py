@@ -176,6 +176,11 @@ class Config:
         self.pub_longitude = None
         self.pub_elevation = None
 
+        # dump1090 (ADBS) settings
+        self.adsb_enabled = False
+        self.dump1090_host = "127.0.0.1"
+        self.dump1090_port = 30003
+
         # Show this camera on the GMN weblog
         self.weblog_enable = True
 
@@ -292,6 +297,7 @@ class Config:
         self.frame_dir = "FramesFiles"
         self.video_dir = "VideoFiles"
         self.times_dir = "TimeFiles"
+        self.adsb_dir = "ADSB"
 
         # days of logfiles to keep
         self.logdays_to_keep = 30
@@ -859,7 +865,7 @@ def parseDFNStation(config, parser):
 
 def parseSystem(config, parser):
     
-    section= "System"
+    section = "System"
     if not parser.has_section(section):
         raise RuntimeError("Not configured!")
     
@@ -939,6 +945,16 @@ def parseSystem(config, parser):
 
     if parser.has_option(section, "public_elevation"):
         config.pub_elevation = parser.getfloat(section, "public_elevation")
+
+    if parser.has_option(section, "adsb_enabled"):
+        config.adsb_enabled = parser.getboolean(section, "adsb_enabled")
+
+    if parser.has_option(section, "dump1090_host"):
+        config.dump1090_host = parser.get(section, "dump1090_host")
+
+    if parser.has_option(section, "dump1090_port"):
+        config.dump1090_port = parser.getint(section, "dump1090_port")
+
 
 
 def parseCapture(config, parser):
@@ -1036,6 +1052,9 @@ def parseCapture(config, parser):
 
     if parser.has_option(section, "times_dir"):
         config.times_dir = parser.get(section, "times_dir")
+
+    if parser.has_option(section, "adsb_dir"):
+        config.adsb_dir = parser.get(section, "adsb_dir")
 
     if parser.has_option(section, "width"):
         config.width = parser.getint(section, "width")
