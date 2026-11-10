@@ -271,9 +271,10 @@ def archiveDetections(captured_path, archived_path, ff_detected, config, extra_f
         log.error('Generating log archives failed with error:' + repr(e))
         log.error("".join(traceback.format_exception(*sys.exc_info())))
 
+    # Retrieve, archive and delete the ADSB data
     if config.adsb_enabled:
         adsb_path = os.path.expanduser(os.path.join(config.data_dir, config.adsb_dir))
-        adsb_archive_path = f"{captured_path}_adsb.tar.bz2"
+        adsb_archive_path = os.path.join(captured_path, f"{os.path.basename(captured_path)}_adsb.tar.bz2")
         log.info(f"Saving adsb archive to {adsb_archive_path}")
 
         with tarfile.open(adsb_archive_path, "w:bz2") as tar:
