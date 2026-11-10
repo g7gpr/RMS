@@ -120,7 +120,7 @@ def loopADSB(config, pp, host=None, port=None, metric=None):
 
 def doIteration(config, pp, s, buffer, tracks, last_hour, metric=True):
 
-    hour = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%0000")
+    hour = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H0000")
 
     if last_hour is None:
         last_hour = hour
