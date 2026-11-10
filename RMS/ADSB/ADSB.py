@@ -36,7 +36,7 @@ class ADSBRecorder(multiprocessing.Process):
         self.pp = Platepar()
         self.exit = multiprocessing.Event()
         self.tracks = {}
-        self.last_hour = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H0000")
+        self.recording_start = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
 
         platepar_path = os.path.join(config.config_file_path, config.platepar_name)
         if os.path.exists(platepar_path):
@@ -70,7 +70,7 @@ class ADSBRecorder(multiprocessing.Process):
         """ Stops the ADSB recorder. """
         time.sleep(2)
 
-        writeOutTracks(self.config, self.last_hour, self.tracks)
+        writeOutTracks(self.config, self.recording_start, self.tracks)
         self.exit.set()
         self.join()
         log.info("ADSB recorder has stopped")
@@ -85,7 +85,7 @@ class ADSBRecorder(multiprocessing.Process):
         self.tracks = {}
         log.info("Loop running")
         while not self.exit.is_set():
-            last_hour, self.tracks = doIteration(self.config, self.pp, s, buffer, self.tracks, self.last_hour)
+            self.recording_start, self.tracks = doIteration(self.config, self.pp, s, buffer, self.tracks, self.recording_start)
 
 
 
@@ -128,7 +128,7 @@ def doIteration(config, pp, s, buffer, tracks, last_hour, metric=True):
     if last_hour is None:
         last_hour = hour
     else:
-        if last_hour != hour:
+        if last_hour[:11] != hour[:11]:
             log.info("Writing out ADSB data")
             if tracks:
                 writeOutTracks(config, last_hour, tracks)
@@ -161,7 +161,7 @@ def doIteration(config, pp, s, buffer, tracks, last_hour, metric=True):
                 x, y = d["x"], d["y"]
                 log_message += f" - image {x}, {y}"
 
-            #log.info(log_message)
+            log.info(log_message)
 
             if icao not in tracks:
                 tracks[icao] = []
