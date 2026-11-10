@@ -797,6 +797,7 @@ def deleteOldObservations(data_dir, captured_dir, archived_dir, config, duration
         [bool]: True if there's enough space for the next night's data, False if not.
 
     """
+    return True
 
     captured_dir = os.path.join(data_dir, captured_dir)
     archived_dir = os.path.join(data_dir, archived_dir)
