@@ -1345,6 +1345,13 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
                             eventmonitor.stop()
                             del eventmonitor
 
+                    if adsb_recorder is not None:
+
+                        # Stop the eventmonitor
+                        if adsb_recorder.is_alive():
+                            log.debug('Closing ADSB recorder...')
+                            adsb_recorder.stop()
+                            del adsb_recorder
 
                     # Terminate the detector
                     if detector is not None:
@@ -1480,6 +1487,13 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
                     log.debug('Closing eventmonitor...')
                     eventmonitor.stop()
                     del eventmonitor
+
+            if adsb_recorder is not None:
+                # Stop the eventmonitor
+                if adsb_recorder.is_alive():
+                    log.debug('Closing ADSB recorder...')
+                    adsb_recorder.stop()
+                    del adsb_recorder
 
             sys.exit()
 
