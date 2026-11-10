@@ -59,14 +59,13 @@ class ADSBRecorder(multiprocessing.Process):
     def start(self):
 
         """Starts the ADSB recorder"""
-
-        log.info("ADSB recorder has started")
         super(ADSBRecorder, self).start()
+        log.info("ADSB recorder has started")
 
 
     def stop(self):
-        """ Stops the ADSB recorder. """
 
+        """ Stops the ADSB recorder. """
         time.sleep(2)
         self.exit.set()
         self.join()

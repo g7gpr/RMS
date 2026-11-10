@@ -4,7 +4,7 @@
 import os
 import sys
 import traceback
-
+import tarfile
 
 
 from RMS.Formats.FFfile import validFFName
@@ -271,7 +271,26 @@ def archiveDetections(captured_path, archived_path, ff_detected, config, extra_f
         log.error('Generating log archives failed with error:' + repr(e))
         log.error("".join(traceback.format_exception(*sys.exc_info())))
 
+    if config.adsb_enabled:
+        adsb_path = os.path.expanduser(os.path.join(config.data_dir, config.adsb_dir))
+        adsb_archive_path = f"{captured_path}_adsb.tar.bz2"
+        log.info(f"Saving adsb archive to {adsb_archive_path}")
 
+        with tarfile.open(adsb_archive_path, "w:bz2") as tar:
+
+            adsb_files = []
+
+            for filename in os.listdir(adsb_path):
+
+                adsb_full_path = os.path.join(adsb_path, filename)
+
+                if os.path.isfile(adsb_full_path):
+                    tar.add(adsb_full_path, arcname=filename)
+                    adsb_files.append(adsb_full_path)
+
+        for adsb_full_path_to_remove in adsb_files:
+            os.remove(adsb_full_path_to_remove)
+        file_list.append(os.path.basename(adsb_archive_path))
 
     if file_list:
 
