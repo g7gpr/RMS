@@ -431,6 +431,7 @@ class ADSBRecorder(multiprocessing.Process):
         """Run the ADS-B processing loop"""
 
         # Try to connect until exit
+        s = None
         while not self.exit.is_set():
             try:
                 s = socket.create_connection((self.config.dump1090_host, self.config.dump1090_port), timeout=10)
@@ -452,7 +453,8 @@ class ADSBRecorder(multiprocessing.Process):
         # Run until exit
         while True:
 
-            buffer, self.recording_start, self.tracks, self.icao_callsign_mapping = doIteration(self.config, self.pp, s, buffer, self.recording_start, self.tracks, self.icao_callsign_mapping)
+            buffer, self.recording_start, self.tracks, self.icao_callsign_mapping = (
+                doIteration(self.config, self.pp, s, buffer, self.recording_start, self.tracks, self.icao_callsign_mapping))
             if self.exit.is_set():
                 log.info("ADSB loop is exiting")
                 break
