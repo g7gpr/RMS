@@ -507,7 +507,8 @@ def loopADSB(config, pp, host=None, port=None):
     s = None
     while s is None:
         try:
-            s = socket.create_connection((host, port), timeout=120)
+            s = socket.create_connection((host, port), timeout=60)
+            s.settimeout(None)
             log.info(f"Connection to {host}:{port} opened.")
 
         except OSError as e:
@@ -515,7 +516,7 @@ def loopADSB(config, pp, host=None, port=None):
                 f"Connection to {host}:{port} failed "
                 f"({e}). Waiting for retry."
             )
-            time.sleep(50)
+            time.sleep(60)
 
     buffer = b""
     tracks = {}
