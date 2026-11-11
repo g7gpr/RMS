@@ -159,7 +159,7 @@ def getPlatepar(config, night_data_dir):
 
 
 
-def processNight(night_data_dir, config, detection_results=None, nodetect=False):
+def processNight(night_data_dir, config, detection_results=None, nodetect=False, adsb_recorder=None):
     """ Given the directory with FF files, run detection and archiving.  
     
     Arguments:  
@@ -169,7 +169,8 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
     Keyword arguments:  
         detection_results: [list] An optional list of detection. If None (default), detection will be done
             on the the files in the folder.  
-        nodetect: [bool] True if detection should be skipped. False by default.  
+        nodetect: [bool] True if detection should be skipped. False by default.
+        adsb_recorder: [object] ADSB recorder
 
     Return:  
         night_archive_dir: [str] Path to the night directory in ArchivedFiles.  
@@ -686,7 +687,7 @@ def processNight(night_data_dir, config, detection_results=None, nodetect=False)
 
     # Archive the detections
     archive_name, imgdata_archive_name, metadata_archive_name = archiveDetections(night_data_dir,
-                                            night_archive_dir, ff_detected, config, extra_files=extra_files)
+                                            night_archive_dir, ff_detected, config, extra_files=extra_files, adsb_recorder=adsb_recorder)
 
     # Processing is complete. Nothing after this point can leave the night needing a reprocess
     updateProcessingStatus(config, night_data_dir, archiving='completed',

@@ -31,7 +31,7 @@ import os
 import json
 import multiprocessing
 import time
-
+import tarfile
 
 import numpy as np
 
@@ -479,6 +479,61 @@ class ADSBRecorder(multiprocessing.Process):
 
         log.info("ADSB recorder has finished - writing out cached data")
         writeOutADSBData(self.config, self.recording_start, self.tracks, self.icao_callsign_mapping, force_flush=True)
+
+    def flush(self):
+        """Write all cached ADS-B data to disk.
+
+        Cached aircraft tracks and ICAO/callsign observations are written
+        immediately without affecting the current recording session.
+        """
+
+        log.info("Flushing cached ADS-B data")
+
+        writeOutADSBData(
+            self.config,
+            self.recording_start,
+            self.tracks,
+            self.icao_callsign_mapping,
+            force_flush=True
+        )
+
+    def archiveData(self, captured_path, remove_files=True):
+        """ Archive all ADS-B data files, and optionally the files
+
+        Arguments:
+            captured_path: [str] Path to the capture directory for the night
+
+        Keyword arguments:
+            remove_files: [bool] Optional, default true, remove files from ADSB directory after archiving
+
+        Return:
+            archive_name: [str] Name of the generated archive.
+        """
+
+        archive_name = f"{os.path.basename(captured_path)}_adsb.tar.bz2"
+        archive_path = os.path.join(captured_path, archive_name)
+        adsb_path = os.path.expanduser(os.path.join(self.config.data_dir, self.config.adsb_dir))
+        log.info(f"Saving ADSB data from {adsb_path} to an archive to {archive_path}")
+
+        self.flush()
+
+        with tarfile.open(archive_path, "w:bz2") as tar:
+            adsb_files = []
+
+            for filename in os.listdir(adsb_path):
+                adsb_full_path = os.path.join(adsb_path, filename)
+
+                if os.path.isfile(adsb_full_path):
+                    tar.add(adsb_full_path, arcname=filename)
+                    adsb_files.append(adsb_full_path)
+
+
+        if remove_files:
+            for adsb_full_path in adsb_files:
+                os.remove(adsb_full_path)
+
+        return archive_name
+
 
 ### Test code / command line launch code below
 

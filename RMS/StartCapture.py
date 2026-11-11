@@ -1390,7 +1390,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
             try:
                 night_archive_dir, archive_name, imgdata_archive_name, metadata_archive_name, _ =  \
                     processNight(night_data_dir, config, detection_results=detection_results, \
-                        nodetect=nodetect)
+                        nodetect=nodetect, adsb_recorder=adsb_recorder)
 
                 night_processed = True
 

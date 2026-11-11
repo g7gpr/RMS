@@ -148,7 +148,7 @@ def archiveFieldsums(dir_path):
 
 
 
-def archiveDetections(captured_path, archived_path, ff_detected, config, extra_files=None):
+def archiveDetections(captured_path, archived_path, ff_detected, config, extra_files=None, adsb_recorder=None):
     """ Create thumbnails and compress all files with detections and the accompanying files
         in one archive, suffix _detected
 
@@ -166,6 +166,7 @@ def archiveDetections(captured_path, archived_path, ff_detected, config, extra_f
     Keyword arguments:
         extra_files: [list] A list of extra files (with full paths) which will be saved to the night
             archive.
+        adsb_recorder: [object] ADSB recorder
 
     Return:
         archive_name: [str] Name of the archive where the files were compressed to.
@@ -271,27 +272,10 @@ def archiveDetections(captured_path, archived_path, ff_detected, config, extra_f
         log.error('Generating log archives failed with error:' + repr(e))
         log.error("".join(traceback.format_exception(*sys.exc_info())))
 
-    # Retrieve, archive and delete the ADSB data - all files in the adsb_archive_path will be sent
-    if config.adsb_enabled:
-        adsb_path = os.path.expanduser(os.path.join(config.data_dir, config.adsb_dir))
-        adsb_archive_path = os.path.join(captured_path, f"{os.path.basename(captured_path)}_adsb.tar.bz2")
-        log.info(f"Saving adsb archive to {adsb_archive_path}")
 
-        with tarfile.open(adsb_archive_path, "w:bz2") as tar:
-
-            adsb_files = []
-
-            for filename in os.listdir(adsb_path):
-
-                adsb_full_path = os.path.join(adsb_path, filename)
-
-                if os.path.isfile(adsb_full_path):
-                    tar.add(adsb_full_path, arcname=filename)
-                    adsb_files.append(adsb_full_path)
-
-        for adsb_full_path_to_remove in adsb_files:
-            os.remove(adsb_full_path_to_remove)
-        file_list.append(os.path.basename(adsb_archive_path))
+    # Create the ADS-B archive, clear the cache, and queue for upload
+    if config.adsb_enabled and adsb_recorder is not None:
+        file_list.append(adsb_recorder.archiveData(captured_path))
 
     if file_list:
 
