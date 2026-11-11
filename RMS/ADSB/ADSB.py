@@ -507,7 +507,7 @@ def loopADSB(config, pp, host=None, port=None):
     s = None
     while s is None:
         try:
-            s = socket.create_connection((host, port), timeout=10)
+            s = socket.create_connection((host, port), timeout=120)
             log.info(f"Connection to {host}:{port} opened.")
 
         except OSError as e:
