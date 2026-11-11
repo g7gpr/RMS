@@ -132,20 +132,24 @@ def writeOutADSBData(config, recording_start_time, tracks, icao_call_mapping, fo
     icao_call_path = os.path.join(adsb_directory, icao_call_filename)
 
     if tracks:
-        log.info(f"Writing out ADSB data to {adsb_filename}")
+
         with open(adsb_path, "w") as fp:
             json.dump(tracks, fp, indent=4)
             if force_flush:
                 fp.flush()
                 os.fsync(fp.fileno())
+    else:
+        log.info("No ADSB data to write")
 
     if icao_call_mapping:
-        log.info(f"Writing out ICAO to callsign mapping data to {icao_call_filename}")
+
         with open(icao_call_path, "w") as fp:
             json.dump(icao_call_mapping, fp, indent=4)
             if force_flush:
                 fp.flush()
                 os.fsync(fp.fileno())
+    else:
+        log.info("No ICAO to callsign mapping data to write")
 
     return [adsb_path, icao_call_path]
 
