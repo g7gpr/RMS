@@ -211,8 +211,13 @@ def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsi
 
 
 
-    # Pull in data from the socket
-    data = s.recv(4096)
+    # Pull in data from the socket, avoiding getting stuck waiting for data
+    try:
+        data = s.recv(4096)
+
+    except TimeoutError:
+        log.info("No data available")
+        return buffer, recording_start_time, tracks, icao_callsign_mapping
 
     if not data:
         # Add a sleep to avoid busy waits - this only executes when there is no data
@@ -434,7 +439,7 @@ class ADSBRecorder(multiprocessing.Process):
         s = None
         while not self.exit.is_set():
             try:
-                s = socket.create_connection((self.config.dump1090_host, self.config.dump1090_port), timeout=10)
+                s = socket.create_connection((self.config.dump1090_host, self.config.dump1090_port), timeout=120)
                 log.info(f"Connection to {self.config.dump1090_host}:{self.config.dump1090_port} opened.")
                 break
             except OSError as e:
@@ -508,7 +513,6 @@ def loopADSB(config, pp, host=None, port=None):
     while s is None:
         try:
             s = socket.create_connection((host, port), timeout=60)
-            s.settimeout(None)
             log.info(f"Connection to {host}:{port} opened.")
 
         except OSError as e:
