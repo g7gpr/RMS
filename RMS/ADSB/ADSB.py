@@ -191,8 +191,8 @@ def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsi
     else:
 
         # Extract hours from times
-        current_hour = time_now[:11]
-        recording_start_hour = recording_start_time[:11]
+        current_hour = time_now[:13]
+        recording_start_hour = recording_start_time[:13]
 
         # Create a new recording block each hour
         if current_hour != recording_start_hour:
