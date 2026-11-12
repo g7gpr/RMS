@@ -57,7 +57,7 @@ VERBOSE = False
 # 12 - ten minutes
 # 13 - one minute
 
-SLICE_LENGTH = 12
+SLICE_LENGTH = 11
 
 # Unit conversion constant
 FT_TO_M = 0.3048
