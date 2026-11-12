@@ -44,10 +44,12 @@ from RMS.Astrometry.ApplyAstrometry import raDecToXYPP
 
 import RMS.ConfigReader as cr
 
-
+# Verbose mode
+VERBOSE = False
 
 # Unit conversion constant
 FT_TO_M = 0.3048
+KT_TO_MS = 0.514444
 
 # SBS message type
 SBS_MESSAGE_TYPE = "MSG"
@@ -109,7 +111,12 @@ def formatTimeStamp(dt):
     return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
-def writeOutADSBData(config, recording_start_time, tracks, icao_call_mapping, force_flush=False):
+def writeOutADSBData(config,
+                     recording_start_time,
+                     tracks,
+                     icao_call_mapping,
+                     velocity,
+                     force_flush=False):
     """ Write ADS-B data products to disk.
 
     Arguments:
@@ -128,8 +135,12 @@ def writeOutADSBData(config, recording_start_time, tracks, icao_call_mapping, fo
 
     adsb_filename = f"{config.stationID}_{recording_start_time}_adsb.json"
     adsb_path = os.path.join(adsb_directory, adsb_filename)
+
     icao_call_filename = f"{config.stationID}_{recording_start_time}_icao_call.json"
     icao_call_path = os.path.join(adsb_directory, icao_call_filename)
+
+    velocity_filename = f"{config.stationID}_{recording_start_time}_velocity.json"
+    velocity_path = os.path.join(adsb_directory, velocity_filename)
 
     if tracks:
 
@@ -151,9 +162,20 @@ def writeOutADSBData(config, recording_start_time, tracks, icao_call_mapping, fo
     else:
         log.info("No ICAO to callsign mapping data to write")
 
-    return [adsb_path, icao_call_path]
 
-def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsign_mapping):
+    if velocity:
+
+        with open(velocity_path, "w") as fp:
+            json.dump(velocity, fp, indent=4)
+            if force_flush:
+                fp.flush()
+                os.fsync(fp.fileno())
+    else:
+        log.info("No velocity data to write")
+
+    return [adsb_path, icao_call_path, velocity_path]
+
+def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsign_mapping, velocity):
     """ Process incoming SBS messages from dump1090.
 
     Reads data from the dump1090 SBS socket, decodes received messages,
@@ -204,7 +226,7 @@ def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsi
 
             # Write to disk
             log.info(f"Writing out ADSB data between {recording_start_time} and {next_start_time}")
-            writeOutADSBData(config, recording_start_time, tracks, icao_callsign_mapping)
+            writeOutADSBData(config, recording_start_time, tracks, icao_callsign_mapping, velocity)
 
             # After writing out, reset the cache
             tracks = {}
@@ -251,19 +273,27 @@ def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsi
 
         if tx_type == SBS_MSG_AIRBORNE_POSITION:
 
-            # Create a new list in the tracks dictionary if an airborne position is received for an unrecognised track
+            # Create a new list in the tracks dictionary if an airborne position is received for an unrecognised ICAO
             if icao not in tracks:
                 tracks[icao] = []
 
             # Record the airborne position against the ICAO
             tracks[icao].append(d)
 
+        elif tx_type == SBS_MSG_AIRBORNE_VELOCITY:
+
+            # Create a new list in the velocity dictionary if an airborne position is for an unrecognised ICAO
+            if icao not in velocity:
+                velocity[icao] = []
+
+            velocity[icao].append(d)
+
         elif tx_type == SBS_MSG_IDENTIFICATION:
 
             # Record all identification messages, deduplication is later in the pipeline
             icao_callsign_mapping.append(d)
 
-    return buffer, recording_start_time, tracks, icao_callsign_mapping
+    return buffer, recording_start_time, tracks, icao_callsign_mapping, velocity
 
 
 
@@ -301,15 +331,19 @@ def parseSBS(fields, pp):
         f"{fields[FIELD_GENERATED_DATE]} {fields[FIELD_GENERATED_TIME]}",
                 "%Y/%m/%d %H:%M:%S.%f")
 
-    # Create a timestamp
+    # Create a timestamp and jd
     ts = formatTimeStamp(generated_dt)
+    jd_message = datetime2JD(generated_dt)
 
     # Extract key fields for reuse
     tx_type = fields[FIELD_TX_TYPE]
     icao = fields[FIELD_ICAO]
 
+
     # Parse an airborne position message
     if tx_type == SBS_MSG_AIRBORNE_POSITION:
+        if VERBOSE:
+            log.info("Received an airborne position")
 
         # Check all position fields are populated
         if fields[FIELD_LATITUDE] != "" and fields[FIELD_LONGITUDE] != "" and fields[FIELD_ALTITUDE] != "":
@@ -318,10 +352,6 @@ def parseSBS(fields, pp):
             altitude = float(fields[FIELD_ALTITUDE]) * FT_TO_M
         else:
             return None, None, None
-
-
-        # Create a JD
-        jd_message = datetime2JD(generated_dt)
 
         # Compute vectors in ECEF
         vect_aircraft = latLonAlt2ECEF(np.radians(latitude), np.radians(longitude), altitude)
@@ -338,11 +368,10 @@ def parseSBS(fields, pp):
         ang_sep_deg = angularSeparationDeg(ra_aircraft, dec_aircraft, ra_c, dec_c)[0]
 
         # Prepare a dictionary of key parameters
-        d = {
-            "ts": ts,
-            "lat": latitude, "lon": longitude, "alt": altitude,
-            "az": az, "ele": alt, "ang_sep_deg": ang_sep_deg,
-            "jd": jd_message, "ra": ra_aircraft, "dec": dec_aircraft}
+        d = {"ts": ts,
+             "lat": latitude, "lon": longitude, "alt": altitude,
+             "az": az, "ele": alt,
+             "ang_sep_deg": ang_sep_deg, "jd": jd_message, "ra": ra_aircraft, "dec": dec_aircraft}
 
         # Only compute image coordinates when within the sky cone
         if ang_sep_deg < max_sep:
@@ -351,7 +380,6 @@ def parseSBS(fields, pp):
             x, y, = int(x_arr[0]), int(y_arr[0])
 
             # Test against image range, and add to dictionary if within range
-
             if 0 < x < pp.X_res and 0 < y < pp.Y_res:
                 d["x"], d["y"] = x, y
                 log.info(f"{icao} at {x},{y}")
@@ -361,10 +389,43 @@ def parseSBS(fields, pp):
     # Parse an identification message
     elif tx_type == SBS_MSG_IDENTIFICATION:
 
+        if VERBOSE:
+            log.info("Received an identification")
         # Record the relationship between ICAO and callsign from this message
-        d = {"ts": ts, "icao": icao, "callsign": fields[FIELD_CALLSIGN].strip()}
+        d = {"ts": ts,
+             "icao": icao,
+             "callsign": fields[FIELD_CALLSIGN].strip()}
 
         return tx_type, icao, d
+
+    # Parse a velocity message
+    elif tx_type == SBS_MSG_AIRBORNE_VELOCITY:
+        if VERBOSE:
+            log.info("Received a velocity")
+
+        groundspeed, v_rate = fields[FIELD_GROUNDSPEED], fields[FIELD_VERTICAL_RATE]
+        track = fields[FIELD_TRACK]
+
+        if groundspeed == "" or v_rate == "" or track == "":
+            return None, None, None
+
+        # Convert to floats in SI units
+        groundspeed_m_s = float(groundspeed) * KT_TO_MS
+        vertical_rate_m_s  = float(v_rate) * FT_TO_M / 60
+        track_deg = float(track)
+
+        # Create a dictionary of values
+        d = {"ts": ts,
+             "groundspeed": groundspeed_m_s,
+             "vertical_rate": vertical_rate_m_s,
+             "track": track_deg,
+             "jd": jd_message}
+
+        if VERBOSE:
+            log.info(f"Recording a velocity message for {icao} groundspeed:{groundspeed_m_s:.0f}m/s vertical:{vertical_rate_m_s:.0f}m/s")
+
+        return tx_type, icao, d
+
 
     # If nothing has been parsed, return
     return None, None, None
@@ -395,7 +456,7 @@ class ADSBRecorder(multiprocessing.Process):
         self.config = config                    # Config object
         self.tracks = {}                        # Store for received location data
         self.icao_callsign_mapping = []         # Store for received icao to callsign information
-
+        self.velocity = {}
 
         # Initalise and read the platepar
         platepar_path = os.path.join(config.config_file_path, config.platepar_name)
@@ -462,8 +523,16 @@ class ADSBRecorder(multiprocessing.Process):
         # Run until exit
         while True:
 
-            buffer, self.recording_start, self.tracks, self.icao_callsign_mapping = (
-                doIteration(self.config, self.pp, s, buffer, self.recording_start, self.tracks, self.icao_callsign_mapping))
+            buffer, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity = (
+                doIteration(self.config,
+                            self.pp,
+                            s,
+                            buffer,
+                            self.recording_start,
+                            self.tracks,
+                            self.icao_callsign_mapping,
+                            self.velocity))
+
             if self.exit.is_set():
                 log.info("ADSB loop is exiting")
                 break
@@ -584,13 +653,14 @@ def loopADSB(config, pp, host=None, port=None):
     buffer = b""
     tracks = {}
     icao_callsign_mapping = []
+    velocity = {}
 
     recording_start_time = None
 
     # Loop forever
     while True:
-        buffer, recording_start_time, tracks, icao_callsign_mapping = \
-            doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsign_mapping)
+        buffer, recording_start_time, tracks, icao_callsign_mapping, velocity = \
+            doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsign_mapping, velocity)
 
 
 
