@@ -424,7 +424,8 @@ def reconstructFixedInformation(ts_data, icao_iterator, variable):
 def interpolateLatLonAlt(ts_data, icao_iterator):
 
 
-    log.info(f"Interpolating lat lon alt for {icao_iterator}")
+    if VERBOSE:
+        log.info(f"Interpolating lat lon alt for {icao_iterator}")
     received_track_data_times = []
 
 
@@ -497,8 +498,9 @@ def interpolateLatLonAltPoint(ts_data, earlier_ts, this_ts, later_ts):
 
 def interpolateVelocity(ts_data, icao_iterator):
 
+    if VERBOSE:
+        log.info(f"Interpolating velocity for {icao_iterator}")
 
-    log.info(f"Interpolating velocity for {icao_iterator}")
     received_velocity_data_times = []
 
 
@@ -523,7 +525,7 @@ def interpolateVelocity(ts_data, icao_iterator):
             later_index = i if i < len(received_velocity_data_times) else None
 
             if earlier_index is None or later_index is None:
-                continue
+                continueInterpolating
 
             earlier_ts = received_velocity_data_times[earlier_index]
             this_ts = data_point['ts']
@@ -1152,7 +1154,7 @@ if __name__ == "__main__":
     host = config.dump1090_host if host is None else host
     port = config.dump1090_port if port is None else port
 
-    generateDerivedData(os.path.expanduser("~/RMS_data/ADSB"))
+
 
     # Initialize the logger
     log_manager = LoggingManager()
