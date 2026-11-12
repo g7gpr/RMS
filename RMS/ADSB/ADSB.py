@@ -122,6 +122,72 @@ def formatTimeStamp(dt):
 
     return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
+def generateDerivedData(adsb_directory):
+
+    groups = {}
+
+    for filename in glob.glob(os.path.join(adsb_directory, "*.json")):
+
+        basename = os.path.basename(filename)
+
+        parts = basename.split("_")
+
+        # AU0004_20261112_010000_adsb.json
+        timestamp = f"{parts[1]}_{parts[2]}"
+
+        if timestamp not in groups:
+            groups[timestamp] = {}
+
+        if basename.endswith("_adsb.json"):
+            groups[timestamp]["adsb"] = filename
+
+        elif basename.endswith("_icao_call.json"):
+            groups[timestamp]["icao_call"] = filename
+
+        elif basename.endswith("_velocity.json"):
+            groups[timestamp]["velocity"] = filename
+
+    for timestamp in sorted(groups):
+
+        group = groups[timestamp]
+
+        if not (
+                "adsb" in group
+                and "icao_call" in group
+                and "velocity" in group
+        ):
+            log.warning(f"Incomplete ADSB dataset for {timestamp}")
+            continue
+
+        log.info(f"Processing {timestamp}")
+
+        with open(group["adsb"]) as fp:
+            tracks = json.load(fp)
+
+        with open(group["icao_call"]) as fp:
+            icao_callsign_mapping = json.load(fp)
+
+        with open(group["velocity"]) as fp:
+            velocity = json.load(fp)
+
+        adsb_derived_data = deriveFromADSB(
+            tracks,
+            icao_callsign_mapping,
+            velocity
+        )
+
+
+        if adsb_derived_data:
+
+            adsb_derived_filename = f"{config.stationID}_{timestamp}_adsb_derived.json"
+            adsb_derived_path = os.path.join(adsb_directory, adsb_derived_filename)
+
+            with open(adsb_derived_path, "w") as fp:
+                json.dump(adsb_derived_data, fp, indent=4)
+
+
+        else:
+            log.info("No adsb derived data to write")
 
 def writeOutADSBData(config,
                      recording_start_time,
@@ -501,16 +567,16 @@ def interpolateVelocityPoint(ts_data, earlier_ts, this_ts, later_ts):
     mag = np.sqrt(vx * vx + vy * vy)
     vx /= mag
     vy /= mag
-    heading = np.degress(np.arctan2(vx,vy))
+    heading = np.degrees(np.arctan2(vx,vy))
 
     if heading < 0:
         heading += 360.0
 
-
-    log.info(f"Position interpolation")
-    log.info(f"{earlier_ts} horizontal {groundspeed_earlier:6.2f} vertical {vertical_earlier:6.2f} heading {heading_earlier:6.2f}")
-    log.info(f"{this_ts} horizontal {groundspeed:6.2f} vertical {vertical:6.2f} heading {heading:6.2f}")
-    log.info(f"{later_ts} horizontal {groundspeed_later:6.2f}m/s vertical {vertical_later:6.2f}m/s heading {heading_later:6.2f}")
+    if VERBOSE:
+        log.info(f"Velocity interpolation")
+        log.info(f"{earlier_ts} horizontal {groundspeed_earlier:6.2f} vertical {vertical_earlier:6.2f} heading {np.degrees(heading_earlier):6.2f}")
+        log.info(f"{this_ts} horizontal {groundspeed:6.2f} vertical {vertical:6.2f} heading {heading:6.2f}")
+        log.info(f"{later_ts} horizontal {groundspeed_later:6.2f} vertical {vertical_later:6.2f} heading {np.degrees(heading_later):6.2f}")
 
 
     return groundspeed, vertical, heading
@@ -1085,6 +1151,8 @@ if __name__ == "__main__":
     # If no command line arguments given, then use settings in the config file
     host = config.dump1090_host if host is None else host
     port = config.dump1090_port if port is None else port
+
+    generateDerivedData(os.path.expanduser("~/RMS_data/ADSB"))
 
     # Initialize the logger
     log_manager = LoggingManager()
