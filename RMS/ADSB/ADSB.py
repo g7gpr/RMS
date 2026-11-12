@@ -47,9 +47,8 @@ from RMS.Astrometry.ApplyAstrometry import raDecToXYPP
 
 import RMS.ConfigReader as cr
 
-# Verbose mode
+# Set verbose
 VERBOSE = False
-
 
 # Length of slice for time stripping
 
@@ -57,7 +56,7 @@ VERBOSE = False
 # 12 - ten minutes
 # 13 - one minute
 
-SLICE_LENGTH = 11
+SLICE_LENGTH = 12
 
 # Unit conversion constant
 FT_TO_M = 0.3048
@@ -122,72 +121,7 @@ def formatTimeStamp(dt):
 
     return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
-def generateDerivedData(adsb_directory):
 
-    groups = {}
-
-    for filename in glob.glob(os.path.join(adsb_directory, "*.json")):
-
-        basename = os.path.basename(filename)
-
-        parts = basename.split("_")
-
-        # AU0004_20261112_010000_adsb.json
-        timestamp = f"{parts[1]}_{parts[2]}"
-
-        if timestamp not in groups:
-            groups[timestamp] = {}
-
-        if basename.endswith("_adsb.json"):
-            groups[timestamp]["adsb"] = filename
-
-        elif basename.endswith("_icao_call.json"):
-            groups[timestamp]["icao_call"] = filename
-
-        elif basename.endswith("_velocity.json"):
-            groups[timestamp]["velocity"] = filename
-
-    for timestamp in sorted(groups):
-
-        group = groups[timestamp]
-
-        if not (
-                "adsb" in group
-                and "icao_call" in group
-                and "velocity" in group
-        ):
-            log.warning(f"Incomplete ADSB dataset for {timestamp}")
-            continue
-
-        log.info(f"Processing {timestamp}")
-
-        with open(group["adsb"]) as fp:
-            tracks = json.load(fp)
-
-        with open(group["icao_call"]) as fp:
-            icao_callsign_mapping = json.load(fp)
-
-        with open(group["velocity"]) as fp:
-            velocity = json.load(fp)
-
-        adsb_derived_data = deriveFromADSB(
-            tracks,
-            icao_callsign_mapping,
-            velocity
-        )
-
-
-        if adsb_derived_data:
-
-            adsb_derived_filename = f"{config.stationID}_{timestamp}_adsb_derived.json"
-            adsb_derived_path = os.path.join(adsb_directory, adsb_derived_filename)
-
-            with open(adsb_derived_path, "w") as fp:
-                json.dump(adsb_derived_data, fp, indent=4)
-
-
-        else:
-            log.info("No adsb derived data to write")
 
 def writeOutADSBData(config,
                      recording_start_time,
@@ -599,6 +533,7 @@ def computeTimeSeries(derived_data, clean_data=False):
     for icao_iterator in ts_data:
 
         reconstructFixedInformation(ts_data, icao_iterator, "callsign")
+        reconstructFixedInformation(ts_data, icao_iterator, "icao")
         interpolateLatLonAlt(ts_data, icao_iterator)
         interpolateVelocity(ts_data, icao_iterator)
 
@@ -608,6 +543,7 @@ def computeTimeSeries(derived_data, clean_data=False):
     return ts_data
 
 
+# To do - move this inside the adsb_recorder class
 
 def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsign_mapping, velocity):
     """ Process incoming SBS messages from dump1090.
@@ -681,6 +617,8 @@ def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsi
 
     except TimeoutError:
         log.info(f"No data available for {s.timeout:.0f} seconds")
+
+
         return buffer, recording_start_time, tracks, icao_callsign_mapping, velocity
 
     if not data:
@@ -903,6 +841,7 @@ class ADSBRecorder(multiprocessing.Process):
         self.tracks = {}                        # Store for received location data
         self.icao_callsign_mapping = []         # Store for received icao to callsign information
         self.velocity = {}
+        self.s = None                           # Connection object
 
         # Initalise and read the platepar
         platepar_path = os.path.join(config.config_file_path, config.platepar_name)
@@ -947,10 +886,10 @@ class ADSBRecorder(multiprocessing.Process):
         """Run the ADS-B processing loop"""
 
         # Try to connect until exit
-        s = None
+        self.s = None
         while not self.exit.is_set():
             try:
-                s = socket.create_connection((self.config.dump1090_host, self.config.dump1090_port), timeout=120)
+                self.s = socket.create_connection((self.config.dump1090_host, self.config.dump1090_port), timeout=120)
                 log.info(f"Connection to {self.config.dump1090_host}:{self.config.dump1090_port} opened.")
                 break
             except OSError as e:
@@ -972,7 +911,7 @@ class ADSBRecorder(multiprocessing.Process):
             buffer, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity = (
                 doIteration(self.config,
                             self.pp,
-                            s,
+                            self.s,
                             buffer,
                             self.recording_start,
                             self.tracks,
@@ -986,7 +925,9 @@ class ADSBRecorder(multiprocessing.Process):
         log.info("ADSB loop has exited")
 
         try:
-            s.close()
+            self.s.close()
+
+
             log.info("Closed dump1090 connection")
         except Exception:
             log.info("Could not close dump1090 connection")
@@ -1111,6 +1052,71 @@ def loopADSB(config, pp, host=None, port=None):
             doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsign_mapping, velocity)
 
 
+def generateDerivedData(adsb_directory):
+
+    # Test code
+
+    groups = {}
+
+    for filename in glob.glob(os.path.join(adsb_directory, "*.json")):
+
+        basename = os.path.basename(filename)
+
+        parts = basename.split("_")
+
+        # AU0004_20261112_010000_adsb.json
+        timestamp = f"{parts[1]}_{parts[2]}"
+
+        if timestamp not in groups:
+            groups[timestamp] = {}
+
+        if basename.endswith("_adsb.json"):
+            groups[timestamp]["adsb"] = filename
+
+        elif basename.endswith("_icao_call.json"):
+            groups[timestamp]["icao_call"] = filename
+
+        elif basename.endswith("_velocity.json"):
+            groups[timestamp]["velocity"] = filename
+
+    for timestamp in sorted(groups):
+
+        group = groups[timestamp]
+
+        if not (
+                "adsb" in group
+                and "icao_call" in group
+                and "velocity" in group
+        ):
+            log.warning(f"Incomplete ADSB dataset for {timestamp}")
+            continue
+
+        log.info(f"Processing {timestamp}")
+
+        with open(group["adsb"]) as fp:
+            tracks = json.load(fp)
+
+        with open(group["icao_call"]) as fp:
+            icao_callsign_mapping = json.load(fp)
+
+        with open(group["velocity"]) as fp:
+            velocity = json.load(fp)
+
+        adsb_derived_data = deriveFromADSB(tracks, icao_callsign_mapping, velocity)
+
+
+        if adsb_derived_data:
+
+            adsb_derived_filename = f"{config.stationID}_{timestamp}_adsb_derived.json"
+            adsb_derived_path = os.path.join(adsb_directory, adsb_derived_filename)
+
+            with open(adsb_derived_path, "w") as fp:
+                json.dump(adsb_derived_data, fp, indent=4)
+
+
+        else:
+            log.info("No adsb derived data to write")
+
 
 if __name__ == "__main__":
 
@@ -1133,9 +1139,13 @@ if __name__ == "__main__":
 
     arg_parser.add_argument("--testtimeseries", metavar='DERIVEDPATH', type=str, help="Create a time series from a json containing derived data")
 
+    arg_parser.add_argument('-v', '--verbose', action="store_true", help="""Run in verbose mode for debugging""")
 
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
+
+    # set verbose mode
+    VERBOSE = cml_args.verbose
 
     # Load the config
     config = cr.loadConfigFromDirectory(cml_args.config, os.path.abspath('.'))
@@ -1199,7 +1209,7 @@ if __name__ == "__main__":
             with open(filename) as fp:
                 imported_data = json.load(fp)
                 log.info(f"Importing {filename}")
-                time.sleep(1)
+
 
             for icao, aircraft in imported_data.items():
 
@@ -1218,8 +1228,8 @@ if __name__ == "__main__":
 
         log.info(f"Loaded {len(derived_data)} aircraft")
 
-        computeTimeSeries(derived_data)
-
+        interpolated_time_series = computeTimeSeries(derived_data)
+        pass
 
 
 
