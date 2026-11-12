@@ -525,7 +525,7 @@ def interpolateVelocity(ts_data, icao_iterator):
             later_index = i if i < len(received_velocity_data_times) else None
 
             if earlier_index is None or later_index is None:
-                continueInterpolating
+                continue
 
             earlier_ts = received_velocity_data_times[earlier_index]
             this_ts = data_point['ts']
