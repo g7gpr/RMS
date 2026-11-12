@@ -715,7 +715,7 @@ def stopStartedNight(next_night):
 
 def runCapture(config, duration=None, video_file=None, nodetect=False, detect_end=False, \
     upload_manager=None, eventmonitor=None, resume_capture=False, daytime_mode=None, camera_mode_switch_trigger=None,
-    session_cut=None, session_cut_time=None):
+    session_cut=None, session_cut_time=None, adsb_recorder=None):
     """ Run capture and compression for the given time.given
     
     Arguments:
@@ -1836,6 +1836,13 @@ if __name__ == "__main__":
             upload_manager = UploadManager(config)
             upload_manager.start()
 
+        adsb_recorder = None
+        if config.adsb_enabled:
+
+            # Init the adsb recorder
+            log.info("Starting the adsb recorder")
+            adsb_recorder = ADSBRecorder(config)
+            adsb_recorder.start()
 
         log.info("Running for " + str(duration/60/60) + ' hours...')
 
@@ -1844,7 +1851,7 @@ if __name__ == "__main__":
 
         # Run the capture for the given number of hours
         runCapture(config, duration=duration, nodetect=cml_args.nodetect, upload_manager=upload_manager, \
-            detect_end=cml_args.detectend, resume_capture=cml_args.resume)
+            detect_end=cml_args.detectend, resume_capture=cml_args.resume, adsb_recorder=adsb_recorder)
         cml_args.resume = False
 
         if upload_manager is not None:
@@ -1869,7 +1876,7 @@ if __name__ == "__main__":
         
         # Capture the video frames from the video file
         runCapture(config, duration=None, video_file=video_file, nodetect=cml_args.nodetect,
-            resume_capture=cml_args.resume)
+            resume_capture=cml_args.resume, adsb_recorder=None)
         cml_args.resume = False
 
         sys.exit()
