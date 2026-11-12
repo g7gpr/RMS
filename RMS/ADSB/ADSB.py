@@ -404,8 +404,8 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
 
 def reconstructFixedInformation(ts_data, icao_iterator, variable):
 
-
-    log.info(f"Reconstructing fixed data for {icao_iterator}")
+    if VERBOSE:
+        log.info(f"Reconstructing fixed data for {icao_iterator}")
     aircraft_time_series = ts_data[icao_iterator]
 
     data = None
