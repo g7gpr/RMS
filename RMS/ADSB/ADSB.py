@@ -32,20 +32,32 @@ import json
 import multiprocessing
 import time
 import tarfile
+import glob
+import bisect
 
 import numpy as np
 
 from RMS.Logger import LoggingManager, getLogger
 from RMS.Formats.StarCatalogQueries import getPlateparSkyParameters
 from RMS.Formats.Platepar import Platepar
-from RMS.Astrometry.Conversions import datetime2JD, latLonAlt2ECEF, ECEF2AltAz, altAz2RADec
+from RMS.Astrometry.Conversions import datetime2JD, latLonAlt2ECEF, ECEF2AltAz, altAz2RADec, ecef2LatLonAlt
 from RMS.Math import angularSeparationDeg
 from RMS.Astrometry.ApplyAstrometry import raDecToXYPP
+from RMS.Math import vectMag, vectNorm
 
 import RMS.ConfigReader as cr
 
 # Verbose mode
 VERBOSE = False
+
+
+# Length of slice for time stripping
+
+# 11 - hourly
+# 12 - ten minutes
+# 13 - one minute
+
+SLICE_LENGTH = 11
 
 # Unit conversion constant
 FT_TO_M = 0.3048
@@ -117,6 +129,7 @@ def writeOutADSBData(config,
                      icao_call_mapping,
                      velocity,
                      force_flush=False):
+
     """ Write ADS-B data products to disk.
 
     Arguments:
@@ -124,7 +137,7 @@ def writeOutADSBData(config,
         recording_start_time: [str] Recording start time in the format
             YYYYMMDD_HHMMSS.
         tracks: [dict] Aircraft track data keyed by ICAO code.
-        icao_call_mapping: [list] List of observed ICAO to callsign mappings.
+        icao_call_mapping:/ [list] List of observed ICAO to callsign mappings.
 
     Return:
         file_paths: [list] Paths of the generated JSON files.
@@ -136,12 +149,6 @@ def writeOutADSBData(config,
     adsb_filename = f"{config.stationID}_{recording_start_time}_adsb.json"
     adsb_path = os.path.join(adsb_directory, adsb_filename)
 
-    icao_call_filename = f"{config.stationID}_{recording_start_time}_icao_call.json"
-    icao_call_path = os.path.join(adsb_directory, icao_call_filename)
-
-    velocity_filename = f"{config.stationID}_{recording_start_time}_velocity.json"
-    velocity_path = os.path.join(adsb_directory, velocity_filename)
-
     if tracks:
 
         with open(adsb_path, "w") as fp:
@@ -151,6 +158,9 @@ def writeOutADSBData(config,
                 os.fsync(fp.fileno())
     else:
         log.info("No ADSB data to write")
+
+    icao_call_filename = f"{config.stationID}_{recording_start_time}_icao_call.json"
+    icao_call_path = os.path.join(adsb_directory, icao_call_filename)
 
     if icao_call_mapping:
 
@@ -162,6 +172,8 @@ def writeOutADSBData(config,
     else:
         log.info("No ICAO to callsign mapping data to write")
 
+    velocity_filename = f"{config.stationID}_{recording_start_time}_velocity.json"
+    velocity_path = os.path.join(adsb_directory, velocity_filename)
 
     if velocity:
 
@@ -173,7 +185,334 @@ def writeOutADSBData(config,
     else:
         log.info("No velocity data to write")
 
+    adsb_derived_filename = f"{config.stationID}_{recording_start_time}_adsb_derived.json"
+    adsb_derived_path = os.path.join(adsb_directory, adsb_derived_filename)
+
+    # Produce derived data
+    adsb_derived_data = deriveFromADSB(tracks, icao_call_mapping, velocity)
+
+    if adsb_derived_data:
+
+        with open(adsb_derived_path, "w") as fp:
+            json.dump(adsb_derived_data, fp, indent=4)
+            if force_flush:
+                fp.flush()
+                os.fsync(fp.fileno())
+    else:
+        log.info("No adsb derived data to write")
+
+
     return [adsb_path, icao_call_path, velocity_path]
+
+def deriveFromADSB(tracks, icao_callsign_mapping, velocity):
+
+    derived_data = {}
+
+    all_icaos = set(tracks.keys())
+    all_icaos.update(velocity.keys())
+
+
+    for icao in sorted(all_icaos):
+
+        derived_data[icao] = {
+            "track": tracks.get(icao, []),
+            "velocity": velocity.get(icao, []),
+            "callsigns": [obs for obs in icao_callsign_mapping if obs["icao"] == icao]
+        }
+
+    computeTimeSeries(derived_data)
+
+
+    return derived_data
+
+def extractStreams(derived_data, icao):
+
+    track_data = derived_data[icao]["track"]
+    velocity_data = derived_data[icao]["velocity"]
+    callsign_data = derived_data[icao]["callsigns"]
+
+    return track_data, velocity_data, callsign_data
+
+def extractTimestamps(derived_data, icao):
+
+
+
+    # Get the data streams from the derived data
+    track_data, velocity_data, callsign_data = extractStreams(derived_data, icao)
+
+    # Get every timestamp for this icao
+    ts_list = []
+
+    for entry in track_data:
+        ts_list.append(entry["ts"])
+    for entry in velocity_data:
+        ts_list.append(entry["ts"])
+    for entry in callsign_data:
+        ts_list.append(entry["ts"])
+
+    # Produce a sorted list of time stamps for this ICAO
+    ts_list = sorted(set(ts_list))
+
+    return ts_list
+
+def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_data=False):
+
+
+    if VERBOSE:
+        log.info(f"Processing {icao_iterator} with {len(ts_list)} timestamps")
+    track_data, velocity_data, callsign_data = extractStreams(derived_data, icao_iterator)
+
+    icao_received, callsign, lat, lon, alt, groundspeed_m_s, vertical_m_s = None, None, None, None, None, None, None
+    x, y = None, None
+    track_ts, velocity_ts, callsign_ts = None, None, None
+
+    track_data_pointer = 0
+    velocity_data_pointer = 0
+    callsign_data_pointer = 0
+
+    if icao_iterator not in ts_data:
+        if VERBOSE:
+            log.info(f"Adding {icao_iterator} to ts_data")
+        ts_data[icao_iterator] = []
+
+    for ts in ts_list:
+
+        if track_data:
+            if track_data[track_data_pointer]["ts"] == ts:
+                track = track_data[track_data_pointer]
+                lat, lon, alt = track["lat"], track["lon"], track["alt"]
+                track_ts = ts
+                if track_data_pointer < len(track_data) - 1:
+                    track_data_pointer += 1
+
+        if velocity_data:
+            if velocity_data[velocity_data_pointer]["ts"] == ts:
+                velocity = velocity_data[velocity_data_pointer]
+                groundspeed_m_s, vertical_m_s, heading = velocity["groundspeed"], velocity["vertical_rate"], velocity[
+                    "track"]
+                velocity_ts = ts
+                if velocity_data_pointer < len(velocity_data) - 1:
+                    velocity_data_pointer += 1
+
+        if callsign_data:
+            if callsign_data[callsign_data_pointer]["ts"] == ts:
+                icao_callsign = callsign_data[callsign_data_pointer]
+                callsign, icao_received = icao_callsign["callsign"], icao_callsign["icao"]
+                callsign_ts = ts
+                if callsign_data_pointer < len(callsign_data) - 1:
+                    callsign_data_pointer += 1
+
+
+        if clean_data:
+            if ts is None or icao_received is None or callsign is None or lat is None or lon is None or alt is None:
+                continue
+
+            if groundspeed_m_s is None or vertical_m_s is None or track_ts is None or callsign_ts is None:
+                continue
+
+        ts_data[icao_iterator].append({"ts": ts,
+                                       "icao": icao_received,
+                                       "callsign": callsign,
+                                       "lat": lat,
+                                       "lon": lon,
+                                       "alt": alt,
+                                       "groundspeed": groundspeed_m_s,
+                                       "vertical": vertical_m_s,
+                                       "track_ts": track_ts,
+                                       "velocity_ts": velocity_ts,
+                                       "callsign_ts": callsign_ts})
+
+    return ts_data
+
+def reconstructFixedInformation(ts_data, icao_iterator, variable):
+
+
+    log.info(f"Reconstructing fixed data for {icao_iterator}")
+    aircraft_time_series = ts_data[icao_iterator]
+
+    data = None
+    for data_point in aircraft_time_series:
+        if data_point[variable] is not None:
+            data = data_point[variable]
+            break
+
+    for data_point in aircraft_time_series:
+        if data_point[variable] is None and data is not None:
+            data_point[variable] = data
+
+
+    return ts_data
+
+def interpolateLatLonAlt(ts_data, icao_iterator):
+
+
+    log.info(f"Interpolating lat lon alt for {icao_iterator}")
+    received_track_data_times = []
+    interpolated_track_data_times = []
+
+
+    aircraft_ts_data = ts_data[icao_iterator]
+
+    for data_point in aircraft_ts_data:
+        if data_point["track_ts"] == data_point["ts"]:
+            received_track_data_times.append(data_point["ts"])
+        else:
+            interpolated_track_data_times.append(data_point["ts"])
+
+
+
+
+    for data_point in aircraft_ts_data:
+        # Detect interpolated data
+        track_ts = data_point["track_ts"]
+        message_ts = data_point["ts"]
+        if track_ts != message_ts:
+            i = bisect.bisect_left(received_track_data_times, message_ts)
+            earlier_index = i - 1 if i > 0 else None
+            later_index = i if i < len(received_track_data_times) else None
+
+            if earlier_index is None or later_index is None:
+                continue
+
+            earlier_ts = received_track_data_times[earlier_index]
+            this_ts = data_point['ts']
+            later_ts = received_track_data_times[later_index]
+
+            lat, lon, alt = interpolatePoint(aircraft_ts_data, earlier_ts, this_ts, later_ts)
+            data_point["lat"], data_point["lon"], data_point["alt"] = lat, lon, alt
+
+
+
+
+    return ts_data
+
+def interpolateVelocity(ts_data, icao_iterator):
+
+
+    log.info(f"Interpolating velocity for {icao_iterator}")
+    received_velocity_data_times = []
+    interpolated_velocity_data_times = []
+
+
+    aircraft_ts_data = ts_data[icao_iterator]
+
+    for data_point in aircraft_ts_data:
+        if data_point["velocity_ts"] == data_point["ts"]:
+            received_velocity_data_times.append(data_point["ts"])
+        else:
+            interpolated_velocity_data_times.append(data_point["ts"])
+
+
+
+
+    for data_point in aircraft_ts_data:
+        # Detect interpolated data
+        track_ts = data_point["velocity_ts"]
+        message_ts = data_point["ts"]
+        if track_ts != message_ts:
+            i = bisect.bisect_left(received_velocity_data_times, message_ts)
+            earlier_index = i - 1 if i > 0 else None
+            later_index = i if i < len(received_velocity_data_times) else None
+
+            if earlier_index is None or later_index is None:
+                continue
+
+            earlier_ts = received_velocity_data_times[earlier_index]
+            this_ts = data_point['ts']
+            later_ts = received_velocity_data_times[later_index]
+
+            groundspeed, vertical = interpolateVelocityPoint(aircraft_ts_data, earlier_ts, this_ts, later_ts)
+            data_point["groundspeed"], data_point["vertical"] = groundspeed, vertical
+
+
+    return ts_data
+
+
+def interpolateVelocityPoint(ts_data, earlier_ts, this_ts, later_ts):
+
+    # Retrieve velocities
+    for point in ts_data:
+        if point["ts"] == earlier_ts:
+            groundspeed_earlier, vertical_earlier = point["groundspeed"], point["vertical"]
+        if point["ts"] == later_ts:
+            groundspeed_later, vertical_later = point["groundspeed"], point["vertical"]
+            break
+
+    d_groundspeed = groundspeed_later - groundspeed_earlier
+    d_vertical = vertical_later - vertical_earlier
+
+    time_delta_later_earlier = (datetime.datetime.fromisoformat(later_ts) - datetime.datetime.fromisoformat(earlier_ts)).total_seconds()
+    time_delta_this_earlier = (datetime.datetime.fromisoformat(this_ts) - datetime.datetime.fromisoformat(earlier_ts)).total_seconds()
+    fraction = time_delta_this_earlier / time_delta_later_earlier
+
+    groundspeed  = groundspeed_earlier + d_groundspeed * fraction
+    vertical = vertical_earlier + d_vertical * fraction
+
+    log.info(f"{earlier_ts} {groundspeed_earlier:6.2f} {vertical_earlier:6.2f}")
+    log.info(f"{this_ts} {groundspeed:6.2f} {vertical:6.2f}")
+    log.info(f"{later_ts} horizontal {groundspeed_later:6.2f}m/s vertical {vertical_later:6.2f}m/s")
+
+    time.sleep(1)
+    return groundspeed, vertical
+
+
+def interpolatePoint(ts_data, earlier_ts, this_ts, later_ts):
+
+    # Retrieve coordinates
+    for point in ts_data:
+        if point["ts"] == earlier_ts:
+            lat_earlier, lon_earlier, alt_earlier = point["lat"], point["lon"], point["alt"]
+            earlier_ecef = latLonAlt2ECEF(np.radians(lat_earlier), np.radians(lon_earlier), alt_earlier)
+        if point["ts"] == later_ts:
+            lat_later, lon_later, alt_later = point["lat"], point["lon"], point["alt"]
+            later_ecef = latLonAlt2ECEF(np.radians(lat_later), np.radians(lon_later), alt_later)
+            break
+
+
+    vector = np.asarray(later_ecef) - np.asarray(earlier_ecef)
+    time_delta_earlier_later = (datetime.datetime.fromisoformat(later_ts) - datetime.datetime.fromisoformat(earlier_ts)).total_seconds()
+    time_delta_earlier_this = (datetime.datetime.fromisoformat(this_ts) - datetime.datetime.fromisoformat(earlier_ts)).total_seconds()
+
+    x, y, z = earlier_ecef + (time_delta_earlier_this / time_delta_earlier_later) * vector
+
+    lat_rads, lon_rads, alt = ecef2LatLonAlt(x, y, z)
+    lat_deg, lon_deg = np.degrees(lat_rads), np.degrees(lon_rads)
+
+    if VERBOSE:
+        log.info(f"Interpolation")
+        log.info(f"Earlier {earlier_ts} {lat_earlier:8.5f} {lon_earlier:8.5f} {alt_earlier:6.0f} ")
+        log.info(f"This    {this_ts} {lat_deg:8.5f} {lon_deg:8.5f} {alt:6.0f} ")
+        log.info(f"Later   {later_ts} {lat_later:8.5f} {lon_later:8.5f} {alt_later:6.0f} ")
+
+
+
+    return lat_deg, lon_deg, alt
+
+def computeTimeSeries(derived_data, clean_data=False):
+
+
+    ts_data = {}
+
+    # Initialise a dictionary for each aircraft's time series data
+    for icao_iterator in derived_data:
+
+        ts_list = extractTimestamps(derived_data, icao_iterator)
+        ts_data = buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_data=clean_data)
+
+    # Reconstruct missing data
+
+    for icao_iterator in ts_data:
+
+        reconstructFixedInformation(ts_data, icao_iterator, "callsign")
+        interpolateLatLonAlt(ts_data, icao_iterator)
+        interpolateVelocity(ts_data, icao_iterator)
+
+
+        pass
+
+    return ts_data
+
+
 
 def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsign_mapping, velocity):
     """ Process incoming SBS messages from dump1090.
@@ -217,16 +556,20 @@ def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsi
     else:
 
         # Extract hours from times
-        current_hour = time_now[:11]
-        recording_start_hour = recording_start_time[:11]
+        current_hour = time_now[SLICE_LENGTH]
+        recording_start_hour = recording_start_time[SLICE_LENGTH]
 
         # Create a new recording block each hour
         if current_hour != recording_start_hour:
             next_start_time = time_now
 
+
+
             # Write to disk
             log.info(f"Writing out ADSB data between {recording_start_time} and {next_start_time}")
             writeOutADSBData(config, recording_start_time, tracks, icao_callsign_mapping, velocity)
+
+
 
             # After writing out, reset the cache
             tracks = {}
@@ -242,13 +585,13 @@ def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsi
         data = s.recv(4096)
 
     except TimeoutError:
-        log.info("No data available")
-        return buffer, recording_start_time, tracks, icao_callsign_mapping
+        log.info(f"No data available for {s.timeout:.0f} seconds")
+        return buffer, recording_start_time, tracks, icao_callsign_mapping, velocity
 
     if not data:
         # Add a sleep to avoid busy waits - this only executes when there is no data
         time.sleep(1)
-        return buffer, recording_start_time, tracks, icao_callsign_mapping
+        return buffer, recording_start_time, tracks, icao_callsign_mapping, velocity
 
     # Add data to the buffer
     buffer += data
@@ -267,6 +610,8 @@ def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsi
 
         # Ignore packets which produce no useful output
         if icao is None or d is None:
+            if VERBOSE:
+                log.info(f"Message of type {tx_type} produced no output")
             continue
 
         # Route and decode received data
@@ -339,11 +684,11 @@ def parseSBS(fields, pp):
     tx_type = fields[FIELD_TX_TYPE]
     icao = fields[FIELD_ICAO]
 
+    if VERBOSE:
+        log.info(f"Received type {tx_type} message {fields}")
 
     # Parse an airborne position message
     if tx_type == SBS_MSG_AIRBORNE_POSITION:
-        if VERBOSE:
-            log.info("Received an airborne position")
 
         # Check all position fields are populated
         if fields[FIELD_LATITUDE] != "" and fields[FIELD_LONGITUDE] != "" and fields[FIELD_ALTITUDE] != "":
@@ -351,7 +696,7 @@ def parseSBS(fields, pp):
             longitude = float(fields[FIELD_LONGITUDE])
             altitude = float(fields[FIELD_ALTITUDE]) * FT_TO_M
         else:
-            return None, None, None
+            return tx_type, None, None
 
         # Compute vectors in ECEF
         vect_aircraft = latLonAlt2ECEF(np.radians(latitude), np.radians(longitude), altitude)
@@ -377,33 +722,38 @@ def parseSBS(fields, pp):
         if ang_sep_deg < max_sep:
             # Compute image coordinates
             x_arr, y_arr = raDecToXYPP(np.array([ra_aircraft]), np.array([dec_aircraft]), jd_message, pp)
-            x, y, = int(x_arr[0]), int(y_arr[0])
+            x, y = int(x_arr[0]), int(y_arr[0])
 
             # Test against image range, and add to dictionary if within range
             if 0 < x < pp.X_res and 0 < y < pp.Y_res:
                 d["x"], d["y"] = x, y
                 log.info(f"{icao} at {x},{y}")
 
+        if VERBOSE:
+            log.info(f"Received a position message from {icao} at lat:{latitude} lon:{longitude} alt:{altitude}")
+
+
         return tx_type, icao, d
 
     # Parse an identification message
     elif tx_type == SBS_MSG_IDENTIFICATION:
 
-        if VERBOSE:
-            log.info("Received an identification")
+        callsign = fields[FIELD_CALLSIGN].strip()
+
         # Record the relationship between ICAO and callsign from this message
         d = {"ts": ts,
              "icao": icao,
-             "callsign": fields[FIELD_CALLSIGN].strip()}
+             "callsign": callsign}
+
+        if VERBOSE:
+            log.info(f"Received an identification message from {icao} using {callsign}")
 
         return tx_type, icao, d
 
     # Parse a velocity message
     elif tx_type == SBS_MSG_AIRBORNE_VELOCITY:
-        if VERBOSE:
-            log.info("Received a velocity")
 
-        groundspeed, v_rate = fields[FIELD_GROUNDSPEED], fields[FIELD_VERTICAL_RATE]
+        groundspeed, v_rate = fields[FIELD_GROUNDSPEED], fields[FIELD_VERTICAL_RATE] * FT_TO_M / 60
         track = fields[FIELD_TRACK]
 
         if groundspeed == "" or v_rate == "" or track == "":
@@ -422,13 +772,13 @@ def parseSBS(fields, pp):
              "jd": jd_message}
 
         if VERBOSE:
-            log.info(f"Recording a velocity message for {icao} groundspeed:{groundspeed_m_s:.0f}m/s vertical:{vertical_rate_m_s:.0f}m/s")
+            log.info(f"Recording a velocity message from {icao} groundspeed:{groundspeed_m_s:.0f}m/s vertical:{vertical_rate_m_s:.0f}m/s")
 
         return tx_type, icao, d
 
 
     # If nothing has been parsed, return
-    return None, None, None
+    return tx_type, None, None
 
 
 class ADSBRecorder(multiprocessing.Process):
@@ -584,6 +934,7 @@ class ADSBRecorder(multiprocessing.Process):
         adsb_path = os.path.expanduser(os.path.join(self.config.data_dir, self.config.adsb_dir))
         log.info(f"Saving ADSB data from {adsb_path} to an archive to {archive_path}")
 
+
         self.flush()
 
         with tarfile.open(archive_path, "w:bz2") as tar:
@@ -595,6 +946,7 @@ class ADSBRecorder(multiprocessing.Process):
                 if os.path.isfile(adsb_full_path):
                     tar.add(adsb_full_path, arcname=filename)
                     adsb_files.append(adsb_full_path)
+
 
 
         if remove_files:
@@ -683,6 +1035,9 @@ if __name__ == "__main__":
 
     arg_parser.add_argument("--testprocess", metavar='SECONDS', type=int, help="Run the ADS-B process for the given number of seconds")
 
+    arg_parser.add_argument("--testtimeseries", metavar='DERIVEDPATH', type=str, help="Create a time series from a json containing derived data")
+
+
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
 
@@ -721,14 +1076,52 @@ if __name__ == "__main__":
         else:
             log.info("ADSB not enabled, not starting")
 
+    elif cml_args.testfile:
+        log.info(
+            f"Replaying {len(replay_data)} SBS messages "
+            f"from {cml_args.testfile}"
+        )
+        for line in replay_data:
+            fields = line.strip().split(",")
+            parseSBS(fields, pp)
+
+
+    elif cml_args.testtimeseries:
+
+        time_series_path = os.path.expanduser(cml_args.testtimeseries)
+
+        log.info(f"Reading derived data from {time_series_path}")
+
+        derived_data = {}
+
+        for filename in sorted(glob.glob(os.path.join(time_series_path, "*_adsb_derived.json"))):
+
+            log.info(f"Loading {filename}")
+
+            with open(filename) as fp:
+                data = json.load(fp)
+
+            for icao, aircraft in data.items():
+
+                if icao not in derived_data:
+                    derived_data[icao] = aircraft
+
+                else:
+                    if VERBOSE:
+                        log.info(f"Merging duplicate ICAO {icao}")
+
+                    derived_data[icao]["track"].extend(aircraft.get("track", []))
+
+                    derived_data[icao]["velocity"].extend(aircraft.get("velocity", []))
+
+                    derived_data[icao]["callsigns"].extend(aircraft.get("callsigns", []))
+
+        log.info(f"Loaded {len(derived_data)} aircraft")
+
+        computeTimeSeries(derived_data)
+
+
+
+
     else:
-        if cml_args.testfile:
-            log.info(
-                f"Replaying {len(replay_data)} SBS messages "
-                f"from {cml_args.testfile}"
-            )
-            for line in replay_data:
-                fields = line.strip().split(",")
-                parseSBS(fields, pp)
-        else:
-            loopADSB(config, pp, host=host, port=port)
+        loopADSB(config, pp, host=host, port=port)
