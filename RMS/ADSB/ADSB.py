@@ -822,7 +822,8 @@ def parseSBS(fields, pp):
             # Test against image range, and add to dictionary if within range
             if 0 < x < pp.X_res and 0 < y < pp.Y_res:
                 d["x"], d["y"] = x, y
-                log.info(f"{icao} at {x},{y}")
+                if VERBOSE:
+                    log.info(f"{icao} at {x},{y}")
 
         if VERBOSE:
             log.info(f"Received a position message from {icao} at lat:{latitude} lon:{longitude} alt:{altitude}")
