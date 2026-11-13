@@ -1571,13 +1571,11 @@ def getTimesPathsList(path_to_capture_directory):
 
     return fits_jd_list, fits_dt_list, fits_paths_list, path_to_capture_directory
 
-def renderVideoFromCaptureDirectory(config, output_file=None, path_to_capture_directory=None, fps=25):
+def renderVideoFromCaptureDirectory(config,output_file=None, path_to_capture_directory=None, fps=25):
 
 
-    pp = Platepar()
-    pp.read(os.path.join(config.rms_root_dir, config.platepar_name))
 
-    print(f"Rendering video for station {pp.station_code} with az {pp.az_centre:.2f} el {pp.alt_centre:.2f}")
+
 
 
 
@@ -1602,6 +1600,12 @@ def renderVideoFromCaptureDirectory(config, output_file=None, path_to_capture_di
     # Create a target file if none was passed in
     if output_file is None:
         output_file = os.path.expanduser(os.path.join(path_to_capture_directory,"annotated_timelapse.mp4"))
+
+    pp_path = os.path.join(path_to_capture_directory, config.platepar_name)
+    pp = Platepar()
+    pp.read(pp_path)
+
+    print(f"Rendering video for station {pp.station_code} with az {pp.az_centre:.2f} el {pp.alt_centre:.2f}")
 
     # Initialise a video writer
     video = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*"mp4v"),
@@ -1960,6 +1964,7 @@ if __name__ == "__main__":
     convertIAUCSNToCSV(config)
 
     if cml_args.timelapse:
+
         renderVideoFromCaptureDirectory(config)
     else:
         # Use the RMS test data set to generate a composite image showing a real sky and a synthetic generation
