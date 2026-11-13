@@ -732,22 +732,6 @@ class ADSBRecorder(multiprocessing.Process):
 
         self.recording_start = None             # Start time for the recording
 
-        host, port = self.config.dump1090_host, self.config.dump1090_port
-
-        # Open a connecton to dump1090
-        self.s = None
-        while self.s is None:
-            try:
-                self.s = socket.create_connection((host, port), timeout=60)
-                log.info(f"Connection to {host}:{port} opened.")
-
-            except OSError as e:
-                log.info(
-                    f"Connection to {host}:{port} failed "
-                    f"({e}). Waiting for retry."
-                )
-                time.sleep(60)
-
     def __getstate__(self):
 
         """ Return a picklable representation of the ADSB recorder.
