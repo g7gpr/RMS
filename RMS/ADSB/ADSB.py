@@ -56,6 +56,8 @@ VVERBOSE = False
 # 12 - ten minutes
 # 13 - one minute
 
+SLICE_LENGTH = 11
+
 # Unit conversion constant
 FT_TO_M = 0.3048
 KT_TO_MS = 0.514444
