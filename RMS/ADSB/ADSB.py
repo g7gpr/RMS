@@ -722,6 +722,7 @@ class ADSBRecorder(multiprocessing.Process):
         self.socket = None                      # Connection object
         self.buffer = b""                       # Buffer
 
+
         # Initalise and read the platepar
         platepar_path = os.path.join(config.config_file_path, config.platepar_name)
         if os.path.exists(platepar_path):
@@ -803,7 +804,21 @@ class ADSBRecorder(multiprocessing.Process):
             data = self.s.recv(4096)
 
         except TimeoutError:
-            log.info(f"No data available for {self.s.timeout:.0f} seconds")
+            log.info(f"No data available for {self.s.timeout:.0f} seconds - closing socket to {self.config.dump1090_host}")
+            self.s.close()
+
+
+            while self.s is None:
+                try:
+                    self.s = socket.create_connection((host, port), timeout=60)
+                    log.info(f"Connection to {host}:{port} opened.")
+
+                except OSError as e:
+                    log.info(
+                        f"Connection to {host}:{port} failed "
+                        f"({e}). Waiting for retry."
+                    )
+                    time.sleep(60)
 
             return self.buffer, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity
 
