@@ -1628,7 +1628,7 @@ def renderVideoFromCaptureDirectory(config, output_file=None, path_to_capture_di
             print(
                 f"{frame_number}/{number_of_frames_to_render} "
                 f"({seconds_per_processed_frame:.3f} s/frame) "
-                f"TTC {time_remaining:%H:%M:%S}"
+                f"TTC {time_remaining}"
                 f"ETA {completion_time:%H:%M:%S}"
             )
 
