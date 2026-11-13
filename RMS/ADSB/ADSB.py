@@ -56,7 +56,10 @@ VVERBOSE = False
 # 12 - ten minutes
 # 13 - one minute
 
-SLICE_LENGTH = 11
+SLICE_LENGTH = 13
+
+# Constants
+g = 9.81 # acceleration dur to gravity
 
 # Unit conversion constant
 FT_TO_M = 0.3048
@@ -272,6 +275,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
     track_data, velocity_data, callsign_data = extractStreams(derived_data, icao_iterator)
 
     icao_received, callsign, lat, lon, alt, groundspeed_m_s, vertical_m_s, heading = None, None, None, None, None, None, None, None
+    previous_dt_ts = None
     x, y = None, None
     track_ts, velocity_ts, callsign_ts = None, None, None
 
@@ -284,6 +288,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
             log.info(f"Adding {icao_iterator} to ts_data")
         ts_data[icao_iterator] = []
 
+    previous_total_specific_energy = None
     for ts in ts_list:
 
         if track_data:
@@ -323,8 +328,31 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
             if groundspeed_m_s is None or vertical_m_s is None or track_ts is None or callsign_ts is None:
                 continue
 
+        dt_ts = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S.%f")
+        if groundspeed_m_s is not None and alt is not None and previous_dt_ts is not None:
+            aircraft_specific_kinetic_energy = 0.5 * groundspeed_m_s ** 2
+            aircraft_specific_potential_energy = alt * g
+            aircraft_total_specific_energy = aircraft_specific_kinetic_energy + aircraft_specific_potential_energy
+            d_dt_ts = (dt_ts - previous_dt_ts).total_seconds()
+
+
+            if previous_total_specific_energy is None:
+                previous_total_specific_energy = aircraft_total_specific_energy
+                d_specific_energy_s = 0
+            else:
+                d_specific_energy = aircraft_total_specific_energy - previous_total_specific_energy
+                d_specific_energy_s = d_specific_energy / d_dt_ts
+
+        else:
+            d_specific_energy_s = None
+            aircraft_total_specific_energy = None
+
+
+
 
         if x == -1 and y == -1:
+
+
 
             ts_data[icao_iterator].append({"ts": ts,
                                            "icao": icao_received,
@@ -335,6 +363,8 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
                                            "groundspeed": groundspeed_m_s,
                                            "vertical": vertical_m_s,
                                            "heading": heading,
+                                           "specific_energy": aircraft_total_specific_energy,
+                                           "d_specific_energy_s": d_specific_energy_s,
                                            "track_ts": track_ts,
                                            "velocity_ts": velocity_ts,
                                            "callsign_ts": callsign_ts})
@@ -350,11 +380,16 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
                                            "groundspeed": groundspeed_m_s,
                                            "vertical": vertical_m_s,
                                            "heading": heading,
+                                           "specific_energy": aircraft_total_specific_energy,
+                                           "d_specific_energy_s": d_specific_energy_s,
                                            "x": x,
                                            "y": y,
                                            "track_ts": track_ts,
                                            "velocity_ts": velocity_ts,
                                            "callsign_ts": callsign_ts})
+
+        previous_total_specific_energy = aircraft_total_specific_energy
+        previous_dt_ts = dt_ts
 
     return ts_data
 
