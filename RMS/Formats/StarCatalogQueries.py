@@ -25,6 +25,7 @@ import scipy
 import os
 import tarfile
 import argparse
+
 import RMS.ConfigReader as cr
 import RMS.Formats.FFfits as FFfits
 
@@ -38,7 +39,7 @@ from scipy.spatial import cKDTree
 from RMS.Astrometry.ApplyAstrometry import raDecToXYPP, xyToRaDecPP
 from RMS.Astrometry.AstrometryNet import astrometryNetSolveLocal
 from RMS.ConfigReader import loadConfigFromDirectory
-from RMS.Formats.FFfile import getMiddleTimeFF
+from RMS.Formats.FFfile import getMiddleTimeFF, read as readFF
 from RMS.Formats.Platepar import Platepar
 from RMS.Formats.StarCatalog import readStarCatalog
 from RMS.Astrometry.Conversions import date2JD, datetime2JD, raDec2AltAz, vector2RaDec
@@ -615,6 +616,10 @@ def loadConstellationBoundaries(config, path=None):
     The boundary file is expected to contain rows consisting of right
     ascension (hours), declination (degrees), constellation abbreviation,
     and an edge flag. Boundary vertices are grouped by constellation.
+
+    The data was sourced from
+
+    https://raw.githubusercontent.com/dcf21/ephemeris-compute-de4xx/refs/heads/master/constellations/bound_20.dat
 
     Arguments:
         config: [Config] RMS configuration object.
@@ -1393,6 +1398,101 @@ def renderConstellations(config, pp, frame_time, intensity=150, line_shortening=
 
     return img
 
+
+def renderConstellationBoundaries(config, pp, frame_time, intensity=150, line_shortening=10, constellation_boundaries=None):
+
+    """Render constellation boundaries for a given platepar view.
+
+    Constellation boundaries are loaded, projected into image coordinates
+    using the supplied platepar, clipped to the image boundaries, and
+    rendered onto a monochrome image.
+
+    Arguments:
+        config: [Config] RMS configuration object.
+        pp: [Platepar] Platepar used for sky-to-image projection.
+        frame_time: [datetime] Time corresponding to the rendered frame.
+
+    Keyword Arguments:
+        intensity: [int] Optional, default 150. Line brightness.
+        line_shortening: [float] Optional, default 10. Number of pixels to
+            shorten each end of a line segment before rendering.
+        constellation_boundaries: [ndarray] Optional constellation line boundaries.
+            If None, the default RMS constellation catalogue is loaded.
+
+    Return:
+        img: [ndarray] Rendered constellation image as an 8-bit
+            grayscale array.
+
+    """
+
+    # Build a blank image
+    img = np.zeros((pp.Y_res, pp.X_res), dtype=np.uint8)
+
+    # Load constellation data, if not passed in by function call
+    if constellation_boundaries is None:
+        constellation_boundaries = loadConstellationBoundaries(config)
+
+    # Get the time of the frame in jd and the sky parameters
+    jd = datetime2JD(frame_time)
+    ra_c, dec_c, max_separation, _, _ = getPlateparSkyParameters(pp, jd)
+
+    from_ra, from_dec = [], []
+    to_ra, to_dec = [], []
+    # Build a list of lines where the start and end are near to the image
+    for c in constellation_boundaries:
+        ra, dec = constellation_boundaries[c]["ra_deg"], constellation_boundaries[c]["dec_deg"]
+
+        last_point = None
+
+        for point in zip(ra, dec):
+            if last_point is None:
+                last_point = point
+            else:
+                last_point_ang_sep = angularSeparationDeg(last_point[0], last_point[1], ra_c, dec_c)
+                point_ang_sep = angularSeparationDeg(point[0], point[1], ra_c, dec_c)
+                if max(last_point_ang_sep, point_ang_sep) < max_separation:
+                    from_ra.append(last_point[0])
+                    from_dec.append(last_point[1])
+                    to_ra.append(point[0])
+                    to_dec.append(point[1])
+                last_point = point
+
+    from_ra, from_dec = np.array(from_ra), np.array(from_dec)
+    to_ra, to_dec = np.array(to_ra), np.array(to_dec)
+
+    # Convert to image coordinates
+    from_x, from_y = raDecToXYPP(from_ra, from_dec, jd, pp)
+    to_x, to_y = raDecToXYPP(to_ra, to_dec, jd, pp)
+
+    # Plot on the blank image
+    for i in range(len(to_x)):
+            ok, p1, p2 = cv2.clipLine((0, 0, pp.X_res, pp.Y_res),(int(round(from_x[i])), int(round(from_y[i]))), (int(round(to_x[i])), int(round(to_y[i]))))
+            if not ok:
+                continue
+            try:
+                p1, p2 = vectShort(p1, p2, line_shortening)
+                x1, y1, x2, y2 = p1[0], p1[1], p2[0], p2[1]
+                cv2.line(img, (int(x1), int(y1)), (int(x2), int(y2)), color=intensity, thickness=1)
+            except Exception:
+                continue
+
+    return img
+
+def renderFITSFile(fits_path, pp):
+
+
+    # Read in the fits file
+    ff = readFF(os.path.dirname(fits_path), os.path.basename(fits_path))
+
+    maxpixel = ff.maxpixel
+    avepixel = ff.avepixel
+    img = maxpixel
+
+
+    return img
+
+
+
 def renderTimestamp(frame_time, pp, extra_text=""):
     """Render a timestamp overlay image.
 
@@ -1433,6 +1533,146 @@ def renderTimestamp(frame_time, pp, extra_text=""):
     cv2.putText(img, text, position, font, font_scale, 255, thickness, cv2.LINE_AA)
 
     return img
+
+def getTimesPathsList(path_to_capture_directory):
+
+    if path_to_capture_directory is None:
+        # Get the most recent capture directory
+        path_to_capture_directory = os.path.join(config.data_dir, config.captured_dir)
+        captured_directories = os.listdir(path_to_capture_directory)
+
+        directories = []
+        for f in captured_directories:
+            object = os.path.join(path_to_capture_directory, f)
+            if os.path.isdir(object):
+                directories.append(object)
+
+        directories.sort(reverse=True)
+
+        path_to_capture_directory = directories[0]
+
+
+    else:
+        path_to_capture_directory = os.path.expanduser(path_to_capture_directory)
+
+    print(f"Working in {path_to_capture_directory}")
+
+    capture_directory_contents = os.listdir(path_to_capture_directory)
+    capture_directory_contents.sort(reverse=False)
+
+    fits_jd_list, fits_dt_list, fits_paths_list = [], [], []
+    for f in capture_directory_contents:
+        if f.endswith(".fits"):
+            dt = getMiddleTimeFF(os.path.basename(f), config.fps, dt_obj=True)
+
+            fits_jd_list.append(datetime2JD(dt))
+            fits_dt_list.append(dt)
+            fits_paths_list.append(os.path.join(path_to_capture_directory, f))
+
+    return fits_jd_list, fits_dt_list, fits_paths_list, path_to_capture_directory
+
+def renderVideoFromCaptureDirectory(config, output_file=None, path_to_capture_directory=None, fps=25):
+
+
+    pp = Platepar()
+    pp.read(os.path.join(config.rms_root_dir, config.platepar_name))
+
+    print(f"Rendering video for station {pp.station_code} with az {pp.az_centre:.2f} el {pp.alt_centre:.2f}")
+
+
+
+    # Load in the common star names
+    iau_csn = loadIAUCSNCSV(os.path.join(config.rms_root_dir, "Catalogs/IAU-CSN.csv"))
+
+    # Load in the constellation shapes and compute the centres for labelling
+    constellation_boundaries = loadConstellationBoundaries(config)
+    constellation_centres = computeConstellationCentres(constellation_boundaries)
+
+    # Load in the constellation lines
+    constellations_path = os.path.expanduser(os.path.join(config.rms_root_dir, "share/constellation_lines.csv"))
+    constellation_lines = np.loadtxt(constellations_path, delimiter=",")
+
+    # Initialise the AGC control loop for the frame rendering
+    agc_level = 40
+
+
+
+    fits_jd_list, fits_dt_list, fits_paths_list, path_to_capture_directory = getTimesPathsList(path_to_capture_directory)
+
+    # Create a target file if none was passed in
+    if output_file is None:
+        output_file = os.path.expanduser(os.path.join(path_to_capture_directory,"annotated_timelapse.mp4"))
+
+    # Initialise a video writer
+    video = cv2.VideoWriter(output_file, cv2.VideoWriter_fourcc(*"mp4v"),
+                            fps, (pp.X_res, pp.Y_res), isColor=False)
+
+
+    frame_number = 0
+    number_of_frames_to_render = len(fits_jd_list)
+
+    for jd_frame, frame_time, path in zip(fits_jd_list, fits_dt_list, fits_paths_list):
+
+        if frame_number == 0:
+            # Record the time at which rendering started
+            render_start_time = datetime.now(UTC)
+
+        frame_number += 1
+        # Every 100th frame write out progress report
+        if frame_number % 100 == 0 and frame_number > 1:
+            time_now = datetime.now(UTC)
+            elapsed_seconds = (time_now - render_start_time).total_seconds()
+            seconds_per_processed_frame = elapsed_seconds / frame_number
+            time_remaining = timedelta(seconds=seconds_per_processed_frame * (number_of_frames_to_render - frame_number))
+            completion_time = time_now + time_remaining
+            print(
+                f"{frame_number}/{number_of_frames_to_render} "
+                f"({seconds_per_processed_frame:.3f} s/frame) "
+                f"TTC {time_remaining:%H:%M:%S}"
+                f"ETA {completion_time:%H:%M:%S}"
+            )
+
+        layers = []
+
+        # Render the constellations
+        cons = renderConstellations(config, pp, frame_time, constellation_data=constellation_lines)
+        layers.append(cons)
+
+        # Render the constellation boundaries
+        cons_bounds = renderConstellationBoundaries(config, pp, frame_time,
+                                                    constellation_boundaries=constellation_boundaries)
+        layers.append(cons_bounds)
+
+        # Render the constellation labels
+        cons_labels = renderConstellationLabels(config, pp, frame_time, constellation_centres=constellation_centres)
+        layers.append(cons_labels)
+
+        # Render the IAU common star names
+
+        # Query the platepar for the stars which should be visible
+        pp, ra_array, dec_array, x_array, y_array, mag_array, names_array = cat.queryPlatepar(pp, jd_frame,
+                                                                                              n_brightest=200)
+
+        iau_names = renderIAUNames(config, pp, ra_array, dec_array, x_array, y_array, iau_csn=iau_csn)
+        layers.append(iau_names)
+
+        # Render the fits file
+        fits_file = renderFITSFile(path, pp)
+        layers.append(fits_file)
+
+
+        # Render the timestamp
+        timestamp = renderTimestamp(frame_time, pp)
+        layers.append(timestamp)
+
+        # Combine
+        img = np.maximum.reduce(layers)
+
+        video.write(img)
+
+    video.release()
+
+    pass
 
 def renderVideo(config, start_time, end_time, seconds_per_frame, fps, pp, output_file=None):
     """Render a synthetic sky video.
@@ -1478,7 +1718,8 @@ def renderVideo(config, start_time, end_time, seconds_per_frame, fps, pp, output
     iau_csn = loadIAUCSNCSV(os.path.join(config.rms_root_dir, "Catalogs/IAU-CSN.csv"))
 
     # Load in the constellation shapes and compute the centres for labelling
-    constellation_centres = computeConstellationCentres(loadConstellationBoundaries(config))
+    constellation_boundaries = loadConstellationBoundaries(config)
+    constellation_centres = computeConstellationCentres(constellation_boundaries)
 
     # Load in the constellation lines
     constellations_path = os.path.expanduser(os.path.join(config.rms_root_dir, "share/constellation_lines.csv"))
@@ -1527,6 +1768,10 @@ def renderVideo(config, start_time, end_time, seconds_per_frame, fps, pp, output
         # Render the constellations
         cons = renderConstellations(config, pp, frame_time, constellation_data=constellation_lines)
         layers.append(cons)
+
+        # Render the constellation boundaries
+        cons_bounds = renderConstellationBoundaries(config, pp, frame_time, constellation_boundaries=constellation_boundaries)
+        layers.append(cons_bounds)
 
         # Render the constellation labels
         cons_labels = renderConstellationLabels(config, pp, frame_time, constellation_centres=constellation_centres)
@@ -1699,6 +1944,9 @@ if __name__ == "__main__":
     arg_parser.add_argument('-c', '--config', nargs=1, metavar='CONFIG_PATH', type=str, \
         help="Path to a config file which will be used instead of the default one.")
 
+    arg_parser.add_argument('-t', '--timelapse', action="store_true", help="""Make an annotated timelapse of the most recent captured files directory""")
+
+
     # Parse the command line arguments
     cml_args = arg_parser.parse_args()
 
@@ -1711,26 +1959,29 @@ if __name__ == "__main__":
 
     convertIAUCSNToCSV(config)
 
-    # Use the RMS test data set to generate a composite image showing a real sky and a synthetic generation
-    # The purpose of this is to validate the catalog queries
-    generateRealBySyntheticComparisonImages(cat)
+    if cml_args.timelapse:
+        renderVideoFromCaptureDirectory(config)
+    else:
+        # Use the RMS test data set to generate a composite image showing a real sky and a synthetic generation
+        # The purpose of this is to validate the catalog queries
+        generateRealBySyntheticComparisonImages(cat)
 
-    # Generate a synthetic sky and plate solve, to demonstrate pointing accuracy.
-    testSyntheticPlateSolve(cat)
+        # Generate a synthetic sky and plate solve, to demonstrate pointing accuracy.
+        testSyntheticPlateSolve(cat)
 
-    # Rotate a platepar around the local up axis, generate a synthetic sky and plate solve, to demonstrate the rotation
-    testSyntheticPlateSolve(cat, az=237, el=-39, n_brightest=100)
+        # Rotate a platepar around the local up axis, generate a synthetic sky and plate solve, to demonstrate the rotation
+        testSyntheticPlateSolve(cat, az=237, el=-39, n_brightest=100)
 
 
-    # Render a video intended to be a synthetic representation of the video at
-    # https://globalmeteornetwork.org/weblog//AU/AU000A/AU000A_20241230_115253_405720_detected/AU000A_20241230_115253_405720_timelapse.mp4
-    start_time = datetime(year=2024, month=12, day=30, hour=11, minute=52, second=53)
-    end_time = datetime(year=2024, month=12, day=30, hour=20, minute=46, second=0)
+        # Render a video intended to be a synthetic representation of the video at
+        # https://globalmeteornetwork.org/weblog//AU/AU000A/AU000A_20241230_115253_405720_detected/AU000A_20241230_115253_405720_timelapse.mp4
+        start_time = datetime(year=2024, month=12, day=30, hour=11, minute=52, second=53)
+        end_time = datetime(year=2024, month=12, day=30, hour=20, minute=46, second=0)
 
-    pp = Platepar()
-    test_dir = os.path.join(config.rms_root_dir, "Tests/ExampleStationData/stations/Stations/AU000A/")
-    test_config = cr.parse(os.path.join(test_dir,".config"))
-    pp.read(os.path.join(test_dir, config.platepar_name))
-    print(f"{pp.station_code}")
-    output_file = renderVideo(config, start_time, end_time, 256/25, 30, pp)
-    print(f"Video saved at {output_file}")
+        pp = Platepar()
+        test_dir = os.path.join(config.rms_root_dir, "Tests/ExampleStationData/stations/Stations/AU000A/")
+        test_config = cr.parse(os.path.join(test_dir,".config"))
+        pp.read(os.path.join(test_dir, config.platepar_name))
+        print(f"{pp.station_code}")
+        output_file = renderVideo(config, start_time, end_time, 256/25, 30, pp)
+        print(f"Video saved at {output_file}")
