@@ -56,7 +56,7 @@ VVERBOSE = False
 # 12 - ten minutes
 # 13 - one minute
 
-SLICE_LENGTH = 13
+SLICE_LENGTH = 11
 
 # Constants
 
