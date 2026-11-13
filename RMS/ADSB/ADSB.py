@@ -719,7 +719,7 @@ class ADSBRecorder(multiprocessing.Process):
         self.tracks = {}                        # Store for received location data
         self.icao_callsign_mapping = []         # Store for received icao to callsign information
         self.velocity = {}                      # Store for received velocity information
-        self.socket = None                      # Connection object
+        self.s = None                           # Connection object
         self.buffer = b""                       # Buffer
 
 
@@ -731,6 +731,7 @@ class ADSBRecorder(multiprocessing.Process):
 
 
         self.recording_start = None             # Start time for the recording
+
 
     def __getstate__(self):
 
@@ -784,13 +785,16 @@ class ADSBRecorder(multiprocessing.Process):
                 self.recording_start = next_start_time
 
         # Pull in data from the socket, avoiding getting stuck waiting for data
+        data = None
         try:
             data = self.s.recv(4096)
 
-        except TimeoutError:
-            log.info(f"No data available for {self.s.timeout:.0f} seconds - closing socket to {self.config.dump1090_host}")
-            self.s.close()
+        except Exception as e:
+            log.info(f"Creating new connection to {self.config.dump1090_host}:{self.config.dump1090_port}")
 
+            if self.s is not None:
+                self.s.close()
+                self.s = None
 
             while self.s is None:
                 try:
@@ -804,7 +808,8 @@ class ADSBRecorder(multiprocessing.Process):
                     )
                     time.sleep(60)
 
-            return self.buffer, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity
+
+            # return self.buffer, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity
 
         if not data:
             # Add a sleep to avoid busy waits - this only executes when there is no data
