@@ -56,7 +56,7 @@ VVERBOSE = False
 # 12 - ten minutes
 # 13 - one minute
 
-SLICE_LENGTH = 11
+SLICE_LENGTH = 12
 
 # Unit conversion constant
 FT_TO_M = 0.3048
@@ -290,6 +290,10 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
             if track_data[track_data_pointer]["ts"] == ts:
                 track = track_data[track_data_pointer]
                 lat, lon, alt = track["lat"], track["lon"], track["alt"]
+                if "x" and "y" in track:
+                    x, y = track["x"], track["y"]
+                else:
+                    x, y, = -1, -1
                 track_ts = ts
                 if track_data_pointer < len(track_data) - 1:
                     track_data_pointer += 1
@@ -319,18 +323,38 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
             if groundspeed_m_s is None or vertical_m_s is None or track_ts is None or callsign_ts is None:
                 continue
 
-        ts_data[icao_iterator].append({"ts": ts,
-                                       "icao": icao_received,
-                                       "callsign": callsign,
-                                       "lat": lat,
-                                       "lon": lon,
-                                       "alt": alt,
-                                       "groundspeed": groundspeed_m_s,
-                                       "vertical": vertical_m_s,
-                                       "heading": heading,
-                                       "track_ts": track_ts,
-                                       "velocity_ts": velocity_ts,
-                                       "callsign_ts": callsign_ts})
+
+        if x == -1 and y == -1:
+
+            ts_data[icao_iterator].append({"ts": ts,
+                                           "icao": icao_received,
+                                           "callsign": callsign,
+                                           "lat": lat,
+                                           "lon": lon,
+                                           "alt": alt,
+                                           "groundspeed": groundspeed_m_s,
+                                           "vertical": vertical_m_s,
+                                           "heading": heading,
+                                           "track_ts": track_ts,
+                                           "velocity_ts": velocity_ts,
+                                           "callsign_ts": callsign_ts})
+
+        else:
+
+            ts_data[icao_iterator].append({"ts": ts,
+                                           "icao": icao_received,
+                                           "callsign": callsign,
+                                           "lat": lat,
+                                           "lon": lon,
+                                           "alt": alt,
+                                           "groundspeed": groundspeed_m_s,
+                                           "vertical": vertical_m_s,
+                                           "heading": heading,
+                                           "x": x,
+                                           "y": y,
+                                           "track_ts": track_ts,
+                                           "velocity_ts": velocity_ts,
+                                           "callsign_ts": callsign_ts})
 
     return ts_data
 
@@ -638,8 +662,7 @@ def parseSBS(fields, pp):
             # Test against image range, and add to dictionary if within range
             if 0 < x < pp.X_res and 0 < y < pp.Y_res:
                 d["x"], d["y"] = x, y
-                if VERBOSE:
-                    log.info(f"{icao} at {x},{y}")
+                log.info(f"{icao} at {x},{y}")
 
         if VERBOSE:
             log.info(f"Received a position message from {icao} at lat:{latitude:8.5f} deg lon:{longitude:8.5f} deg alt:{altitude:5.0f} metres")
@@ -783,6 +806,7 @@ class ADSBRecorder(multiprocessing.Process):
 
                 # Reset the recording start time variables
                 self.recording_start = next_start_time
+                log.info(f"Starting a new block at {self.recording_start}")
 
         # Pull in data from the socket, avoiding getting stuck waiting for data
         data = None
