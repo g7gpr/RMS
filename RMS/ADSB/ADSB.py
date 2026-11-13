@@ -775,7 +775,7 @@ class ADSBRecorder(multiprocessing.Process):
 
                 # Write to disk
                 log.info(f"Writing out ADSB data between {self.recording_start} and {next_start_time}")
-                writeOutADSBData(config, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity)
+                writeOutADSBData(self.config, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity)
 
                 # After writing out, reset the cache
                 self.tracks = {}
