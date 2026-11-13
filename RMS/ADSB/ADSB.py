@@ -840,7 +840,7 @@ class ADSBRecorder(multiprocessing.Process):
             fields = line.decode().strip().split(",")
 
             # Parse the SBS message
-            tx_type, icao, d = parseSBS(fields, pp)
+            tx_type, icao, d = parseSBS(fields, self.pp)
 
             # Ignore packets which produce no useful output
             if icao is None or d is None:
