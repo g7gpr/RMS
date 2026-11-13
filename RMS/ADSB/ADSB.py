@@ -332,7 +332,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
 
         dt_ts = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S.%f")
         if groundspeed_m_s is not None and alt is not None and previous_dt_ts is not None:
-            aircraft_specific_kinetic_energy = 0.5 * groundspeed_m_s ** 2
+            aircraft_specific_kinetic_energy = 0.5 * (groundspeed_m_s ** 2 + vertical_m_s ** 2)
             aircraft_specific_potential_energy = alt * g
             aircraft_total_specific_energy = aircraft_specific_kinetic_energy + aircraft_specific_potential_energy
             d_dt_ts = (dt_ts - previous_dt_ts).total_seconds()
