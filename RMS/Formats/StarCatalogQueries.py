@@ -1623,7 +1623,7 @@ def renderVideoFromCaptureDirectory(config,output_file=None, path_to_capture_dir
 
         frame_number += 1
         # Every 100th frame write out progress report
-        if frame_number % 100 == 0 and frame_number > 1:
+        if frame_number % 100 == 0 or frame_number == 10 and frame_number > 1:
             time_now = datetime.now(UTC)
             elapsed_seconds = (time_now - render_start_time).total_seconds()
             seconds_per_processed_frame = elapsed_seconds / frame_number
