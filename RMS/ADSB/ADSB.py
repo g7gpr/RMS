@@ -59,7 +59,9 @@ VVERBOSE = False
 SLICE_LENGTH = 13
 
 # Constants
-g = 9.81 # acceleration dur to gravity
+
+# Acceleration due to gravity
+g = 9.80665
 
 # Unit conversion constant
 FT_TO_M = 0.3048
