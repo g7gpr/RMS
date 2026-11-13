@@ -49,7 +49,7 @@ import RMS.ConfigReader as cr
 
 # Set verbose
 VERBOSE = False
-
+VVERBOSE = False
 # Length of slice for time stripping
 
 # 11 - hourly
@@ -120,8 +120,6 @@ def formatTimeStamp(dt):
     """
 
     return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-
-
 
 def writeOutADSBData(config,
                      recording_start_time,
@@ -400,6 +398,10 @@ def interpolateLatLonAlt(ts_data, icao_iterator):
 
 def interpolateLatLonAltPoint(ts_data, earlier_ts, this_ts, later_ts):
 
+    earlier_ecef, later_ecef = None, None
+    lat_earlier, lon_earlier, alt_earlier = None, None, None
+    lat_later, lon_later, alt_later = None, None, None
+
     # Retrieve coordinates
     for point in ts_data:
         if point["ts"] == earlier_ts:
@@ -473,6 +475,12 @@ def interpolateVelocity(ts_data, icao_iterator):
 
 def interpolateVelocityPoint(ts_data, earlier_ts, this_ts, later_ts):
 
+
+    groundspeed_earlier, groundspeed_later = None, None
+    vertical_earlier, vertical_later = None, None
+    heading_earlier, heading_later = None, None
+
+
     # Retrieve velocities
     for point in ts_data:
         if point["ts"] == earlier_ts:
@@ -545,134 +553,6 @@ def computeTimeSeries(derived_data, clean_data=False):
 
 # To do - move this inside the adsb_recorder class
 
-def doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsign_mapping, velocity):
-    """ Process incoming SBS messages from dump1090.
-
-    Reads data from the dump1090 SBS socket, decodes received messages,
-    records aircraft position tracks and ICAO/callsign observations, and
-    writes accumulated data products to disk at hourly intervals.
-
-    Arguments:
-        config: [Config] RMS configuration object.
-        pp: [Platepar] Platepar used for image coordinate projection.
-        s: [socket.socket] Connected dump1090 SBS socket.
-        buffer: [bytes] Input buffer used to accumulate partial socket
-            reads between iterations.
-        recording_start_time: [str] Start time of the current recording
-            block in the format YYYYMMDD_HHMMSS.
-        tracks: [dict] Aircraft track data keyed by ICAO code.
-        icao_callsign_mapping: [list] List of ICAO/callsign observations.
-
-
-    Return:
-        buffer: [bytes] Updated socket buffer.
-        recording_start_time: [str] Updated recording block start time.
-        tracks: [dict] Updated aircraft track data.
-        icao_callsign_mapping: [list] Updated ICAO/callsign observations.
-    """
-
-
-    # Current UTC time used for recording block management
-    # and output filename generation.
-    time_now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
-
-
-    # Write out cached data each hour
-    if recording_start_time is None:
-
-        # If no start time is passed in, then create a new time reference
-        recording_start_time = time_now
-        log.info(f"Starting first recording block at {recording_start_time}")
-
-    else:
-
-        # Extract hours from times
-        current_hour = time_now[:SLICE_LENGTH]
-        recording_start_hour = recording_start_time[:SLICE_LENGTH]
-
-        # Create a new recording block each hour
-        if current_hour != recording_start_hour:
-            next_start_time = time_now
-
-
-
-            # Write to disk
-            log.info(f"Writing out ADSB data between {recording_start_time} and {next_start_time}")
-            writeOutADSBData(config, recording_start_time, tracks, icao_callsign_mapping, velocity)
-
-
-
-            # After writing out, reset the cache
-            tracks = {}
-            icao_callsign_mapping = []
-
-            # Reset the recording start time variables
-            recording_start_time = next_start_time
-
-
-
-    # Pull in data from the socket, avoiding getting stuck waiting for data
-    try:
-        data = s.recv(4096)
-
-    except TimeoutError:
-        log.info(f"No data available for {s.timeout:.0f} seconds")
-
-
-        return buffer, recording_start_time, tracks, icao_callsign_mapping, velocity
-
-    if not data:
-        # Add a sleep to avoid busy waits - this only executes when there is no data
-        time.sleep(1)
-        return buffer, recording_start_time, tracks, icao_callsign_mapping, velocity
-
-    # Add data to the buffer
-    buffer += data
-
-    # If there is a \n in the buffer, then a whole message is available
-    while b"\n" in buffer:
-
-        # Break up the buffer into lines, and let the rest of the buffer carry over
-        line, buffer = buffer.split(b"\n", 1)
-
-        # Extract the fields
-        fields = line.decode().strip().split(",")
-
-        # Parse the SBS message
-        tx_type, icao, d = parseSBS(fields, pp)
-
-        # Ignore packets which produce no useful output
-        if icao is None or d is None:
-            if VERBOSE:
-                log.info(f"Message of type {tx_type} produced no output")
-            continue
-
-        # Route and decode received data
-
-        if tx_type == SBS_MSG_AIRBORNE_POSITION:
-
-            # Create a new list in the tracks dictionary if an airborne position is received for an unrecognised ICAO
-            if icao not in tracks:
-                tracks[icao] = []
-
-            # Record the airborne position against the ICAO
-            tracks[icao].append(d)
-
-        elif tx_type == SBS_MSG_AIRBORNE_VELOCITY:
-
-            # Create a new list in the velocity dictionary if an airborne position is for an unrecognised ICAO
-            if icao not in velocity:
-                velocity[icao] = []
-
-            velocity[icao].append(d)
-
-        elif tx_type == SBS_MSG_IDENTIFICATION:
-
-            # Record all identification messages, deduplication is later in the pipeline
-            icao_callsign_mapping.append(d)
-
-    return buffer, recording_start_time, tracks, icao_callsign_mapping, velocity
-
 
 
 def parseSBS(fields, pp):
@@ -717,8 +597,6 @@ def parseSBS(fields, pp):
     tx_type = fields[FIELD_TX_TYPE]
     icao = fields[FIELD_ICAO]
 
-    if VERBOSE:
-        log.info(f"Received type {tx_type} message {fields}")
 
     # Parse an airborne position message
     if tx_type == SBS_MSG_AIRBORNE_POSITION:
@@ -764,7 +642,7 @@ def parseSBS(fields, pp):
                     log.info(f"{icao} at {x},{y}")
 
         if VERBOSE:
-            log.info(f"Received a position message from {icao} at lat:{latitude} lon:{longitude} alt:{altitude}")
+            log.info(f"Received a position message from {icao} at lat:{latitude:8.5f} deg lon:{longitude:8.5f} deg alt:{altitude:5.0f} metres")
 
 
         return tx_type, icao, d
@@ -840,8 +718,9 @@ class ADSBRecorder(multiprocessing.Process):
         self.config = config                    # Config object
         self.tracks = {}                        # Store for received location data
         self.icao_callsign_mapping = []         # Store for received icao to callsign information
-        self.velocity = {}
-        self.s = None                           # Connection object
+        self.velocity = {}                      # Store for received velocity information
+        self.socket = None                      # Connection object
+        self.buffer = b""                       # Buffer
 
         # Initalise and read the platepar
         platepar_path = os.path.join(config.config_file_path, config.platepar_name)
@@ -852,7 +731,21 @@ class ADSBRecorder(multiprocessing.Process):
 
         self.recording_start = None             # Start time for the recording
 
+        host, port = self.config.dump1090_host, self.config.dump1090_port
 
+        # Open a connecton to dump1090
+        self.s = None
+        while self.s is None:
+            try:
+                self.s = socket.create_connection((host, port), timeout=60)
+                log.info(f"Connection to {host}:{port} opened.")
+
+            except OSError as e:
+                log.info(
+                    f"Connection to {host}:{port} failed "
+                    f"({e}). Waiting for retry."
+                )
+                time.sleep(60)
 
     def __getstate__(self):
 
@@ -865,6 +758,107 @@ class ADSBRecorder(multiprocessing.Process):
         state = self.__dict__.copy()
         return state
 
+    def doIteration(self):
+        """ Process incoming SBS messages from dump1090.
+
+        Reads data from the dump1090 SBS socket, decodes received messages,
+        records aircraft position tracks and ICAO/callsign observations, and
+        writes accumulated data products to disk at hourly intervals.
+        """
+
+        # Current UTC time used for recording block management
+        # and output filename generation.
+        time_now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+        # Write out cached data each hour
+        if self.recording_start is None:
+
+            # If no start time is passed in, then create a new time reference
+            self.recording_start = time_now
+            log.info(f"Starting first recording block at {self.recording_start}")
+
+        else:
+
+            # Extract hours from times
+            current_hour = time_now[:SLICE_LENGTH]
+            recording_start_hour = self.recording_start[:SLICE_LENGTH]
+
+            # Create a new recording block each hour
+            if current_hour != recording_start_hour:
+                next_start_time = time_now
+
+                # Write to disk
+                log.info(f"Writing out ADSB data between {self.recording_start} and {next_start_time}")
+                writeOutADSBData(config, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity)
+
+                # After writing out, reset the cache
+                self.tracks = {}
+                self.icao_callsign_mapping = []
+
+                # Reset the recording start time variables
+                self.recording_start = next_start_time
+
+        # Pull in data from the socket, avoiding getting stuck waiting for data
+        try:
+            data = self.s.recv(4096)
+
+        except TimeoutError:
+            log.info(f"No data available for {self.s.timeout:.0f} seconds")
+
+            return self.buffer, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity
+
+        if not data:
+            # Add a sleep to avoid busy waits - this only executes when there is no data
+            time.sleep(1)
+            return self.buffer, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity
+
+        # Add data to the buffer
+        self.buffer +=  data
+
+        # If there is a \n in the buffer, then a whole message is available
+        while b"\n" in self.buffer:
+
+            # Break up the buffer into lines, and let the rest of the buffer carry over
+            line, self.buffer = self.buffer.split(b"\n", 1)
+
+            # Extract the fields
+            fields = line.decode().strip().split(",")
+
+            # Parse the SBS message
+            tx_type, icao, d = parseSBS(fields, pp)
+
+            # Ignore packets which produce no useful output
+            if icao is None or d is None:
+                if VVERBOSE:
+                    log.info(f"Message of type {tx_type} produced no output {line}")
+
+                continue
+
+            # Route and decode received data
+
+            if tx_type == SBS_MSG_AIRBORNE_POSITION:
+
+                # Create a new list in the tracks dictionary if an airborne position is received for an unrecognised ICAO
+                if icao not in self.tracks:
+                    self.tracks[icao] = []
+
+                # Record the airborne position against the ICAO
+                self.tracks[icao].append(d)
+
+            elif tx_type == SBS_MSG_AIRBORNE_VELOCITY:
+
+                # Create a new list in the velocity dictionary if an airborne position is for an unrecognised ICAO
+                if icao not in self.velocity:
+                    self.velocity[icao] = []
+
+                self.velocity[icao].append(d)
+
+            elif tx_type == SBS_MSG_IDENTIFICATION:
+
+                # Record all identification messages, deduplication is later in the pipeline
+                self.icao_callsign_mapping.append(d)
+
+        return self.buffer, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity
 
     def start(self):
 
@@ -880,6 +874,9 @@ class ADSBRecorder(multiprocessing.Process):
         self.exit.set()
         self.join()
         log.info("ADSB recorder has stopped")
+
+
+
 
     def run(self,):
 
@@ -903,20 +900,12 @@ class ADSBRecorder(multiprocessing.Process):
 
                 time.sleep(50)
 
-        buffer = b""
+
 
         # Run until exit
         while True:
 
-            buffer, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity = (
-                doIteration(self.config,
-                            self.pp,
-                            self.s,
-                            buffer,
-                            self.recording_start,
-                            self.tracks,
-                            self.icao_callsign_mapping,
-                            self.velocity))
+            self.doIteration()
 
             if self.exit.is_set():
                 log.info("ADSB loop is exiting")
@@ -1021,35 +1010,13 @@ def loopADSB(config, pp, host=None, port=None):
         None
     """
 
-    host = config.adsb_host if host is None else host
-    port = config.adsb_port if port is None else port
 
 
-    # Open a connecton to dump1090
-    s = None
-    while s is None:
-        try:
-            s = socket.create_connection((host, port), timeout=60)
-            log.info(f"Connection to {host}:{port} opened.")
-
-        except OSError as e:
-            log.info(
-                f"Connection to {host}:{port} failed "
-                f"({e}). Waiting for retry."
-            )
-            time.sleep(60)
-
-    buffer = b""
-    tracks = {}
-    icao_callsign_mapping = []
-    velocity = {}
-
-    recording_start_time = None
+    adsb_recorder = ADSBRecorder(config)
 
     # Loop forever
     while True:
-        buffer, recording_start_time, tracks, icao_callsign_mapping, velocity = \
-            doIteration(config, pp, s, buffer, recording_start_time, tracks, icao_callsign_mapping, velocity)
+        adsb_recorder.doIteration()
 
 
 def generateDerivedData(adsb_directory):
@@ -1165,8 +1132,6 @@ if __name__ == "__main__":
     host = config.dump1090_host if host is None else host
     port = config.dump1090_port if port is None else port
 
-
-
     # Initialize the logger
     log_manager = LoggingManager()
     log_manager.initLogging(config)
@@ -1192,7 +1157,6 @@ if __name__ == "__main__":
         for line in replay_data:
             fields = line.strip().split(",")
             parseSBS(fields, pp)
-
 
     elif cml_args.testtimeseries:
 
