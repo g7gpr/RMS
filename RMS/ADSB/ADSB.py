@@ -1004,6 +1004,7 @@ class ADSBRecorder(multiprocessing.Process):
             self.recording_start,
             self.tracks,
             self.icao_callsign_mapping,
+            self.velocity,
             force_flush=True
         )
 
