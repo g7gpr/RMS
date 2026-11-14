@@ -1028,10 +1028,12 @@ class ADSBRecorder(multiprocessing.Process):
 
         self.flush()
 
+        adsb_files_list = os.listdir(adsb_path)
+        log.info(f"Collecting {len(adsb_files_list)} ADSB data files for archiving")
         with tarfile.open(archive_path, "w:bz2") as tar:
             adsb_files = []
 
-            for filename in os.listdir(adsb_path):
+            for filename in adsb_files_list:
                 adsb_full_path = os.path.join(adsb_path, filename)
 
                 if os.path.isfile(adsb_full_path):
