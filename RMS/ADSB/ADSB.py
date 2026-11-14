@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-"""ADSB aircraft tracking support for RMS.
+"""ADS-B aircraft tracking support for RMS.
 
 Receives SBS messages from dump1090, converts aircraft locations to
 azimuth/elevation, projects them into image coordinates using the station
@@ -160,7 +160,7 @@ def writeOutADSBData(config,
                 fp.flush()
                 os.fsync(fp.fileno())
     else:
-        log.info("No ADSB data to write")
+        log.info("No ADS-B data to write")
 
     icao_call_filename = f"{config.stationID}_{recording_start_time}_icao_call.json"
     icao_call_path = os.path.join(adsb_directory, icao_call_filename)
@@ -191,8 +191,8 @@ def writeOutADSBData(config,
     adsb_derived_filename = f"{config.stationID}_{recording_start_time}_adsb_derived.json"
     adsb_derived_path = os.path.join(adsb_directory, adsb_derived_filename)
 
-    time_series_filename = f"{config.stationID}_{recording_start_time}_adsb_time_series.json"
-    time_series_path = os.path.join(adsb_directory, time_series_filename)
+    time_series_by_icao_filename = f"{config.stationID}_{recording_start_time}_adsb_time_series_by_icao.json"
+    time_series_path = os.path.join(adsb_directory, time_series_by_icao_filename)
 
     # Produce derived data
     adsb_derived_data, time_series_data = deriveFromADSB(tracks, icao_call_mapping, velocity)
@@ -213,7 +213,7 @@ def writeOutADSBData(config,
                 os.fsync(fp.fileno())
 
     else:
-        log.info("No adsb derived data to write")
+        log.info("No ADS-B derived data to write")
 
 
     return [adsb_path, icao_call_path, velocity_path]
@@ -619,7 +619,7 @@ def computeTimeSeries(derived_data, clean_data=False):
     return ts_data
 
 
-# To do - move this inside the adsb_recorder class
+
 
 
 
@@ -802,7 +802,7 @@ class ADSBRecorder(multiprocessing.Process):
 
     def __getstate__(self):
 
-        """ Return a picklable representation of the ADSB recorder.
+        """ Return a picklable representation of the ADS_B recorder.
 
         Required under the 'forkserver'/'spawn' start methods (the default on Linux from
         Python 3.14), where .start() pickles self and sends it to the child.
@@ -841,7 +841,7 @@ class ADSBRecorder(multiprocessing.Process):
                 next_start_time = time_now
 
                 # Write to disk
-                log.info(f"Writing out ADSB data between {self.recording_start} and {next_start_time}")
+                log.info(f"Writing out ADS-B data between {self.recording_start} and {next_start_time}")
                 writeOutADSBData(self.config, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity)
 
                 # After writing out, reset the cache
@@ -934,18 +934,18 @@ class ADSBRecorder(multiprocessing.Process):
 
     def start(self):
 
-        """Starts the ADSB recorder"""
+        """Starts the ADS-B recorder"""
         super().start()
-        log.info("ADSB recorder has started")
+        log.info("ADS-B recorder has started")
 
 
     def stop(self):
 
-        """ Stops the ADSB recorder. """
+        """ Stops the ADS-B recorder. """
         time.sleep(2)
         self.exit.set()
         self.join()
-        log.info("ADSB recorder has stopped")
+        log.info("ADS-B recorder has stopped")
 
 
 
@@ -980,10 +980,10 @@ class ADSBRecorder(multiprocessing.Process):
             self.doIteration()
 
             if self.exit.is_set():
-                log.info("ADSB loop is exiting")
+                log.info("ADS-B loop is exiting")
                 break
 
-        log.info("ADSB loop has exited")
+        log.info("ADS-B loop has exited")
 
         try:
             self.s.close()
@@ -994,7 +994,7 @@ class ADSBRecorder(multiprocessing.Process):
             log.info("Could not close dump1090 connection")
             pass
 
-        log.info("ADSB recorder has finished - writing out cached data")
+        log.info("ADS-B recorder has finished - writing out cached data")
         writeOutADSBData(self.config, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity, force_flush=True)
 
     def flush(self):
@@ -1022,7 +1022,7 @@ class ADSBRecorder(multiprocessing.Process):
             captured_path: [str] Path to the capture directory for the night
 
         Keyword arguments:
-            remove_files: [bool] Optional, default true, remove files from ADSB directory after archiving
+            remove_files: [bool] Optional, default true, remove files from ADS-B directory after archiving
 
         Return:
             archive_name: [str] Name of the generated archive.
@@ -1031,13 +1031,13 @@ class ADSBRecorder(multiprocessing.Process):
         archive_name = f"{os.path.basename(captured_path)}_adsb.tar.bz2"
         archive_path = os.path.join(captured_path, archive_name)
         adsb_path = os.path.expanduser(os.path.join(self.config.data_dir, self.config.adsb_dir))
-        log.info(f"Saving ADSB data from {adsb_path} to an archive to {archive_path}")
+        log.info(f"Saving ADS-B data from {adsb_path} to an archive to {archive_path}")
 
 
         self.flush()
 
         adsb_files_list = os.listdir(adsb_path)
-        log.info(f"Collecting {len(adsb_files_list)} ADSB data files for archiving")
+        log.info(f"Collecting {len(adsb_files_list)} ADS-B data files for archiving")
         with tarfile.open(archive_path, "w:bz2") as tar:
             adsb_files = []
 
@@ -1130,7 +1130,7 @@ def generateDerivedData(adsb_directory):
                 and "icao_call" in group
                 and "velocity" in group
         ):
-            log.warning(f"Incomplete ADSB dataset for {timestamp}")
+            log.warning(f"Incomplete ADS-B dataset for {timestamp}")
             continue
 
         log.info(f"Processing {timestamp}")
@@ -1157,7 +1157,7 @@ def generateDerivedData(adsb_directory):
 
 
         else:
-            log.info("No adsb derived data to write")
+            log.info("No ADS-B derived data to write")
 
 
 if __name__ == "__main__":
@@ -1211,12 +1211,12 @@ if __name__ == "__main__":
     log_manager = LoggingManager()
     log_manager.initLogging(config)
 
-    log.info(f"For {config.stationID} starting adsb logging with {host}:{port}.")
+    log.info(f"For {config.stationID} starting ADS-B logging with {host}:{port}.")
     log.info(f"Logging to {config.data_dir}")
 
     if cml_args.testprocess:
         if config.adsb_enabled:
-            log.info(f"ADSB enabled in config, so starting as a process for {cml_args.testprocess} seconds.")
+            log.info(f"ADS-B enabled in config, so starting as a process for {cml_args.testprocess} seconds.")
             adsb_recorder = ADSBRecorder(config)
             adsb_recorder.start()
             time.sleep(cml_args.testprocess)

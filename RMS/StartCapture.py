@@ -714,8 +714,8 @@ def stopStartedNight(next_night):
 
 
 def runCapture(config, duration=None, video_file=None, nodetect=False, detect_end=False, \
-    upload_manager=None, eventmonitor=None, resume_capture=False, daytime_mode=None, camera_mode_switch_trigger=None,
-    session_cut=None, session_cut_time=None, adsb_recorder=None):
+    upload_manager=None, eventmonitor=None, adsb_recorder=None, resume_capture=False, daytime_mode=None, camera_mode_switch_trigger=None,
+    session_cut=None, session_cut_time=None):
     """ Run capture and compression for the given time.given
     
     Arguments:
@@ -730,6 +730,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
         upload_manager: [UploadManager object] A handle to the UploadManager, which handles uploading files to
             the central server. None by default.
         eventmonitor: [EventMonitor object]. Event monitor object. None by default.
+        adsb_recorder: [ADS-B recorder object]: ADS-B recorder object. None by defatul
         resume_capture: [bool] Resume capture in the last data directory in CapturedFiles. False by default.
         daytime_mode: [multiprocessing.Value] shared boolean variable to keep track of camera day/night mode switching. None by default.
         session_cut: [multiprocessing.Value] shared int, incremented by the capture mode switcher when the
@@ -1349,7 +1350,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
                         # Stop the eventmonitor
                         if adsb_recorder.is_alive():
-                            log.debug('Closing ADSB recorder...')
+                            log.debug('Closing ADS-B recorder...')
                             adsb_recorder.stop()
                             del adsb_recorder
 
@@ -1840,7 +1841,7 @@ if __name__ == "__main__":
         if config.adsb_enabled:
 
             # Init the adsb recorder
-            log.info("Starting the adsb recorder")
+            log.info("Starting the ADS-B recorder")
             adsb_recorder = ADSBRecorder(config)
             adsb_recorder.start()
 
@@ -1876,7 +1877,7 @@ if __name__ == "__main__":
         
         # Capture the video frames from the video file
         runCapture(config, duration=None, video_file=video_file, nodetect=cml_args.nodetect,
-            resume_capture=cml_args.resume, adsb_recorder=None)
+            resume_capture=cml_args.resume)
         cml_args.resume = False
 
         sys.exit()
@@ -1898,7 +1899,7 @@ if __name__ == "__main__":
         eventmonitor.start()
 
     if config.adsb_enabled:
-        log.info("Starting the adsb recorder...")
+        log.info("Starting the ADS-B recorder...")
         adsb_recorder = ADSBRecorder(config)
         adsb_recorder.start()
 
@@ -2049,7 +2050,7 @@ if __name__ == "__main__":
 
                     # Stop the eventmonitor
                     if adsb_recorder.is_alive():
-                        log.debug('Closing ADSB recorder...')
+                        log.debug('Closing ADS-B recorder...')
                         adsb_recorder.stop()
                         del adsb_recorder
 
@@ -2171,7 +2172,7 @@ if __name__ == "__main__":
 
                         # Stop the eventmonitor
                         if adsb_recorder.is_alive():
-                            log.debug('Closing ADSB recorder...')
+                            log.debug('Closing ADS-B recorder...')
                             adsb_recorder.stop()
                             del adsb_recorder
 
@@ -2276,7 +2277,8 @@ if __name__ == "__main__":
 
         # Run capture and compression
         night_archive_dir = runCapture(config, duration=duration, nodetect=cml_args.nodetect, \
-            upload_manager=upload_manager, eventmonitor=eventmonitor, detect_end=(cml_args.detectend or config.postprocess_at_end), \
+            upload_manager=upload_manager, eventmonitor=eventmonitor, adsb_recorder=adsb_recorder,
+            detect_end=(cml_args.detectend or config.postprocess_at_end), \
             resume_capture=cml_args.resume, daytime_mode=daytime_mode, camera_mode_switch_trigger=camera_mode_switch_trigger,
             session_cut=session_cut, session_cut_time=session_cut_time)
         cml_args.resume = False
@@ -2307,6 +2309,6 @@ if __name__ == "__main__":
 
         # Stop the eventmonitor
         if adsb_recorder.is_alive():
-            log.debug('Closing ADSB recorder...')
+            log.debug('Closing ADS-B recorder...')
             adsb_recorder.stop()
             del adsb_recorder
