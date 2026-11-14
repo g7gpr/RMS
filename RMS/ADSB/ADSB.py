@@ -988,7 +988,7 @@ class ADSBRecorder(multiprocessing.Process):
             pass
 
         log.info("ADSB recorder has finished - writing out cached data")
-        writeOutADSBData(self.config, self.recording_start, self.tracks, self.icao_callsign_mapping, force_flush=True)
+        writeOutADSBData(self.config, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity, force_flush=True)
 
     def flush(self):
         """Write all cached ADS-B data to disk.
