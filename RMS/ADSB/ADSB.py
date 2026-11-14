@@ -277,7 +277,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
     track_data, velocity_data, callsign_data = extractStreams(derived_data, icao_iterator)
 
     icao_received, callsign, lat, lon, alt, groundspeed_m_s, vertical_m_s, heading = None, None, None, None, None, None, None, None
-    previous_dt_ts = None
+    previous_dt_ts, d_dt_ts = None, None
     x, y = None, None
     track_ts, velocity_ts, callsign_ts = None, None, None
 
@@ -297,7 +297,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
             if track_data[track_data_pointer]["ts"] == ts:
                 track = track_data[track_data_pointer]
                 lat, lon, alt = track["lat"], track["lon"], track["alt"]
-                if "x" and "y" in track:
+                if "x" in track and "y" in track:
                     x, y = track["x"], track["y"]
                 else:
                     x, y, = -1, -1
@@ -331,19 +331,25 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
                 continue
 
         dt_ts = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S.%f")
-        if groundspeed_m_s is not None and alt is not None and previous_dt_ts is not None:
+
+
+        if groundspeed_m_s is not None and vertical_m_s is not None and alt is not None:
             aircraft_specific_kinetic_energy = 0.5 * (groundspeed_m_s ** 2 + vertical_m_s ** 2)
             aircraft_specific_potential_energy = alt * g
             aircraft_total_specific_energy = aircraft_specific_kinetic_energy + aircraft_specific_potential_energy
-            d_dt_ts = (dt_ts - previous_dt_ts).total_seconds()
-
 
             if previous_total_specific_energy is None:
-                previous_total_specific_energy = aircraft_total_specific_energy
                 d_specific_energy_s = 0
+
             else:
-                d_specific_energy = aircraft_total_specific_energy - previous_total_specific_energy
-                d_specific_energy_s = d_specific_energy / d_dt_ts
+                # Compute time change
+                d_dt_ts = (dt_ts - previous_dt_ts).total_seconds()
+
+                if d_dt_ts > 0.1:
+                    # Estimate a new specific energy rate of change only when enough time has elapsed.
+                    # Otherwise retain the previous value to avoid noisy derivatives from very short intervals.
+                    d_specific_energy_s = (aircraft_total_specific_energy - previous_total_specific_energy) / d_dt_ts
+
 
         else:
             d_specific_energy_s = None
@@ -390,8 +396,9 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
                                            "velocity_ts": velocity_ts,
                                            "callsign_ts": callsign_ts})
 
-        previous_total_specific_energy = aircraft_total_specific_energy
-        previous_dt_ts = dt_ts
+        if aircraft_total_specific_energy is not None:
+            previous_total_specific_energy = aircraft_total_specific_energy
+            previous_dt_ts = dt_ts
 
     return ts_data
 

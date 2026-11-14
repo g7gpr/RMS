@@ -21,10 +21,13 @@ from __future__ import print_function, absolute_import
 import numpy as np
 import cv2
 import scipy
+import csv
+
 
 import os
 import tarfile
 import argparse
+import urllib.request
 
 import RMS.ConfigReader as cr
 import RMS.Formats.FFfits as FFfits
@@ -107,7 +110,6 @@ def vecsInsideConvexPolygon(vecs, normals):
 
     return polygon_mask
 
-
 def repointPlatepar(pp, az_new, el_new):
 
     """Given a platepar, new azimuth and new elevation, repoint the field of
@@ -128,9 +130,6 @@ def repointPlatepar(pp, az_new, el_new):
     pp.updateRefAltAz()
 
     return pp
-
-
-
 
 def computePolygonNormals(corner_vecs, inside_vec):
 
@@ -172,7 +171,6 @@ def computePolygonNormals(corner_vecs, inside_vec):
 
     return np.array(normals)
 
-
 def radecToUnitVectors(ra_deg, dec_deg):
 
     """ Given one or more RA/Dec coordinates, return the
@@ -195,7 +193,6 @@ def radecToUnitVectors(ra_deg, dec_deg):
     z = np.sin(dec)
 
     return np.column_stack((x, y, z))
-
 
 class Catalog:
     """
@@ -510,12 +507,7 @@ class Catalog:
         return p, ra_array, dec_array, x_array, y_array, mag_array, names_array
 
 
-
-
 ### TEST CODE START ###
-
-import csv
-
 
 def writeCSV(filename, column_names, columns):
     """Write columnar data to a CSV file.
@@ -558,7 +550,6 @@ def writeCSV(filename, column_names, columns):
             writer.writerow(row)
 
     return filename
-
 
 def convertIAUCSNToCSV(config, source_file_location=None, destination_file_location=None,
                        source_url="https://www.pas.rochester.edu/~emamajek/WGSN/IAU-CSN.txt"):
@@ -608,7 +599,6 @@ def convertIAUCSNToCSV(config, source_file_location=None, destination_file_locat
     ra_array, dec_array, mags = zip(*iau_csn_coordinates)
     writeCSV(destination_file_location,["Names", "Ra degrees", "Dec degrees", "Mags"],
                                                     [names, ra_array, dec_array, mags])
-
 
 def loadConstellationBoundaries(config, path=None):
     """Load IAU constellation boundary vertices.
@@ -747,7 +737,6 @@ def extractTarBz2(path):
 
     return extract_dir
 
-
 def renderStarsSimple(x_array, y_array, shape):
     """Render stars as single bright pixels.
 
@@ -777,10 +766,6 @@ def renderStarsSimple(x_array, y_array, shape):
     img[y[mask], x[mask]] = 255
 
     return img
-
-
-
-
 
 def renderStarsGaussian(x_array, y_array, mag_array, shape, sigma=1.5,
                         min_brightness=0, max_brightness=400, sensor_saturation=255, add_noise=True,
@@ -878,8 +863,6 @@ def renderStarsGaussian(x_array, y_array, mag_array, shape, sigma=1.5,
 
     return image.astype(np.uint8), agc_level
 
-
-
 def writePNG(image, filename):
     """Write an image array to a PNG file.
 
@@ -910,9 +893,6 @@ def writePNG(image, filename):
     Image.fromarray(image).save(filename)
 
     return filename
-
-
-
 
 def inferColumnPositions(line):
     """
@@ -954,10 +934,6 @@ def inferColumnPositions(line):
         positions.append((start, len(line)))
     return names, positions
 
-
-import urllib.request
-
-
 def downloadTextFile(url, filename, timeout=30):
     """Download a text file from a URL.
 
@@ -997,7 +973,6 @@ def downloadTextFile(url, filename, timeout=30):
         )
 
         return None
-
 
 def loadIAUCSNCSV(filename):
     """Load a CSV version of the IAU Common Star Names catalogue.
@@ -1040,7 +1015,6 @@ def loadIAUCSNCSV(filename):
             ])
 
     return names, np.array(coordinates)
-
 
 def loadIAUCSN(config, source_file_location=None, additional_fields = []):
     """
@@ -1116,8 +1090,6 @@ def loadIAUCSN(config, source_file_location=None, additional_fields = []):
 
     return star_data, mag_band, mag_band_ratios, extra_values_dict
 
-
-
 def renderIAUNames(config, pp, ra_array, dec_array, x_array, y_array, max_sep_deg=0.05, iau_csn=None):
     """Render IAU common star name labels.
 
@@ -1172,10 +1144,6 @@ def renderIAUNames(config, pp, ra_array, dec_array, x_array, y_array, max_sep_de
             0.4,255,1, cv2.LINE_AA)
 
     return label_img
-
-
-
-
 
 def renderConstellationLabels(config, pp, frame_time, intensity=150, constellation_centres=None, three_letter_names=False):
 
@@ -1323,7 +1291,6 @@ def renderConstellationLabels(config, pp, frame_time, intensity=150, constellati
 
     return img
 
-
 def renderConstellations(config, pp, frame_time, intensity=150, line_shortening=10, constellation_data=None):
 
     """Render constellation line segments for a given platepar view.
@@ -1397,7 +1364,6 @@ def renderConstellations(config, pp, frame_time, intensity=150, line_shortening=
                 continue
 
     return img
-
 
 def renderConstellationBoundaries(config, pp, frame_time, intensity=150, line_shortening=10, constellation_boundaries=None):
 
@@ -1490,8 +1456,6 @@ def renderFITSFile(fits_path, pp):
 
 
     return img
-
-
 
 def renderTimestamp(frame_time, pp, extra_text=""):
     """Render a timestamp overlay image.
@@ -1798,7 +1762,6 @@ def renderVideo(config, start_time, end_time, seconds_per_frame, fps, pp, output
     video.release()
 
     return output_file
-
 
 def testSyntheticPlateSolve(cat, az=None, el=None, n_brightest=100):
     """Generate synthetic sky images and validate accuracy.
