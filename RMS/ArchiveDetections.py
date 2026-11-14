@@ -274,13 +274,12 @@ def archiveDetections(captured_path, archived_path, ff_detected, config, extra_f
 
 
     # Create the ADS-B archive, clear the cache, and queue for upload
-    log.info(f"ADSB enabled is {config.adsb_enabled}")
-    log.info(f"ADSB recorder instantiated is {adsb_recorder is not None}")
+    log.info(f"ADSB enabled is {config.adsb_enabled}, instantiated is {adsb_recorder is not None}")
 
     if config.adsb_enabled and adsb_recorder is not None:
         log.info("Reached entry point for building the ADSB archive")
-
         file_list.append(adsb_recorder.archiveData(captured_path))
+        log.info(f"ADSB archive build and added to file list as {file_list[-1]}")
     else:
         log.info("Did not archive files, conditional rejected")
 
