@@ -260,7 +260,8 @@ def writeOutADSBData(config,
             if force_flush:
                 fp.flush()
                 os.fsync(fp.fileno())
-
+    else:
+        log.info("No ADS-B visible data to write")
 
     return [adsb_path, icao_call_path, velocity_path, time_series_filtered_by_visible]
 
