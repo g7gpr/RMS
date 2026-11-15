@@ -716,7 +716,7 @@ def stopStartedNight(next_night):
 def runCapture(config, duration=None, video_file=None, nodetect=False, detect_end=False, \
     upload_manager=None, eventmonitor=None, adsb_recorder=None, resume_capture=False, daytime_mode=None, camera_mode_switch_trigger=None,
     session_cut=None, session_cut_time=None):
-    """ Run capture and compression for the given time.given
+    """ Run capture and compression for the given time.
     
     Arguments:
         config: [config object] Configuration read from the .config file.
@@ -744,6 +744,7 @@ def runCapture(config, duration=None, video_file=None, nodetect=False, detect_en
 
     global STOP_CAPTURE
 
+    log.info(f"ADS-B recorder passed into run capture : {adsb_recorder is not None}")
 
     # Check if resuming capture to the last capture directory
     night_data_dir_name = None
