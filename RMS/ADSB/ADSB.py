@@ -48,8 +48,8 @@ from RMS.Astrometry.ApplyAstrometry import raDecToXYPP
 import RMS.ConfigReader as cr
 
 # Set verbose
-VERBOSE = False
-VVERBOSE = False
+VERBOSE = True
+VVERBOSE = True
 # Length of slice for time stripping
 
 # 11 - hourly
