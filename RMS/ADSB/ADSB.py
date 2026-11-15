@@ -276,7 +276,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
         log.info(f"Processing {icao_iterator} with {len(ts_list)} timestamps")
     position_data, velocity_data, callsign_data = extractStreams(derived_data, icao_iterator)
 
-    icao_received, callsign, lat, lon, alt, groundspeed_m_s, vertical_m_s, heading = None, None, None, None, None, None, None, None
+    icao_received, callsign, lat, lon, alt, groundspeed_m_s, vertical_m_s, track = None, None, None, None, None, None, None, None
     previous_dt_ts, d_dt_ts = None, None
     x, y = None, None
     position_ts, velocity_ts, callsign_ts = None, None, None
@@ -309,7 +309,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
             if velocity_data[velocity_data_pointer]["ts"] == ts:
                 velocity = velocity_data[velocity_data_pointer]
                 groundspeed_m_s, vertical_m_s = velocity["groundspeed"], velocity["vertical_rate"]
-                heading = velocity["track"]
+                track = velocity["track"]
                 velocity_ts = ts
                 if velocity_data_pointer < len(velocity_data) - 1:
                     velocity_data_pointer += 1
@@ -324,7 +324,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
 
 
         if clean_data:
-            if ts is None or icao_received is None or callsign is None or lat is None or lon is None or alt is None or heading is None:
+            if ts is None or icao_received is None or callsign is None or lat is None or lon is None or alt is None or track is None:
                 continue
 
             if groundspeed_m_s is None or vertical_m_s is None or position_ts is None or callsign_ts is None:
@@ -370,7 +370,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
                                            "alt": alt,
                                            "groundspeed": groundspeed_m_s,
                                            "vertical": vertical_m_s,
-                                           "heading": heading,
+                                           "track": track,
                                            "specific_energy": aircraft_total_specific_energy,
                                            "d_specific_energy_s": d_specific_energy_s,
                                            "position_ts": position_ts,
@@ -387,7 +387,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
                                            "alt": alt,
                                            "groundspeed": groundspeed_m_s,
                                            "vertical": vertical_m_s,
-                                           "heading": heading,
+                                           "track": track,
                                            "specific_energy": aircraft_total_specific_energy,
                                            "d_specific_energy_s": d_specific_energy_s,
                                            "x": x,
@@ -535,8 +535,8 @@ def interpolateVelocity(ts_data, icao_iterator):
             this_ts = data_point['ts']
             later_ts = received_velocity_data_times[later_index]
 
-            groundspeed, vertical, heading = interpolateVelocityPoint(aircraft_ts_data, earlier_ts, this_ts, later_ts)
-            data_point["groundspeed"], data_point["vertical"], data_point["heading"] = groundspeed, vertical, heading
+            groundspeed, vertical, track = interpolateVelocityPoint(aircraft_ts_data, earlier_ts, this_ts, later_ts)
+            data_point["groundspeed"], data_point["vertical"], data_point["track"] = groundspeed, vertical, track
 
 
     return ts_data
@@ -546,25 +546,25 @@ def interpolateVelocityPoint(ts_data, earlier_ts, this_ts, later_ts):
 
     groundspeed_earlier, groundspeed_later = None, None
     vertical_earlier, vertical_later = None, None
-    heading_earlier, heading_later = None, None
+    track_earlier, track_later = None, None
 
 
     # Retrieve velocities
     for point in ts_data:
         if point["ts"] == earlier_ts:
             groundspeed_earlier, vertical_earlier = point["groundspeed"], point["vertical"]
-            heading_earlier = np.radians(point["heading"])
+            track_earlier = np.radians(point["track"])
         if point["ts"] == later_ts:
             groundspeed_later, vertical_later = point["groundspeed"], point["vertical"]
-            heading_later = np.radians(point["heading"])
+            track_later = np.radians(point["track"])
             break
 
     d_groundspeed = groundspeed_later - groundspeed_earlier
     d_vertical = vertical_later - vertical_earlier
 
-    # Convert headings to vectors
-    earlier_x, earlier_y = np.sin(heading_earlier), np.cos(heading_earlier)
-    later_x, later_y = np.sin(heading_later), np.cos(heading_later)
+    # Convert ground tracks to vectors
+    earlier_x, earlier_y = np.sin(track_earlier), np.cos(track_earlier)
+    later_x, later_y = np.sin(track_earlier), np.cos(track_later)
 
     time_delta_later_earlier = (datetime.datetime.fromisoformat(later_ts) - datetime.datetime.fromisoformat(earlier_ts)).total_seconds()
     time_delta_this_earlier = (datetime.datetime.fromisoformat(this_ts) - datetime.datetime.fromisoformat(earlier_ts)).total_seconds()
@@ -579,19 +579,19 @@ def interpolateVelocityPoint(ts_data, earlier_ts, this_ts, later_ts):
     mag = np.sqrt(vx * vx + vy * vy)
     vx /= mag
     vy /= mag
-    heading = np.degrees(np.arctan2(vx,vy))
+    track = np.degrees(np.arctan2(vx,vy))
 
-    if heading < 0:
-        heading += 360.0
+    if track < 0:
+        track += 360.0
 
     if VERBOSE:
         log.info(f"Velocity interpolation")
-        log.info(f"{earlier_ts} horizontal {groundspeed_earlier:6.2f} vertical {vertical_earlier:6.2f} heading {np.degrees(heading_earlier):6.2f}")
-        log.info(f"{this_ts} horizontal {groundspeed:6.2f} vertical {vertical:6.2f} heading {heading:6.2f}")
-        log.info(f"{later_ts} horizontal {groundspeed_later:6.2f} vertical {vertical_later:6.2f} heading {np.degrees(heading_later):6.2f}")
+        log.info(f"{earlier_ts} horizontal {groundspeed_earlier:6.2f} vertical {vertical_earlier:6.2f} track {np.degrees(track_earlier):6.2f}")
+        log.info(f"{this_ts} horizontal {groundspeed:6.2f} vertical {vertical:6.2f} track {track:6.2f}")
+        log.info(f"{later_ts} horizontal {groundspeed_later:6.2f} vertical {vertical_later:6.2f} track {np.degrees(track_later):6.2f}")
 
 
-    return groundspeed, vertical, heading
+    return groundspeed, vertical, track
 
 def computeTimeSeries(derived_data, clean_data=False):
 
@@ -1259,7 +1259,7 @@ if __name__ == "__main__":
                     if VERBOSE:
                         log.info(f"Merging duplicate ICAO {icao}")
 
-                    derived_data[icao]["heading"].extend(aircraft.get("head", []))
+                    derived_data[icao]["track"].extend(aircraft.get("track", []))
 
                     derived_data[icao]["velocity"].extend(aircraft.get("velocity", []))
 
