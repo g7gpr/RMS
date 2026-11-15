@@ -14,11 +14,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-"""ADS-B aircraft tracking support for RMS.
+"""ADS-B aircraft reception and logging for RMS.
 
 Receives SBS messages from dump1090, converts aircraft locations to
 azimuth/elevation, projects them into image coordinates using the station
-platepar, and records hourly aircraft track files and ICAO to callsign mapping
+platepar, and records hourly aircraft positions, velocities and ICAO to callsign mapping
 for later upload and analysis.
 """
 
@@ -139,7 +139,7 @@ def writeOutADSBData(config,
         config: [Config] RMS configuration object.
         recording_start_time: [str] Recording start time in the format
             YYYYMMDD_HHMMSS.
-        positions: [dict] Aircraft track data keyed by ICAO code.
+        positions: [dict] Aircraft positon data keyed by ICAO code.
         icao_call_mapping:/ [list] List of observed ICAO to callsign mappings.
 
     Return:
@@ -765,7 +765,7 @@ class ADSBRecorder(multiprocessing.Process):
     """ Record ADS-B aircraft information from dump1090.
 
         Receives SBS messages from dump1090, converts aircraft positions into
-        RMS sky coordinates, records aircraft tracks and ICAO/callsign
+        RMS sky coordinates, records aircraft positions, velocities and ICAO/callsign
         observations, and periodically writes ADS-B data products to disk for
         later upload and processing.
         """
@@ -815,7 +815,7 @@ class ADSBRecorder(multiprocessing.Process):
         """ Process incoming SBS messages from dump1090.
 
         Reads data from the dump1090 SBS socket, decodes received messages,
-        records aircraft position tracks and ICAO/callsign observations, and
+        records aircraft positions, velocity and ICAO/callsign observations, and
         writes accumulated data products to disk at hourly intervals.
         """
 
@@ -877,7 +877,7 @@ class ADSBRecorder(multiprocessing.Process):
                     time.sleep(60)
 
 
-            # return self.buffer, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity
+
 
         if not data:
             # Add a sleep to avoid busy waits - this only executes when there is no data
@@ -910,7 +910,7 @@ class ADSBRecorder(multiprocessing.Process):
 
             if tx_type == SBS_MSG_AIRBORNE_POSITION:
 
-                # Create a new list in the tracks dictionary if an airborne position is received for an unrecognised ICAO
+                # Create a new list in the positions dictionary if an airborne position is received for an unrecognised ICAO
                 if icao not in self.positions:
                     self.positions[icao] = []
 
@@ -1000,7 +1000,7 @@ class ADSBRecorder(multiprocessing.Process):
     def flush(self):
         """Write all cached ADS-B data to disk.
 
-        Cached aircraft tracks and ICAO/callsign observations are written
+        Cached parsed ads-b messages are written
         immediately without affecting the current recording session.
         """
 
@@ -1064,7 +1064,7 @@ def loopADSB(config, pp, host=None, port=None):
     """ Run the ADS-B processing loop without multiprocessing.
 
     Connects to a dump1090 SBS data source, receives and processes
-    incoming ADS-B messages, records aircraft tracks and ICAO/callsign
+    incoming ADS-B messages, records aircraft positions, velocities and ICAO/callsign
     observations, and periodically writes data products to disk.
 
     This function is primarily intended for testing and debugging the
@@ -1125,18 +1125,14 @@ def generateDerivedData(adsb_directory):
 
         group = groups[timestamp]
 
-        if not (
-                "adsb" in group
-                and "icao_call" in group
-                and "velocity" in group
-        ):
+        if not "positons" in group and "icao_call" in group and "velocity" in group:
             log.warning(f"Incomplete ADS-B dataset for {timestamp}")
             continue
 
         log.info(f"Processing {timestamp}")
 
         with open(group["positions"]) as fp:
-            tracks = json.load(fp)
+            positions = json.load(fp)
 
         with open(group["icao_call"]) as fp:
             icao_callsign_mapping = json.load(fp)
@@ -1144,7 +1140,7 @@ def generateDerivedData(adsb_directory):
         with open(group["velocity"]) as fp:
             velocity = json.load(fp)
 
-        adsb_derived_data, time_series = deriveFromADSB(tracks, icao_callsign_mapping, velocity)
+        adsb_derived_data, time_series = deriveFromADSB(positions, icao_callsign_mapping, velocity)
 
 
         if adsb_derived_data:
