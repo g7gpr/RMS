@@ -126,11 +126,46 @@ def formatTimeStamp(dt):
 
     return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
+
+def filterVisible(time_series_data):
+
+    """ Return the complete time series for aircraft which were
+    visible at least once within the field of view.
+
+    All observations are retained so that pre-entry and
+    post-exit history remains available for rendering.
+
+    Arguments:
+        time_series_data: [dict] Timeseries entries
+
+    Return:
+        filtered: [dict] Timeseries entries where ICAO was visible for at least one frame
+
+    """
+
+    filtered = {}
+
+    for icao, aircraft_time_series in time_series_data.items():
+
+        visible = False
+
+        for point in aircraft_time_series:
+
+            if "x" in point and "y" in point:
+                visible = True
+                break
+
+        if visible:
+            filtered[icao] = aircraft_time_series
+
+    return filtered
+
 def writeOutADSBData(config,
                      recording_start_time,
                      positions,
                      icao_call_mapping,
                      velocity,
+                     pp = None,
                      force_flush=False):
 
     """ Write ADS-B data products to disk.
@@ -198,7 +233,6 @@ def writeOutADSBData(config,
     adsb_derived_data, time_series_data = deriveFromADSB(positions, icao_call_mapping, velocity)
 
     if adsb_derived_data:
-
         with open(adsb_derived_path, "w") as fp:
             json.dump(adsb_derived_data, fp, indent=4)
             if force_flush:
@@ -215,8 +249,20 @@ def writeOutADSBData(config,
     else:
         log.info("No ADS-B derived data to write")
 
+    time_series_filtered_by_visible = filterVisible(time_series_data)
 
-    return [adsb_path, icao_call_path, velocity_path]
+    time_series_by_icao_visible_filename = f"{config.stationID}_{recording_start_time}_ads-b_time_series_by_icao_visible.json"
+    time_series_by_icao_visible_path = os.path.join(adsb_directory, time_series_by_icao_visible_filename)
+
+    if time_series_filtered_by_visible:
+        with open(time_series_by_icao_visible_path, "w") as fp:
+            json.dump(time_series_filtered_by_visible, fp, indent=4)
+            if force_flush:
+                fp.flush()
+                os.fsync(fp.fileno())
+
+
+    return [adsb_path, icao_call_path, velocity_path, time_series_filtered_by_visible]
 
 def deriveFromADSB(positions, icao_callsign_mapping, velocity):
 
@@ -842,7 +888,7 @@ class ADSBRecorder(multiprocessing.Process):
 
                 # Write to disk
                 log.info(f"Writing out ADS-B data between {self.recording_start} and {next_start_time}")
-                writeOutADSBData(self.config, self.recording_start, self.positions, self.icao_callsign_mapping, self.velocity)
+                writeOutADSBData(self.config, self.recording_start, self.positions, self.icao_callsign_mapping, self.velocity, pp=self.pp)
 
                 # After writing out, reset the cache
                 self.positions = {}
@@ -866,12 +912,12 @@ class ADSBRecorder(multiprocessing.Process):
 
             while self.s is None:
                 try:
-                    self.s = socket.create_connection((host, port), timeout=60)
-                    log.info(f"Connection to {host}:{port} opened.")
+                    self.s = socket.create_connection((self.config.dump1090_host, self.config.dump1090_port), timeout=60)
+                    log.info(f"Connection to {self.config.dump1090_host}:{self.config.dump1090_port} opened.")
 
                 except OSError as e:
                     log.info(
-                        f"Connection to {host}:{port} failed "
+                        f"Connection to {self.config.dump1090_host}:{self.config.dump1090_port} failed "
                         f"({e}). Waiting for retry."
                     )
                     time.sleep(60)
@@ -1200,8 +1246,8 @@ if __name__ == "__main__":
     host, port = cml_args.host, cml_args.port
 
     # If no command line arguments given, then use settings in the config file
-    host = config.dump1090_host if host is None else host
-    port = config.dump1090_port if port is None else port
+    config.dump1090_host = config.dump1090_host if host is None else host
+    config.dump1090_port = config.dump1090_port if port is None else port
 
     # Initialize the logger
     log_manager = LoggingManager()
