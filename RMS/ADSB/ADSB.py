@@ -346,7 +346,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
                 if "x" in position and "y" in position:
                     x, y = position["x"], position["y"]
                 else:
-                    x, y, = -1, -1
+                    x, y, = None, None
                 position_ts = ts
                 if position_data_pointer < len(position_data) - 1:
                     position_data_pointer += 1
@@ -404,7 +404,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
 
 
 
-        if x == -1 and y == -1:
+        if x == -1 and y == -1 or x is None or y is None:
 
 
 
