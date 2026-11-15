@@ -297,7 +297,7 @@ class Config:
         self.frame_dir = "FramesFiles"
         self.video_dir = "VideoFiles"
         self.times_dir = "TimeFiles"
-        self.adsb_dir = "ADSB"
+        self.adsb_dir = "ADS-B"
 
         # days of logfiles to keep
         self.logdays_to_keep = 30
@@ -946,8 +946,8 @@ def parseSystem(config, parser):
     if parser.has_option(section, "public_elevation"):
         config.pub_elevation = parser.getfloat(section, "public_elevation")
 
-    if parser.has_option(section, "adsb_enabled"):
-        config.adsb_enabled = parser.getboolean(section, "adsb_enabled")
+    if parser.has_option(section, "ads-b_enabled"):
+        config.adsb_enabled = parser.getboolean(section, "ads-b_enabled")
 
     if parser.has_option(section, "dump1090_host"):
         config.dump1090_host = parser.get(section, "dump1090_host")
@@ -1053,8 +1053,8 @@ def parseCapture(config, parser):
     if parser.has_option(section, "times_dir"):
         config.times_dir = parser.get(section, "times_dir")
 
-    if parser.has_option(section, "adsb_dir"):
-        config.adsb_dir = parser.get(section, "adsb_dir")
+    if parser.has_option(section, "ads-b_dir"):
+        config.adsb_dir = parser.get(section, "ads-b_dir")
 
     if parser.has_option(section, "width"):
         config.width = parser.getint(section, "width")
