@@ -1113,7 +1113,7 @@ def generateDerivedData(adsb_directory):
             groups[timestamp] = {}
 
         if basename.endswith("_ads-b_positions.json"):
-            groups[timestamp]["adsb"] = filename
+            groups[timestamp]["positions"] = filename
 
         elif basename.endswith("_ads-b_icao_call.json"):
             groups[timestamp]["icao_call"] = filename
@@ -1135,7 +1135,7 @@ def generateDerivedData(adsb_directory):
 
         log.info(f"Processing {timestamp}")
 
-        with open(group["adsb"]) as fp:
+        with open(group["positions"]) as fp:
             tracks = json.load(fp)
 
         with open(group["icao_call"]) as fp:
