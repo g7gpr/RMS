@@ -128,7 +128,7 @@ def formatTimeStamp(dt):
 
 def writeOutADSBData(config,
                      recording_start_time,
-                     tracks,
+                     positions,
                      icao_call_mapping,
                      velocity,
                      force_flush=False):
@@ -139,7 +139,7 @@ def writeOutADSBData(config,
         config: [Config] RMS configuration object.
         recording_start_time: [str] Recording start time in the format
             YYYYMMDD_HHMMSS.
-        tracks: [dict] Aircraft track data keyed by ICAO code.
+        positions: [dict] Aircraft track data keyed by ICAO code.
         icao_call_mapping:/ [list] List of observed ICAO to callsign mappings.
 
     Return:
@@ -152,15 +152,15 @@ def writeOutADSBData(config,
     adsb_filename = f"{config.stationID}_{recording_start_time}_adsb.json"
     adsb_path = os.path.join(adsb_directory, adsb_filename)
 
-    if tracks:
+    if positions:
 
         with open(adsb_path, "w") as fp:
-            json.dump(tracks, fp, indent=4)
+            json.dump(positions, fp, indent=4)
             if force_flush:
                 fp.flush()
                 os.fsync(fp.fileno())
     else:
-        log.info("No ADS-B data to write")
+        log.info("No ADS-B position data to write")
 
     icao_call_filename = f"{config.stationID}_{recording_start_time}_icao_call.json"
     icao_call_path = os.path.join(adsb_directory, icao_call_filename)
@@ -173,7 +173,7 @@ def writeOutADSBData(config,
                 fp.flush()
                 os.fsync(fp.fileno())
     else:
-        log.info("No ICAO to callsign mapping data to write")
+        log.info("No ADSB-B ICAO to callsign mapping data to write")
 
     velocity_filename = f"{config.stationID}_{recording_start_time}_velocity.json"
     velocity_path = os.path.join(adsb_directory, velocity_filename)
@@ -186,7 +186,7 @@ def writeOutADSBData(config,
                 fp.flush()
                 os.fsync(fp.fileno())
     else:
-        log.info("No velocity data to write")
+        log.info("No ADSB-B velocity data to write")
 
     adsb_derived_filename = f"{config.stationID}_{recording_start_time}_adsb_derived.json"
     adsb_derived_path = os.path.join(adsb_directory, adsb_derived_filename)
@@ -195,7 +195,7 @@ def writeOutADSBData(config,
     time_series_path = os.path.join(adsb_directory, time_series_by_icao_filename)
 
     # Produce derived data
-    adsb_derived_data, time_series_data = deriveFromADSB(tracks, icao_call_mapping, velocity)
+    adsb_derived_data, time_series_data = deriveFromADSB(positions, icao_call_mapping, velocity)
 
     if adsb_derived_data:
 
@@ -218,18 +218,18 @@ def writeOutADSBData(config,
 
     return [adsb_path, icao_call_path, velocity_path]
 
-def deriveFromADSB(tracks, icao_callsign_mapping, velocity):
+def deriveFromADSB(positions, icao_callsign_mapping, velocity):
 
     derived_data = {}
 
-    all_icaos = set(tracks.keys())
+    all_icaos = set(positions.keys())
     all_icaos.update(velocity.keys())
 
 
     for icao in sorted(all_icaos):
 
         derived_data[icao] = {
-            "heading": tracks.get(icao, []),
+            "track": positions.get(icao, []),
             "velocity": velocity.get(icao, []),
             "callsigns": [obs for obs in icao_callsign_mapping if obs["icao"] == icao]
         }
@@ -241,7 +241,7 @@ def deriveFromADSB(tracks, icao_callsign_mapping, velocity):
 
 def extractStreams(derived_data, icao):
 
-    track_data = derived_data[icao]["heading"]
+    track_data = derived_data[icao]["track"]
     velocity_data = derived_data[icao]["velocity"]
     callsign_data = derived_data[icao]["callsigns"]
 
@@ -252,12 +252,12 @@ def extractTimestamps(derived_data, icao):
 
 
     # Get the data streams from the derived data
-    track_data, velocity_data, callsign_data = extractStreams(derived_data, icao)
+    position_data, velocity_data, callsign_data = extractStreams(derived_data, icao)
 
     # Get every timestamp for this icao
     ts_list = []
 
-    for entry in track_data:
+    for entry in position_data:
         ts_list.append(entry["ts"])
     for entry in velocity_data:
         ts_list.append(entry["ts"])
@@ -274,14 +274,14 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
 
     if VERBOSE:
         log.info(f"Processing {icao_iterator} with {len(ts_list)} timestamps")
-    track_data, velocity_data, callsign_data = extractStreams(derived_data, icao_iterator)
+    position_data, velocity_data, callsign_data = extractStreams(derived_data, icao_iterator)
 
     icao_received, callsign, lat, lon, alt, groundspeed_m_s, vertical_m_s, heading = None, None, None, None, None, None, None, None
     previous_dt_ts, d_dt_ts = None, None
     x, y = None, None
-    track_ts, velocity_ts, callsign_ts = None, None, None
+    position_ts, velocity_ts, callsign_ts = None, None, None
 
-    track_data_pointer = 0
+    position_data_pointer = 0
     velocity_data_pointer = 0
     callsign_data_pointer = 0
 
@@ -293,17 +293,17 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
     previous_total_specific_energy = None
     for ts in ts_list:
 
-        if track_data:
-            if track_data[track_data_pointer]["ts"] == ts:
-                track = track_data[track_data_pointer]
-                lat, lon, alt = track["lat"], track["lon"], track["alt"]
-                if "x" in track and "y" in track:
-                    x, y = track["x"], track["y"]
+        if position_data:
+            if position_data[position_data_pointer]["ts"] == ts:
+                position = position_data[position_data_pointer]
+                lat, lon, alt = position["lat"], position["lon"], position["alt"]
+                if "x" in position and "y" in position:
+                    x, y = position["x"], position["y"]
                 else:
                     x, y, = -1, -1
-                track_ts = ts
-                if track_data_pointer < len(track_data) - 1:
-                    track_data_pointer += 1
+                position_ts = ts
+                if position_data_pointer < len(position_data) - 1:
+                    position_data_pointer += 1
 
         if velocity_data:
             if velocity_data[velocity_data_pointer]["ts"] == ts:
@@ -327,7 +327,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
             if ts is None or icao_received is None or callsign is None or lat is None or lon is None or alt is None or heading is None:
                 continue
 
-            if groundspeed_m_s is None or vertical_m_s is None or track_ts is None or callsign_ts is None:
+            if groundspeed_m_s is None or vertical_m_s is None or position_ts is None or callsign_ts is None:
                 continue
 
         dt_ts = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S.%f")
@@ -373,7 +373,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
                                            "heading": heading,
                                            "specific_energy": aircraft_total_specific_energy,
                                            "d_specific_energy_s": d_specific_energy_s,
-                                           "track_ts": track_ts,
+                                           "position_ts": position_ts,
                                            "velocity_ts": velocity_ts,
                                            "callsign_ts": callsign_ts})
 
@@ -392,7 +392,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
                                            "d_specific_energy_s": d_specific_energy_s,
                                            "x": x,
                                            "y": y,
-                                           "track_ts": track_ts,
+                                           "position_ts": position_ts,
                                            "velocity_ts": velocity_ts,
                                            "callsign_ts": callsign_ts})
 
@@ -426,15 +426,15 @@ def interpolateLatLonAlt(ts_data, icao_iterator):
 
     if VERBOSE:
         log.info(f"Interpolating lat lon alt for {icao_iterator}")
-    received_track_data_times = []
+    received_position_data_times = []
 
 
 
     aircraft_ts_data = ts_data[icao_iterator]
 
     for data_point in aircraft_ts_data:
-        if data_point["track_ts"] == data_point["ts"]:
-            received_track_data_times.append(data_point["ts"])
+        if data_point["position_ts"] == data_point["ts"]:
+            received_position_data_times.append(data_point["ts"])
 
 
 
@@ -442,19 +442,19 @@ def interpolateLatLonAlt(ts_data, icao_iterator):
 
     for data_point in aircraft_ts_data:
         # Detect interpolated data
-        track_ts = data_point["track_ts"]
+        position_ts = data_point["position_ts"]
         message_ts = data_point["ts"]
-        if track_ts != message_ts:
-            i = bisect.bisect_left(received_track_data_times, message_ts)
+        if position_ts != message_ts:
+            i = bisect.bisect_left(received_position_data_times, message_ts)
             earlier_index = i - 1 if i > 0 else None
-            later_index = i if i < len(received_track_data_times) else None
+            later_index = i if i < len(received_position_data_times) else None
 
             if earlier_index is None or later_index is None:
                 continue
 
-            earlier_ts = received_track_data_times[earlier_index]
+            earlier_ts = received_position_data_times[earlier_index]
             this_ts = data_point['ts']
-            later_ts = received_track_data_times[later_index]
+            later_ts = received_position_data_times[later_index]
 
             lat, lon, alt = interpolateLatLonAltPoint(aircraft_ts_data, earlier_ts, this_ts, later_ts)
             data_point["lat"], data_point["lon"], data_point["alt"] = lat, lon, alt
@@ -747,11 +747,11 @@ def parseSBS(fields, pp):
         d = {"ts": ts,
              "groundspeed": groundspeed_m_s,
              "vertical_rate": vertical_rate_m_s,
-             "heading": track_deg,
+             "track": track_deg,
              "jd": jd_message}
 
         if VERBOSE:
-            log.info(f"Recording a velocity message from {icao} groundspeed:{groundspeed_m_s:.0f}m/s vertical:{vertical_rate_m_s:.0f}m/s")
+            log.info(f"Recording a velocity message from {icao} groundspeed:{groundspeed_m_s:.0f}m/s vertical:{vertical_rate_m_s:.0f}m/s track:{track_deg}")
 
         return tx_type, icao, d
 
@@ -783,7 +783,7 @@ class ADSBRecorder(multiprocessing.Process):
         self.exit = multiprocessing.Event()
 
         self.config = config                    # Config object
-        self.tracks = {}                        # Store for received location data
+        self.positions = {}                        # Store for received location data
         self.icao_callsign_mapping = []         # Store for received icao to callsign information
         self.velocity = {}                      # Store for received velocity information
         self.s = None                           # Connection object
@@ -842,10 +842,10 @@ class ADSBRecorder(multiprocessing.Process):
 
                 # Write to disk
                 log.info(f"Writing out ADS-B data between {self.recording_start} and {next_start_time}")
-                writeOutADSBData(self.config, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity)
+                writeOutADSBData(self.config, self.recording_start, self.positions, self.icao_callsign_mapping, self.velocity)
 
                 # After writing out, reset the cache
-                self.tracks = {}
+                self.positions = {}
                 self.icao_callsign_mapping = []
 
                 # Reset the recording start time variables
@@ -882,7 +882,7 @@ class ADSBRecorder(multiprocessing.Process):
         if not data:
             # Add a sleep to avoid busy waits - this only executes when there is no data
             time.sleep(1)
-            return self.buffer, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity
+            return self.buffer, self.recording_start, self.positions, self.icao_callsign_mapping, self.velocity
 
         # Add data to the buffer
         self.buffer +=  data
@@ -911,11 +911,11 @@ class ADSBRecorder(multiprocessing.Process):
             if tx_type == SBS_MSG_AIRBORNE_POSITION:
 
                 # Create a new list in the tracks dictionary if an airborne position is received for an unrecognised ICAO
-                if icao not in self.tracks:
-                    self.tracks[icao] = []
+                if icao not in self.positions:
+                    self.positions[icao] = []
 
                 # Record the airborne position against the ICAO
-                self.tracks[icao].append(d)
+                self.positions[icao].append(d)
 
             elif tx_type == SBS_MSG_AIRBORNE_VELOCITY:
 
@@ -930,7 +930,7 @@ class ADSBRecorder(multiprocessing.Process):
                 # Record all identification messages, deduplication is later in the pipeline
                 self.icao_callsign_mapping.append(d)
 
-        return self.buffer, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity
+        return self.buffer, self.recording_start, self.positions, self.icao_callsign_mapping, self.velocity
 
     def start(self):
 
@@ -995,7 +995,7 @@ class ADSBRecorder(multiprocessing.Process):
             pass
 
         log.info("ADS-B recorder has finished - writing out cached data")
-        writeOutADSBData(self.config, self.recording_start, self.tracks, self.icao_callsign_mapping, self.velocity, force_flush=True)
+        writeOutADSBData(self.config, self.recording_start, self.positions, self.icao_callsign_mapping, self.velocity, force_flush=True)
 
     def flush(self):
         """Write all cached ADS-B data to disk.
@@ -1009,7 +1009,7 @@ class ADSBRecorder(multiprocessing.Process):
         writeOutADSBData(
             self.config,
             self.recording_start,
-            self.tracks,
+            self.positions,
             self.icao_callsign_mapping,
             self.velocity,
             force_flush=True
