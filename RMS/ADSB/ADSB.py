@@ -149,8 +149,8 @@ def writeOutADSBData(config,
     adsb_directory = os.path.expanduser(os.path.join(config.data_dir, config.adsb_dir))
     os.makedirs(adsb_directory, exist_ok=True)
 
-    adsb_filename = f"{config.stationID}_{recording_start_time}_adsb.json"
-    adsb_path = os.path.join(adsb_directory, adsb_filename)
+    adsb_positions_filename = f"{config.stationID}_{recording_start_time}_ads-b_positions.json"
+    adsb_path = os.path.join(adsb_directory, adsb_positions_filename)
 
     if positions:
 
@@ -162,7 +162,7 @@ def writeOutADSBData(config,
     else:
         log.info("No ADS-B position data to write")
 
-    icao_call_filename = f"{config.stationID}_{recording_start_time}_icao_call.json"
+    icao_call_filename = f"{config.stationID}_{recording_start_time}_ads-b_icao_call.json"
     icao_call_path = os.path.join(adsb_directory, icao_call_filename)
 
     if icao_call_mapping:
@@ -175,7 +175,7 @@ def writeOutADSBData(config,
     else:
         log.info("No ADSB-B ICAO to callsign mapping data to write")
 
-    velocity_filename = f"{config.stationID}_{recording_start_time}_velocity.json"
+    velocity_filename = f"{config.stationID}_{recording_start_time}_ads-b_velocity.json"
     velocity_path = os.path.join(adsb_directory, velocity_filename)
 
     if velocity:
@@ -188,10 +188,10 @@ def writeOutADSBData(config,
     else:
         log.info("No ADSB-B velocity data to write")
 
-    adsb_derived_filename = f"{config.stationID}_{recording_start_time}_adsb_derived.json"
+    adsb_derived_filename = f"{config.stationID}_{recording_start_time}_ads-b_derived.json"
     adsb_derived_path = os.path.join(adsb_directory, adsb_derived_filename)
 
-    time_series_by_icao_filename = f"{config.stationID}_{recording_start_time}_adsb_time_series_by_icao.json"
+    time_series_by_icao_filename = f"{config.stationID}_{recording_start_time}_ads-b_time_series_by_icao.json"
     time_series_path = os.path.join(adsb_directory, time_series_by_icao_filename)
 
     # Produce derived data
@@ -229,7 +229,7 @@ def deriveFromADSB(positions, icao_callsign_mapping, velocity):
     for icao in sorted(all_icaos):
 
         derived_data[icao] = {
-            "track": positions.get(icao, []),
+            "positions": positions.get(icao, []),
             "velocity": velocity.get(icao, []),
             "callsigns": [obs for obs in icao_callsign_mapping if obs["icao"] == icao]
         }
@@ -241,11 +241,11 @@ def deriveFromADSB(positions, icao_callsign_mapping, velocity):
 
 def extractStreams(derived_data, icao):
 
-    track_data = derived_data[icao]["track"]
+    position_data = derived_data[icao]["positions"]
     velocity_data = derived_data[icao]["velocity"]
     callsign_data = derived_data[icao]["callsigns"]
 
-    return track_data, velocity_data, callsign_data
+    return position_data, velocity_data, callsign_data
 
 def extractTimestamps(derived_data, icao):
 
@@ -564,7 +564,7 @@ def interpolateVelocityPoint(ts_data, earlier_ts, this_ts, later_ts):
 
     # Convert ground tracks to vectors
     earlier_x, earlier_y = np.sin(track_earlier), np.cos(track_earlier)
-    later_x, later_y = np.sin(track_earlier), np.cos(track_later)
+    later_x, later_y = np.sin(track_later), np.cos(track_later)
 
     time_delta_later_earlier = (datetime.datetime.fromisoformat(later_ts) - datetime.datetime.fromisoformat(earlier_ts)).total_seconds()
     time_delta_this_earlier = (datetime.datetime.fromisoformat(this_ts) - datetime.datetime.fromisoformat(earlier_ts)).total_seconds()
@@ -1106,19 +1106,19 @@ def generateDerivedData(adsb_directory):
 
         parts = basename.split("_")
 
-        # AU0004_20261112_010000_adsb.json
+
         timestamp = f"{parts[1]}_{parts[2]}"
 
         if timestamp not in groups:
             groups[timestamp] = {}
 
-        if basename.endswith("_adsb.json"):
+        if basename.endswith("_ads-b_positions.json"):
             groups[timestamp]["adsb"] = filename
 
-        elif basename.endswith("_icao_call.json"):
+        elif basename.endswith("_ads-b_icao_call.json"):
             groups[timestamp]["icao_call"] = filename
 
-        elif basename.endswith("_velocity.json"):
+        elif basename.endswith("_ads-b_velocity.json"):
             groups[timestamp]["velocity"] = filename
 
     for timestamp in sorted(groups):
@@ -1144,12 +1144,12 @@ def generateDerivedData(adsb_directory):
         with open(group["velocity"]) as fp:
             velocity = json.load(fp)
 
-        adsb_derived_data = deriveFromADSB(tracks, icao_callsign_mapping, velocity)
+        adsb_derived_data, time_series = deriveFromADSB(tracks, icao_callsign_mapping, velocity)
 
 
         if adsb_derived_data:
 
-            adsb_derived_filename = f"{config.stationID}_{timestamp}_adsb_derived.json"
+            adsb_derived_filename = f"{config.stationID}_{timestamp}_ads-b_derived.json"
             adsb_derived_path = os.path.join(adsb_directory, adsb_derived_filename)
 
             with open(adsb_derived_path, "w") as fp:
@@ -1241,7 +1241,7 @@ if __name__ == "__main__":
 
         derived_data = {}
 
-        for filename in sorted(glob.glob(os.path.join(time_series_path, "*_adsb_derived.json"))):
+        for filename in sorted(glob.glob(os.path.join(time_series_path, "*_ads-b_derived.json"))):
 
             log.info(f"Loading {filename}")
 
@@ -1259,7 +1259,7 @@ if __name__ == "__main__":
                     if VERBOSE:
                         log.info(f"Merging duplicate ICAO {icao}")
 
-                    derived_data[icao]["track"].extend(aircraft.get("track", []))
+                    derived_data[icao]["positions"].extend(aircraft.get("positions", []))
 
                     derived_data[icao]["velocity"].extend(aircraft.get("velocity", []))
 
