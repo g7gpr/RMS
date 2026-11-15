@@ -309,7 +309,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
             if velocity_data[velocity_data_pointer]["ts"] == ts:
                 velocity = velocity_data[velocity_data_pointer]
                 groundspeed_m_s, vertical_m_s = velocity["groundspeed"], velocity["vertical_rate"]
-                heading = velocity["heading"]
+                heading = velocity["track"]
                 velocity_ts = ts
                 if velocity_data_pointer < len(velocity_data) - 1:
                     velocity_data_pointer += 1
