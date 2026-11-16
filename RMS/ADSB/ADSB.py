@@ -56,7 +56,7 @@ VVERBOSE = True
 # 12 - ten minutes
 # 13 - one minute
 
-SLICE_LENGTH = 11
+SLICE_LENGTH = 12
 
 # Constants
 
@@ -405,7 +405,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
 
 
 
-        if x == -1 and y == -1 or x is None or y is None:
+        if x == -1 or y == -1 or x is None or y is None:
 
 
 
@@ -426,6 +426,7 @@ def buildICAOTimeSeries(derived_data, icao_iterator, ts_list, ts_data, clean_dat
 
         else:
 
+            log.info(f"Position visible on image at {x}, {y}")
             ts_data[icao_iterator].append({"ts": ts,
                                            "icao": icao_received,
                                            "callsign": callsign,
@@ -753,7 +754,7 @@ def parseSBS(fields, pp):
             # Test against image range, and add to dictionary if within range
             if 0 < x < pp.X_res and 0 < y < pp.Y_res:
                 d["x"], d["y"] = x, y
-                log.info(f"{icao} at {x},{y}")
+                log.info(f"{icao} visible at {x},{y}")
 
         if VERBOSE:
             log.info(f"Received a position message from {icao} at lat:{latitude:8.5f} deg lon:{longitude:8.5f} deg alt:{altitude:5.0f} metres")
