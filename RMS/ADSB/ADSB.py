@@ -59,7 +59,7 @@ LOG_ESCAPING = False
 # 12 - ten minutes
 # 13 - one minute
 
-SLICE_LENGTH = 11
+SLICE_LENGTH = 12
 
 # Constants
 
@@ -147,6 +147,13 @@ CALLSIGN_TABLE = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ#####_###############0123456789####
 log = getLogger("rmslogger")
 
 
+def isoAgeSeconds(newer, older):
+
+
+    newer_dt = datetime.datetime.fromisoformat(newer)
+    older_dt = datetime.datetime.fromisoformat(older)
+
+    return (newer_dt - older_dt).total_seconds()
 
 
 def isAircraftSurfacePosition(tc):
@@ -156,7 +163,7 @@ def isAircraftSurfacePosition(tc):
 def isAircraftIdentification(tc):
     return TC_AIRCRAFT_IDENTIFICATION_MIN <= tc <= TC_AIRCRAFT_IDENTIFICATION_MAX
 
-def isBarometricPosition(tc):
+def isAirbornePosition(tc):
     return TC_AIRBORNE_POSITION_BARO_MIN <= tc <= TC_AIRBORNE_POSITION_BARO_MAX
 
 def isGNSSPosition(tc):
@@ -229,131 +236,6 @@ def filterVisible(time_series_data):
 
     return filtered
 
-def writeOutADSBData(config,
-                     recording_start_time,
-                     positions,
-                     icao_call_mapping,
-                     velocity,
-                     pp = None,
-                     force_flush=False):
-
-    """ Write ADS-B data products to disk.
-
-    Arguments:
-        config: [Config] RMS configuration object.
-        recording_start_time: [str] Recording start time in the format
-            YYYYMMDD_HHMMSS.
-        positions: [dict] Aircraft positon data keyed by ICAO code.
-        icao_call_mapping:/ [list] List of observed ICAO to callsign mappings.
-
-    Return:
-        file_paths: [list] Paths of the generated JSON files.
-    """
-
-    adsb_directory = os.path.expanduser(os.path.join(config.data_dir, config.adsb_dir))
-    os.makedirs(adsb_directory, exist_ok=True)
-
-    adsb_positions_filename = f"{config.stationID}_{recording_start_time}_ads-b_positions.json"
-    adsb_path = os.path.join(adsb_directory, adsb_positions_filename)
-
-    if positions:
-
-        with open(adsb_path, "w") as fp:
-            json.dump(positions, fp, indent=4)
-            if force_flush:
-                fp.flush()
-                os.fsync(fp.fileno())
-    else:
-        log.info("No ADS-B position data to write")
-
-    icao_call_filename = f"{config.stationID}_{recording_start_time}_ads-b_icao_call.json"
-    icao_call_path = os.path.join(adsb_directory, icao_call_filename)
-
-    if icao_call_mapping:
-
-        with open(icao_call_path, "w") as fp:
-            json.dump(icao_call_mapping, fp, indent=4)
-            if force_flush:
-                fp.flush()
-                os.fsync(fp.fileno())
-    else:
-        log.info("No ADSB-B ICAO to callsign mapping data to write")
-
-    velocity_filename = f"{config.stationID}_{recording_start_time}_ads-b_velocity.json"
-    velocity_path = os.path.join(adsb_directory, velocity_filename)
-
-    if velocity:
-
-        with open(velocity_path, "w") as fp:
-            json.dump(velocity, fp, indent=4)
-            if force_flush:
-                fp.flush()
-                os.fsync(fp.fileno())
-    else:
-        log.info("No ADSB-B velocity data to write")
-
-    adsb_derived_filename = f"{config.stationID}_{recording_start_time}_ads-b_derived.json"
-    adsb_derived_path = os.path.join(adsb_directory, adsb_derived_filename)
-
-    time_series_by_icao_filename = f"{config.stationID}_{recording_start_time}_ads-b_time_series_by_icao.json"
-    time_series_path = os.path.join(adsb_directory, time_series_by_icao_filename)
-
-    # Produce derived data
-    adsb_derived_data, time_series_data = deriveFromADSB(positions, icao_call_mapping, velocity)
-
-    if adsb_derived_data:
-        with open(adsb_derived_path, "w") as fp:
-            json.dump(adsb_derived_data, fp, indent=4)
-            if force_flush:
-                fp.flush()
-                os.fsync(fp.fileno())
-
-    if time_series_data:
-        with open(time_series_path, "w") as fp:
-            json.dump(time_series_data, fp, indent=4)
-            if force_flush:
-                fp.flush()
-                os.fsync(fp.fileno())
-
-    else:
-        log.info("No ADS-B derived data to write")
-
-    time_series_filtered_by_visible = filterVisible(time_series_data)
-
-    time_series_by_icao_visible_filename = f"{config.stationID}_{recording_start_time}_ads-b_time_series_by_icao_visible.json"
-    time_series_by_icao_visible_path = os.path.join(adsb_directory, time_series_by_icao_visible_filename)
-
-    if time_series_filtered_by_visible:
-        with open(time_series_by_icao_visible_path, "w") as fp:
-            json.dump(time_series_filtered_by_visible, fp, indent=4)
-            if force_flush:
-                fp.flush()
-                os.fsync(fp.fileno())
-    else:
-        log.info("No ADS-B visible data to write")
-
-    return [adsb_path, icao_call_path, velocity_path, time_series_filtered_by_visible]
-
-def deriveFromADSB(positions, icao_callsign_mapping, velocity):
-
-    derived_data = {}
-
-    all_icaos = set(positions.keys())
-    all_icaos.update(velocity.keys())
-
-
-    for icao in sorted(all_icaos):
-
-        derived_data[icao] = {
-            "positions": positions.get(icao, []),
-            "velocity": velocity.get(icao, []),
-            "callsigns": [obs for obs in icao_callsign_mapping if obs["icao"] == icao]
-        }
-
-    time_series_by_icao = computeTimeSeries(derived_data)
-
-
-    return derived_data, time_series_by_icao
 
 def extractStreams(derived_data, icao):
 
@@ -740,141 +622,7 @@ def computeTimeSeries(derived_data, clean_data=False):
 
 
 
-def parseSBS(fields, pp):
-    """ Parse an SBS message received from dump1090.
 
-       Decodes SBS messages and converts aircraft positions into RMS sky
-       coordinates. Airborne position messages are transformed into
-       azimuth/elevation, right ascension/declination, and image
-       coordinates when the aircraft falls within the station field of view.
-
-       Identification messages are converted into ICAO/callsign associations.
-
-       Arguments:
-           fields: [list] SBS message split into fields.
-           pp: [Platepar] Station platepar object.
-
-       Return:
-           tx_type: [str] SBS transmission type.
-           icao: [str] Aircraft ICAO identifier.
-           d: [dict] Dictionary containing decoded message information.
-       """
-
-
-    # Discard incomplete messages
-    if len(fields) < 22:
-        return None, None, None
-
-    # Discard messages which are not an SBS message
-    if fields[FIELD_MSG_TYPE] != SBS_MESSAGE_TYPE:
-        return None, None, None
-
-    # Create date objects from received messages
-    generated_dt = datetime.datetime.strptime(
-        f"{fields[FIELD_GENERATED_DATE]} {fields[FIELD_GENERATED_TIME]}",
-                "%Y/%m/%d %H:%M:%S.%f")
-
-    # Create a timestamp and jd
-    ts = formatTimeStamp(generated_dt)
-    jd_message = datetime2JD(generated_dt)
-
-    # Extract key fields for reuse
-    tx_type = fields[FIELD_TX_TYPE]
-    icao = fields[FIELD_ICAO]
-
-
-    # Parse an airborne position message
-    if tx_type == SBS_MSG_AIRBORNE_POSITION:
-
-        # Check all position fields are populated
-        if fields[FIELD_LATITUDE] != "" and fields[FIELD_LONGITUDE] != "" and fields[FIELD_ALTITUDE] != "":
-            latitude = float(fields[FIELD_LATITUDE])
-            longitude = float(fields[FIELD_LONGITUDE])
-            altitude = float(fields[FIELD_ALTITUDE]) * FT_TO_M
-        else:
-            return tx_type, None, None
-
-        # Compute vectors in ECEF
-        vect_aircraft = latLonAlt2ECEF(np.radians(latitude), np.radians(longitude), altitude)
-        vect_station = latLonAlt2ECEF(np.radians(pp.lat), np.radians(pp.lon), pp.elev)
-
-        # Compute az and alt from the station to the aircraft
-        az, alt = ECEF2AltAz(vect_station, vect_aircraft)
-
-        # Convert the aircraft's position into sky coordinates
-        ra_aircraft, dec_aircraft = altAz2RADec(az, alt, jd_message, pp.lat, pp.lon)
-
-        # Compute the angular distance from the centre of the FoV
-        ra_c, dec_c, max_sep, _, _ = getPlateparSkyParameters(pp, jd_message)
-        ang_sep_deg = angularSeparationDeg(ra_aircraft, dec_aircraft, ra_c, dec_c)[0]
-
-        # Prepare a dictionary of key parameters
-        d = {"ts": ts,
-             "lat": latitude, "lon": longitude, "alt": altitude,
-             "az": az, "ele": alt,
-             "ang_sep_deg": ang_sep_deg, "jd": jd_message, "ra": ra_aircraft, "dec": dec_aircraft}
-
-        # Only compute image coordinates when within the sky cone
-        if ang_sep_deg < max_sep:
-            # Compute image coordinates
-            x_arr, y_arr = raDecToXYPP(np.array([ra_aircraft]), np.array([dec_aircraft]), jd_message, pp)
-            x, y = int(x_arr[0]), int(y_arr[0])
-
-            # Test against image range, and add to dictionary if within range
-            if 0 < x < pp.X_res and 0 < y < pp.Y_res:
-                d["x"], d["y"] = x, y
-                log.info(f"{icao} visible at {x},{y}")
-
-        if VERBOSE:
-            log.info(f"Received a position message from {icao} at lat:{latitude:8.5f} deg lon:{longitude:8.5f} deg alt:{altitude:5.0f} metres")
-
-
-        return tx_type, icao, d
-
-    # Parse an identification message
-    elif tx_type == SBS_MSG_IDENTIFICATION:
-
-        callsign = fields[FIELD_CALLSIGN].strip()
-
-        # Record the relationship between ICAO and callsign from this message
-        d = {"ts": ts,
-             "icao": icao,
-             "callsign": callsign}
-
-        if VERBOSE:
-            log.info(f"Received an identification message from {icao} using {callsign}")
-
-        return tx_type, icao, d
-
-    # Parse a velocity message
-    elif tx_type == SBS_MSG_AIRBORNE_VELOCITY:
-
-        groundspeed, v_rate = fields[FIELD_GROUNDSPEED], fields[FIELD_VERTICAL_RATE]
-        track = fields[FIELD_TRACK]
-
-        if groundspeed == "" or v_rate == "" or track == "":
-            return None, None, None
-
-        # Convert to floats in SI units
-        groundspeed_m_s = float(groundspeed) * KT_TO_MS
-        vertical_rate_m_s  = float(v_rate) * FT_TO_M / 60
-        track_deg = float(track)
-
-        # Create a dictionary of values
-        d = {"ts": ts,
-             "groundspeed": groundspeed_m_s,
-             "vertical_rate": vertical_rate_m_s,
-             "track": track_deg,
-             "jd": jd_message}
-
-        if VERBOSE:
-            log.info(f"Recording a velocity message from {icao} groundspeed:{groundspeed_m_s:.0f}m/s vertical:{vertical_rate_m_s:.0f}m/s track:{track_deg}")
-
-        return tx_type, icao, d
-
-
-    # If nothing has been parsed, return
-    return tx_type, None, None
 
 
 def cprNLFunction(lat):
@@ -960,7 +708,7 @@ def cprDlonFunction(lat, isodd, surface=0):
     return 360.0 / cprNFunction(lat, isodd)
 
 
-def decode_cpr_airborne(even_cprlat,
+def decodeCPRAirborne(even_cprlat,
                         even_cprlon,
                         odd_cprlat,
                         odd_cprlon,
@@ -1090,6 +838,7 @@ class ADSBRecorder(multiprocessing.Process):
         self.field_length_list = []
         self.latest_timestamp = None
         self.last_log_line = ""
+        self.history = {}
 
         # Initalise and read the platepar
         platepar_path = os.path.join(config.config_file_path, config.platepar_name)
@@ -1114,18 +863,13 @@ class ADSBRecorder(multiprocessing.Process):
 
     def getNow(self):
 
-        return datetime.datetime.now(tz=datetime.timezone.utc)
+        return datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
 
-    def getBeastTimstamp(self):
-
-        return self.latest_timestamp
-
-    def toTable(self, icao_list, timeout=None, write_to_log=True):
-
+    def toTable(self):
 
 
         header = ""
-        message_fields, message_headers, log_lines = [], [], []
+        message_fields, message_headers = [], []
         log_line = "\n"
 
 
@@ -1138,74 +882,82 @@ class ADSBRecorder(multiprocessing.Process):
 
             callsign = ""
             message_headers.append("Callsign")
-            if 'callsign' in self.position_cache[iterator]:
-                callsign = self.position_cache[iterator]['callsign']
+            if 'ident' in self.position_cache[iterator]:
+                if 'callsign' in self.position_cache[iterator]['ident']:
+                    callsign = self.position_cache[iterator]['ident']['callsign']
             message_fields.append(f"{callsign}")
 
             message_headers.append("Baro(ft)")
             alt_baro_message = ""
-            if 'alt_baro' in self.position_cache[iterator]:
-                alt_baro = self.position_cache[iterator]['alt_baro']
-                if alt_baro is not None:
-                    alt_baro_message = f"{alt_baro}"
+            if 'position' in self.position_cache[iterator]:
+                if 'alt_baro' in self.position_cache[iterator]['position']:
+                    alt_baro = self.position_cache[iterator]['position']['alt_baro']
+                    if alt_baro is not None:
+                        alt_baro_message = f"{alt_baro}"
 
             message_fields.append(alt_baro_message)
 
             message_headers.append("Delta(ft)")
             geom_delta_message = ""
-            if 'geom_delta' in self.position_cache[iterator]:
-                geo_delta = self.position_cache[iterator]['geom_delta']
-                if geo_delta is not None:
-                    if geo_delta > 0:
-                        sign = "+"
-                    else:
-                        sign = "-"
-                        geo_delta = - geo_delta
-                    geom_delta_message = f"{sign}{geo_delta}"
+            if 'velocity' in self.position_cache[iterator]:
+                if 'geom_delta' in self.position_cache[iterator]['velocity']:
+                    geo_delta = self.position_cache[iterator]['velocity']['geom_delta']
+                    if geo_delta is not None:
+                        if geo_delta > 0:
+                            sign = "+"
+                        else:
+                            sign = "-"
+                            geo_delta = - geo_delta
+                        geom_delta_message = f"{sign}{geo_delta}"
             message_fields.append(geom_delta_message)
 
             message_headers.append("GNSS(ft)")
             gnss_message = ""
-            if 'alt_gnss' in self.position_cache[iterator]:
-                alt_gnss = self.position_cache[iterator]['alt_gnss']
-                if alt_gnss is not None:
-                    gnss_message = f"{alt_gnss:.0f}"
+            if 'position' in self.position_cache[iterator]:
+                if 'alt_gnss' in self.position_cache[iterator]['position']:
+                    alt_gnss = self.position_cache[iterator]['position']['alt_gnss']
+                    if alt_gnss is not None:
+                        gnss_message = f"{alt_gnss:.0f}"
             message_fields.append(gnss_message)
 
             message_headers.append("Spd(kts)")
             groundspeed_message  = ""
-            if 'groundspeed' in self.position_cache[iterator]:
-                groundspeed = self.position_cache[iterator]['groundspeed']
-                if groundspeed is not None:
-                    groundspeed_message = f"{groundspeed:.1f}"
+            if 'velocity' in self.position_cache[iterator]:
+                if 'groundspeed' in self.position_cache[iterator]['velocity']:
+                    groundspeed = self.position_cache[iterator]['velocity']['groundspeed']
+                    if groundspeed is not None:
+                        groundspeed_message = f"{groundspeed:.1f}"
             message_fields.append(groundspeed_message)
 
             message_headers.append("Track(deg)")
             groundspeed_message  = ""
-            if 'track' in self.position_cache[iterator]:
-                groundspeed = self.position_cache[iterator]['track']
-                if groundspeed is not None:
-                    groundspeed_message = f"{groundspeed:.1f}"
+            if 'velocity' in self.position_cache[iterator]:
+                if 'track' in self.position_cache[iterator]['velocity']:
+                    groundspeed = self.position_cache[iterator]['velocity']['track']
+                    if groundspeed is not None:
+                        groundspeed_message = f"{groundspeed:.1f}"
             message_fields.append(groundspeed_message)
 
 
             message_headers.append("Lat(deg)")
             lat_message = ""
-            if 'lat' in self.position_cache[iterator] and "lon" in self.position_cache[iterator]:
-                lat, lon = self.position_cache[iterator]['lat'], self.position_cache[iterator]['lon']
-                if lat is not None and lon is not None:
-                    lat = self.position_cache[iterator]['lat']
-                    lat_message += f"{lat:6.4f}"
+            if 'position' in self.position_cache[iterator]:
+                if 'lat' in self.position_cache[iterator]['position'] and "lon" in self.position_cache[iterator]['position']:
+                    lat, lon = self.position_cache[iterator]['position']['lat'], self.position_cache[iterator]['position']['lon']
+                    if lat is not None and lon is not None:
+                        lat = self.position_cache[iterator]['position']['lat']
+                        lat_message += f"{lat:8.6f}"
             message_fields.append(lat_message)
 
 
             message_headers.append("Lon(deg)")
             lon_message = ""
-            if 'lat' in self.position_cache[iterator] and 'lon' in self.position_cache[iterator]:
-                lat, lon = self.position_cache[iterator]['lat'], self.position_cache[iterator]['lon']
-                if lat is not None and lon is not None:
-                    lon = self.position_cache[iterator]['lon']
-                    lon_message += f"{lon:6.4f}"
+            if 'position' in self.position_cache[iterator]:
+                if 'lat' in self.position_cache[iterator]['position'] and 'lon' in self.position_cache[iterator]['position']:
+                    lat, lon = self.position_cache[iterator]['position']['lat'], self.position_cache[iterator]['position']['lon']
+                    if lat is not None and lon is not None:
+                        lon = self.position_cache[iterator]['position']['lon']
+                        lon_message += f"{lon:8.6f}"
             message_fields.append(lon_message)
 
 
@@ -1228,47 +980,91 @@ class ADSBRecorder(multiprocessing.Process):
                 separator = "-" * len(header)
 
             if aircraft_counter == 0:
-                log_line += f"{header}\n"
+                log_line += f"\n{header}\n"
                 log_line += f"{separator}\n"
 
             log_line += f"{message}\n"
 
             if aircraft_counter == len(self.position_cache) - 1:
                 log_line += f"{separator}\n"
-                time.sleep(0.1)
 
-
-        log_lines.append(log_line)
-        if log_lines and write_to_log and self.last_log_line != log_line:
-
-
-            for line in log_lines:
-                log.info(line)
-
+        data_changed = (self.last_log_line != log_line)
         self.last_log_line = log_line
-        return header, log_lines
 
-    def decodeBeastRecord(raw):
+        return log_line, data_changed
 
-        decoded = bytearray()
+    def store(self, icao, frame_ts, write_to_log=True):
 
-        i = 2  # skip 1A 33
 
-        while i < len(raw):
 
-            if raw[i] == 0x1A:
+        data_table, data_changed = self.toTable()
+        if write_to_log and data_changed:
+            log.info(data_table)
 
-                if i + 1 < len(raw) and raw[i + 1] == 0x1A:
-                    decoded.append(0x1A)
-                    i += 2
-                else:
-                    break
 
-            else:
-                decoded.append(raw[i])
-                i += 1
+            if icao not in self.history:
+                self.history[icao] = {}
 
-        return bytes(decoded)
+            with open("/tmp/adsb.txt", "w") as f:
+                f.write(data_table)
+
+
+            self.history[icao][frame_ts] = self.position_cache[icao]
+
+        pass
+
+    def writeOutADSBData(self, pp=None, force_flush=True):
+
+        """ Write ADS-B data products to disk.
+
+        Arguments:
+            config: [Config] RMS configuration object.
+            recording_start_time: [str] Recording start time in the format
+                YYYYMMDD_HHMMSS.
+            positions: [dict] Aircraft positon data keyed by ICAO code.
+            icao_call_mapping:/ [list] List of observed ICAO to callsign mappings.
+
+        Return:
+            file_paths: [list] Paths of the generated JSON files.
+        """
+
+        adsb_directory = os.path.expanduser(os.path.join(self.config.data_dir, self.config.adsb_dir))
+        os.makedirs(adsb_directory, exist_ok=True)
+
+        adsb_positions_filename = f"{config.stationID}_{self.recording_start}_ads-b.json"
+        adsb_path = os.path.join(adsb_directory, adsb_positions_filename)
+
+        if self.position_cache:
+
+            with open(adsb_path, "w") as fp:
+                json.dump(self.history, fp, indent=4)
+                if force_flush:
+                    fp.flush()
+                    os.fsync(fp.fileno())
+        else:
+            log.info("No ADS-B position data to write")
+
+        return adsb_path
+
+    def deriveFromADSB(positions, icao_callsign_mapping, velocity):
+
+        derived_data = {}
+
+        all_icaos = set(positions.keys())
+        all_icaos.update(velocity.keys())
+
+        for icao in sorted(all_icaos):
+            derived_data[icao] = {
+                "positions": positions.get(icao, []),
+                "velocity": velocity.get(icao, []),
+                "callsigns": [obs for obs in icao_callsign_mapping if obs["icao"] == icao]
+            }
+
+        time_series_by_icao = computeTimeSeries(derived_data)
+
+        return derived_data, time_series_by_icao
+
+
 
     def parseBeastMode(self):
 
@@ -1333,6 +1129,8 @@ class ADSBRecorder(multiprocessing.Process):
             log.info(f"Buffer            {self.buffer[:ptr]}")
             log.info(f"Decoded {decoded}")
         frame = decoded[:frame_length]
+        frame_ts = int.from_bytes(frame[2:8], byteorder='big') / TICKS_PER_SECOND
+
         if VVERBOSE:
             log.info(f"Buffer before splitting {len(self.buffer)} {self.buffer}")
         self.buffer = self.buffer[ptr:]
@@ -1341,7 +1139,7 @@ class ADSBRecorder(multiprocessing.Process):
         #log.info(f"frame  {frame}")
         #log.info(f"buffer {self.buffer}")
 
-        self.latest_timestamp = int.from_bytes(frame[2:8], byteorder='big') / TICKS_PER_SECOND
+
 
         if frame_length == 16:
 
@@ -1358,6 +1156,7 @@ class ADSBRecorder(multiprocessing.Process):
             pass
 
 
+
         df = payload[0] >> 3
 
         #log.info(f"df={df} {frame}")
@@ -1372,9 +1171,12 @@ class ADSBRecorder(multiprocessing.Process):
             #log.info(f"tc={tc}")
             icao = payload[1:4].hex().upper()
 
+            if icao not in self.position_cache:
+                self.position_cache[icao] = {}
+
+
 
             if isAircraftIdentification(tc):
-
 
                 chars = []
 
@@ -1404,12 +1206,17 @@ class ADSBRecorder(multiprocessing.Process):
 
                 if icao not in self.position_cache:
                     self.position_cache[icao] = {}
-                self.position_cache[icao]['callsign'] = callsign
-                self.position_cache[icao]['callsign_ts'] = self.getBeastTimstamp()
-                self.position_cache[icao]['callsign_dt'] = self.getNow()
-                self.toTable([icao])
 
-            elif isBarometricPosition(tc):
+                if 'ident' not in self.position_cache[icao]:
+                    self.position_cache[icao]['ident'] = {}
+
+                self.position_cache[icao]['ident']['callsign'] = callsign
+                self.position_cache[icao]['ident']['callsign_ts'] = frame_ts
+                self.position_cache[icao]['ident']['callsign_dt'] = self.getNow()
+                self.position_cache[icao]['ts'] = self.position_cache[icao]['ident']['callsign_ts']
+                self.store(icao, frame_ts)
+
+            elif isAirbornePosition(tc):
 
                 if icao not in self.position_cache:
                     self.position_cache[icao] = {}
@@ -1434,46 +1241,45 @@ class ADSBRecorder(multiprocessing.Process):
 
 
 
+                if 'position' not in self.position_cache[icao]:
+                    self.position_cache[icao]['position'] = {}
+
 
 
                 if f_flag not in self.position_cache[icao]:
-                    self.position_cache[icao][f_flag] = {}
+                    self.position_cache[icao]['position'][f_flag] = {}
 
-                self.position_cache[icao]["ts"] = self.getBeastTimstamp()
-                self.position_cache[icao]["dt"] = self.getNow()
+                self.position_cache[icao]['position'][f_flag]["lat"] = cpr_lat
+                self.position_cache[icao]['position'][f_flag]["lon"] = cpr_lon
+                self.position_cache[icao]['position'][f_flag]["ts"] = frame_ts
+                self.position_cache[icao]['position'][f_flag]["dt"] = self.getNow()
 
-                self.position_cache[icao][f_flag]["lat"] = cpr_lat
-                self.position_cache[icao][f_flag]["lon"] = cpr_lon
-                self.position_cache[icao][f_flag]["ts"] = self.getBeastTimstamp()
-                self.position_cache[icao][f_flag]["dt"] = self.getNow()
+                if 0 in self.position_cache[icao]['position'] and 1 in self.position_cache[icao]['position']:
 
-                if 0 in self.position_cache[icao] and 1 in self.position_cache[icao]:
-
-                    bit_0_age = (self.latest_timestamp - self.position_cache[icao][0]["ts"])
-                    bit_1_age = (self.latest_timestamp - self.position_cache[icao][1]["ts"])
+                    bit_0_age = isoAgeSeconds(self.getNow(), self.position_cache[icao]['position'][0]["dt"])
+                    bit_1_age = isoAgeSeconds(self.getNow(), self.position_cache[icao]['position'][1]["dt"])
 
                     if max(bit_0_age, bit_1_age) < 180:
 
-                        aircraft = self.position_cache[icao]
-                        rc, lat, lon = decode_cpr_airborne(aircraft[0]["lat"], aircraft[0]["lon"], aircraft[1]["lat"],
-                                                           aircraft[1]["lon"], 0)
+                        aircraft = self.position_cache[icao]['position']
+                        rc, lat, lon = decodeCPRAirborne(aircraft[0]["lat"], aircraft[0]["lon"], aircraft[1]["lat"], aircraft[1]["lon"], 0)
 
-                        self.position_cache[icao]['lat'] = lat
-                        self.position_cache[icao]['lon'] = lon
+                        self.position_cache[icao]['position']['lat'] = lat
+                        self.position_cache[icao]['position']['lon'] = lon
 
-                if "geom_delta" in self.position_cache[icao] and "geom_delta" in self.position_cache[icao]:
-                    if alt_ft is not None and self.position_cache[icao]['geom_delta'] is not None:
-                        self.position_cache[icao]["alt_gnss"] = alt_ft + self.position_cache[icao]["geom_delta"]
+                if 'velocity' in self.position_cache[icao]:
+                    if "geom_delta" in self.position_cache[icao]['velocity']:
+                        if alt_ft is not None and self.position_cache[icao]['velocity']['geom_delta'] is not None:
+                            self.position_cache[icao]['position']["alt_gnss"] = alt_ft + self.position_cache[icao]['velocity']["geom_delta"]
 
-                self.position_cache[icao]["alt_baro"] = alt_ft
-                self.position_cache[icao]["ts_airborne_postion"] = self.getBeastTimstamp()
-                self.position_cache[icao]["dt_airborne_postion"] = self.getNow()
-
-                self.toTable([icao])
-
-
+                self.position_cache[icao]['position']["alt_baro"] = alt_ft
+                self.position_cache[icao]['position']["ts"] = frame_ts
+                self.position_cache[icao]['position']["dt"] = self.getNow()
+                self.position_cache[icao]['ts'] = frame_ts
+                self.store(icao, frame_ts)
 
             elif isAirborneVelocity(tc):
+
                 subtype = payload[4] & 0x07
                 ew_dir = (payload[5] >> 2) & 0x01
 
@@ -1524,32 +1330,36 @@ class ADSBRecorder(multiprocessing.Process):
                 else:
                     geom_delta = None
 
-                #log.info(f"ICAO={icao} GS={groundspeed:.1f}kt TRK={track:.1f} VR={vert_rate} DELTA={geom_delta}")
+
                 if icao not in self.position_cache:
                     self.position_cache[icao] = {}
 
-                self.position_cache[icao]['geom_delta'] = geom_delta
-                self.position_cache[icao]['groundspeed'] = groundspeed
-                self.position_cache[icao]['track'] = track
-                self.position_cache[icao]['vert_rate'] = vert_rate
-                self.position_cache[icao]['ts_airborne_velocity'] = self.getBeastTimstamp()
-                self.position_cache[icao]['dt_airborne_velocity'] = self.getNow()
+                if 'velocity' not in self.position_cache[icao]:
+                    self.position_cache[icao]['velocity'] = {}
 
-                self.toTable([icao])
 
+                self.position_cache[icao]['velocity']['geom_delta'] = geom_delta
+                self.position_cache[icao]['velocity']['groundspeed'] = groundspeed
+                self.position_cache[icao]['velocity']['track'] = track
+                self.position_cache[icao]['velocity']['vert_rate'] = vert_rate
+                self.position_cache[icao]['velocity']['dt'] = self.getNow()
+                self.position_cache[icao]['velocity']['ts'] = frame_ts
+                self.position_cache[icao]['ts'] = frame_ts
+
+                self.store(icao, frame_ts)
 
             elif isGNSSPosition(tc):
                 log.info(f"ICAO={payload[1:4].hex().upper()} tc={tc} GNSS pl={payload.hex()}")
-
+                gnss_alt = ((payload[5] << 4) | (payload[6] >> 4)) & 0x0FFF
+                log.info(f"Altitude from GNSS message {gnss_alt}")
 
             elif isAircraftSurfacePosition(tc):
                 log.info(f"ICAO={payload[1:4].hex().upper()} tc={tc} Position pl={payload.hex()}")
 
             else:
-                #log.info(f"tc={tc} not handled buffer={len(self.buffer)}")
                 pass
 
-            self.toTable([icao])
+
 
         return tx_type
 
@@ -1584,15 +1394,18 @@ class ADSBRecorder(multiprocessing.Process):
 
                 # Write to disk
                 log.info(f"Writing out ADS-B data between {self.recording_start} and {next_start_time}")
-                writeOutADSBData(self.config, self.recording_start, self.positions, self.icao_callsign_mapping, self.velocity, pp=self.pp)
+                self.writeOutADSBData(pp=self.pp)
 
-                # After writing out, reset the cache
-                self.positions = {}
-                self.icao_callsign_mapping = []
+                # After writing out, reset the history
+                self.history = {}
+
 
                 # Reset the recording start time variables
                 self.recording_start = next_start_time
                 log.info(f"Starting a new block at {self.recording_start}")
+
+                # Clear the position cache
+
 
         # Pull in data from the socket, avoiding getting stuck waiting for data
         data = None
@@ -1629,30 +1442,12 @@ class ADSBRecorder(multiprocessing.Process):
         # Add data to the buffer
         self.buffer +=  data
 
-        if int(self.config.dump1090_port) == DUMP1090_SBS_MODE_PORT:
-            # If there is a \n in the buffer, then a whole message is available
-            while b"\n" in self.buffer:
 
-                # Break up the buffer into lines, and let the rest of the buffer carry over
-                line, self.buffer = self.buffer.split(b"\n", 1)
-
-                # Extract the fields
-                fields = line.decode().strip().split(",")
-
-                # Parse the SBS message
-                tx_type, icao, d = parseSBS(fields, self.pp)
-
-                # Ignore packets which produce no useful output
-                if icao is None or d is None:
-                    if VVERBOSE:
-                        log.info(f"Message of type {tx_type} produced no output {line}")
-
-                    continue
-        elif int(self.config.dump1090_port) == DUMP1090_BEAST_MODE_PORT:
+        if int(self.config.dump1090_port) == DUMP1090_BEAST_MODE_PORT:
+            if VVERBOSE:
+                log.info(f"Buffer {len(self.buffer)} {self.buffer}")
             while self.buffer:
-                if VVERBOSE:
-                    log.info(f"Buffer {len(self.buffer)} {self.buffer}")
-                tx_type = self.parseBeastMode()
+                self.parseBeastMode()
 
         else:
             log.info(f"Unrecognised port number {self.config.dump1090_port}")
@@ -1660,28 +1455,6 @@ class ADSBRecorder(multiprocessing.Process):
             self.buffer == ""
 
         # Route and decode received data
-
-        if tx_type == SBS_MSG_AIRBORNE_POSITION:
-
-            # Create a new list in the positions dictionary if an airborne position is received for an unrecognised ICAO
-            if icao not in self.positions:
-                self.positions[icao] = []
-
-            # Record the airborne position against the ICAO
-            self.positions[icao].append(d)
-
-        elif tx_type == SBS_MSG_AIRBORNE_VELOCITY:
-
-            # Create a new list in the velocity dictionary if an airborne position is for an unrecognised ICAO
-            if icao not in self.velocity:
-                self.velocity[icao] = []
-
-            self.velocity[icao].append(d)
-
-        elif tx_type == SBS_MSG_IDENTIFICATION:
-
-            # Record all identification messages, deduplication is later in the pipeline
-            self.icao_callsign_mapping.append(d)
 
 
 
@@ -1752,7 +1525,7 @@ class ADSBRecorder(multiprocessing.Process):
             pass
 
         log.info("ADS-B recorder has finished - writing out cached data")
-        writeOutADSBData(self.config, self.recording_start, self.positions, self.icao_callsign_mapping, self.velocity, force_flush=True)
+        self.writeOutADSBData(force_flush=True)
 
     def flush(self):
         """Write all cached ADS-B data to disk.
@@ -1762,15 +1535,7 @@ class ADSBRecorder(multiprocessing.Process):
         """
 
         log.info("Flushing cached ADS-B data")
-
-        writeOutADSBData(
-            self.config,
-            self.recording_start,
-            self.positions,
-            self.icao_callsign_mapping,
-            self.velocity,
-            force_flush=True
-        )
+        self.writeOutADSBData(force_flush=True)
 
     def archiveData(self, captured_path, remove_files=True):
         """ Archive all ADS-B data files, and optionally the files
@@ -1851,66 +1616,7 @@ def loopADSB(config, pp, host=None, port=None):
         adsb_recorder.doIteration()
 
 
-def generateDerivedData(adsb_directory):
 
-    # Test code
-
-    groups = {}
-
-    for filename in glob.glob(os.path.join(adsb_directory, "*.json")):
-
-        basename = os.path.basename(filename)
-
-        parts = basename.split("_")
-
-
-        timestamp = f"{parts[1]}_{parts[2]}"
-
-        if timestamp not in groups:
-            groups[timestamp] = {}
-
-        if basename.endswith("_ads-b_positions.json"):
-            groups[timestamp]["positions"] = filename
-
-        elif basename.endswith("_ads-b_icao_call.json"):
-            groups[timestamp]["icao_call"] = filename
-
-        elif basename.endswith("_ads-b_velocity.json"):
-            groups[timestamp]["velocity"] = filename
-
-    for timestamp in sorted(groups):
-
-        group = groups[timestamp]
-
-        if not "positons" in group and "icao_call" in group and "velocity" in group:
-            log.warning(f"Incomplete ADS-B dataset for {timestamp}")
-            continue
-
-        log.info(f"Processing {timestamp}")
-
-        with open(group["positions"]) as fp:
-            positions = json.load(fp)
-
-        with open(group["icao_call"]) as fp:
-            icao_callsign_mapping = json.load(fp)
-
-        with open(group["velocity"]) as fp:
-            velocity = json.load(fp)
-
-        adsb_derived_data, time_series = deriveFromADSB(positions, icao_callsign_mapping, velocity)
-
-
-        if adsb_derived_data:
-
-            adsb_derived_filename = f"{config.stationID}_{timestamp}_ads-b_derived.json"
-            adsb_derived_path = os.path.join(adsb_directory, adsb_derived_filename)
-
-            with open(adsb_derived_path, "w") as fp:
-                json.dump(adsb_derived_data, fp, indent=4)
-
-
-        else:
-            log.info("No ADS-B derived data to write")
 
 
 
@@ -1980,54 +1686,6 @@ if __name__ == "__main__":
             adsb_recorder.stop()
         else:
             log.info("ADSB not enabled, not starting")
-
-    elif cml_args.testfile:
-        log.info(
-            f"Replaying {len(replay_data)} SBS messages "
-            f"from {cml_args.testfile}"
-        )
-        for line in replay_data:
-            fields = line.strip().split(",")
-            parseSBS(fields, pp)
-
-    elif cml_args.testtimeseries:
-
-        time_series_path = os.path.expanduser(cml_args.testtimeseries)
-
-        log.info(f"Reading derived data from {time_series_path}")
-
-        derived_data = {}
-
-        for filename in sorted(glob.glob(os.path.join(time_series_path, "*_ads-b_derived.json"))):
-
-            log.info(f"Loading {filename}")
-
-            with open(filename) as fp:
-                imported_data = json.load(fp)
-                log.info(f"Importing {filename}")
-
-
-            for icao, aircraft in imported_data.items():
-
-                if icao not in derived_data:
-                    derived_data[icao] = aircraft
-
-                else:
-                    if VERBOSE:
-                        log.info(f"Merging duplicate ICAO {icao}")
-
-                    derived_data[icao]["positions"].extend(aircraft.get("positions", []))
-
-                    derived_data[icao]["velocity"].extend(aircraft.get("velocity", []))
-
-                    derived_data[icao]["callsigns"].extend(aircraft.get("callsigns", []))
-
-        log.info(f"Loaded {len(derived_data)} aircraft")
-
-        interpolated_time_series = computeTimeSeries(derived_data)
-        pass
-
-
 
     else:
         loopADSB(config, pp, host=host, port=port)
