@@ -34,8 +34,10 @@ import time
 import tarfile
 import glob
 import bisect
+import pyModeS
 
 import numpy as np
+from scipy.cluster.hierarchy import from_mlab_linkage
 
 from RMS.Logger import LoggingManager, getLogger
 from RMS.Formats.StarCatalogQueries import getPlateparSkyParameters
@@ -48,8 +50,9 @@ from RMS.Astrometry.ApplyAstrometry import raDecToXYPP
 import RMS.ConfigReader as cr
 
 # Set verbose
-VERBOSE = True
-VVERBOSE = True
+VERBOSE = False
+VVERBOSE = False
+LOG_ESCAPING = False
 # Length of slice for time stripping
 
 # 11 - hourly
@@ -69,6 +72,11 @@ KT_TO_MS = 0.514444
 
 # SBS message type
 SBS_MESSAGE_TYPE = "MSG"
+
+# Dump1090 ports
+DUMP1090_SBS_MODE_PORT = 30003
+DUMP1090_BEAST_MODE_PORT = 30005
+
 
 # SBS message keys
 SBS_MSG_IDENTIFICATION      = "1"
@@ -106,9 +114,69 @@ FIELD_SPI               = 20
 FIELD_ON_GROUND         = 21
 
 
+# ADS-B downlink formats
+DF_ADSB_EXTENDED_SQUITTER = 17
 
+
+# ADS-B type codes
+TC_AIRCRAFT_IDENTIFICATION_MIN = 1
+TC_AIRCRAFT_IDENTIFICATION_MAX = 4
+
+TC_SURFACE_POSITION_MIN = 5
+TC_SURFACE_POSITION_MAX = 8
+
+TC_AIRBORNE_POSITION_BARO_MIN = 9
+TC_AIRBORNE_POSITION_BARO_MAX = 18
+
+TC_AIRBORNE_VELOCITY = 19
+
+TC_AIRBORNE_POSITION_GNSS_MIN = 20
+TC_AIRBORNE_POSITION_GNSS_MAX = 22
+
+TC_AIRCRAFT_STATUS = 28
+TC_AIRCRAFT_OPERATIONAL_STATUS = 31
+
+
+BEAST_MODE_SHORT_FRAME = 0x32
+BEAST_MODE_LONG_FRAME  = 0x33
+
+CALLSIGN_TABLE = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ#####_###############0123456789######"
 
 log = getLogger("rmslogger")
+
+
+
+def getNow():
+
+    return datetime.datetime.now(tz=datetime.timezone.utc)
+
+def isAircraftSurfacePosition(tc):
+    return TC_SURFACE_POSITION_MIN <= tc <= TC_SURFACE_POSITION_MAX
+
+
+def isAircraftIdentification(tc):
+    return TC_AIRCRAFT_IDENTIFICATION_MIN <= tc <= TC_AIRCRAFT_IDENTIFICATION_MAX
+
+def isBarometricPosition(tc):
+    return TC_AIRBORNE_POSITION_BARO_MIN <= tc <= TC_AIRBORNE_POSITION_BARO_MAX
+
+def isGNSSPosition(tc):
+    return TC_AIRBORNE_POSITION_GNSS_MIN <= tc <= TC_AIRBORNE_POSITION_GNSS_MAX
+
+def isAirborneVelocity(tc):
+
+    return tc==TC_AIRBORNE_VELOCITY
+
+def getbits(payload, first, last):
+    value = int.from_bytes(payload, byteorder="big")
+
+    total_bits = len(payload) * 8
+
+    shift = total_bits - last
+
+    mask = (1 << (last - first + 1)) - 1
+
+    return (value >> shift) & mask
 
 
 def formatTimeStamp(dt):
@@ -125,6 +193,8 @@ def formatTimeStamp(dt):
     """
 
     return dt.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+
 
 
 def filterVisible(time_series_data):
@@ -808,6 +878,186 @@ def parseSBS(fields, pp):
     return tx_type, None, None
 
 
+def cprNLFunction(lat):
+
+    lat = abs(lat)
+
+    if lat < 10.47047130: return 59
+    if lat < 14.82817437: return 58
+    if lat < 18.18626357: return 57
+    if lat < 21.02939493: return 56
+    if lat < 23.54504487: return 55
+    if lat < 25.82924707: return 54
+    if lat < 27.93898710: return 53
+    if lat < 29.91135686: return 52
+    if lat < 31.77209708: return 51
+    if lat < 33.53993436: return 50
+    if lat < 35.22899598: return 49
+    if lat < 36.85025108: return 48
+    if lat < 38.41241892: return 47
+    if lat < 39.92256684: return 46
+    if lat < 41.38651832: return 45
+    if lat < 42.80914012: return 44
+    if lat < 44.19454951: return 43
+    if lat < 45.54626723: return 42
+    if lat < 46.86733252: return 41
+    if lat < 48.16039128: return 40
+    if lat < 49.42776439: return 39
+    if lat < 50.67150166: return 38
+    if lat < 51.89342469: return 37
+    if lat < 53.09516153: return 36
+    if lat < 54.27817472: return 35
+    if lat < 55.44378444: return 34
+    if lat < 56.59318756: return 33
+    if lat < 57.72747354: return 32
+    if lat < 58.84763776: return 31
+    if lat < 59.95459277: return 30
+    if lat < 61.04917774: return 29
+    if lat < 62.13216659: return 28
+    if lat < 63.20427479: return 27
+    if lat < 64.26616523: return 26
+    if lat < 65.31845310: return 25
+    if lat < 66.36171008: return 24
+    if lat < 67.39646774: return 23
+    if lat < 68.42322022: return 22
+    if lat < 69.44242631: return 21
+    if lat < 70.45451075: return 20
+    if lat < 71.45986473: return 19
+    if lat < 72.45884545: return 18
+    if lat < 73.45177442: return 17
+    if lat < 74.43893416: return 16
+    if lat < 75.42056257: return 15
+    if lat < 76.39684391: return 14
+    if lat < 77.36789461: return 13
+    if lat < 78.33374083: return 12
+    if lat < 79.29428225: return 11
+    if lat < 80.24923213: return 10
+    if lat < 81.19801349: return 9
+    if lat < 82.13956981: return 8
+    if lat < 83.07199445: return 7
+    if lat < 83.99173563: return 6
+    if lat < 84.89166191: return 5
+    if lat < 85.75541621: return 4
+    if lat < 86.53536998: return 3
+    if lat < 87.00000000: return 2
+
+    return 1
+
+
+def cprNFunction(lat, isodd):
+    nl = cprNLFunction(lat) - isodd
+
+    if nl < 1:
+        nl = 1
+
+    return nl
+
+
+def cprDlonFunction(lat, isodd, surface=0):
+
+    if surface:
+        return 90.0 / cprNFunction(lat, isodd)
+
+    return 360.0 / cprNFunction(lat, isodd)
+
+
+def decode_cpr_airborne(even_cprlat,
+                        even_cprlon,
+                        odd_cprlat,
+                        odd_cprlon,
+                        fflag):
+
+    AIR_DLAT0 = 360.0 / 60.0
+    AIR_DLAT1 = 360.0 / 59.0
+
+    lat0 = float(even_cprlat)
+    lat1 = float(odd_cprlat)
+
+    lon0 = float(even_cprlon)
+    lon1 = float(odd_cprlon)
+
+    #
+    # Compute latitude index j
+    #
+    j = int(np.floor(((59 * lat0 - 60 * lat1) / 131072.0) + 0.5))
+
+    rlat0 = AIR_DLAT0 * ((j % 60) + lat0 / 131072.0)
+    rlat1 = AIR_DLAT1 * ((j % 59) + lat1 / 131072.0)
+
+    if rlat0 >= 270:
+        rlat0 -= 360
+
+    if rlat1 >= 270:
+        rlat1 -= 360
+
+    #
+    # Latitude validity check
+    #
+    if (
+        rlat0 < -90 or rlat0 > 90 or
+        rlat1 < -90 or rlat1 > 90
+    ):
+        return -2, None, None
+
+    #
+    # Latitude zone check
+    #
+    if cprNLFunction(rlat0) != cprNLFunction(rlat1):
+        return -1, None, None
+
+    #
+    # Compute longitude
+    #
+    if fflag:
+
+        ni = cprNFunction(rlat1, 1)
+
+        m = int(
+            np.floor(
+                (
+                    (lon0 * (cprNLFunction(rlat1) - 1))
+                    -
+                    (lon1 * cprNLFunction(rlat1))
+                ) / 131072.0
+                + 0.5
+            )
+        )
+
+        rlon = cprDlonFunction(rlat1, 1, 0) * (
+            (m % ni) + lon1 / 131072.0
+        )
+
+        rlat = rlat1
+
+    else:
+
+        ni = cprNFunction(rlat0, 0)
+
+        m = int(
+            np.floor(
+                (
+                    (lon0 * (cprNLFunction(rlat0) - 1))
+                    -
+                    (lon1 * cprNLFunction(rlat0))
+                ) / 131072.0
+                + 0.5
+            )
+        )
+
+        rlon = cprDlonFunction(rlat0, 0, 0) * (
+            (m % ni) + lon0 / 131072.0
+        )
+
+        rlat = rlat0
+
+    #
+    # Normalize longitude to -180..180
+    #
+    rlon -= np.floor((rlon + 180.0) / 360.0) * 360.0
+
+    return 0, rlat, rlon
+
+
 class ADSBRecorder(multiprocessing.Process):
 
     """ Record ADS-B aircraft information from dump1090.
@@ -836,7 +1086,9 @@ class ADSBRecorder(multiprocessing.Process):
         self.velocity = {}                      # Store for received velocity information
         self.s = None                           # Connection object
         self.buffer = b""                       # Buffer
-
+        self.tc_counts = {}                     # Statistics counter
+        self.position_cache = {}                # Cache for aircraft information
+        self.field_length_list = []
 
         # Initalise and read the platepar
         platepar_path = os.path.join(config.config_file_path, config.platepar_name)
@@ -858,6 +1110,390 @@ class ADSBRecorder(multiprocessing.Process):
 
         state = self.__dict__.copy()
         return state
+
+    def writeToLog(self, icao_list):
+
+
+        buffer_size = len(self.buffer)
+        message_fields, message_headers = [], []
+
+        for iterator, aircraft in self.position_cache.items():
+
+            if iterator not in icao_list:
+                continue
+
+            if 0 not in aircraft:
+                continue
+
+            if 1 not in aircraft:
+                continue
+
+            bit_0_age = (getNow() - self.position_cache[iterator][0]["ts"]).total_seconds()
+            bit_1_age = (getNow() - self.position_cache[iterator][1]["ts"]).total_seconds()
+
+            if max(bit_0_age, bit_1_age) > 180:
+                continue
+
+            rc, lat, lon = decode_cpr_airborne(aircraft[0]["lat"], aircraft[0]["lon"], aircraft[1]["lat"], aircraft[1]["lon"],0)
+
+            self.position_cache[iterator]['lat'] = lat
+            self.position_cache[iterator]['lon'] = lon
+
+
+            message_headers.append("ICAO")
+            message_fields.append(icao)
+
+
+            callsign = ""
+            message_headers.append("HEX")
+            if 'callsign' in self.position_cache[iterator]:
+                callsign = self.position_cache[iterator]['callsign']
+            message_fields.append(f"{callsign}")
+
+            message_headers.append("Baro")
+            alt_baro_message = ""
+            if 'alt_baro' in self.position_cache[iterator]:
+                alt_baro = self.position_cache[iterator]['alt_baro']
+                if alt_baro is not None:
+                    alt_baro_message = f"{alt_baro:5.0f}"
+
+            message_fields.append(alt_baro_message)
+
+            message_headers.append("Delta")
+            geom_delta_message = ""
+            if 'geom_delta' in self.position_cache[iterator]:
+                geo_delta = self.position_cache[iterator]['geom_delta']
+                if geo_delta is not None:
+                    if geo_delta > 0:
+                        sign = "+"
+                    else:
+                        sign = "-"
+                        geo_delta = - geo_delta
+                    geom_delta_message = f" {sign} {geo_delta:<5d}"
+            message_fields.append(geom_delta_message)
+
+            message_headers.append("GNSS")
+            gnss_message = ""
+            if 'alt_gnss' in self.position_cache[iterator]:
+                alt_gnss = self.position_cache[iterator]['alt_gnss']
+                if alt_gnss is not None:
+                    gnss_message = f"={alt_gnss:5.0f}ft "
+            message_fields.append(gnss_message)
+
+            message_headers.append("Lat")
+            lat_message = ""
+            if 'lat' in self.position_cache[iterator] and "lon" in self.position_cache[iterator]:
+                if lat is not None and lon is not None:
+                    lat = self.position_cache[iterator]['lat']
+                    lat_message += f"lat:{lat:6.4f}"
+            message_fields.append(lat_message)
+
+
+            message_headers.append("Lon")
+            lon_message = ""
+            if 'lat' in self.position_cache[iterator] and 'lon' in self.position_cache[iterator]:
+                if lat is not None and lon is not None:
+                    lon = self.position_cache[iterator]['lon']
+                    lon_message += f"lon:{lon:6.4f}"
+            message_fields.append(lon_message)
+
+
+            message, header = "", ""
+            log_lines = []
+            for i, field in enumerate(message_fields):
+                field_length = len(field)
+                header_length = len(message_headers[i])
+                if i >= len(self.field_length_list):
+                    self.field_length_list.append("")
+                if self.field_length_list[i] < field_length:
+                    self.field_length_list[i] = field_length
+                if header_length < field_length:
+                    self.field_length_list[i] = header_length
+
+                message += field + " " * ((self.field_length_list[i]) - field_length) + " "
+                header += header + " " * ((self.field_length_list[i]) - field_length) + " "
+                if i == 0:
+                    log_lines.append(header)
+
+            for line in log_lines:
+                log.info(line)
+
+    def decodeBeastRecord(raw):
+
+        decoded = bytearray()
+
+        i = 2  # skip 1A 33
+
+        while i < len(raw):
+
+            if raw[i] == 0x1A:
+
+                if i + 1 < len(raw) and raw[i + 1] == 0x1A:
+                    decoded.append(0x1A)
+                    i += 2
+                else:
+                    break
+
+            else:
+                decoded.append(raw[i])
+                i += 1
+
+        return bytes(decoded)
+
+    def parseBeastMode(self):
+
+        tx_type = 0
+
+        # Sync to frame
+        i = self.buffer.find(b"\x1a")
+
+        if i == -1:
+            # No frame marker yet, keep only a little tail
+            self.buffer = self.buffer[-16:]
+            return tx_type
+
+        # Discard garbage before first frame
+        if i > 0:
+            self.buffer = self.buffer[i:]
+
+
+
+        if len(self.buffer) < 2:
+            return tx_type
+
+        frame_type = self.buffer[1]
+
+        #log.info(f"Frame type: {frame_type}")
+        if frame_type == BEAST_MODE_SHORT_FRAME:
+            frame_length = 1 + 1 + 6 + 1 + 7
+
+        elif frame_type == BEAST_MODE_LONG_FRAME:
+            frame_length = 1 + 1 + 6 + 1 + 14
+
+        else:
+            self.buffer = self.buffer[1:]
+            return tx_type
+
+
+
+        if len(self.buffer) < frame_length:
+            return tx_type
+
+        decoded = bytearray()
+        ptr = 0
+
+        while ptr < len(self.buffer) and len(decoded) < frame_length:
+
+            b = self.buffer[ptr]
+
+            if b == 0x1a:
+
+                if ptr + 1 < len(self.buffer) and self.buffer[ptr + 1] == 0x1a:
+                    decoded.append(0x1a)
+                    ptr += 2
+                    continue
+
+                if ptr > 0:
+                    break
+
+            decoded.append(b)
+            ptr += 1
+        if LOG_ESCAPING and ptr != len(decoded):
+            log.info(f"Escaping activated wire={ptr} decoded={len(decoded)}")
+            log.info(f"Buffer            {self.buffer[:ptr]}")
+            log.info(f"Decoded {decoded}")
+        frame = decoded[:frame_length]
+        if VVERBOSE:
+            log.info(f"Buffer before splitting {len(self.buffer)} {self.buffer}")
+        self.buffer = self.buffer[ptr:]
+        if VVERBOSE:
+            log.info(f"Buffer after  splitting {len(self.buffer)} {self.buffer}")
+        #log.info(f"frame  {frame}")
+        #log.info(f"buffer {self.buffer}")
+
+
+        if frame_length == 16:
+            timestamp = frame[2:8]
+            signal = frame[8]
+            payload = frame[9:16]
+        elif frame_length == 23:
+            timestamp = frame[2:8]
+            signal = frame[8]
+            payload = frame[9:23]
+        else:
+            log.info("Why are we here")
+            pass
+
+
+        df = payload[0] >> 3
+
+        #log.info(f"df={df} {frame}")
+
+        if df == DF_ADSB_EXTENDED_SQUITTER:
+            tc = (payload[4] >> 3) & 0x1F
+            if tc not in self.tc_counts:
+                self.tc_counts[tc] = 0
+            self.tc_counts[tc] += 1
+
+            #log.info(f"TC {self.tc_counts}")
+            #log.info(f"tc={tc}")
+            icao = payload[1:4].hex().upper()
+
+
+            if isAircraftIdentification(tc):
+
+
+                chars = []
+
+                bits = int.from_bytes(payload[5:11], byteorder='big')
+
+                for i in range(8):
+                    shift = (7 - i) * 6
+
+                    code = (bits >> shift) & 0x3F
+
+                    chars.append(code)
+
+                    callsign = ""
+
+
+                for code in chars:
+
+                    if code < len(CALLSIGN_TABLE):
+                        callsign += CALLSIGN_TABLE[code]
+                    else:
+                        callsign += "?"
+
+
+                callsign = callsign.replace("#", "").replace("_", "").strip()
+
+
+
+                if icao not in self.position_cache:
+                    self.position_cache[icao] = {}
+                self.position_cache[icao]['callsign'] = callsign
+                self.position_cache[icao]['callsign_ts'] = getNow()
+
+            elif isBarometricPosition(tc):
+                # Decode altitude
+                alt_field = ((payload[5] << 4) | (payload[6] >> 4)) & 0x0FFF
+                q_bit = (alt_field >> 4) & 1
+                if q_bit == 1:
+                    alt_ft = (((alt_field & 0x0FE0) >> 1) | (alt_field & 0x000F)) * 25 - 1000
+                    #log.info(f"{icao} altitude updated to {alt_ft}")
+                else:
+                    alt_ft = None
+
+
+                f_flag = getbits(payload, 54, 54)
+
+                cpr_lat = getbits(payload, 55, 71)
+
+                cpr_lon = getbits(payload, 72, 88)
+
+                #log.info(f"ICAO={payload[1:4].hex().upper()} tc={tc} alt={alt_ft} {f_flag} lat={cpr_lat} lon={cpr_lon} barometric pl={payload.hex()} q_bit={q_bit}")
+
+                if icao not in self.position_cache:
+                    self.position_cache[icao] = {}
+
+
+                if f_flag not in self.position_cache[icao]:
+                    self.position_cache[icao][f_flag] = {}
+
+                self.position_cache[icao]["ts"] = datetime.datetime.now(tz=datetime.timezone.utc)
+                self.position_cache[icao][f_flag]["lat"] = cpr_lat
+                self.position_cache[icao][f_flag]["lon"] = cpr_lon
+                self.position_cache[icao][f_flag]["ts"] = datetime.datetime.now(tz=datetime.timezone.utc)
+
+                if "geom_delta" in self.position_cache[icao]:
+                    if alt_ft is not None and self.position_cache[icao] is not None:
+                        self.position_cache[icao]["alt_gnss"] = alt_ft + self.position_cache[icao]["geom_delta"]
+
+                self.position_cache[icao]["alt_baro"] = alt_ft
+                self.position_cache[icao]["ts_airborne_postion"] = getNow()
+
+                self.writeToLog([icao])
+
+
+
+            elif isAirborneVelocity(tc):
+                subtype = payload[4] & 0x07
+                ew_dir = (payload[5] >> 2) & 0x01
+
+                ew_raw = ((payload[5] & 0x03) << 8) | payload[6]
+                ns_dir = (payload[7] >> 7) & 0x01
+                ns_raw = ((payload[7] & 0x7F) << 3) | (payload[8] >> 5)
+
+                ew_vel, ns_vel = ew_raw - 1, ns_raw - 1
+
+                if ew_dir:
+                    ew_vel = -ew_vel
+
+                if ns_dir:
+                    ns_vel = -ns_vel
+
+                groundspeed = np.sqrt(ew_vel ** 2 + ns_vel ** 2)
+
+                track = np.degrees(np.arctan2(ew_vel, ns_vel))
+
+                if track < 0:
+                    track += 360
+
+                vert_rate_source = (payload[8] >> 3) & 0x01
+                vert_rate_sign = (payload[8] >> 2) & 0x01
+
+                vert_rate_raw = (
+                        ((payload[8] & 0x03) << 7)
+                        | (payload[9] >> 1)
+                )
+
+                if vert_rate_raw:
+                    vert_rate = (vert_rate_raw - 1) * 64
+
+                    if vert_rate_sign:
+                        vert_rate = -vert_rate
+                else:
+                    vert_rate = None
+
+                geom_delta_sign = (payload[10] >> 7) & 0x01
+
+                geom_delta_raw = payload[10] & 0x7F
+
+                if geom_delta_raw:
+                    geom_delta = (geom_delta_raw - 1) * 25
+
+                    if geom_delta_sign:
+                        geom_delta = -geom_delta
+                else:
+                    geom_delta = None
+
+                #log.info(f"ICAO={icao} GS={groundspeed:.1f}kt TRK={track:.1f} VR={vert_rate} DELTA={geom_delta}")
+                if icao not in self.position_cache:
+                    self.position_cache[icao] = {}
+
+                self.position_cache[icao]['geom_delta'] = geom_delta
+                self.position_cache[icao]['groundspeed'] = groundspeed
+                self.position_cache[icao]['track'] = track
+                self.position_cache[icao]['vert_rate'] = vert_rate
+                self.position_cache[icao]['ts_airborne_velocity'] = getNow()
+
+                self.writeToLog([icao])
+
+
+            elif isGNSSPosition(tc):
+                log.info(f"ICAO={payload[1:4].hex().upper()} tc={tc} GNSS pl={payload.hex()}")
+
+
+            elif isAircraftSurfacePosition(tc):
+                log.info(f"ICAO={payload[1:4].hex().upper()} tc={tc} Position pl={payload.hex()}")
+
+            else:
+                #log.info(f"tc={tc} not handled buffer={len(self.buffer)}")
+                pass
+
+            self.writeToLog([icao])
+
+        return tx_type
 
     def doIteration(self):
         """ Process incoming SBS messages from dump1090.
@@ -929,54 +1565,69 @@ class ADSBRecorder(multiprocessing.Process):
 
         if not data:
             # Add a sleep to avoid busy waits - this only executes when there is no data
-            time.sleep(1)
+
             return self.buffer, self.recording_start, self.positions, self.icao_callsign_mapping, self.velocity
 
         # Add data to the buffer
         self.buffer +=  data
 
-        # If there is a \n in the buffer, then a whole message is available
-        while b"\n" in self.buffer:
+        if int(self.config.dump1090_port) == DUMP1090_SBS_MODE_PORT:
+            # If there is a \n in the buffer, then a whole message is available
+            while b"\n" in self.buffer:
 
-            # Break up the buffer into lines, and let the rest of the buffer carry over
-            line, self.buffer = self.buffer.split(b"\n", 1)
+                # Break up the buffer into lines, and let the rest of the buffer carry over
+                line, self.buffer = self.buffer.split(b"\n", 1)
 
-            # Extract the fields
-            fields = line.decode().strip().split(",")
+                # Extract the fields
+                fields = line.decode().strip().split(",")
 
-            # Parse the SBS message
-            tx_type, icao, d = parseSBS(fields, self.pp)
+                # Parse the SBS message
+                tx_type, icao, d = parseSBS(fields, self.pp)
 
-            # Ignore packets which produce no useful output
-            if icao is None or d is None:
+                # Ignore packets which produce no useful output
+                if icao is None or d is None:
+                    if VVERBOSE:
+                        log.info(f"Message of type {tx_type} produced no output {line}")
+
+                    continue
+        elif int(self.config.dump1090_port) == DUMP1090_BEAST_MODE_PORT:
+            while self.buffer:
                 if VVERBOSE:
-                    log.info(f"Message of type {tx_type} produced no output {line}")
+                    log.info(f"Buffer {len(self.buffer)} {self.buffer}")
+                tx_type = self.parseBeastMode()
 
-                continue
+        else:
+            log.info(f"Unrecognised port number {self.config.dump1090_port}")
+            tx_type = 0
+            self.buffer == ""
 
-            # Route and decode received data
+        # Route and decode received data
 
-            if tx_type == SBS_MSG_AIRBORNE_POSITION:
+        if tx_type == SBS_MSG_AIRBORNE_POSITION:
 
-                # Create a new list in the positions dictionary if an airborne position is received for an unrecognised ICAO
-                if icao not in self.positions:
-                    self.positions[icao] = []
+            # Create a new list in the positions dictionary if an airborne position is received for an unrecognised ICAO
+            if icao not in self.positions:
+                self.positions[icao] = []
 
-                # Record the airborne position against the ICAO
-                self.positions[icao].append(d)
+            # Record the airborne position against the ICAO
+            self.positions[icao].append(d)
 
-            elif tx_type == SBS_MSG_AIRBORNE_VELOCITY:
+        elif tx_type == SBS_MSG_AIRBORNE_VELOCITY:
 
-                # Create a new list in the velocity dictionary if an airborne position is for an unrecognised ICAO
-                if icao not in self.velocity:
-                    self.velocity[icao] = []
+            # Create a new list in the velocity dictionary if an airborne position is for an unrecognised ICAO
+            if icao not in self.velocity:
+                self.velocity[icao] = []
 
-                self.velocity[icao].append(d)
+            self.velocity[icao].append(d)
 
-            elif tx_type == SBS_MSG_IDENTIFICATION:
+        elif tx_type == SBS_MSG_IDENTIFICATION:
 
-                # Record all identification messages, deduplication is later in the pipeline
-                self.icao_callsign_mapping.append(d)
+            # Record all identification messages, deduplication is later in the pipeline
+            self.icao_callsign_mapping.append(d)
+
+
+
+
 
         return self.buffer, self.recording_start, self.positions, self.icao_callsign_mapping, self.velocity
 
@@ -1204,6 +1855,9 @@ def generateDerivedData(adsb_directory):
             log.info("No ADS-B derived data to write")
 
 
+
+
+
 if __name__ == "__main__":
 
 
@@ -1250,6 +1904,7 @@ if __name__ == "__main__":
     # If no command line arguments given, then use settings in the config file
     config.dump1090_host = config.dump1090_host if host is None else host
     config.dump1090_port = config.dump1090_port if port is None else port
+
 
     # Initialize the logger
     log_manager = LoggingManager()
