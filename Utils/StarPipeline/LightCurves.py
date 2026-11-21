@@ -281,3 +281,5 @@ if __name__ == "__main__":
             processed_sessions.add(path_to_job)
             with open("/archive/processed_sessions.txt", "a") as f:
                 f.write(path_to_job + "\n")
+        else:
+            print(f"{os.path.basename(path_to_job)} already processed")
