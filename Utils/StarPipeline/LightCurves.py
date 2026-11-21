@@ -200,7 +200,7 @@ def process(path_to_job, cat):
 
         with tarfile.open(path_to_job, "r:bz2") as tar:
 
-            tar.extractall(temp_dir)
+            tar.extractall(temp_dir, filter="fully_trusted")
             working_dir = os.path.join(temp_dir, observation_dir)
             config_path = os.path.join(working_dir, ".config")
             obs_con = cr.parse(config_path)
