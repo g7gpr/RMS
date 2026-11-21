@@ -992,7 +992,7 @@ class ADSBRecorder(multiprocessing.Process):
 
         return log_line, data_changed
 
-    def store(self, icao, frame_ts, write_to_log=True):
+    def store(self, icao, dt, write_to_log=True):
 
 
         data_table, data_changed = self.toTable()
@@ -1008,7 +1008,7 @@ class ADSBRecorder(multiprocessing.Process):
                 f.write(f"{self.getNow()}\n{data_table}")
 
 
-            self.history[icao][frame_ts] = self.position_cache[icao]
+            self.history[icao][dt] = dt
 
         pass
 
