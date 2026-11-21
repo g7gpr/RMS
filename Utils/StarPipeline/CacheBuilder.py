@@ -727,6 +727,7 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
     files_downloaded = 0
     downloaded_mb = 0
     files_to_download = len(remote_files_sorted)
+    remote_files_sorted.reverse()
     for remote_file in remote_files_sorted:
 
         station_name = remote_file.split("_")[0]
