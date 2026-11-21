@@ -996,7 +996,6 @@ class ADSBRecorder(multiprocessing.Process):
     def store(self, icao, frame_ts, write_to_log=True):
 
 
-
         data_table, data_changed = self.toTable()
         if write_to_log and data_changed:
             log.info(data_table)
@@ -1075,8 +1074,8 @@ class ADSBRecorder(multiprocessing.Process):
         i = self.buffer.find(b"\x1a")
 
         if i == -1:
-            # No frame marker yet, keep only a little tail
-            self.buffer = self.buffer[-16:]
+            # Consume the buffer
+            self.buffer = b""
             return tx_type
 
         # Discard garbage before first frame
@@ -1215,6 +1214,7 @@ class ADSBRecorder(multiprocessing.Process):
                 self.position_cache[icao]['ident']['callsign_ts'] = frame_ts
                 self.position_cache[icao]['ident']['callsign_dt'] = self.getNow()
                 self.position_cache[icao]['ts'] = self.position_cache[icao]['ident']['callsign_ts']
+                self.position_cache[icao]['dt'] = self.position_cache[icao]['ident']['callsign_dt']
                 self.store(icao, frame_ts)
 
             elif isAirbornePosition(tc):
@@ -1277,6 +1277,7 @@ class ADSBRecorder(multiprocessing.Process):
                 self.position_cache[icao]['position']["ts"] = frame_ts
                 self.position_cache[icao]['position']["dt"] = self.getNow()
                 self.position_cache[icao]['ts'] = frame_ts
+                self.position_cache[icao]['dt'] = self.position_cache[icao]['position']['dt']
                 self.store(icao, frame_ts)
 
             elif isAirborneVelocity(tc):
@@ -1346,7 +1347,7 @@ class ADSBRecorder(multiprocessing.Process):
                 self.position_cache[icao]['velocity']['dt'] = self.getNow()
                 self.position_cache[icao]['velocity']['ts'] = frame_ts
                 self.position_cache[icao]['ts'] = frame_ts
-
+                self.position_cache[icao]['dt'] = self.position_cache[icao]['velocity']['dt']
                 self.store(icao, frame_ts)
 
             elif isGNSSPosition(tc):
