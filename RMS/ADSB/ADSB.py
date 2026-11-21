@@ -34,6 +34,7 @@ import time
 import tarfile
 import glob
 import bisect
+import copy
 
 import numpy as np
 
