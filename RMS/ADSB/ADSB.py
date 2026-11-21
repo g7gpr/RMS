@@ -1008,7 +1008,7 @@ class ADSBRecorder(multiprocessing.Process):
                 f.write(f"{self.getNow()}\n{data_table}")
 
 
-            self.history[icao][dt] = dt
+            self.history[icao][dt] = self.position_cache[icao].copy()
 
         pass
 
