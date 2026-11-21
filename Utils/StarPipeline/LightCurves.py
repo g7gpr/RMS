@@ -103,7 +103,7 @@ def getWorkList(archive):
     return sortFilesByTime([str(f) for f in paths_to_files])
 
 
-def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_path, video_path=None):
+def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_path, video_path=None, debug_mode=False):
 
     light_curves = {}
     produce_debug_timelapse = False
@@ -133,7 +133,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
     counter = 0
     for fits_file, star_list in tqdm.tqdm(calstar):
 
-        if counter > 10:
+        if counter > 10 and debug_mode:
             break
 
         if len(star_list) < 40:
