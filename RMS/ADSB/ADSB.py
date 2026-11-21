@@ -1214,7 +1214,8 @@ class ADSBRecorder(multiprocessing.Process):
                 self.position_cache[icao]['ident']['callsign_dt'] = self.getNow()
                 self.position_cache[icao]['ts'] = self.position_cache[icao]['ident']['callsign_ts']
                 self.position_cache[icao]['dt'] = self.position_cache[icao]['ident']['callsign_dt']
-                self.store(icao, self.position_cache[icao]['dt'])
+                dt = self.position_cache[icao]['ident']['callsign_dt']
+                self.store(icao, dt)
 
             elif isAirbornePosition(tc):
 
@@ -1276,8 +1277,9 @@ class ADSBRecorder(multiprocessing.Process):
                 self.position_cache[icao]['position']["ts"] = frame_ts
                 self.position_cache[icao]['position']["dt"] = self.getNow()
                 self.position_cache[icao]['ts'] = frame_ts
-                self.position_cache[icao]['dt'] = self.position_cache[icao]['position']['dt']
-                self.store(icao, self.position_cache[icao]['dt'])
+
+                dt = self.position_cache[icao]['position']['dt']
+                self.store(icao, dt)
 
             elif isAirborneVelocity(tc):
 
@@ -1346,8 +1348,8 @@ class ADSBRecorder(multiprocessing.Process):
                 self.position_cache[icao]['velocity']['dt'] = self.getNow()
                 self.position_cache[icao]['velocity']['ts'] = frame_ts
                 self.position_cache[icao]['ts'] = frame_ts
-                self.position_cache[icao]['dt'] = self.position_cache[icao]['velocity']['dt']
-                self.store(icao, self.position_cache[icao]['dt'])
+                dt = self.position_cache[icao]['velocity']['dt']
+                self.store(icao, dt)
 
             elif isGNSSPosition(tc):
                 log.info(f"ICAO={payload[1:4].hex().upper()} tc={tc} GNSS pl={payload.hex()}")
