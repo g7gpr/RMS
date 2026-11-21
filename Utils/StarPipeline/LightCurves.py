@@ -262,7 +262,7 @@ def process(path_to_job, cat):
                         dirname = Path("/archive/light_curves/") / star_name / obs_con.stationID
                         dirname.mkdir(parents=True, exist_ok=True)
 
-                        filename = dirname / f"{session}_{int(data['cat'] * 1e6)}.npy"
+                        filename = dirname / f"{session}_{int(data['cat'] * 1e6)}_{int(round(pp.F_scale * 1000))}.npy"
 
                         np.save(filename, np.array(records, dtype=np.int16))
         pass
