@@ -1006,7 +1006,8 @@ class ADSBRecorder(multiprocessing.Process):
                 self.history[icao] = {}
 
             with open("/tmp/adsb.txt", "w") as f:
-                f.write(data_table)
+
+                f.write(f"{self.getNow()}\n{data_table}")
 
 
             self.history[icao][frame_ts] = self.position_cache[icao]
