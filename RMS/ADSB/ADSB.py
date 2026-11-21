@@ -77,6 +77,8 @@ SBS_MESSAGE_TYPE = "MSG"
 DUMP1090_SBS_MODE_PORT = 30003
 DUMP1090_BEAST_MODE_PORT = 30005
 
+# Tick
+TICKS_PER_SECOND = 12e6
 
 # SBS message keys
 SBS_MSG_IDENTIFICATION      = "1"
@@ -146,9 +148,6 @@ log = getLogger("rmslogger")
 
 
 
-def getNow():
-
-    return datetime.datetime.now(tz=datetime.timezone.utc)
 
 def isAircraftSurfacePosition(tc):
     return TC_SURFACE_POSITION_MIN <= tc <= TC_SURFACE_POSITION_MAX
@@ -1089,6 +1088,8 @@ class ADSBRecorder(multiprocessing.Process):
         self.tc_counts = {}                     # Statistics counter
         self.position_cache = {}                # Cache for aircraft information
         self.field_length_list = []
+        self.latest_timestamp = None
+        self.last_log_line = ""
 
         # Initalise and read the platepar
         platepar_path = os.path.join(config.config_file_path, config.platepar_name)
@@ -1111,55 +1112,46 @@ class ADSBRecorder(multiprocessing.Process):
         state = self.__dict__.copy()
         return state
 
-    def writeToLog(self, icao_list):
+    def getNow(self):
+
+        return datetime.datetime.now(tz=datetime.timezone.utc)
+
+    def getBeastTimstamp(self):
+
+        return self.latest_timestamp
+
+    def toTable(self, icao_list, timeout=None, write_to_log=True):
 
 
-        buffer_size = len(self.buffer)
-        message_fields, message_headers = [], []
 
-        for iterator, aircraft in self.position_cache.items():
-
-            if iterator not in icao_list:
-                continue
-
-            if 0 not in aircraft:
-                continue
-
-            if 1 not in aircraft:
-                continue
-
-            bit_0_age = (getNow() - self.position_cache[iterator][0]["ts"]).total_seconds()
-            bit_1_age = (getNow() - self.position_cache[iterator][1]["ts"]).total_seconds()
-
-            if max(bit_0_age, bit_1_age) > 180:
-                continue
-
-            rc, lat, lon = decode_cpr_airborne(aircraft[0]["lat"], aircraft[0]["lon"], aircraft[1]["lat"], aircraft[1]["lon"],0)
-
-            self.position_cache[iterator]['lat'] = lat
-            self.position_cache[iterator]['lon'] = lon
+        header = ""
+        message_fields, message_headers, log_lines = [], [], []
+        log_line = "\n"
 
 
+        for aircraft_counter, (iterator, aircraft) in enumerate(self.position_cache.items()):
+            message_fields = []
+            message_headers = []
             message_headers.append("ICAO")
-            message_fields.append(icao)
+            message_fields.append(iterator)
 
 
             callsign = ""
-            message_headers.append("HEX")
+            message_headers.append("Callsign")
             if 'callsign' in self.position_cache[iterator]:
                 callsign = self.position_cache[iterator]['callsign']
             message_fields.append(f"{callsign}")
 
-            message_headers.append("Baro")
+            message_headers.append("Baro(ft)")
             alt_baro_message = ""
             if 'alt_baro' in self.position_cache[iterator]:
                 alt_baro = self.position_cache[iterator]['alt_baro']
                 if alt_baro is not None:
-                    alt_baro_message = f"{alt_baro:5.0f}"
+                    alt_baro_message = f"{alt_baro}"
 
             message_fields.append(alt_baro_message)
 
-            message_headers.append("Delta")
+            message_headers.append("Delta(ft)")
             geom_delta_message = ""
             if 'geom_delta' in self.position_cache[iterator]:
                 geo_delta = self.position_cache[iterator]['geom_delta']
@@ -1169,54 +1161,92 @@ class ADSBRecorder(multiprocessing.Process):
                     else:
                         sign = "-"
                         geo_delta = - geo_delta
-                    geom_delta_message = f" {sign} {geo_delta:<5d}"
+                    geom_delta_message = f"{sign}{geo_delta}"
             message_fields.append(geom_delta_message)
 
-            message_headers.append("GNSS")
+            message_headers.append("GNSS(ft)")
             gnss_message = ""
             if 'alt_gnss' in self.position_cache[iterator]:
                 alt_gnss = self.position_cache[iterator]['alt_gnss']
                 if alt_gnss is not None:
-                    gnss_message = f"={alt_gnss:5.0f}ft "
+                    gnss_message = f"{alt_gnss:.0f}"
             message_fields.append(gnss_message)
 
-            message_headers.append("Lat")
+            message_headers.append("Spd(kts)")
+            groundspeed_message  = ""
+            if 'groundspeed' in self.position_cache[iterator]:
+                groundspeed = self.position_cache[iterator]['groundspeed']
+                if groundspeed is not None:
+                    groundspeed_message = f"{groundspeed:.1f}"
+            message_fields.append(groundspeed_message)
+
+            message_headers.append("Track(deg)")
+            groundspeed_message  = ""
+            if 'track' in self.position_cache[iterator]:
+                groundspeed = self.position_cache[iterator]['track']
+                if groundspeed is not None:
+                    groundspeed_message = f"{groundspeed:.1f}"
+            message_fields.append(groundspeed_message)
+
+
+            message_headers.append("Lat(deg)")
             lat_message = ""
             if 'lat' in self.position_cache[iterator] and "lon" in self.position_cache[iterator]:
+                lat, lon = self.position_cache[iterator]['lat'], self.position_cache[iterator]['lon']
                 if lat is not None and lon is not None:
                     lat = self.position_cache[iterator]['lat']
-                    lat_message += f"lat:{lat:6.4f}"
+                    lat_message += f"{lat:6.4f}"
             message_fields.append(lat_message)
 
 
-            message_headers.append("Lon")
+            message_headers.append("Lon(deg)")
             lon_message = ""
             if 'lat' in self.position_cache[iterator] and 'lon' in self.position_cache[iterator]:
+                lat, lon = self.position_cache[iterator]['lat'], self.position_cache[iterator]['lon']
                 if lat is not None and lon is not None:
                     lon = self.position_cache[iterator]['lon']
-                    lon_message += f"lon:{lon:6.4f}"
+                    lon_message += f"{lon:6.4f}"
             message_fields.append(lon_message)
 
 
             message, header = "", ""
-            log_lines = []
+
             for i, field in enumerate(message_fields):
+
                 field_length = len(field)
                 header_length = len(message_headers[i])
+
                 if i >= len(self.field_length_list):
-                    self.field_length_list.append("")
+                    self.field_length_list.append(0)
                 if self.field_length_list[i] < field_length:
                     self.field_length_list[i] = field_length
-                if header_length < field_length:
+                if self.field_length_list[i] < header_length:
                     self.field_length_list[i] = header_length
 
-                message += field + " " * ((self.field_length_list[i]) - field_length) + " "
-                header += header + " " * ((self.field_length_list[i]) - field_length) + " "
-                if i == 0:
-                    log_lines.append(header)
+                message += " " * ((self.field_length_list[i]) - field_length) + field + " "
+                header += message_headers[i] + " " * ((self.field_length_list[i]) - header_length) + " "
+                separator = "-" * len(header)
+
+            if aircraft_counter == 0:
+                log_line += f"{header}\n"
+                log_line += f"{separator}\n"
+
+            log_line += f"{message}\n"
+
+            if aircraft_counter == len(self.position_cache) - 1:
+                log_line += f"{separator}\n"
+                time.sleep(0.1)
+
+
+        log_lines.append(log_line)
+        if log_lines and write_to_log and self.last_log_line != log_line:
+
 
             for line in log_lines:
                 log.info(line)
+
+        self.last_log_line = log_line
+        return header, log_lines
 
     def decodeBeastRecord(raw):
 
@@ -1311,17 +1341,20 @@ class ADSBRecorder(multiprocessing.Process):
         #log.info(f"frame  {frame}")
         #log.info(f"buffer {self.buffer}")
 
+        self.latest_timestamp = int.from_bytes(frame[2:8], byteorder='big') / TICKS_PER_SECOND
 
         if frame_length == 16:
-            timestamp = frame[2:8]
+
             signal = frame[8]
             payload = frame[9:16]
+
         elif frame_length == 23:
-            timestamp = frame[2:8]
+
             signal = frame[8]
             payload = frame[9:23]
+
         else:
-            log.info("Why are we here")
+            log.info(f"Why are we here?")
             pass
 
 
@@ -1372,9 +1405,16 @@ class ADSBRecorder(multiprocessing.Process):
                 if icao not in self.position_cache:
                     self.position_cache[icao] = {}
                 self.position_cache[icao]['callsign'] = callsign
-                self.position_cache[icao]['callsign_ts'] = getNow()
+                self.position_cache[icao]['callsign_ts'] = self.getBeastTimstamp()
+                self.position_cache[icao]['callsign_dt'] = self.getNow()
+                self.toTable([icao])
 
             elif isBarometricPosition(tc):
+
+                if icao not in self.position_cache:
+                    self.position_cache[icao] = {}
+
+
                 # Decode altitude
                 alt_field = ((payload[5] << 4) | (payload[6] >> 4)) & 0x0FFF
                 q_bit = (alt_field >> 4) & 1
@@ -1391,28 +1431,45 @@ class ADSBRecorder(multiprocessing.Process):
 
                 cpr_lon = getbits(payload, 72, 88)
 
-                #log.info(f"ICAO={payload[1:4].hex().upper()} tc={tc} alt={alt_ft} {f_flag} lat={cpr_lat} lon={cpr_lon} barometric pl={payload.hex()} q_bit={q_bit}")
 
-                if icao not in self.position_cache:
-                    self.position_cache[icao] = {}
+
+
 
 
                 if f_flag not in self.position_cache[icao]:
                     self.position_cache[icao][f_flag] = {}
 
-                self.position_cache[icao]["ts"] = datetime.datetime.now(tz=datetime.timezone.utc)
+                self.position_cache[icao]["ts"] = self.getBeastTimstamp()
+                self.position_cache[icao]["dt"] = self.getNow()
+
                 self.position_cache[icao][f_flag]["lat"] = cpr_lat
                 self.position_cache[icao][f_flag]["lon"] = cpr_lon
-                self.position_cache[icao][f_flag]["ts"] = datetime.datetime.now(tz=datetime.timezone.utc)
+                self.position_cache[icao][f_flag]["ts"] = self.getBeastTimstamp()
+                self.position_cache[icao][f_flag]["dt"] = self.getNow()
 
-                if "geom_delta" in self.position_cache[icao]:
-                    if alt_ft is not None and self.position_cache[icao] is not None:
+                if 0 in self.position_cache[icao] and 1 in self.position_cache[icao]:
+
+                    bit_0_age = (self.latest_timestamp - self.position_cache[icao][0]["ts"])
+                    bit_1_age = (self.latest_timestamp - self.position_cache[icao][1]["ts"])
+
+                    if max(bit_0_age, bit_1_age) < 180:
+
+                        aircraft = self.position_cache[icao]
+                        rc, lat, lon = decode_cpr_airborne(aircraft[0]["lat"], aircraft[0]["lon"], aircraft[1]["lat"],
+                                                           aircraft[1]["lon"], 0)
+
+                        self.position_cache[icao]['lat'] = lat
+                        self.position_cache[icao]['lon'] = lon
+
+                if "geom_delta" in self.position_cache[icao] and "geom_delta" in self.position_cache[icao]:
+                    if alt_ft is not None and self.position_cache[icao]['geom_delta'] is not None:
                         self.position_cache[icao]["alt_gnss"] = alt_ft + self.position_cache[icao]["geom_delta"]
 
                 self.position_cache[icao]["alt_baro"] = alt_ft
-                self.position_cache[icao]["ts_airborne_postion"] = getNow()
+                self.position_cache[icao]["ts_airborne_postion"] = self.getBeastTimstamp()
+                self.position_cache[icao]["dt_airborne_postion"] = self.getNow()
 
-                self.writeToLog([icao])
+                self.toTable([icao])
 
 
 
@@ -1475,9 +1532,10 @@ class ADSBRecorder(multiprocessing.Process):
                 self.position_cache[icao]['groundspeed'] = groundspeed
                 self.position_cache[icao]['track'] = track
                 self.position_cache[icao]['vert_rate'] = vert_rate
-                self.position_cache[icao]['ts_airborne_velocity'] = getNow()
+                self.position_cache[icao]['ts_airborne_velocity'] = self.getBeastTimstamp()
+                self.position_cache[icao]['dt_airborne_velocity'] = self.getNow()
 
-                self.writeToLog([icao])
+                self.toTable([icao])
 
 
             elif isGNSSPosition(tc):
@@ -1491,7 +1549,7 @@ class ADSBRecorder(multiprocessing.Process):
                 #log.info(f"tc={tc} not handled buffer={len(self.buffer)}")
                 pass
 
-            self.writeToLog([icao])
+            self.toTable([icao])
 
         return tx_type
 
