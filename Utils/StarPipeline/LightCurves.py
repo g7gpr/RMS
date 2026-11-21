@@ -217,8 +217,7 @@ def process(path_to_job, cat):
 
                 light_curves = calstarToLightCurves(cat, config, pp, calstar[0], platepars_all_recalibrated_path, video_path=None)
 
-                for star in light_curves:
-                    print(f"Star {star}")
+
 
                 for star_name, observations in light_curves.items():
 
