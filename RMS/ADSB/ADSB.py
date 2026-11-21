@@ -1003,7 +1003,7 @@ class ADSBRecorder(multiprocessing.Process):
             if icao not in self.history:
                 self.history[icao] = {}
 
-            with open("/tmp/adsb.txt", "w") as f:
+            with open(os.path.join(self.config.data_dir, "adsb.txt"), "w") as f:
 
                 f.write(f"{self.getNow()}\n{data_table}")
 
