@@ -781,7 +781,7 @@ if __name__ == "__main__":
 
     import argparse
 
-    arg_parser = argparse.ArgumentParser(description="""Ingest CALSTAR data \
+    arg_parser = argparse.ArgumentParser(description="""Download minimal cache of GMN raw data \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
     arg_parser.add_argument('path_template', help="""Template to remote file stores i.e. user@host:/home/stationID/files/processed """)
