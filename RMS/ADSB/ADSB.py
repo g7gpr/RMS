@@ -1030,10 +1030,10 @@ class ADSBRecorder(multiprocessing.Process):
         adsb_directory = os.path.expanduser(os.path.join(self.config.data_dir, self.config.adsb_dir))
         os.makedirs(adsb_directory, exist_ok=True)
 
-        adsb_positions_filename = f"{config.stationID}_{self.recording_start}_ads-b.json"
+        adsb_positions_filename = f"{self.config.stationID}_{self.recording_start}_ads-b.json"
         adsb_path = os.path.join(adsb_directory, adsb_positions_filename)
 
-        if self.position_cache:
+        if self.history:
 
             with open(adsb_path, "w") as fp:
                 json.dump(self.history, fp, indent=4)
