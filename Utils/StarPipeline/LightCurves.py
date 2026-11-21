@@ -276,9 +276,9 @@ if __name__ == "__main__":
 
 
     for path_to_job in work_list:
-        if path_to_job not in processed_sessions:
+        if os.path.basename(path_to_job) not in processed_sessions:
             process(path_to_job, cat)
-            processed_sessions.add(path_to_job)
+            processed_sessions.add(os.path.basename(path_to_job))
             with open("/archive/processed_sessions.txt", "a") as f:
                 f.write(path_to_job + "\n")
         else:
