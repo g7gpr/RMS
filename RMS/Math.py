@@ -36,6 +36,9 @@ def logLineFunc(x, m, k):
 
 def angularSeparation(ra1, dec1, ra2, dec2):
     """ Calculates the angle between two points on a sphere. Inputs in radians.
+
+    Note that RMS.Astrometry.CyFunctions.angularSeparation has the same name but takes and
+    returns degrees.
     
     Arguments:
         ra1: [float] Right ascension 1 (radians).
@@ -48,7 +51,15 @@ def angularSeparation(ra1, dec1, ra2, dec2):
     """
 
     # Classical method
-    return np.arccos(np.sin(dec1)*np.sin(dec2) + np.cos(dec1)*np.cos(dec2)*np.cos(ra2 - ra1))
+    # Rounding can push the cosine slightly above 1 for (nearly) coincident directions, which
+    # would make arccos return NaN, so clamp it to the closed interval [-1, 1]. The clip only
+    # guards the arccos domain - NaN coordinates still propagate as NaN. Note that the classical
+    # form remains ill-conditioned for small angles (the float64 resolution floor is ~0.004
+    # arcsec); the haversine formula below would remove both the NaN and that floor, but it
+    # changes every computed separation, so the clip is kept as the minimal fix.
+    cos_sep = np.sin(dec1)*np.sin(dec2) + np.cos(dec1)*np.cos(dec2)*np.cos(ra2 - ra1)
+
+    return np.arccos(np.clip(cos_sep, -1.0, 1.0))
 
     # # Compute the angular separation using the haversine formula
     # #   Source: https://idlastro.gsfc.nasa.gov/ftp/pro/astro/gcirc.pro
@@ -116,6 +127,43 @@ def vectMag(vect):
     return np.linalg.norm(vect)
 
 
+
+def vectShort(p1, p2, trim):
+    """ Symmetrically shorten a vector in an arbitrary number of dimensions.
+
+    If the vector is shorter than twice the length to be trimmed then a vector
+    of unit length is returned.
+
+    Arguments:
+        p1: [float] (x,y, ...) tuple of start coordinates.
+        p2: [float] (x,y, ...) tuple of end coordinates.
+        trim: [float] length of vector to be trimmed from each end.
+
+    Returns
+        p1: [tuple float] (x,y, ...) moved start coordinates.
+        p2: [tuple float] (x,y, ...) moved end coordinates.
+    """
+
+    # Create a vector and measure length
+    p1, p2 = np.asarray(p1, dtype=float), np.asarray(p2, dtype=float)
+    v = p2 - p1
+    length = np.linalg.norm(v)
+
+    # Create corresponding unit length vector
+    v = vectNorm(v)
+
+    # Handle edge case of vector shorter than twice the trim
+    trim = trim if length >= 2 * trim else (length / 2) - 0.5
+
+    # Create the vector to move p1 and p2
+    trim_vec = trim * v
+
+    # Add trim_vec to p1 and subtract from p2
+    p1_, p2_ = p1 + trim_vec, p2 - trim_vec
+
+    return tuple(p1_), tuple(p2_)
+
+
 ##############################################################################################################
 
 
@@ -158,7 +206,9 @@ def cartesianToPolar(x, y, z):
 
     """
 
-    theta = np.arccos(z)
+    # Rounding can push the z component of a unit vector just outside [-1, 1] for points near the
+    #   poles, which would make arccos return NaN
+    theta = np.arccos(np.clip(z, -1.0, 1.0))
     phi = np.arctan2(y, x)
 
     return theta, phi
@@ -561,6 +611,10 @@ def testAngSeparationDeg():
 
 
     test_list =     [[[45, 45], [45, 45], 0 ],
+                     # (0, -82) is a coincident pair whose spherical cosine rounds above 1, which
+                     #   made the unclipped arccos return NaN. The (45, 45) case above lands on
+                     #   exactly 1.0, so it passes either way and does not cover this.
+                     [[0, -82], [0, -82], 0 ],
                      [[0,  90], [0,   0], 90],
                      [[45, 45], [0,   0], 60],
                      [[30, -30], [-30, 30], 82.8192]]
@@ -668,14 +722,71 @@ def testPointInsideConvexPolygonSphere():
 
     plt.show()
 
+def testVectShort(n_tests=10000, log_to_console=False):
+
+    """ Test code for vectShort
+
+    Arguments:
+
+    Keyword arguments:
+        n_tests: [int] optional, default: 10000, number of tests to carry out
+        log_to_console: [bool] optional, default: False, if true log to console
+
+    Returns
+        [bool] : True if tests are passed
+    """
+
+    for i in range(n_tests):
+
+        # Generate test vectors
+        dims = np.random.randint(2, 16)
+        p1, p2 = np.random.uniform(-10, 10, dims), np.random.uniform(-10, 10, dims)
+        original_length = np.linalg.norm(p2 - p1)
+
+        # Generate test trim amounts
+        trim = np.random.uniform(0.1, 5.0)
+
+        # Compute new vector using vectShort (the test object)
+        p1_, p2_ = vectShort(p1, p2, trim)
+
+        # Convert to numpy arrays
+        p1_, p2_ = np.array(p1_), np.array(p2_)
+
+        new_length = np.linalg.norm(p2_ - p1_)
+
+        actual_shortening = original_length - new_length
+
+        if original_length < 2 * trim:
+            expected_shortening  = original_length - 1
+            mode = "fallback"
+        else:
+            expected_shortening = 2 * trim
+            mode = "normal"
+
+        error = actual_shortening - expected_shortening
+
+        if log_to_console:
+            print(f"{mode:8s} dims={dims:2d} length={original_length:8.4f} shortened by={actual_shortening:8.4f} "
+                  f"expected={expected_shortening:8.4f} error={error:+.2e}")
+
+        # Check for error
+        if error > 1e-8 * new_length :
+            return False
+
+    return True
+
+
+
 
 def tests():
 
     function_to_test = [["dimHypot", testDimHypot()],
                          ["angSeparationDeg", testAngSeparationDeg()],
-                         ["pointInsideConvexPolygonSphere", testPointInsideConvexPolygonSphere()]]
+                         ["pointInsideConvexPolygonSphere", testPointInsideConvexPolygonSphere()],
+                         ["vectShort", testVectShort()]]
 
     for func_name, func in function_to_test:
+        print(f"Starting test of {func_name}")
         if func:
             print("Test of {} successful".format(func_name))
         else:
