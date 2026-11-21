@@ -39,7 +39,7 @@ from RMS.Astrometry.Conversions import datetime2JD
 from RMS.Formats.FFfile import getMiddleTimeFF
 from RMS.Misc import mkdirP
 from pathlib import Path
-from CacheBuilder import sortFilesByTime
+from Utils.StarPipeline.CacheBuilder import sortFilesByTime
 from RMS.Formats.CALSTARS import readCALSTARS, renderStars
 from RMS.Formats.Platepar import Platepar
 from RMS.Formats.StarCatalogQueries import Catalog, renderStarsGaussian
