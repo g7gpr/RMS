@@ -285,7 +285,7 @@ if __name__ == "__main__":
             if line.strip()
         }
 
-    work_list = getWorkList(calstars_directory_path)
+    work_list = getWorkList(calstars_directory_path).reverse()
     cat = Catalog(config)
 
 
