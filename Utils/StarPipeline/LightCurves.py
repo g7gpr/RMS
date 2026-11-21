@@ -174,17 +174,19 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
                 nearest_idx = np.argmin(img_dist)
                 if img_dist[nearest_idx] <= 2 ** 2:
                     # Match found within 2 pixels
-                    cat_x = x_array[nearest_idx]
-                    cat_y = y_array[nearest_idx]
                     name = names_array[nearest_idx]
-                    #print(f"{fits_file} {name} {img_dist[nearest_idx]} {obs_x},{obs_y} {cat_x},{cat_y}")
                     if name not in light_curves:
                         light_curves[name] = {}
                     if jd not in light_curves[name]:
                         light_curves[name][jd] = {}
                         light_curves[name][jd]['obs'] = arr_obs_mag[observation_index]
                         light_curves[name][jd]['cat'] = mag_array[nearest_idx]
-
+                        light_curves[name][jd]['level'] = star[2]
+                        light_curves[name][jd]['amplitude'] = star[3]
+                        light_curves[name][jd]['fwhm'] = star[4]
+                        light_curves[name][jd]['background'] = star[5]
+                        light_curves[name][jd]['snr'] = star[6]
+                        light_curves[name][jd]['saturated_count'] = star[7]
                     counter += 1
 
 
@@ -245,7 +247,16 @@ def process(path_to_job, cat):
 
                         offset = int((observation_date - session_date).total_seconds() / 10)
 
-                        daily_data[observation_dir].append([offset, int(round(100 * (data['obs'] - data['cat'])))])
+
+                        daily_data[observation_dir].append([offset,
+                                                            int(round(100 * (data['obs'] - data['cat']))),
+                                                            data['level'],
+                                                            data['amplitude'],
+                                                            data['fwhm'] * 100,
+                                                            data['background'],
+                                                            data['snr'] * 100,
+                                                            data['saturated_count']
+                                                            ])
 
                     for session, records in daily_data.items():
                         dirname = Path("/archive/light_curves/") / star_name / obs_con.stationID
@@ -285,7 +296,8 @@ if __name__ == "__main__":
             if line.strip()
         }
 
-    work_list = getWorkList(calstars_directory_path).reverse()
+    work_list = getWorkList(calstars_directory_path)
+    work_list.reverse()
     cat = Catalog(config)
 
 
