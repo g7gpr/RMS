@@ -34,10 +34,9 @@ import time
 import tarfile
 import glob
 import bisect
-import pyModeS
 
 import numpy as np
-from scipy.cluster.hierarchy import from_mlab_linkage
+
 
 from RMS.Logger import LoggingManager, getLogger
 from RMS.Formats.StarCatalogQueries import getPlateparSkyParameters
