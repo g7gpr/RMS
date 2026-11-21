@@ -35,7 +35,7 @@ import cv2
 import ephem
 import tqdm
 
-from RMS.Astrometry.Conversions import datetime2JD
+from RMS.Astrometry.Conversions import datetime2JD, jd2Date
 from RMS.Formats.FFfile import getMiddleTimeFF
 from RMS.Misc import mkdirP
 from pathlib import Path
@@ -130,7 +130,11 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
     fits_files_without_moon_list = detectMoon(fits_files_from_calstar_list, pp, obs_con)
     astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
 
+    counter = 0
     for fits_file, star_list in tqdm.tqdm(calstar):
+
+        if counter > 10:
+            break
 
         if len(star_list) < 40:
             #print(f"Skipping {fits_file} only {len(star_list)} stars")
@@ -181,6 +185,9 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
                         light_curves[name][jd]['obs'] = arr_obs_mag[observation_index]
                         light_curves[name][jd]['cat'] = mag_array[nearest_idx]
 
+                    counter += 1
+
+
                     pass
         pass
     if produce_debug_timelapse:
@@ -200,7 +207,11 @@ def process(path_to_job, cat):
 
         with tarfile.open(path_to_job, "r:bz2") as tar:
 
-            tar.extractall(temp_dir, filter="fully_trusted")
+            try:
+                tar.extractall(temp_dir, filter="fully_trusted")
+            except:
+                tar.extractall(temp_dir)
+
             working_dir = os.path.join(temp_dir, observation_dir)
             config_path = os.path.join(working_dir, ".config")
             obs_con = cr.parse(config_path)
@@ -217,8 +228,8 @@ def process(path_to_job, cat):
 
                 light_curves = calstarToLightCurves(cat, config, pp, calstar[0], platepars_all_recalibrated_path, video_path=None)
 
-
-
+                station, date_str, time_str, us_str = observation_dir.split('_')
+                session_date = datetime.datetime.strptime(f"{date_str}_{time_str}_{us_str}", "%Y%m%d_%H%M%S_%f")
                 for star_name, observations in light_curves.items():
 
                     daily_data = {}
@@ -230,16 +241,19 @@ def process(path_to_job, cat):
 
                         if observation_dir not in daily_data:
                             daily_data[observation_dir] = []
+                        observation_date = jd2Date(jd, dt_obj=True)
 
-                        daily_data[observation_dir].append([jd, data['obs']])
+                        offset = int((observation_date - session_date).total_seconds() / 10)
+
+                        daily_data[observation_dir].append([offset, int(round(100 * (data['obs'] - data['cat'])))])
 
                     for session, records in daily_data.items():
                         dirname = Path("/archive/light_curves/") / star_name / obs_con.stationID
                         dirname.mkdir(parents=True, exist_ok=True)
 
-                        filename = dirname / f"{session}.npy"
+                        filename = dirname / f"{session}_{int(data['cat'] * 1e6)}.npy"
 
-                        np.save(filename, np.array(records, dtype=np.float64))
+                        np.save(filename, np.array(records, dtype=np.int16))
         pass
 
     # Temporary directory is automatically deleted here
