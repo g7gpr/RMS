@@ -187,10 +187,21 @@ def simpleMagnitudeScatterPlot(plot_data):
 
     plt.figure(figsize=(12, 6))
 
-    plt.scatter(
-        obs["jd"],
-        obs["obs_mag"],
-        s=5
+
+
+    for station in stations_list:
+        mask = obs["station"] == station
+
+        plt.scatter(
+            obs["jd"][mask],
+            obs["obs_mag"][mask],
+            s=5,
+            label=station
+        )
+
+    plt.legend(
+        fontsize=8,
+        markerscale=2
     )
 
     plt.axhline(
@@ -210,10 +221,45 @@ def simpleMagnitudeScatterPlot(plot_data):
         useOffset=False
     )
 
+    plt.scatter(
+        obs["jd"],
+        obs["obs_mag"],
+        s=5
+    )
+
+    ax2 = plt.gca().twinx()
+
+    ax2.scatter(
+        obs["jd"],
+        obs["star_count"],
+        s=2,
+        color="green",
+        alpha=0.3
+    )
+
+    ax2.set_ylabel(
+        "Star Count",
+        color="green"
+    )
+
+    ax2.tick_params(
+        axis='y',
+        labelcolor='green'
+    )
+
     plt.xlabel("Julian Date")
     plt.ylabel("Magnitude")
     plt.title(star_name)
-    plt.figtext(0.5,0.93, stations_text, ha="center", fontsize=8, color="gray")
+    plt.suptitle(
+        star_name,
+        fontsize=14
+    )
+
+    plt.title(
+        stations_text,
+        fontsize=8,
+        color="gray"
+    )
 
     plt.grid(True)
 
