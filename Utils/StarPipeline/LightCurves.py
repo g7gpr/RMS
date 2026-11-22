@@ -239,6 +239,7 @@ def process(path_to_job, cat):
                     obs_con = cr.parse(config_path)
             else:
                 print(f"No config file for {observation_dir}")
+                return
             pp = Platepar()
             pp_path = os.path.join(working_dir, obs_con.platepar_name)
             pp.read(pp_path)
