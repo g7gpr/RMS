@@ -217,13 +217,13 @@ def process(path_to_job, cat):
 
 
     print(f"Processing {path_to_job}")
-    processing_start = time.time()
+
     observation_dir = os.path.basename(path_to_job).split("_min")[0]
 
 
     with tempfile.TemporaryDirectory() as temp_dir:
 
-        extraction_start = time.time()
+
         with tarfile.open(path_to_job, "r:bz2") as tar:
 
             try:
@@ -238,7 +238,7 @@ def process(path_to_job, cat):
             pp_path = os.path.join(working_dir, obs_con.platepar_name)
             pp.read(pp_path)
             calstars_filename = f"CALSTARS_{observation_dir}.txt"
-            calstar_read_start = time.time()
+
             calstar = readCALSTARS(working_dir, calstars_filename)
             video_file = f"{observation_dir}_timelapse.mp4"
             video_path = os.path.join(os.path.expanduser(config.data_dir), video_file)
@@ -246,9 +246,9 @@ def process(path_to_job, cat):
 
             if len(calstar) == 2:
 
-                calstar_to_light_curve_start = time.time()
+
                 light_curves = calstarToLightCurves(cat, config, pp, calstar[0], platepars_all_recalibrated_path, video_path=None)
-                filing_start = time.time()
+
                 station, date_str, time_str, us_str = observation_dir.split('_')
                 session_date = datetime.datetime.strptime(f"{date_str}_{time_str}_{us_str}", "%Y%m%d_%H%M%S_%f")
                 session_jd = datetime2JD(session_date)
@@ -291,15 +291,7 @@ def process(path_to_job, cat):
                         filename = dirname / f"{session}_{int(data['cat'] * 1e6)}_{int(round(pp.F_scale * 1000))}.npy"
                         array_to_save = np.array(records, dtype=np.int16)
                         np.save(filename, array_to_save)
-    completion = time.time()
-    print(
-        f"Extract={extraction_start - processing_start:6.0f}s  "
-        f"ReadCal={calstar_read_start - extraction_start:6.0f}s  "
-        f"Setup={calstar_to_light_curve_start - calstar_read_start:6.0f}s  "
-        f"Light Curves={filing_start - calstar_to_light_curve_start:6.0f}s  "
-        f"Write={completion - filing_start:6.0f}s  "
-        f"Total={completion - processing_start:6.0f}s"
-)
+
 
 
 if __name__ == "__main__":
