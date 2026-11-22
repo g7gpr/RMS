@@ -306,11 +306,12 @@ if __name__ == "__main__":
 
 
     for path_to_job in work_list:
-        if path_to_job not in processed_sessions:
+        job = os.path.basename(path_to_job)
+        if job not in processed_sessions:
             path_to_job = "/archive/CALSTARS/20240223/UK008F_20240223_180123_908321_min.tar.bz2"
             process(path_to_job, cat)
-            processed_sessions.add(path_to_job)
+            processed_sessions.add(job)
             with open("/archive/processed_sessions.txt", "a") as f:
-                f.write(path_to_job + "\n")
+                f.write(job + "\n")
         else:
-            print(f"{os.path.basename(path_to_job)} already processed")
+            print(f"{job} already processed")
