@@ -297,8 +297,8 @@ def process(path_to_job, cat):
     print(
         f"Extract={extraction_start - processing_start:6.0f}s  "
         f"ReadCal={calstar_read_start - extraction_start:6.0f}s  "
-        f"Match={calstar_to_light_curve_start - calstar_read_start:6.0f}s  "
-        f"File={filing_start - calstar_to_light_curve_start:6.0f}s  "
+        f"Setup={calstar_to_light_curve_start - calstar_read_start:6.0f}s  "
+        f"Light Curves={filing_start - calstar_to_light_curve_start:6.0f}s  "
         f"Write={completion - filing_start:6.0f}s  "
         f"Total={completion - processing_start:6.0f}s"
 )
