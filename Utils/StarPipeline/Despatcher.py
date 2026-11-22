@@ -46,7 +46,8 @@ from RMS.Formats.StarCatalogQueries import Catalog, renderStarsGaussian
 from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP, raDec2AltAz
 from Utils.Flux import detectMoon
 
-from Utils.StarPipeline.CacheBuilder import ARCHIVE
+from Utils.StarPipeline.CacheBuilder import ARCHIVE, sortFilesByTime
+
 
 import uuid
 
@@ -62,8 +63,11 @@ PROCESSED_SESSIONS_FILE = "/archive/processed_sessions.txt"
 
 def showQueueStatus():
 
-    print("\nQueue Status")
-    print("=" * 60)
+    print("\033[2J\033[H", end="")
+    print("Queue Status")
+    print("=" * 62)
+
+    now = datetime.datetime.now(tz=datetime.timezone.utc)
 
     for queue_dir in sorted(Path(QUEUES).iterdir()):
 
@@ -73,18 +77,24 @@ def showQueueStatus():
         queued = 0
         completed = 0
 
-        for item in queue_dir.iterdir():
+        jobs = sorted(queue_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+        print(f"{queue_dir.name:40s}")
+
+        for item in jobs:
+
+
+            age = (now.timestamp() - item.stat().st_mtime)
+
+            age_minutes = int(age / 60)
 
             if item.name.endswith(".completed"):
-                completed += 1
+                print(f"    [DONE] {item.name} {age_minutes}m")
             else:
-                queued += 1
+                print(f"    [JOB ] {item.name} {age_minutes}m")
 
-        print(
-            f"{queue_dir.name:40s} "
-            f"queued={queued:3d} "
-            f"completed={completed:3d}"
-        )
+        print()
 
 def getWorkList(archive):
 

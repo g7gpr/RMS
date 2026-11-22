@@ -225,20 +225,20 @@ def process(path_to_job, cat):
 
                 station, date_str, time_str, us_str = observation_dir.split('_')
                 session_date = datetime.datetime.strptime(f"{date_str}_{time_str}_{us_str}", "%Y%m%d_%H%M%S_%f")
+                session_jd = datetime2JD(session_date)
                 for star_name, observations in light_curves.items():
 
                     daily_data = {}
 
                     for jd_str, data in observations.items():
 
-                        jd = float(jd_str)
+                        observation_jd = float(jd_str)
 
 
                         if observation_dir not in daily_data:
                             daily_data[observation_dir] = []
-                        observation_date = jd2Date(jd, dt_obj=True)
 
-                        offset = int((observation_date - session_date).total_seconds() / 10)
+                        offset = int((observation_jd - session_jd) * 10000)
 
                         if not np.isfinite(data['obs']):
                             print(f"Skipping observation of {star_name}")
