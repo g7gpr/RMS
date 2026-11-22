@@ -71,6 +71,7 @@ def showQueueStatus():
 
     if not os.path.exists(QUEUES):
         print("Queue Directory does not exist")
+        return
 
     for queue_dir in sorted(Path(QUEUES).iterdir()):
 
