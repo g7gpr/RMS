@@ -327,6 +327,7 @@ if __name__ == "__main__":
     while True:
         createJobQueues()
         last_queue_cleanup = cleanupQueues(last_queue_cleanup)
+        print(f"Next job to add to queue {work_list[0]}")
         populateJobQueues(work_list, processed_sessions, queue_depth=5)
         updateProcessedSessions(processed_sessions)
         time.sleep(10)

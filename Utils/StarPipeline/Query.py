@@ -80,12 +80,14 @@ def getStarObservations(star_name):
 
         arrays.append(loadObservationFile(filename))
 
-    return arrays
+    observations = np.concatenate(arrays)
+
+    return observations
 
 def loadObservationFile(filename):
 
     dtype = np.dtype([
-        ("observation_date", "datetime64[s]"),
+        ("jd", np.float64),
         ("obs_mag", np.float32),
         ("cat_mag", np.float32),
         ("pixel_scale", np.float32),
@@ -113,7 +115,8 @@ def loadObservationFile(filename):
     n = len(offset)
     observations = np.empty(n, dtype=dtype)
 
-    observations["observation_date"] = np.array([np.datetime64(session_date + datetime.timedelta(seconds=int(t) * 10)) for t in offset])
+    session_jd = datetime2JD(session_date)
+    observations["jd"] = session_jd +  offset.astype(np.float64) / 10000.0
 
     observations["obs_mag"] = cat_mag + residual / 100.0
     observations["cat_mag"] = cat_mag
@@ -158,11 +161,11 @@ if __name__ == "__main__":
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
 
-    print(starSummary("HD 39417"))
+    print(starSummary("HD 137422"))
 
-    star_file_list = getStarFiles("HD 39417")
+    star_file_list = getStarFiles("HD 137422")
     for star_file in star_file_list:
         print(star_file)
 
-    observations = getStarObservations("HD 39417")
+    observations = getStarObservations("HD 137422")
     pass
