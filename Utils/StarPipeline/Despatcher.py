@@ -204,7 +204,7 @@ def populateJobQueues(work_list, processed_sessions, queue_depth=3):
 
         while queue_depth < 3 and job_idx < len(available_jobs):
             (queue_dir / available_jobs[job_idx]).touch()
-            print(f"Added {available_jobs[job_idx]} for {queue_dir}")
+            print(f"Added {available_jobs[job_idx]} for worker {os.path.basename(queue_dir)}")
             queue_depth += 1
             job_idx += 1
 
