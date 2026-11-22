@@ -287,7 +287,9 @@ if __name__ == "__main__":
     calstars_directory_path = os.path.join(ARCHIVE, CALSTARS_DATA_DIR)
     os.makedirs(calstars_directory_path, exist_ok=True)
 
+    print("Loading catalog")
     cat = Catalog(config)
+    print("Catalog loaded")
 
     if cml_args.single:
 
