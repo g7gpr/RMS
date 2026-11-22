@@ -232,14 +232,14 @@ def process(path_to_job, cat):
                 tar.extractall(temp_dir)
 
             working_dir = os.path.join(temp_dir, observation_dir)
-
             config_path = os.path.join(working_dir, ".config")
-            if os.path.exists(config_path):
-                if os.path.isfile(config_path):
-                    obs_con = cr.parse(config_path)
+
+            if os.path.isfile(config_path):
+                obs_con = cr.parse(config_path)
             else:
                 print(f"No config file for {observation_dir}")
                 return
+
             pp = Platepar()
             pp_path = os.path.join(working_dir, obs_con.platepar_name)
             pp.read(pp_path)
