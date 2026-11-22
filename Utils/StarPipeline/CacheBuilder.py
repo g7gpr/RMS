@@ -705,7 +705,7 @@ def archiveFilenameToDatetime(filename):
 
     return datetime.datetime.strptime(f"{date_str}_{time_str}_{us_str}","%Y%m%d_%H%M%S_%f").astimezone(datetime.timezone.utc)
 
-def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None, username=None, host=None, remote_station_processed_dir=None, port=22, bw_limit=None, latest_first=True, reverse=False):
+def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None, username=None, host=None, remote_station_processed_dir=None, port=22, bw_limit=None,reverse=False):
 
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
@@ -727,7 +727,7 @@ def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None
     files_downloaded = 0
     downloaded_mb = 0
     files_to_download = len(remote_files_sorted)
-    if latest_first:
+    if reverse:
         remote_files_sorted.reverse()
     for remote_file in remote_files_sorted:
 

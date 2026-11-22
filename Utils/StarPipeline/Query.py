@@ -306,7 +306,7 @@ if __name__ == "__main__":
         star_file_list = getStarFiles(most_observed_star)
         star_to_plot =  most_observed_star
 
-    star_to_plot = "HD 202448"
+
 
     print("Query started")
     query_response = getStarObservations(star_to_plot)
