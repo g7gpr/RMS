@@ -242,7 +242,7 @@ def simpleMagnitudeScatterPlot(plot_data):
     #
     # Title + station list
     #
-    plt.suptitle(f"{star_name}\nRa:{obs_ra:.2f} deg Dec:{obs_dec:.2f} deg", fontsize=14)
+    plt.suptitle(f"{star_name}\nRa:{obs_ra:.2f}deg   Dec:{obs_dec:.2f}deg", fontsize=14)
 
     ax1.set_title(
         stations_text,

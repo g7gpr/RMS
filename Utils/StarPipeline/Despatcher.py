@@ -328,7 +328,7 @@ if __name__ == "__main__":
     work_list = getWorkList(calstars_directory_path)
     if cml_args.reverse:
         work_list.reverse()
-    cat = Catalog(config)
+
 
     last_queue_cleanup = datetime.datetime.now(tz=datetime.timezone.utc)
 
