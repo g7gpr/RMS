@@ -169,6 +169,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
                 if img_dist[nearest_idx] <= 2 ** 2:
                     # Match found within 2 pixels
                     name = names_array[nearest_idx]
+
                     if name not in light_curves:
                         light_curves[name] = {}
                     if jd not in light_curves[name]:
@@ -182,6 +183,9 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
                         light_curves[name][jd]['snr'] = star[6]
                         light_curves[name][jd]['saturated_count'] = star[7]
                         light_curves[name][jd]['star_count'] = star_count
+                        light_curves[name][jd]['ra_obs'] = arr_obs_ra[observation_index]
+                        light_curves[name][jd]['dec_obs'] = arr_obs_dec[observation_index]
+
                     counter += 1
 
 
@@ -225,6 +229,7 @@ def process(path_to_job, cat):
 
                 light_curves = calstarToLightCurves(cat, config, pp, calstar[0], platepars_all_recalibrated_path, video_path=None)
 
+
                 station, date_str, time_str, us_str = observation_dir.split('_')
                 session_date = datetime.datetime.strptime(f"{date_str}_{time_str}_{us_str}", "%Y%m%d_%H%M%S_%f")
                 session_jd = datetime2JD(session_date)
@@ -255,7 +260,9 @@ def process(path_to_job, cat):
                                                             data['background'],
                                                             data['snr'] * 100,
                                                             data['saturated_count'],
-                                                            data['star_count']
+                                                            data['star_count'],
+                                                            data['ra_obs'] * 1000,
+                                                            data['dec_obs'] * 1000
                                                             ])
 
                     for session, records in daily_data.items():
