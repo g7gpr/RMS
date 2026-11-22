@@ -251,10 +251,9 @@ def updateProcessedSessions(processed_sessions):
                 with open(PROCESSED_SESSIONS_FILE, "a") as f:
                     f.write(job_name + "\n")
 
-            try:
-                completed_file.unlink()
-            except:
-                pass
+
+            completed_file.unlink(missing_ok=True)
+
 
             job_file = queue_dir / job_name
 
