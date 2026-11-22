@@ -282,6 +282,8 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="""Convert GMN data cache into star light curves \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
+    arg_parser.add_argument("-r", "--reverse", action="store_true", help="Process newest jobs first")
+
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
@@ -301,14 +303,14 @@ if __name__ == "__main__":
         }
 
     work_list = getWorkList(calstars_directory_path)
-    work_list.reverse()
+    if cml_args.reverse:
+        work_list.reverse()
     cat = Catalog(config)
 
 
     for path_to_job in work_list:
         job = os.path.basename(path_to_job)
         if job not in processed_sessions:
-            path_to_job = "/archive/CALSTARS/20240223/UK008F_20240223_180123_908321_min.tar.bz2"
             process(path_to_job, cat)
             processed_sessions.add(job)
             with open("/archive/processed_sessions.txt", "a") as f:
