@@ -242,6 +242,43 @@ def updateProcessedSessions(processed_sessions):
 
     return
 
+def cleanupQueues(last_queue_cleanup, hours=12, force=False):
+
+    now = datetime.datetime.now(tz=datetime.timezone.utc)
+
+    if (now - last_queue_cleanup) < datetime.timedelta(hours=hours) and not force:
+
+        return last_queue_cleanup
+
+    print("Running queue cleanup...")
+
+    for registration in Path(REGISTRATIONS).iterdir():
+
+        if not registration.is_file():
+            continue
+
+        age = now.timestamp() - registration.stat().st_mtime
+        worker_id = registration.name
+
+        if age > hours * 3600:
+
+
+
+            queue_dir = Path(QUEUES) / worker_id
+
+            print(f"Worker {worker_id} stale {age/3600:.1f} hours")
+
+            if queue_dir.exists():
+                shutil.rmtree(queue_dir)
+
+            registration.unlink()
+
+        else:
+
+            print(f"Worker {worker_id} is active {age/3600:.1f} hours")
+
+    return now
+
 
 if __name__ == "__main__":
 
@@ -275,8 +312,11 @@ if __name__ == "__main__":
         work_list.reverse()
     cat = Catalog(config)
 
+    last_queue_cleanup = datetime.datetime.now(tz=datetime.timezone.utc)
+
     while True:
         createJobQueues()
+        last_queue_cleanup = cleanupQueues(last_queue_cleanup)
         populateJobQueues(work_list, processed_sessions, queue_depth=5)
         updateProcessedSessions(processed_sessions)
         time.sleep(10)
