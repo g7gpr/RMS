@@ -207,14 +207,14 @@ def simpleMagnitudeScatterPlot(plot_data):
 
 
     # Plot station magnitude legends
-
-    ax1.legend(
-        title="Stations",
-        fontsize=8,
-        title_fontsize=9,
-        loc="upper left",
-        bbox_to_anchor=(1.02, 1)
-    )
+    #
+    #ax1.legend(
+    #    title="Stations",
+    #    fontsize=8,
+    #    title_fontsize=9,
+    #    loc="upper left",
+    #    bbox_to_anchor=(1.02, 1)
+    #)
 
 
     #
