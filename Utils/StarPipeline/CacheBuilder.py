@@ -820,6 +820,6 @@ if __name__ == "__main__":
     if build_cache:
         remote_files = loadRemoteFiles(os.path.join(ARCHIVE, REMOTE_FILES_JSON), country_code=country_code)
         remote_files_sorted = sortFilesByTime(remote_files)
-        remote_files_sorted.reverse()
-        buildCache(config, remote_files_sorted, calstars_directory_path, username=user, host=hostname, remote_station_processed_dir=path_template)
+
+        buildCache(config, remote_files_sorted, calstars_directory_path, username=user, host=hostname, remote_station_processed_dir=path_template, reverse=False)
         sys.exit()

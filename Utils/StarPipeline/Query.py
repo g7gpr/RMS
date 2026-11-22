@@ -289,7 +289,7 @@ if __name__ == "__main__":
 
 
 
-    if False:
+    if True:
 
         star_list = getStars()
         star_sessions = []
