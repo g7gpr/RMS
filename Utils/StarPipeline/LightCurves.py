@@ -293,7 +293,7 @@ def process(path_to_job, cat):
                         filename = dirname / f"{session}_{int(data['cat'] * 1e6)}_{int(round(pp.F_scale * 1000))}.npy"
                         array_to_save = np.array(records, dtype=np.int16)
                         np.save(filename, array_to_save)
-                    completion = time.time()
+    completion = time.time()
     print(
         f"Extract={extraction_start - processing_start:6.0f}s  "
         f"ReadCal={calstar_read_start - extraction_start:6.0f}s  "
