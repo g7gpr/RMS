@@ -323,6 +323,7 @@ if __name__ == "__main__":
         print("Running using despatcher")
 
         worker_id = getWorkerID()
+        registerWorker(worker_id)
 
         while True:
             waitForQueue(worker_id)

@@ -119,7 +119,8 @@ def waitForQueue(worker_id):
     queue_dir = Path(QUEUES) / worker_id
 
     while not queue_dir.exists():
-        time.sleep(1)
+        print(f"Waiting for queue for {worker_id}")
+        time.sleep(10)
 
     return queue_dir
 
