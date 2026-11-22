@@ -118,7 +118,8 @@ def loadObservationFile(filename):
         ("fwhm", np.float32),
         ("background", np.int32),
         ("snr", np.float32),
-        ("saturated_count", np.int32)
+        ("saturated_count", np.int32),
+        ("star_count", np.int16)
     ])
 
     filename = Path(filename)
@@ -130,6 +131,7 @@ def loadObservationFile(filename):
 
 
     data = np.load(filename)
+    print(data.shape)
     offset = data[:, 0]
     residual = data[:, 1]
 
@@ -152,6 +154,7 @@ def loadObservationFile(filename):
     observations["background"] = data[:, 5]
     observations["snr"] = data[:, 6] / 100.0
     observations["saturated_count"] = data[:, 7]
+    observations["star_count"] = data[:, 8]
 
     return observations
 

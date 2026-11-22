@@ -128,8 +128,8 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
 
         if counter > 10 and debug_mode:
             break
-
-        if len(star_list) < 40:
+        star_count = len(star_list)
+        if star_count < 80:
             #print(f"Skipping {fits_file} only {len(star_list)} stars")
             continue
 
@@ -160,6 +160,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
             combined_img = np.hstack((query_img, calstar_img))
             video.write(combined_img)
 
+        star_count = len(star_list)
         for observation_index, star in enumerate(star_list):
             if len(star) == 8:
                 obs_x, obs_y = star[1], star[0]
@@ -180,6 +181,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
                         light_curves[name][jd]['background'] = star[5]
                         light_curves[name][jd]['snr'] = star[6]
                         light_curves[name][jd]['saturated_count'] = star[7]
+                        light_curves[name][jd]['star_count'] = star_count
                     counter += 1
 
 
@@ -252,7 +254,8 @@ def process(path_to_job, cat):
                                                             data['fwhm'] * 100,
                                                             data['background'],
                                                             data['snr'] * 100,
-                                                            data['saturated_count']
+                                                            data['saturated_count'],
+                                                            data['star_count']
                                                             ])
 
                     for session, records in daily_data.items():
@@ -260,8 +263,9 @@ def process(path_to_job, cat):
                         dirname.mkdir(parents=True, exist_ok=True)
 
                         filename = dirname / f"{session}_{int(data['cat'] * 1e6)}_{int(round(pp.F_scale * 1000))}.npy"
-
-                        np.save(filename, np.array(records, dtype=np.int16))
+                        array_to_save = np.array(records, dtype=np.int16)
+                        print(array_to_save.shape)
+                        np.save(filename, array_to_save)
         pass
 
     # Temporary directory is automatically deleted here
