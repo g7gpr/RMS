@@ -33,7 +33,7 @@ import random
 import socket
 import cv2
 import ephem
-import tqdm
+
 
 from RMS.Astrometry.Conversions import datetime2JD, jd2Date
 from RMS.Formats.FFfile import getMiddleTimeFF
@@ -124,7 +124,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
     astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
 
     counter = 0
-    for fits_file, star_list in tqdm.tqdm(calstar):
+    for fits_file, star_list in calstar:
 
         if counter > 10 and debug_mode:
             break
@@ -198,7 +198,7 @@ def process(path_to_job, cat):
 
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        print(f"Extracting to {temp_dir}")
+
 
         with tarfile.open(path_to_job, "r:bz2") as tar:
 
@@ -321,7 +321,7 @@ if __name__ == "__main__":
         print("Running using despatcher")
 
         worker_id = getWorkerID()
-        registerWorker(worker_id)
+
         while True:
             waitForQueue(worker_id)
             job = getJob(worker_id)
@@ -329,6 +329,8 @@ if __name__ == "__main__":
                 print("Queue empty")
                 time.sleep(10)
             else:
+                # Re-register with the same id to show despatch we are still alive
+                registerWorker(worker_id)
                 path_to_job = jobToPath(job)
                 process(path_to_job, cat)
                 jobCompleted(worker_id, job)

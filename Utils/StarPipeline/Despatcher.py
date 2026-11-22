@@ -59,6 +59,33 @@ REGISTRATIONS = "/archive/despatcher/registrations"
 PROCESSED_SESSIONS_FILE = "/archive/processed_sessions.txt"
 
 
+
+def showQueueStatus():
+
+    print("\nQueue Status")
+    print("=" * 60)
+
+    for queue_dir in sorted(Path(QUEUES).iterdir()):
+
+        if not queue_dir.is_dir():
+            continue
+
+        queued = 0
+        completed = 0
+
+        for item in queue_dir.iterdir():
+
+            if item.name.endswith(".completed"):
+                completed += 1
+            else:
+                queued += 1
+
+        print(
+            f"{queue_dir.name:40s} "
+            f"queued={queued:3d} "
+            f"completed={completed:3d}"
+        )
+
 def getWorkList(archive):
 
 
