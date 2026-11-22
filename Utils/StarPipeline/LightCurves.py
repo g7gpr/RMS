@@ -264,7 +264,6 @@ def process(path_to_job, cat):
 
                         filename = dirname / f"{session}_{int(data['cat'] * 1e6)}_{int(round(pp.F_scale * 1000))}.npy"
                         array_to_save = np.array(records, dtype=np.int16)
-                        print(array_to_save.shape)
                         np.save(filename, array_to_save)
         pass
 

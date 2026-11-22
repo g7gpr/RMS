@@ -131,7 +131,7 @@ def loadObservationFile(filename):
 
 
     data = np.load(filename)
-    print(data.shape)
+
     offset = data[:, 0]
     residual = data[:, 1]
 
