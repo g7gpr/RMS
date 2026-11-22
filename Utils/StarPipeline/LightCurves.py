@@ -150,7 +150,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
 
         y, x, level, amplitude, fwhm, background, snr, saturated_count = zip(*star_list)
         jd_list = [jd] * len(star_list)
-        _arr_jd, arr_obs_ra, arr_obs_dec, arr_obs_mag = xyToRaDecPP(jd_list, list(x), list(y), list(amplitude), pp,
+        _arr_jd, arr_obs_ra, arr_obs_dec, arr_obs_mag = xyToRaDecPP(jd_list, list(x), list(y), list(level), pp,
                                                                     jd_time=True, measurement=True,
                                                                     precompute_pointing_corr=True,
                                                                     extinction_correction=True)

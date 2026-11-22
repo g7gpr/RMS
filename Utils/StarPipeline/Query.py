@@ -179,95 +179,86 @@ def simpleMagnitudeScatterPlot(plot_data):
 
     star_name, obs, stations_list = plot_data
 
-    stations_text = ""
-    for station in stations_list:
-        stations_text += f"{station},"
-
-    stations_text = stations_text.rstrip(",")
+    stations_text = ", ".join(sorted(stations_list))
 
     plt.figure(figsize=(12, 6))
 
+    ax1 = plt.gca()
 
+    #
+    # Magnitude scatter coloured by station
+    #
 
     for station in stations_list:
         mask = obs["station"] == station
 
-        plt.scatter(
+        ax1.scatter(
             obs["jd"][mask],
             obs["obs_mag"][mask],
             s=5,
             label=station
         )
 
-    plt.legend(
+
+    # Plot station magnitude legends
+
+    ax1.legend(
+        title="Stations",
         fontsize=8,
-        markerscale=2
+        title_fontsize=9,
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1)
     )
 
-    plt.axhline(
+
+    #
+    # Catalog magnitude
+    #
+    ax1.axhline(
         y=obs["cat_mag"][0],
         color="red",
         linestyle=":",
         linewidth=1,
-        alpha=0.5,
-        label="Catalog"
+        alpha=0.5
     )
 
-    plt.gca().invert_yaxis()
+    ax1.invert_yaxis()
+
+    ax1.set_xlabel("Julian Date")
+    ax1.set_ylabel("Magnitude")
 
     plt.ticklabel_format(
-        axis='x',
-        style='plain',
+        axis="x",
+        style="plain",
         useOffset=False
     )
 
-    plt.scatter(
-        obs["jd"],
-        obs["obs_mag"],
-        s=5
-    )
+    #
+    # Title + station list
+    #
+    plt.suptitle(star_name, fontsize=14)
 
-    ax2 = plt.gca().twinx()
-
-    ax2.scatter(
-        obs["jd"],
-        obs["star_count"],
-        s=2,
-        color="green",
-        alpha=0.3
-    )
-
-    ax2.set_ylabel(
-        "Star Count",
-        color="green"
-    )
-
-    ax2.tick_params(
-        axis='y',
-        labelcolor='green'
-    )
-
-    plt.xlabel("Julian Date")
-    plt.ylabel("Magnitude")
-    plt.title(star_name)
-    plt.suptitle(
-        star_name,
-        fontsize=14
-    )
-
-    plt.title(
+    ax1.set_title(
         stations_text,
         fontsize=8,
         color="gray"
     )
 
-    plt.grid(True)
+    ax1.grid(True)
 
-    plt.tight_layout()
+    #
+    # Save
+    #
+    safe_name = (
+        star_name
+        .replace("/", "_")
+        .replace(" ", "_")
+    )
 
-    safe_name = (star_name.replace("/", "_").replace(" ", "_"))
     filename = f"{safe_name}.png"
+
     filepath = "/archive/plots"
+
     os.makedirs(filepath, exist_ok=True)
 
     plt.savefig(
@@ -276,7 +267,7 @@ def simpleMagnitudeScatterPlot(plot_data):
         bbox_inches="tight"
     )
 
-
+    plt.close()
 
     print(f"Saved {filename}")
 
@@ -295,22 +286,31 @@ if __name__ == "__main__":
 
 
 
-    star_list = getStars()
-    star_sessions = []
-    for star in star_list:
-        session_count = getSessionCount(star)
-        star_sessions.append([session_count, star])
-
-    star_sessions.sort(key=lambda x: x[0], reverse=True)
 
 
-    session, most_observed_star = star_sessions[0]
 
-    print(f"Querying the star with the most observation sessions ({session}), {most_observed_star}")
-    star_file_list = getStarFiles(most_observed_star)
+    if False:
+
+        star_list = getStars()
+        star_sessions = []
+        for star in star_list:
+            session_count = getSessionCount(star)
+            star_sessions.append([session_count, star])
+
+        star_sessions.sort(key=lambda x: x[0], reverse=True)
 
 
-    query_response = getStarObservations(most_observed_star)
+        session, most_observed_star = star_sessions[0]
+
+        print(f"Querying the star with the most observation sessions ({session}), {most_observed_star}")
+        star_file_list = getStarFiles(most_observed_star)
+        star_to_plot =  most_observed_star
+
+    star_to_plot = "HD 202448"
+
+    print("Query started")
+    query_response = getStarObservations(star_to_plot)
+    print("Query completed")
     simpleMagnitudeScatterPlot(query_response)
 
     pass
