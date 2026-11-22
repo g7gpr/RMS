@@ -157,8 +157,8 @@ def loadObservationFile(filename):
     observations["snr"] = data[:, 6] / 100.0
     observations["saturated_count"] = data[:, 7]
     observations["star_count"] = data[:, 8]
-    observations["obs_ra"] = data[:, 9]  / 100
-    observations["obs_dec"] = data[:, 10] / 100
+    observations["obs_ra"] = data[:, 9]  / 90
+    observations["obs_dec"] = data[:, 10] / 300
 
     return observations
 
@@ -242,7 +242,7 @@ def simpleMagnitudeScatterPlot(plot_data):
     #
     # Title + station list
     #
-    plt.suptitle(f"{star_name} Ra:{obs_ra}deg Dec:{obs_dec}deg", fontsize=14)
+    plt.suptitle(f"{star_name} Ra:{obs_ra:.2f}deg Dec:{obs_dec:.2f}deg", fontsize=14)
 
     ax1.set_title(
         stations_text,

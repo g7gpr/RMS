@@ -231,7 +231,6 @@ def process(path_to_job, cat):
 
                 light_curves = calstarToLightCurves(cat, config, pp, calstar[0], platepars_all_recalibrated_path, video_path=None)
 
-
                 station, date_str, time_str, us_str = observation_dir.split('_')
                 session_date = datetime.datetime.strptime(f"{date_str}_{time_str}_{us_str}", "%Y%m%d_%H%M%S_%f")
                 session_jd = datetime2JD(session_date)
@@ -263,8 +262,8 @@ def process(path_to_job, cat):
                                                             data['snr'] * 100,
                                                             data['saturated_count'],
                                                             data['star_count'],
-                                                            data['ra_obs'] * 1000,
-                                                            data['dec_obs'] * 1000
+                                                            data['ra_obs'] * 90,
+                                                            data['dec_obs'] * 300,
                                                             ])
 
                     for session, records in daily_data.items():
