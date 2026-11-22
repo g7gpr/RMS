@@ -177,7 +177,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
                 ra_obs, dec_obs, mag_obs = arr_obs_ra[observation_index], arr_obs_dec[observation_index], arr_obs_mag[observation_index]
                 img_dist = (x_array - obs_x) ** 2 + (y_array - obs_y) ** 2
 
-                candidates = np.where(img_dist <= 3 ** 2)[0]
+                candidates = np.where(img_dist <= 2 ** 2)[0]
 
                 if len(candidates):
 
