@@ -69,6 +69,9 @@ def showQueueStatus():
 
     now = datetime.datetime.now(tz=datetime.timezone.utc)
 
+    if not os.path.exists(QUEUES):
+        print("Queue Directory does not exist")
+
     for queue_dir in sorted(Path(QUEUES).iterdir()):
 
         if not queue_dir.is_dir():
