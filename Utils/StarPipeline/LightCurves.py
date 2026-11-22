@@ -325,6 +325,10 @@ if __name__ == "__main__":
         while True:
             waitForQueue(worker_id)
             job = getJob(worker_id)
-            path_to_job = jobToPath(job)
-            process(path_to_job, cat)
-            jobCompleted(worker_id, job)
+            if job is None:
+                print("Queue empty")
+                time.sleep(10)
+            else:
+                path_to_job = jobToPath(job)
+                process(path_to_job, cat)
+                jobCompleted(worker_id, job)
