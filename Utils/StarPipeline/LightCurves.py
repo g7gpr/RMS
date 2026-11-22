@@ -247,6 +247,10 @@ def process(path_to_job, cat):
 
                         offset = int((observation_date - session_date).total_seconds() / 10)
 
+                        if not np.isfinite(data['obs']):
+                            print(f"Skipping observation of {star_name}")
+
+                            continue
 
                         daily_data[observation_dir].append([offset,
                                                             int(round(100 * (data['obs'] - data['cat']))),
@@ -302,9 +306,10 @@ if __name__ == "__main__":
 
 
     for path_to_job in work_list:
-        if os.path.basename(path_to_job) not in processed_sessions:
+        if path_to_job not in processed_sessions:
+            path_to_job = "/archive/CALSTARS/20240223/UK008F_20240223_180123_908321_min.tar.bz2"
             process(path_to_job, cat)
-            processed_sessions.add(os.path.basename(path_to_job))
+            processed_sessions.add(path_to_job)
             with open("/archive/processed_sessions.txt", "a") as f:
                 f.write(path_to_job + "\n")
         else:
