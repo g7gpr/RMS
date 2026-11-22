@@ -166,35 +166,37 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
                 obs_x, obs_y = star[1], star[0]
                 img_dist = (x_array - obs_x)**2 + (y_array - obs_y)**2
                 nearest_idx = np.argmin(img_dist)
+                ra_obs, dec_obs, mag_obs = arr_obs_ra[observation_index], arr_obs_dec[observation_index], arr_obs_mag[observation_index]
                 if img_dist[nearest_idx] <= 2 ** 2:
                     # Match found within 2 pixels
                     name = names_array[nearest_idx]
 
+
+
                     if name not in light_curves:
                         light_curves[name] = {}
-                    if jd not in light_curves[name]:
-                        light_curves[name][jd] = {}
-                        light_curves[name][jd]['obs'] = arr_obs_mag[observation_index]
-                        light_curves[name][jd]['cat'] = mag_array[nearest_idx]
-                        light_curves[name][jd]['level'] = star[2]
-                        light_curves[name][jd]['amplitude'] = star[3]
-                        light_curves[name][jd]['fwhm'] = star[4]
-                        light_curves[name][jd]['background'] = star[5]
-                        light_curves[name][jd]['snr'] = star[6]
-                        light_curves[name][jd]['saturated_count'] = star[7]
-                        light_curves[name][jd]['star_count'] = star_count
-                        light_curves[name][jd]['ra_obs'] = arr_obs_ra[observation_index]
-                        light_curves[name][jd]['dec_obs'] = arr_obs_dec[observation_index]
+
+
+                    light_curves[name][jd] = {}
+                    light_curves[name][jd]['obs'] = mag_obs
+                    light_curves[name][jd]['cat'] = mag_array[nearest_idx]
+                    light_curves[name][jd]['level'] = star[2]
+                    light_curves[name][jd]['amplitude'] = star[3]
+                    light_curves[name][jd]['fwhm'] = star[4]
+                    light_curves[name][jd]['background'] = star[5]
+                    light_curves[name][jd]['snr'] = star[6]
+                    light_curves[name][jd]['saturated_count'] = star[7]
+                    light_curves[name][jd]['star_count'] = star_count
+                    light_curves[name][jd]['ra_obs'] = ra_obs
+                    light_curves[name][jd]['dec_obs'] = dec_obs
 
                     counter += 1
 
 
-                    pass
-        pass
-    if produce_debug_timelapse:
-        video.release()
+        if produce_debug_timelapse:
+            video.release()
 
-    return light_curves
+        return light_curves
 
 def process(path_to_job, cat):
 
