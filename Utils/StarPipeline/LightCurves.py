@@ -196,7 +196,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
         if produce_debug_timelapse:
             video.release()
 
-        return light_curves
+    return light_curves
 
 def process(path_to_job, cat):
 

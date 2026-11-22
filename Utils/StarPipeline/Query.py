@@ -193,7 +193,7 @@ def simpleMagnitudeScatterPlot(plot_data):
     # Magnitude scatter coloured by station
     #
 
-    obs_ra, obs_dec = obs['obs_ra'], obs['obs_dec']
+    obs_ra, obs_dec = np.mean(obs['obs_ra']), np.mean(obs['obs_dec'])
 
     for station in stations_list:
         mask = obs["station"] == station
@@ -242,7 +242,7 @@ def simpleMagnitudeScatterPlot(plot_data):
     #
     # Title + station list
     #
-    plt.suptitle(f"{star_name} Ra:{obs_ra:.2f}deg Dec:{obs_dec:.2f}deg", fontsize=14)
+    plt.suptitle(f"{star_name}\nRa:{obs_ra:.2f} deg Dec:{obs_dec:.2f} deg", fontsize=14)
 
     ax1.set_title(
         stations_text,
