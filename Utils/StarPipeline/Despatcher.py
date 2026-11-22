@@ -47,7 +47,8 @@ from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP, raDec2AltAz
 from Utils.Flux import detectMoon
 
 from Utils.StarPipeline.CacheBuilder import ARCHIVE
-from Utils.StarPipeline.LightCurves import getWorkList
+
+import uuid
 
 # Local directories
 # Local directories
@@ -56,6 +57,70 @@ CALSTARS_DATA_DIR = "CALSTARS"
 QUEUES = "/archive/despatcher/queues"
 REGISTRATIONS = "/archive/despatcher/registrations"
 PROCESSED_SESSIONS_FILE = "/archive/processed_sessions.txt"
+
+
+def getWorkList(archive):
+
+
+    print(f"Working through {archive}")
+    paths_to_files = Path(archive).rglob("*.tar.bz2")
+
+
+
+    return sortFilesByTime([str(f) for f in paths_to_files])
+
+
+def getWorkerID():
+
+    return str(uuid.uuid4())
+
+from pathlib import Path
+
+def registerWorker(worker_id):
+
+    registrations_dir = Path(REGISTRATIONS)
+
+    registrations_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    (registrations_dir / worker_id).touch()
+
+def waitForQueue(worker_id):
+
+    queue_dir = Path(QUEUES) / worker_id
+
+    while not queue_dir.exists():
+        time.sleep(1)
+
+    return queue_dir
+
+
+def getJob(worker_id):
+
+    queue_dir = Path(QUEUES) / worker_id
+
+    jobs = sorted(
+        job
+        for job in queue_dir.iterdir()
+        if job.is_file()
+        and not job.name.endswith(".completed")
+    )
+
+    if not jobs:
+        return None
+
+    return jobs[0].name
+
+def jobToPath(job):
+
+
+    parts = job.split('_')
+
+    date_str = parts[1]
+
+    return Path(ARCHIVE) / Path(CALSTARS_DATA_DIR) / date_str / job
 
 def createJobQueues():
 
@@ -111,9 +176,14 @@ def populateJobQueues(work_list, processed_sessions, queue_depth=3):
 
         while queue_depth < 3 and job_idx < len(available_jobs):
             (queue_dir / available_jobs[job_idx]).touch()
-
+            print(f"Added {available_jobs[job_idx]}")
             queue_depth += 1
             job_idx += 1
+
+def jobCompleted(worker_id, job):
+
+    queue_dir = Path(QUEUES) / worker_id
+    (queue_dir / f"{job}.completed").touch()
 
 def updateProcessedSessions(processed_sessions):
 

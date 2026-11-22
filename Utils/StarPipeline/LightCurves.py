@@ -45,12 +45,14 @@ from RMS.Formats.Platepar import Platepar
 from RMS.Formats.StarCatalogQueries import Catalog, renderStarsGaussian
 from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP, raDec2AltAz
 from Utils.Flux import detectMoon
-
-from Utils.StarPipeline.CacheBuilder import ARCHIVE
+from Utils.StarPipeline.Despatcher import getWorkerID, registerWorker, waitForQueue, getJob, jobToPath, getWorkList, jobCompleted
 
 # Local directories
 ARCHIVE = "/archive"
 CALSTARS_DATA_DIR = "CALSTARS"
+QUEUES = "/archive/despatcher/queues"
+REGISTRATIONS = "/archive/despatcher/registrations"
+
 
 def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
 
@@ -92,15 +94,6 @@ def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
     return astronomical_night_list, np.array(angle_list), setting_count, rising_count
 
 
-def getWorkList(archive):
-
-
-    print(f"Working through {archive}")
-    paths_to_files = Path(archive).rglob("*.tar.bz2")
-
-
-
-    return sortFilesByTime([str(f) for f in paths_to_files])
 
 
 def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_path, video_path=None, debug_mode=False):
@@ -284,6 +277,8 @@ if __name__ == "__main__":
 
     arg_parser.add_argument("-r", "--reverse", action="store_true", help="Process newest jobs first")
 
+    arg_parser.add_argument("-s", "--single", action="store_true", help="Do not use despatcher")
+
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
@@ -292,28 +287,44 @@ if __name__ == "__main__":
     calstars_directory_path = os.path.join(ARCHIVE, CALSTARS_DATA_DIR)
     os.makedirs(calstars_directory_path, exist_ok=True)
 
-
-    open("/archive/processed_sessions.txt", "a").close()
-
-    with open("/archive/processed_sessions.txt") as f:
-        processed_sessions = {
-            line.strip()
-            for line in f
-            if line.strip()
-        }
-
-    work_list = getWorkList(calstars_directory_path)
-    if cml_args.reverse:
-        work_list.reverse()
     cat = Catalog(config)
 
+    if cml_args.single:
 
-    for path_to_job in work_list:
-        job = os.path.basename(path_to_job)
-        if job not in processed_sessions:
+        open("/archive/processed_sessions.txt", "a").close()
+
+        with open("/archive/processed_sessions.txt") as f:
+            processed_sessions = {
+                line.strip()
+                for line in f
+                if line.strip()
+            }
+
+        work_list = getWorkList(calstars_directory_path)
+        if cml_args.reverse:
+            work_list.reverse()
+
+
+
+        for path_to_job in work_list:
+            job = os.path.basename(path_to_job)
+            if job not in processed_sessions:
+                process(path_to_job, cat)
+                processed_sessions.add(job)
+                with open("/archive/processed_sessions.txt", "a") as f:
+                    f.write(job + "\n")
+            else:
+                print(f"{job} already processed")
+
+    else:
+
+        print("Running using despatcher")
+
+        worker_id = getWorkerID()
+        registerWorker(worker_id)
+        while True:
+            waitForQueue(worker_id)
+            job = getJob(worker_id)
+            path_to_job = jobToPath(job)
             process(path_to_job, cat)
-            processed_sessions.add(job)
-            with open("/archive/processed_sessions.txt", "a") as f:
-                f.write(job + "\n")
-        else:
-            print(f"{job} already processed")
+            jobCompleted(worker_id, job)
