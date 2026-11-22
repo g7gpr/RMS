@@ -705,7 +705,7 @@ def archiveFilenameToDatetime(filename):
 
     return datetime.datetime.strptime(f"{date_str}_{time_str}_{us_str}","%Y%m%d_%H%M%S_%f").astimezone(datetime.timezone.utc)
 
-def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None, username=None, host=None, remote_station_processed_dir=None, port=22, bw_limit=None, latest_first=True):
+def buildCache(config, remote_files_sorted, calstars_data_dir, history_days=None, username=None, host=None, remote_station_processed_dir=None, port=22, bw_limit=None, latest_first=True, reverse=False):
 
     calstars_data_full_path = os.path.join(config.data_dir, calstars_data_dir)
 
@@ -798,6 +798,8 @@ if __name__ == "__main__":
 
     arg_parser.add_argument('--bw_limit', metavar='BANDWIDTH_LIMIT', help="""Bandwidth limit per thread""")
 
+    arg_parser.add_argument("-r", "--reverse", action="store_true", help="Download newest session first")
+
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
@@ -814,6 +816,10 @@ if __name__ == "__main__":
     user, _, remainder = cml_args.path_template.partition("@")
     hostname, _, path_template = remainder.partition(":")
 
+    reverse = False
+    if cml_args.reverse:
+        reverse = True
+
     if get_remote_file_list:
         getRemoteFileList(user, hostname, path_template=path_template, country_code=country_code)
 
@@ -821,5 +827,5 @@ if __name__ == "__main__":
         remote_files = loadRemoteFiles(os.path.join(ARCHIVE, REMOTE_FILES_JSON), country_code=country_code)
         remote_files_sorted = sortFilesByTime(remote_files)
 
-        buildCache(config, remote_files_sorted, calstars_directory_path, username=user, host=hostname, remote_station_processed_dir=path_template, reverse=False)
+        buildCache(config, remote_files_sorted, calstars_directory_path, username=user, host=hostname, remote_station_processed_dir=path_template, reverse=reverse)
         sys.exit()
