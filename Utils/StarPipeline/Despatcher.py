@@ -134,16 +134,20 @@ def waitForQueue(worker_id):
 
     return queue_dir
 
-
 def getJob(worker_id):
 
     queue_dir = Path(QUEUES) / worker_id
 
     jobs = sorted(
-        job
-        for job in queue_dir.iterdir()
-        if job.is_file()
-        and not job.name.endswith(".completed")
+        (
+            job for job in queue_dir.iterdir()
+            if (
+                job.is_file()
+                and not job.name.endswith(".completed")
+                and not (queue_dir / f"{job.name}.completed").exists()
+            )
+        ),
+        key=lambda p: p.stat().st_mtime
     )
 
     if not jobs:
@@ -327,7 +331,6 @@ if __name__ == "__main__":
     while True:
         createJobQueues()
         last_queue_cleanup = cleanupQueues(last_queue_cleanup)
-        print(f"Next job to add to queue {work_list[0]}")
         populateJobQueues(work_list, processed_sessions, queue_depth=5)
         updateProcessedSessions(processed_sessions)
         time.sleep(10)

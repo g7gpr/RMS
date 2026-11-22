@@ -47,6 +47,7 @@ from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP, raDec2AltAz
 from Utils.Flux import detectMoon
 
 from Utils.StarPipeline.CacheBuilder import ARCHIVE, sortFilesByTime
+import matplotlib.pyplot as plt
 
 
 import uuid
@@ -59,6 +60,24 @@ QUEUES = "/archive/despatcher/queues"
 REGISTRATIONS = "/archive/despatcher/registrations"
 PROCESSED_SESSIONS_FILE = "/archive/processed_sessions.txt"
 LIGHT_CURVES = Path(Path(ARCHIVE) / "light_curves")
+
+from pathlib import Path
+
+def getStars():
+
+    root = Path(LIGHT_CURVES)
+
+    return sorted(
+        d.name
+        for d in root.iterdir()
+        if d.is_dir()
+    )
+
+def getSessionCount(star_name):
+
+    star_dir = Path(LIGHT_CURVES) / star_name
+
+    return len(list(star_dir.rglob("*.npy")))
 
 def getStarFiles(star_name):
 
@@ -75,18 +94,21 @@ def getStarFiles(star_name):
 def getStarObservations(star_name):
 
     arrays = []
+    stations = set()
 
     for filename in getStarFiles(star_name):
 
         arrays.append(loadObservationFile(filename))
+        stations.add(filename.parent.name)
 
     observations = np.concatenate(arrays)
 
-    return observations
+    return star_name, observations, stations
 
 def loadObservationFile(filename):
 
     dtype = np.dtype([
+        ("station", "U6"),
         ("jd", np.float64),
         ("obs_mag", np.float32),
         ("cat_mag", np.float32),
@@ -96,7 +118,7 @@ def loadObservationFile(filename):
         ("fwhm", np.float32),
         ("background", np.int32),
         ("snr", np.float32),
-        ("saturated_count", np.int32),
+        ("saturated_count", np.int32)
     ])
 
     filename = Path(filename)
@@ -116,6 +138,8 @@ def loadObservationFile(filename):
     observations = np.empty(n, dtype=dtype)
 
     session_jd = datetime2JD(session_date)
+
+    observations["station"] = station
     observations["jd"] = session_jd +  offset.astype(np.float64) / 10000.0
 
     observations["obs_mag"] = cat_mag + residual / 100.0
@@ -148,6 +172,65 @@ def starSummary(star_name):
 
     return message
 
+def simpleMagnitudeScatterPlot(plot_data):
+
+    star_name, obs, stations_list = plot_data
+
+    stations_text = ""
+    for station in stations_list:
+        stations_text += f"{station},"
+
+    stations_text = stations_text.rstrip(",")
+
+    plt.figure(figsize=(12, 6))
+
+    plt.scatter(
+        obs["jd"],
+        obs["obs_mag"],
+        s=5
+    )
+
+    plt.axhline(
+        y=obs["cat_mag"][0],
+        color="red",
+        linestyle=":",
+        linewidth=1,
+        alpha=0.5,
+        label="Catalog"
+    )
+
+    plt.gca().invert_yaxis()
+
+    plt.ticklabel_format(
+        axis='x',
+        style='plain',
+        useOffset=False
+    )
+
+    plt.xlabel("Julian Date")
+    plt.ylabel("Magnitude")
+    plt.title(star_name)
+    plt.figtext(0.5,0.93, stations_text, ha="center", fontsize=8, color="gray")
+
+    plt.grid(True)
+
+    plt.tight_layout()
+
+    safe_name = (star_name.replace("/", "_").replace(" ", "_"))
+    filename = f"{safe_name}.png"
+    filepath = "/archive/plots"
+    os.makedirs(filepath, exist_ok=True)
+
+    plt.savefig(
+        os.path.join(filepath, filename),
+        dpi=150,
+        bbox_inches="tight"
+    )
+
+
+
+    print(f"Saved {filename}")
+
 if __name__ == "__main__":
 
     import argparse
@@ -161,11 +244,24 @@ if __name__ == "__main__":
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
 
-    print(starSummary("HD 137422"))
 
-    star_file_list = getStarFiles("HD 137422")
-    for star_file in star_file_list:
-        print(star_file)
 
-    observations = getStarObservations("HD 137422")
+    star_list = getStars()
+    star_sessions = []
+    for star in star_list:
+        session_count = getSessionCount(star)
+        star_sessions.append([session_count, star])
+
+    star_sessions.sort(key=lambda x: x[0], reverse=True)
+
+
+    session, most_observed_star = star_sessions[0]
+
+    print(f"Querying the star with the most observation sessions ({session}), {most_observed_star}")
+    star_file_list = getStarFiles(most_observed_star)
+
+
+    query_response = getStarObservations(most_observed_star)
+    simpleMagnitudeScatterPlot(query_response)
+
     pass
