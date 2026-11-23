@@ -332,7 +332,7 @@ def process(path_to_job, cat):
             pp_path = os.path.join(working_dir, obs_con.platepar_name)
             pp.read(pp_path)
             calstars_filename = f"CALSTARS_{observation_dir}.txt"
-
+            print(f"Reading CALSTARS file {calstars_filename}")
             calstar = readCALSTARS(working_dir, calstars_filename)
             video_file = f"{observation_dir}_timelapse.mp4"
             video_path = os.path.join(os.path.expanduser(config.data_dir), video_file)
@@ -340,12 +340,13 @@ def process(path_to_job, cat):
 
             if len(calstar) == 2:
 
-
+                print(f"Starting light curve work")
                 light_curves = calstarToLightCurves(cat, config, pp, calstar[0], platepars_all_recalibrated_path, video_path=None)
 
                 station, date_str, time_str, us_str = observation_dir.split('_')
                 session_date = datetime.datetime.strptime(f"{date_str}_{time_str}_{us_str}", "%Y%m%d_%H%M%S_%f")
                 session_jd = datetime2JD(session_date)
+                print(f"Starting filing work for {len(light_curves)} stars")
                 for star_name, observations in light_curves.items():
 
                     daily_data = {}
@@ -386,7 +387,7 @@ def process(path_to_job, cat):
                         filename = dirname / f"{session}_{int(data['cat'] * 1e6)}_{int(cat_ra * 1e6)}_{int(cat_dec* 1e6)}_{int(round(pp.F_scale * 1000))}.npy"
                         array_to_save = np.array(records, dtype=np.int16)
                         np.save(filename, array_to_save)
-
+    print("Completed")
 
 
 if __name__ == "__main__":
