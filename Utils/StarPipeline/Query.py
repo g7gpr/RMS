@@ -452,6 +452,19 @@ def plotAstrometryXiEta(plot_data):
 
     plt.legend()
 
+    r = max(
+        np.max(np.abs(obs["xi"])),
+        np.max(np.abs(obs["eta"]))
+    )
+
+    # Add 10% margin
+    r *= 1.1
+
+    plt.xlim(-r, r)
+    plt.ylim(-r, r)
+
+    plt.gca().set_box_aspect(1)
+
     plt.gca().set_box_aspect(1)
 
     safe_name = (
