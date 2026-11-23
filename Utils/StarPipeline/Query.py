@@ -450,7 +450,6 @@ def plotAstrometryXiEta(plot_data):
 
     plt.grid(True)
 
-    plt.legend()
 
     r = max(
         np.max(np.abs(obs["xi"])),
