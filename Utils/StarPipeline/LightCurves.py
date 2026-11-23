@@ -202,12 +202,14 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
         video = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*"mp4v"),
                                 30, (pp.X_res * 2, pp.Y_res), isColor=False)
 
+    print("Finding images without the moon and not in astronomical night")
     fits_files_from_calstar_list = [calstar_entry[0] for calstar_entry in calstar]
     fits_files_without_moon_list = detectMoon(fits_files_from_calstar_list, pp, obs_con)
-    astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_without_moon_list, obs_con, sun_angle=-18)
+    astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
 
     counter = 0
     recalibrated_platepar_loaded = False
+    print("Starting to iterate through fits_files")
     for fits_file, star_list in calstar:
 
         if counter > 10 and debug_mode:
