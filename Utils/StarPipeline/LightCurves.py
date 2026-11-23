@@ -205,10 +205,10 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
 
     print("Building fits file list")
     fits_files_from_calstar_list = [calstar_entry[0] for calstar_entry in calstar]
-    print("Building files witout the moon list")
-    fits_files_without_moon_list = detectMoon(fits_files_from_calstar_list, pp, obs_con)
-    print("Building asotronmical night list")
+    print("Filter for astronmical night list")
     astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
+    print("Filter for without the moon list")
+    fits_files_to_process = detectMoon(astronomical_night_list, pp, obs_con)
 
     counter = 0
     recalibrated_platepar_loaded = False
@@ -219,15 +219,9 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
             break
         star_count = len(star_list)
         if star_count < 80:
-            #print(f"Skipping {fits_file} only {len(star_list)} stars")
             continue
 
-        if fits_file not in fits_files_without_moon_list:
-            #print(f"Skipping {fits_file} - moon in FoV")
-            continue
-
-        if fits_file not in astronomical_night_list:
-            #print(f"Skipping {fits_file} - not astronomical night")
+        if fits_file not in fits_files_to_process:
             continue
 
         # We could improve this by picking the nearest platepar
