@@ -86,19 +86,11 @@ def encodeOffsetGnomonic(ra1, dec1, ra2, dec2):
 
     dra = ra1 - ra2
 
-    cos_c = (
-        np.sin(dec2) * np.sin(dec1)
-        + np.cos(dec2) * np.cos(dec1) * np.cos(dra)
-    )
+    cos_c = np.sin(dec2) * np.sin(dec1) + np.cos(dec2) * np.cos(dec1) * np.cos(dra)
 
-    xi = (
-        np.cos(dec1) * np.sin(dra)
-    ) / cos_c
+    xi = (np.cos(dec1) * np.sin(dra)) / cos_c
 
-    eta = (
-        np.cos(dec2) * np.sin(dec1)
-        - np.sin(dec2) * np.cos(dec1) * np.cos(dra)
-    ) / cos_c
+    eta = (np.cos(dec2) * np.sin(dec1) - np.sin(dec2) * np.cos(dec1) * np.cos(dra)) / cos_c
 
     return np.degrees(xi), np.degrees(eta)
 
@@ -216,7 +208,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
     recalibrated_platepar_loaded = False
     print("Starting to iterate through fits_files")
     for fits_file, star_list in calstar:
-
+        counter += 1
         if counter > 10 and debug_mode:
             break
         star_count = len(star_list)
@@ -270,8 +262,6 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
 
         star_count = len(star_list)
         for observation_index, star in enumerate(star_list):
-
-            counter += 1
 
             if len(star) == 8:
                 obs_x, obs_y = star[1], star[0]
@@ -483,7 +473,7 @@ if __name__ == "__main__":
     ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
     print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
 
-    print("Test gnomic")
+    print("Test gnomonic")
 
     # Test Alcyone at ra,dec 56.87740, 24.1062
     # Against Meope at ra,dec, 56.58783, 23.9492
