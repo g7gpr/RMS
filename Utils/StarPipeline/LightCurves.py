@@ -533,13 +533,13 @@ if __name__ == "__main__":
         ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
         print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
 
-        cwd = os.getcwd()
-        cml_args = arg_parser.parse_args()
-        config = cr.parse(os.path.join(os.getcwd(),".config"))
+    cwd = os.getcwd()
+    cml_args = arg_parser.parse_args()
+    config = cr.parse(os.path.join(os.getcwd(),".config"))
 
-        os.makedirs(ARCHIVE, exist_ok=True)
-        calstars_directory_path = os.path.join(ARCHIVE, CALSTARS_DATA_DIR)
-        os.makedirs(calstars_directory_path, exist_ok=True)
+    os.makedirs(ARCHIVE, exist_ok=True)
+    calstars_directory_path = os.path.join(ARCHIVE, CALSTARS_DATA_DIR)
+    os.makedirs(calstars_directory_path, exist_ok=True)
 
 
 
