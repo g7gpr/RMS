@@ -311,6 +311,8 @@ def plotAstrometryRaDec(plot_data):
 
     residual = obs["obs_mag"] - obs["cat_mag"]
 
+    plt.figure(figsize=(8, 8))
+
     plt.suptitle(
         f"{star_name} astrometry in RA, Dec",
         fontsize=14
@@ -326,7 +328,7 @@ def plotAstrometryRaDec(plot_data):
     )
 
 
-    plt.figure(figsize=(8, 8))
+
 
     plt.scatter(
         obs["ra_obs"],
@@ -391,6 +393,8 @@ def plotAstrometryXiEta(plot_data):
     stations_text = stationsText(obs, stations_list)
     ra_cat, dec_cat = float(obs["ra_cat"][0]), float(obs["dec_cat"][0])
 
+    plt.figure(figsize=(8, 8))
+
     plt.suptitle(
         f"{star_name} astrometry in xi, eta",
         fontsize=14
@@ -406,7 +410,7 @@ def plotAstrometryXiEta(plot_data):
 
     residual = obs["obs_mag"] - obs["cat_mag"]
 
-    plt.figure(figsize=(8, 8))
+
 
     plt.scatter(
         obs["xi"],
