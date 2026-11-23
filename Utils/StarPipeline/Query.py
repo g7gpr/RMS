@@ -364,11 +364,15 @@ def plotAstrometryRaDec(plot_data):
 
     plt.gca().set_box_aspect(1)
 
+    plt.tight_layout()
+
     safe_name = (
         star_name
         .replace("/", "_")
         .replace(" ", "_")
     )
+
+
 
     filename = f"{safe_name}_astrometry_radec.png"
 
@@ -477,6 +481,8 @@ def plotAstrometryXiEta(plot_data):
         .replace("/", "_")
         .replace(" ", "_")
     )
+
+    plt.tight_layout()
 
     filename = f"{safe_name}_astrometry_xi_eta.png"
 
