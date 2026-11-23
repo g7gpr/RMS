@@ -409,16 +409,19 @@ if __name__ == "__main__":
 
     arg_parser.add_argument("-r", "--reverse", action="store_true", help="Process newest jobs first")
 
+    arg_parser.add_argument("-c", "--continuous", action="store_true", help="Build all the plots for all stars in the background")
+
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
 
+    continuous = cml_args.continuous
 
 
 
 
 
-    while True:
+    while continuous:
 
         star_list = getStars()
         star_sessions = []
@@ -438,6 +441,9 @@ if __name__ == "__main__":
             simpleMagnitudeScatterPlot(query_response)
             plotAstrometryRaDec(query_response)
             plotAstrometryXiEta(query_response)
+
+        time.sleep(60)
+
 
     star_to_plot = "HD 23480"
     print("Query started")
