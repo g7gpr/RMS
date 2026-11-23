@@ -204,7 +204,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
 
     fits_files_from_calstar_list = [calstar_entry[0] for calstar_entry in calstar]
     fits_files_without_moon_list = detectMoon(fits_files_from_calstar_list, pp, obs_con)
-    astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
+    astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_without_moon_list, obs_con, sun_angle=-18)
 
     counter = 0
     recalibrated_platepar_loaded = False
