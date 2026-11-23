@@ -272,8 +272,8 @@ def simpleMagnitudeScatterPlot(plot_data):
     #
     plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
 
-    ax1.set_title(
-        f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",
+    plt.set_title(
+        f"Ra:{ra_cat}deg Dec:{dec_cat}deg\n{stations_text}",
         fontsize=8,
         color="gray"
     )
@@ -312,8 +312,9 @@ def plotAstrometryRaDec(plot_data):
     residual = obs["obs_mag"] - obs["cat_mag"]
 
     plt.figure(figsize=(8, 8))
+    ax1 = plt.gca()
 
-    plt.suptitle(
+    ax1.suptitle(
         f"{star_name} astrometry in RA, Dec",
         fontsize=14
     )
@@ -398,13 +399,14 @@ def plotAstrometryXiEta(plot_data):
     ra_cat, dec_cat = float(obs["ra_cat"][0]), float(obs["dec_cat"][0])
 
     plt.figure(figsize=(8, 8))
+    ax1 = plt.gca()
 
     plt.suptitle(
         f"{star_name} astrometry in xi, eta",
         fontsize=14
     )
 
-    plt.title(
+    ax1.title(
         f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",
         fontsize=8,
         color="gray",
