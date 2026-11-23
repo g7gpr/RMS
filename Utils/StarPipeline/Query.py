@@ -218,10 +218,23 @@ def simpleMagnitudeScatterPlot(plot_data):
     ax1 = plt.gca()
 
     #
-    # Magnitude scatter coloured by station
+    # Title + station list
     #
+    plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
+
 
     ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
+
+    ax1.set_title(
+        f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",
+        fontsize=8,
+        color="gray"
+    )
+
+
+    #
+    # Magnitude scatter coloured by station
+    #
 
     for station in stations_list:
         mask = obs["station"] == station
@@ -233,21 +246,6 @@ def simpleMagnitudeScatterPlot(plot_data):
             label=station
         )
 
-
-    # Plot station magnitude legends
-    #
-    #ax1.legend(
-    #    title="Stations",
-    #    fontsize=8,
-    #    title_fontsize=9,
-    #    loc="upper left",
-    #    bbox_to_anchor=(1.02, 1)
-    #)
-
-
-    #
-    # Catalog magnitude
-    #
     ax1.axhline(
         y=obs["cat_mag"][0],
         color="red",
@@ -267,16 +265,6 @@ def simpleMagnitudeScatterPlot(plot_data):
         useOffset=False
     )
 
-    #
-    # Title + station list
-    #
-    plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
-
-    ax1.set_title(
-        f"Ra:{ra_cat}deg Dec:{dec_cat}deg\n{stations_text}",
-        fontsize=8,
-        color="gray"
-    )
 
     ax1.grid(True)
 
