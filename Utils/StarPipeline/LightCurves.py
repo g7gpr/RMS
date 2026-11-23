@@ -375,8 +375,8 @@ def process(path_to_job, cat):
                                                             data['snr'] * 100,
                                                             data['saturated_count'],
                                                             data['star_count'],
-                                                            data['xi'] * 100000,
-                                                            data['eta'] * 100000,
+                                                            data['xi'] * 10000,
+                                                            data['eta'] * 10000,
                                                             ])
 
                     for session, records in daily_data.items():
