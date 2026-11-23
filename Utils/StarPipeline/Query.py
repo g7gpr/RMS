@@ -328,7 +328,7 @@ def plotAstrometryRaDec(plot_data):
 
     plt.grid(True)
 
-    plt.gca().set_aspect('equal')
+    plt.gca().set_box_aspect(1)
 
     safe_name = (
         star_name
@@ -389,7 +389,7 @@ def plotAstrometryXiEta(plot_data):
 
     plt.grid(True)
 
-    plt.gca().set_aspect('equal')
+    plt.axis('square')
 
     safe_name = (
         star_name
