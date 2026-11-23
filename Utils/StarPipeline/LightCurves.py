@@ -429,116 +429,117 @@ if __name__ == "__main__":
     ang_sep = angularSeparationDeg(alcyone_ra, alcyone_dec, ra_decoded, dec_decoded)
     print(f"regenerated from offset: {ra_decoded}, {dec_decoded} - angular separtion deg: {ang_sep}")
 
-    # Going over the declination, so around ra
-    s1_ra, s1_dec = 29.49906, 89.7957
-    s2_ra, s2_dec = 320.10718, 89.8860
-    _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
-    print(f"Encoded offset: {_x}, {_y}")
-    ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
-    ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-    print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
+    if False:
+        # Going over the declination, so around ra
+        s1_ra, s1_dec = 29.49906, 89.7957
+        s2_ra, s2_dec = 320.10718, 89.8860
+        _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
+        print(f"Encoded offset: {_x}, {_y}")
+        ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
+        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
+        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
 
-    # Going over the declination, so around ra
-    s1_ra, s1_dec = 29.49906, 89.7957
-    s2_ra, s2_dec = 320.10718, 89.8860
-    _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
-    print(f"Encoded offset: {_x}, {_y}")
-    ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
-    ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-    print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
+        # Going over the declination, so around ra
+        s1_ra, s1_dec = 29.49906, 89.7957
+        s2_ra, s2_dec = 320.10718, 89.8860
+        _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
+        print(f"Encoded offset: {_x}, {_y}")
+        ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
+        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
+        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
 
-    # Ra Wrp
-    s1_ra, s1_dec = 359.40511, 73.8707
-    s2_ra, s2_dec = 0.42559, 73.6172
-    _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
-    print(f"Encoded offset: {_x}, {_y}")
-    ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
-    ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-    print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
+        # Ra Wrp
+        s1_ra, s1_dec = 359.40511, 73.8707
+        s2_ra, s2_dec = 0.42559, 73.6172
+        _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
+        print(f"Encoded offset: {_x}, {_y}")
+        ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
+        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
+        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
 
-    # Going over the declination, so around ra
-    s1_ra, s1_dec = 29.49906, 89.7957
-    s2_ra, s2_dec = 320.10718, 89.8860
-    _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
-    print(f"Encoded offset: {_x}, {_y}")
-    ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
-    ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-    print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
+        # Going over the declination, so around ra
+        s1_ra, s1_dec = 29.49906, 89.7957
+        s2_ra, s2_dec = 320.10718, 89.8860
+        _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
+        print(f"Encoded offset: {_x}, {_y}")
+        ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
+        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
+        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
 
-    # Ra Wrp
-    s1_ra, s1_dec = 359.40511, 73.8707
-    s2_ra, s2_dec = 0.42559, 73.6172
-    _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
-    print(f"Encoded offset: {_x}, {_y}")
-    ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
-    ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-    print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
+        # Ra Wrp
+        s1_ra, s1_dec = 359.40511, 73.8707
+        s2_ra, s2_dec = 0.42559, 73.6172
+        _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
+        print(f"Encoded offset: {_x}, {_y}")
+        ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
+        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
+        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
 
-    print("Test gnomonic")
+        print("Test gnomonic")
 
-    # Test Alcyone at ra,dec 56.87740, 24.1062
-    # Against Meope at ra,dec, 56.58783, 23.9492
+        # Test Alcyone at ra,dec 56.87740, 24.1062
+        # Against Meope at ra,dec, 56.58783, 23.9492
 
-    alcyone_ra, alcyone_dec = 56.87740, 24.1062
-    meope_ra, meope_dec = 56.58783, 23.9492
-    xi, eta = encodeOffsetGnomonic(alcyone_ra, alcyone_dec, meope_ra, meope_dec)
-    print(f"Encoded offset: {xi}, {eta}")
-    ra_decoded, dec_decoded = decodeOffsetGnomonic(meope_ra, meope_dec, xi, eta)
-    ang_sep = angularSeparationDeg(alcyone_ra, alcyone_dec, ra_decoded, dec_decoded)
-    print(f"regenerated from offset: {ra_decoded}, {dec_decoded} - angular separtion deg: {ang_sep}")
+        alcyone_ra, alcyone_dec = 56.87740, 24.1062
+        meope_ra, meope_dec = 56.58783, 23.9492
+        xi, eta = encodeOffsetGnomonic(alcyone_ra, alcyone_dec, meope_ra, meope_dec)
+        print(f"Encoded offset: {xi}, {eta}")
+        ra_decoded, dec_decoded = decodeOffsetGnomonic(meope_ra, meope_dec, xi, eta)
+        ang_sep = angularSeparationDeg(alcyone_ra, alcyone_dec, ra_decoded, dec_decoded)
+        print(f"regenerated from offset: {ra_decoded}, {dec_decoded} - angular separtion deg: {ang_sep}")
 
-    # Going over the declination, so around ra
-    s1_ra, s1_dec = 29.49906, 89.7957
-    s2_ra, s2_dec = 320.10718, 89.8860
-    xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
-    print(f"Encoded offset: {xi}, {eta}")
-    ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
-    ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-    print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
+        # Going over the declination, so around ra
+        s1_ra, s1_dec = 29.49906, 89.7957
+        s2_ra, s2_dec = 320.10718, 89.8860
+        xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
+        print(f"Encoded offset: {xi}, {eta}")
+        ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
+        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
+        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
 
-    # Going over the declination, so around ra
-    s1_ra, s1_dec = 29.49906, 89.7957
-    s2_ra, s2_dec = 320.10718, 89.8860
-    xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
-    print(f"Encoded offset: {xi}, {eta}")
-    ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
-    ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-    print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
+        # Going over the declination, so around ra
+        s1_ra, s1_dec = 29.49906, 89.7957
+        s2_ra, s2_dec = 320.10718, 89.8860
+        xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
+        print(f"Encoded offset: {xi}, {eta}")
+        ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
+        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
+        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
 
-    # Ra Wrp
-    s1_ra, s1_dec = 359.40511, 73.8707
-    s2_ra, s2_dec = 0.42559, 73.6172
-    xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
-    print(f"Encoded offset: {xi}, {eta}")
-    ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
-    ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-    print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
+        # Ra Wrp
+        s1_ra, s1_dec = 359.40511, 73.8707
+        s2_ra, s2_dec = 0.42559, 73.6172
+        xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
+        print(f"Encoded offset: {xi}, {eta}")
+        ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
+        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
+        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
 
-    # Going over the declination, so around ra
-    s1_ra, s1_dec = 29.49906, 89.7957
-    s2_ra, s2_dec = 320.10718, 89.8860
-    xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
-    print(f"Encoded offset: {xi}, {eta}")
-    ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
-    ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-    print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
+        # Going over the declination, so around ra
+        s1_ra, s1_dec = 29.49906, 89.7957
+        s2_ra, s2_dec = 320.10718, 89.8860
+        xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
+        print(f"Encoded offset: {xi}, {eta}")
+        ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
+        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
+        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
 
-    # Ra Wrp
-    s1_ra, s1_dec = 359.40511, 73.8707
-    s2_ra, s2_dec = 0.42559, 73.6172
-    xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
-    print(f"Encoded offset: {xi}, {eta}")
-    ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
-    ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-    print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
+        # Ra Wrp
+        s1_ra, s1_dec = 359.40511, 73.8707
+        s2_ra, s2_dec = 0.42559, 73.6172
+        xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
+        print(f"Encoded offset: {xi}, {eta}")
+        ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
+        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
+        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
 
-    cwd = os.getcwd()
-    cml_args = arg_parser.parse_args()
-    config = cr.parse(os.path.join(os.getcwd(),".config"))
+        cwd = os.getcwd()
+        cml_args = arg_parser.parse_args()
+        config = cr.parse(os.path.join(os.getcwd(),".config"))
 
-    os.makedirs(ARCHIVE, exist_ok=True)
-    calstars_directory_path = os.path.join(ARCHIVE, CALSTARS_DATA_DIR)
-    os.makedirs(calstars_directory_path, exist_ok=True)
+        os.makedirs(ARCHIVE, exist_ok=True)
+        calstars_directory_path = os.path.join(ARCHIVE, CALSTARS_DATA_DIR)
+        os.makedirs(calstars_directory_path, exist_ok=True)
 
 
 
