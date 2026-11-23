@@ -322,7 +322,6 @@ def plotAstrometryXiEta(plot_data):
     plt.xlabel("Xi (deg)")
     plt.ylabel("Eta (deg)")
 
-    plt.title(f"{star_name} astrometry in xi, eta")
 
     plt.grid(True)
 
