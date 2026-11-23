@@ -357,6 +357,8 @@ def process(path_to_job, cat):
 
                 print(f"Starting light curve work")
                 light_curves = calstarToLightCurves(cat, config, pp, calstar[0], platepars_all_recalibrated_path, video_path=None)
+                if light_curves is None:
+                    return
 
                 station, date_str, time_str, us_str = observation_dir.split('_')
                 session_date = datetime.datetime.strptime(f"{date_str}_{time_str}_{us_str}", "%Y%m%d_%H%M%S_%f")
