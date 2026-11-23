@@ -322,7 +322,7 @@ def plotAstrometryRaDec(plot_data):
     stations_text = stationsText(obs, stations_list)
 
     ra_cat, dec_cat = float(obs["ra_cat"][0]), float(obs["dec_cat"][0])
-    plt.set_title(
+    ax1.set_title(
         f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",
         fontsize=8,
         color="gray"
@@ -406,7 +406,7 @@ def plotAstrometryXiEta(plot_data):
         fontsize=14
     )
 
-    plt.set_title(
+    ax1.set_title(
         f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",
         fontsize=8,
         color="gray",
