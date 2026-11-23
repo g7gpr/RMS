@@ -298,8 +298,8 @@ def plotAstrometryRaDec(plot_data):
     plt.figure(figsize=(8, 8))
 
     plt.scatter(
-        obs["ra_cat"],
-        obs["dec_cat"],
+        obs["ra_obs"],
+        obs["dec_obs"],
         c=-obs["obs_mag"],
         s=2,
         cmap="viridis"
