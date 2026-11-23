@@ -236,7 +236,12 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
             continue
 
         jd = datetime2JD(getMiddleTimeFF(fits_file, obs_con.fps, dt_obj=True))
+
+
         p, ra_array, dec_array, x_array, y_array, mag_array, names_array = cat.queryPlatepar(pp, jd, n_brightest=5*len(star_list))
+
+
+
         limiting_mag = np.max(mag_array) + 0.5
 
         y, x, level, amplitude, fwhm, background, snr, saturated_count = zip(*star_list)
@@ -245,6 +250,11 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
                                                                     jd_time=True, measurement=True,
                                                                     precompute_pointing_corr=True,
                                                                     extinction_correction=True)
+
+        img_stars = np.column_stack([x, y, arr_obs_mag])
+        catalog_stars = np.column_stack([ra_array, dec_array, mag_array])
+        pp.fitPointing(jd, img_stars, catalog_stars)
+
 
         # Filter catalog return so we do not try to match against faint stars
 

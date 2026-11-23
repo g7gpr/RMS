@@ -38,15 +38,84 @@ import pyximport
 import RMS.Astrometry.ApplyAstrometry
 import scipy.optimize
 from scipy.spatial import cKDTree
-from RMS.Astrometry.Conversions import date2JD, jd2Date, JD2HourAngle, trueRaDec2ApparentAltAz
+from RMS.Astrometry.Conversions import date2JD, jd2Date, JD2HourAngle, trueOfDateRaDec2ApparentAltAz, \
+    apparentAltAz2TrueOfDateRaDec
+from RMS.GeoidHeightEGM96 import mslToWGS84Height
 from RMS.Math import angularSeparation, sphericalPointFromHeadingAndDistance
+from RMS.Misc import RmsDateTime, rmsCommit
 
 pyximport.install(setup_args={'include_dirs': [np.get_include()]})
 from RMS.Astrometry.CyFunctions import (
-    cyApparentAltAz2TrueRADec,
-    cyTrueRaDec2ApparentAltAz,
     pyRefractionTrueToApparent,
+    refractionScale,
 )
+
+
+# Version of the astrometric model of the kernels. The fitted pointing, scale and distortion take up
+#   whatever the model leaves out, so their meaning depends on it. Increment it whenever a change of the
+#   kernels alters what the fitted coefficients mean, and add it to the history below. The model a platepar
+#   was fitted with is kept in its fit record (Platepar.fit_record, Platepar.astrometryModel). History:
+#   1 - Platepars fitted before the fit record existed: the reference hour angle from the mean sidereal
+#       time, the reference pointing taken as a J2000 direction by the refraction, the Bennett/Saemundsson
+#       refraction pair without a scale for the station height, and the annual aberration absorbed by the fit.
+#   2 - True-of-date frames with the apparent sidereal time, the exact inverse of the refraction scaled with
+#       the station height, and the annual aberration modelled.
+ASTROMETRY_MODEL = 2
+
+# The fits kept in the fit record of a platepar: the distortion (with the scale and the rest of the lens
+#   model) and the pointing
+FIT_RECORD_KEYS = ('distortion', 'pointing')
+
+
+def fitRecordEntry(fit_by):
+    """ The record of a fit made now by this code.
+
+    Arguments:
+        fit_by: [str] Short label of what made the fit, e.g. 'SkyFit2' or 'recalibrateFF'.
+
+    Return:
+        [dict] 'model': the astrometric model (ASTROMETRY_MODEL), 'commit': the commit of the RMS code (see
+            RMS.Misc.gitCommit), 'utc': the time of the fit (ISO 8601, UTC) and 'by': the label.
+    """
+
+    # The model and the code of this process, and the time now
+    return {
+        'model': ASTROMETRY_MODEL,
+        'commit': rmsCommit(),
+        'utc': RmsDateTime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'by': str(fit_by),
+    }
+
+
+def emptyFitRecord():
+    """ The fit record of a platepar with no recorded fit (e.g. fitted before the record existed).
+
+    Return:
+        [dict] None for every fit of FIT_RECORD_KEYS.
+    """
+
+    return {key: None for key in FIT_RECORD_KEYS}
+
+
+def normalFitRecord(fit_record):
+    """ A fit record as read from a file or a pickle, with an entry for every fit (None if it is missing or
+        is not a record).
+
+    Arguments:
+        fit_record: [dict] Fit record, or None.
+
+    Return:
+        [dict] The fit record with only the keys of FIT_RECORD_KEYS.
+    """
+
+    # Only the entries which are records are kept, the others are not known
+    record = emptyFitRecord()
+    if isinstance(fit_record, dict):
+        for key in FIT_RECORD_KEYS:
+            if isinstance(fit_record.get(key), dict):
+                record[key] = fit_record[key]
+
+    return record
 
 
 class stationData(object):
@@ -132,6 +201,42 @@ def getPairedStarsSkyPositions(img_x, img_y, jd, platepar):
     return ra_array, dec_array
 
 
+def _lstsqFit(residual_func, x0, args):
+    """Levenberg-Marquardt least-squares fit on a vector-valued residual.
+
+    Replaces Nelder-Mead on the smooth, matched-pair cost functions: it uses the residual's
+    Jacobian structure, so it converges in far fewer evaluations and reaches the same (or a
+    lower-residual) least-squares minimum. Uses 'lm' when there are at least as many residuals
+    as parameters (lm's requirement); otherwise falls back to the robust 'trf'. Tight
+    tolerances ensure full convergence.
+
+    Arguments:
+        residual_func: [callable] Returns the per-observation residual VECTOR (not the sum of
+            squares). least_squares minimizes 0.5*sum(residual**2), so this must match the
+            squared-and-summed scalar cost it replaces.
+        x0: [array] Initial parameters.
+        args: [tuple] Extra args passed to residual_func.
+
+    Return:
+        scipy.optimize.OptimizeResult
+    """
+    x0 = np.asarray(x0, dtype=float)
+    n_resid = len(np.atleast_1d(residual_func(x0, *args)))
+    method = 'lm' if n_resid >= len(x0) else 'trf'
+    return scipy.optimize.least_squares(
+        residual_func, x0, args=args, method=method, ftol=1e-12, xtol=1e-12, gtol=1e-12)
+
+
+def _raDecToUnitVectors(ra_deg, dec_deg):
+    """Convert RA/Dec arrays (degrees) to 3D unit vectors. Euclidean nearest-neighbour on unit
+    vectors gives the same result as angular nearest-neighbour, so a cKDTree of these vectors
+    replaces an O(N*M) angular-separation matrix with an O(N log M) query."""
+    ra = np.radians(ra_deg)
+    dec = np.radians(dec_deg)
+    cos_dec = np.cos(dec)
+    return np.column_stack([cos_dec*np.cos(ra), cos_dec*np.sin(ra), np.sin(dec)])
+
+
 class Platepar(object):
     def __init__(self, distortion_type="radial7-odd"):
         """Astrometric and photometric calibration plate parameters. Several distortion types are supported.
@@ -154,7 +259,8 @@ class Platepar(object):
             self: [object] Instance of this class with loaded platepar parameters.
         """
 
-        self.version = 2
+        # Version of the file format: 1 had none, 2 added the forward and reverse distortion, 3 the fit record
+        self.version = 3
 
         # Store distortion type for later initialization
         self._init_distortion_type = distortion_type
@@ -163,6 +269,16 @@ class Platepar(object):
         self.equal_aspect = True
         self.force_distortion_centre = False
         self.asymmetry_corr = True
+
+        # Decentering correction of the radial distortion (Brown-Conrady): a lens element shifted or tilted off the
+        #   optical axis displaces the image by p1, p2 (amount and direction of the shift) times the square of the
+        #   radius, and p3, p4 times its fourth power. Its coefficients follow the radial ones in the distortion
+        #   arrays. Off by default
+        self.decentering_corr = False
+
+        # Take the sky to the image as the exact inverse of the forward distortion, instead of through the
+        #   separately fitted reverse one, so that the two directions agree exactly. Off by default
+        self.exact_reverse = False
 
         # Station coordinates
         self.lat = self.lon = self.elev = 0
@@ -174,7 +290,11 @@ class Platepar(object):
         # UT correction
         self.UT_corr = 0
 
+        # Reference hour angle (deg): the apparent Greenwich sidereal time at JD (mean sidereal time plus the
+        #   equation of the equinoxes, see Conversions.JD2HourAngle), the sidereal time of the true-of-date
+        #   reference pointing RA_d/dec_d. Recomputed from JD when a platepar is loaded
         self.Ho = 0
+
         self.X_res = 1280
         self.Y_res = 720
 
@@ -195,6 +315,12 @@ class Platepar(object):
 
         # Refraction on/off
         self.refraction = True
+
+        # Annual aberration of light modelled in the fit. If True, the plate maps the apparent directions of
+        #   the stars and the aberration is applied to (or removed from) catalog directions explicitly. If
+        #   False, the plate was fitted to catalog directions as they are and has absorbed the aberration of
+        #   the fit epoch in its pointing, scale and distortion
+        self.aberration = True
 
         # If the calibration was done without then refraction and points on the sky are measured, then they
         #   need to be corrected for refraction. WARNING: This should not be used if the distortion model
@@ -224,6 +350,10 @@ class Platepar(object):
 
         # Flag to indicate that the platepar was successfully auto recalibrated on an individual FF files
         self.auto_recalibrated = False
+
+        # What made the last fit of the distortion and of the pointing, when, and with which astrometric
+        #   model (see fitRecordEntry and recordFit). None for a fit that is not known
+        self.fit_record = emptyFitRecord()
 
         # Initialize distortion type (must be done before resetDistortionParameters)
         # First set a placeholder value so setDistortionType can compare against it
@@ -347,6 +477,15 @@ class Platepar(object):
                 if distortion_type[-3:] != self.distortion_type[-3:]:
                     reset_params = True
 
+            # With the decentering correction its coefficients follow the radial ones, so a change of the radial
+            #   order moves them: the coefficients are read in the layout of the current type, to be rebuilt in the
+            #   layout of the new one below
+            remap = None
+            if (not reset_params) and getattr(self, 'decentering_corr', False) \
+                    and self.distortion_type.startswith("radial") and (distortion_type != self.distortion_type):
+                remap = [self.extractRadialCoeffs(arr) for arr in (self.x_poly_fwd, self.x_poly_rev,
+                                                                    self.y_poly_fwd, self.y_poly_rev)]
+
             self.distortion_type = distortion_type
 
             # Get the polynomial length
@@ -369,12 +508,23 @@ class Platepar(object):
                 if not self.asymmetry_corr:
                     self.poly_length -= 2
 
+            # Add the decentering coefficients (p1, p2, p3, p4) for radial distortions if they are used
+            if distortion_type.startswith("radial"):
+                if self.decentering_corr:
+                    self.poly_length += 4
+
         else:
             raise ValueError("The distortion type is not recognized: {:s}".format(self.distortion_type))
 
         # Reset distortion parameters
         if reset_params:
             self.resetDistortionParameters()
+
+        # Rebuild the coefficients read above in the layout of the new type (radial coefficients beyond its order
+        #   are dropped, the decentering coefficients kept)
+        elif remap is not None:
+            self.x_poly_fwd, self.x_poly_rev, self.y_poly_fwd, self.y_poly_rev = [
+                self.buildRadialCoeffs(coeffs, target_dist_type=distortion_type) for coeffs in remap]
 
         # Set the correct polynomial size
         self.padDictParams()
@@ -428,11 +578,69 @@ class Platepar(object):
         # Return center in pixel coordinates (image center + offset)
         return self.X_res / 2.0 + x0, self.Y_res / 2.0 + y0
 
-    def fitPointing(self, jd, img_stars, catalog_stars, fixed_scale=False, final_catalog_stars=None):
+    def _withReverseProjection(self, func, *args, **kwargs):
+        """ Call func with the sky -> image projection through the reverse polynomial, as without exact_reverse,
+            so that x_poly_rev is fitted with the meaning it has for readers that do not know the option. The
+            residual functions copy the platepar on every call, and the copies inherit the switch.
+        """
+
+        exact = getattr(self, "exact_reverse", False)
+        self.exact_reverse = False
+
+        try:
+            return func(*args, **kwargs)
+
+        finally:
+            self.exact_reverse = exact
+
+
+    def recordFit(self, pointing=True, distortion=False, fit_by='fitAstrometry'):
+        """ Record a fit made now by this code in the fit record (see fitRecordEntry).
+
+        Keyword arguments:
+            pointing: [bool] The pointing was fitted. True by default.
+            distortion: [bool] The distortion was fitted. False by default.
+            fit_by: [str] Short label of what made the fit. 'fitAstrometry' by default.
+        """
+
+        # A platepar made without the constructor (e.g. from an old pickle) may not have the record yet
+        self.fit_record = normalFitRecord(getattr(self, 'fit_record', None))
+
+        # One entry for the fit, the same for the distortion and the pointing if both were fitted
+        entry = fitRecordEntry(fit_by)
+        if distortion:
+            self.fit_record['distortion'] = dict(entry)
+        if pointing:
+            self.fit_record['pointing'] = dict(entry)
+
+    def astrometryModel(self):
+        """ The astrometric model the distortion of the platepar was fitted with (see ASTROMETRY_MODEL).
+            The pointing is refitted on every image, the distortion is what ties a platepar to the model of
+            its fit.
+
+        Return:
+            [int] The model of the distortion fit, 1 if it is not known (a platepar fitted before the fit
+                record existed).
+        """
+
+        # The record of the distortion fit, if there is one
+        entry = normalFitRecord(getattr(self, 'fit_record', None))['distortion']
+        if entry is None:
+            return 1
+
+        # A record without a valid model is taken as the oldest model
+        try:
+            return int(entry.get('model', 1))
+        except (TypeError, ValueError):
+            return 1
+
+    def fitPointing(self, jd, img_stars, catalog_stars, fixed_scale=False, final_catalog_stars=None,
+                    fit_by='fitPointing'):
         """Fit pointing parameters to the list of star image and celestial catalog coordinates.
         At least 4 stars are needed to fit the rigid body parameters.
 
-        New parameters are saved to the given object (self).
+        New parameters are saved to the given object (self), and the pointing fit is recorded in the fit
+        record.
 
         Arguments:
             jd: [float] Julian date of the image.
@@ -443,6 +651,7 @@ class Platepar(object):
             fixed_scale: [bool] Keep the scale fixed. False by default.
             final_catalog_stars: [list] Optional deeper catalog to use for final radial7 fitting.
                                  If provided, switches to this catalog after radial7 switch.
+            fit_by: [str] Short label of what made the fit, for the fit record. 'fitPointing' by default.
 
         """
 
@@ -458,7 +667,7 @@ class Platepar(object):
 
             img_x, img_y, _ = img_stars.T
 
-            pp_copy = copy.deepcopy(platepar)
+            pp_copy = copy.copy(platepar)
 
             # Assign guessed parameters
             pp_copy.RA_d = ra_ref
@@ -471,8 +680,12 @@ class Platepar(object):
             # Get image coordinates of catalog stars
             catalog_x, catalog_y, catalog_mag = getCatalogStarsImagePositions(catalog_stars, jd, pp_copy)
 
-            # Calculate the sum of squared distances between image stars and catalog stars
-            dist_sum = np.sum((catalog_x - img_x) ** 2 + (catalog_y - img_y) ** 2)
+            # Calculate the sum of squared distances between image stars and catalog stars. A catalog star
+            #   which has no image (beyond the reach of the exact inverse of the distortion) counts as off by
+            #   the image diagonal, so the sum stays finite and the fit is not drawn to lose stars
+            dist_sq = (catalog_x - img_x) ** 2 + (catalog_y - img_y) ** 2
+            dist_sq[~np.isfinite(dist_sq)] = platepar.X_res ** 2 + platepar.Y_res ** 2
+            dist_sum = np.sum(dist_sq)
 
             return dist_sum
 
@@ -488,7 +701,7 @@ class Platepar(object):
 
             img_x, img_y, _ = img_stars.T
 
-            pp_copy = copy.deepcopy(platepar)
+            pp_copy = copy.copy(platepar)
 
             # Assign guessed parameters
             pp_copy.RA_d = ra_ref
@@ -546,7 +759,10 @@ class Platepar(object):
         # Update alt/az of pointing
         self.updateRefAltAz()
 
-    def fitPointingNN(self, jd, img_stars, catalog_stars, fixed_scale=True):
+        # Record the pointing fit
+        self.recordFit(pointing=True, fit_by=fit_by)
+
+    def fitPointingNN(self, jd, img_stars, catalog_stars, fixed_scale=True, fit_by='fitPointingNN'):
         """Fit pointing parameters using nearest-neighbor cost function in pixel space.
 
         Unlike fitPointing() which requires pre-matched star pairs, this method finds the
@@ -567,6 +783,7 @@ class Platepar(object):
 
         Keyword arguments:
             fixed_scale: [bool] Keep scale fixed. True by default (for camera drift correction).
+            fit_by: [str] Short label of what made the fit, for the fit record. 'fitPointingNN' by default.
 
         """
         # Import here to avoid circular import (ApplyAstrometry imports Platepar)
@@ -702,6 +919,9 @@ class Platepar(object):
         # Update alt/az of pointing
         self.updateRefAltAz()
 
+        # Record the pointing fit
+        self.recordFit(pointing=True, fit_by=fit_by)
+
         return res.success, res.fun, inlier_fraction, inlier_rmsd
 
     def fitAstrometry(
@@ -715,11 +935,15 @@ class Platepar(object):
         use_nn_cost=False,
         final_catalog_stars=None,
         iteration_callback=None,
+        fit_by='fitAstrometry',
     ):
         """Fit astrometric parameters to the list of star image and celestial catalog coordinates.
         At least 4 stars are needed to fit the rigid body parameters.
 
-        New parameters are saved to the given object (self).
+        New parameters are saved to the given object (self). The fit models the annual aberration: the
+        aberration flag is turned on where the pointing is fitted. A fit that stops without a result or fails
+        with an exception leaves the flag as it was. What was fitted (the pointing, and the distortion unless
+        only the pointing is fitted) is recorded in the fit record.
 
         Arguments:
             jd: [float] Julian date of the image.
@@ -730,11 +954,46 @@ class Platepar(object):
             first_platepar_fit: [bool] Fit a platepar from scratch. False by default.
             fit_only_pointing: [bool] Only fit the pointing parameters, and not distortion.
             fixed_scale: [bool] Keep the scale fixed. False by default.
+            use_nn_cost: [bool] Fit on the nearest catalog neighbours of the stars (RANSAC) instead of given
+                pairs. False by default.
             final_catalog_stars: [list] Optional deeper catalog to use for final radial7 fitting.
                                  If provided, switches to this catalog after radial7 switch.
             iteration_callback: [callable] Optional callback called after each RANSAC iteration.
                                 Signature: callback(iteration, platepar_copy, outlier_mask, rmsd_arcmin)
                                 Used for visual debugging of the fitting process.
+            fit_by: [str] Short label of what made the fit, for the fit record (e.g. 'SkyFit2').
+                'fitAstrometry' by default.
+
+        Return:
+            None, or with use_nn_cost the matched pairs (img_stars, catalog_stars) of the RANSAC fit (None if
+                it stopped without a result).
+
+        """
+
+        # The aberration flag of the plate before the fit, restored if the fit fails with an exception (a fit
+        #   that stops without a result restores it itself)
+        aberration_prev = self.aberration
+        completed = False
+
+        try:
+            result = self._fitAstrometry(jd, img_stars, catalog_stars, first_platepar_fit=first_platepar_fit,
+                fit_only_pointing=fit_only_pointing, fixed_scale=fixed_scale, use_nn_cost=use_nn_cost,
+                final_catalog_stars=final_catalog_stars, iteration_callback=iteration_callback, fit_by=fit_by)
+            completed = True
+
+        finally:
+            if not completed:
+                self.aberration = aberration_prev
+
+        return result
+
+    def _fitAstrometry(self, jd, img_stars, catalog_stars, first_platepar_fit=False, fit_only_pointing=False,
+        fixed_scale=False, use_nn_cost=False, final_catalog_stars=None, iteration_callback=None,
+        fit_by='fitAstrometry'):
+        """ The fit of fitAstrometry, which has the description and the arguments.
+
+        Return:
+            See fitAstrometry.
 
         """
 
@@ -747,7 +1006,7 @@ class Platepar(object):
             """
 
             # Set distortion parameters
-            pp_copy = copy.deepcopy(platepar)
+            pp_copy = copy.copy(platepar)
 
             if (dimension == 'x') or (dimension == 'radial'):
                 pp_copy.x_poly_rev = params
@@ -778,6 +1037,30 @@ class Platepar(object):
 
             return dist_sum
 
+        def _calcImageResidualsDistortionVect(params, platepar, jd, catalog_stars, img_stars, dimension):
+            """Vector-residual form of _calcImageResidualsDistortion for scipy.least_squares.
+               Returns per-star residuals; least_squares minimizes their sum of squares, which
+               equals the scalar dist_sum above, so the optimum is identical."""
+
+            pp_copy = copy.copy(platepar)
+
+            if (dimension == 'x') or (dimension == 'radial'):
+                pp_copy.x_poly_rev = params
+                pp_copy.y_poly_rev = np.zeros(platepar.poly_length)
+            else:
+                pp_copy.x_poly_rev = np.zeros(platepar.poly_length)
+                pp_copy.y_poly_rev = params
+
+            img_x, img_y, _ = img_stars.T
+            catalog_x, catalog_y, _ = getCatalogStarsImagePositions(catalog_stars, jd, pp_copy)
+
+            if dimension == 'x':
+                return catalog_x - img_x
+            elif dimension == 'y':
+                return catalog_y - img_y
+            else:
+                return np.concatenate([catalog_x - img_x, catalog_y - img_y])
+
         # Modify the residuals function so that it takes a list of arguments
         def _calcImageResidualsDistortionListArguments(params, *args, **kwargs):
             return [_calcImageResidualsDistortion(param_line, *args, **kwargs) for param_line in params]
@@ -790,7 +1073,7 @@ class Platepar(object):
                 dimension: [str] 'x' for X polynomial fit, 'y' for Y polynomial fit
             """
 
-            pp_copy = copy.deepcopy(platepar)
+            pp_copy = copy.copy(platepar)
 
             if (dimension == 'x') or (dimension == 'radial'):
                 pp_copy.x_poly_fwd = params
@@ -818,6 +1101,26 @@ class Platepar(object):
 
             return separation_sum
 
+        def _calcSkyResidualsDistortionVect(params, platepar, jd, catalog_stars, img_stars, dimension):
+            """Vector-residual form of _calcSkyResidualsDistortion for scipy.least_squares.
+               Returns per-star angular separations (sum of squares == the scalar cost above)."""
+
+            pp_copy = copy.copy(platepar)
+
+            if (dimension == 'x') or (dimension == 'radial'):
+                pp_copy.x_poly_fwd = params
+            else:
+                pp_copy.y_poly_fwd = params
+
+            img_x, img_y, _ = img_stars.T
+            ra_array, dec_array = getPairedStarsSkyPositions(img_x, img_y, jd, pp_copy)
+            ra_catalog, dec_catalog, _ = catalog_stars.T
+
+            return angularSeparation(
+                np.radians(ra_array), np.radians(dec_array),
+                np.radians(ra_catalog), np.radians(dec_catalog),
+            )
+
         # Modify the residuals function so that it takes a list of arguments
         def _calcSkyResidualsDistortionListArguments(params, *args, **kwargs):
             return [_calcSkyResidualsDistortion(param_line, *args, **kwargs) for param_line in params]
@@ -832,19 +1135,18 @@ class Platepar(object):
                 dimension: [str] 'x' for X polynomial fit, 'y' for Y polynomial fit
             """
 
-            # Set distortion parameters
-            pp_copy = copy.deepcopy(platepar)
-
             # Unpack pointing parameters and assign to the copy of platepar used for the fit
             ra_ref, dec_ref, pos_angle_ref, F_scale = params[:4]
 
-            pp_copy = copy.deepcopy(platepar)
+            # Shallow copy: the residual only rebinds scalar/poly attributes below and the
+            # projection reads the rest, so a full deepcopy (per optimizer eval) is wasted.
+            pp_copy = copy.copy(platepar)
 
             # Unnormalize the pointing parameters
             pp_copy.RA_d = (360 * ra_ref) % (360)
             pp_copy.dec_d = -90 + (90 * dec_ref + 90) % (180.000001)
             pp_copy.pos_angle_ref = (360 * pos_angle_ref) % (360)
-            pp_copy.F_scale = abs(F_scale)
+            pp_copy.F_scale = f_scale_fixed if fixed_scale else abs(F_scale)
 
             # Assign distortion parameters
             pp_copy.x_poly_rev = params[4:]
@@ -859,6 +1161,23 @@ class Platepar(object):
 
             return dist_sum
 
+        def _calcImageResidualsAstroAndDistortionRadialVect(params, platepar, jd, catalog_stars, img_stars):
+            """Vector-residual form of _calcImageResidualsAstroAndDistortionRadial for least_squares:
+               fits pointing + reverse distortion on the per-star pixel residual."""
+
+            pp_copy = copy.copy(platepar)
+            ra_ref, dec_ref, pos_angle_ref, F_scale = params[:4]
+            pp_copy.RA_d = (360 * ra_ref) % (360)
+            pp_copy.dec_d = -90 + (90 * dec_ref + 90) % (180.000001)
+            pp_copy.pos_angle_ref = (360 * pos_angle_ref) % (360)
+            pp_copy.F_scale = f_scale_fixed if fixed_scale else abs(F_scale)
+            pp_copy.x_poly_rev = np.array(params[4:])
+
+            img_x, img_y, _ = img_stars.T
+            catalog_x, catalog_y, _ = getCatalogStarsImagePositions(catalog_stars, jd, pp_copy)
+
+            return np.concatenate([catalog_x - img_x, catalog_y - img_y])
+
         def _calcSkyResidualsAstroAndDistortionRadial(params, platepar, jd, catalog_stars, img_stars):
             """Calculates the differences between the stars on the image and catalog stars in celestial
             coordinates with the given astrometrical solution. Pointing and distortion parameters are used
@@ -866,19 +1185,18 @@ class Platepar(object):
 
             """
 
-            # Set distortion parameters
-            pp_copy = copy.deepcopy(platepar)
-
             # Unpack pointing parameters and assign to the copy of platepar used for the fit
             ra_ref, dec_ref, pos_angle_ref, F_scale = params[:4]
 
-            pp_copy = copy.deepcopy(platepar)
+            # Shallow copy: the residual only rebinds scalar/poly attributes below and the
+            # projection reads the rest, so a full deepcopy (per optimizer eval) is wasted.
+            pp_copy = copy.copy(platepar)
 
             # Unnormalize the pointing parameters
             pp_copy.RA_d = (360 * ra_ref) % (360)
             pp_copy.dec_d = -90 + (90 * dec_ref + 90) % (180.000001)
             pp_copy.pos_angle_ref = (360 * pos_angle_ref) % (360)
-            pp_copy.F_scale = abs(F_scale)
+            pp_copy.F_scale = f_scale_fixed if fixed_scale else abs(F_scale)
 
             # Assign distortion parameters
             pp_copy.x_poly_fwd = np.array(params[4:])
@@ -903,7 +1221,31 @@ class Platepar(object):
 
             return separation_sum
 
-        def _calcSkyResidualsAstroAndDistortionRadialNN(params, platepar, jd, catalog_stars, img_stars):
+        def _calcSkyResidualsAstroAndDistortionRadialVect(params, platepar, jd, catalog_stars, img_stars):
+            """Vector-residual form of _calcSkyResidualsAstroAndDistortionRadial for scipy.least_squares.
+               Returns per-star angular separations; least_squares minimizes their sum of squares,
+               which equals the scalar separation_sum above, so the optimum is identical."""
+
+            pp_copy = copy.copy(platepar)
+
+            ra_ref, dec_ref, pos_angle_ref, F_scale = params[:4]
+            pp_copy.RA_d = (360 * ra_ref) % (360)
+            pp_copy.dec_d = -90 + (90 * dec_ref + 90) % (180.000001)
+            pp_copy.pos_angle_ref = (360 * pos_angle_ref) % (360)
+            pp_copy.F_scale = f_scale_fixed if fixed_scale else abs(F_scale)
+            pp_copy.x_poly_fwd = np.array(params[4:])
+
+            img_x, img_y, _ = img_stars.T
+            ra_array, dec_array = getPairedStarsSkyPositions(img_x, img_y, jd, pp_copy)
+            ra_catalog, dec_catalog, _ = catalog_stars.T
+
+            return angularSeparation(
+                np.radians(ra_array), np.radians(dec_array),
+                np.radians(ra_catalog), np.radians(dec_catalog),
+            )
+
+        def _calcSkyResidualsAstroAndDistortionRadialNN(params, platepar, jd, catalog_stars, img_stars,
+                                                        cat_tree=None):
             """Like _calcSkyResidualsAstroAndDistortionRadial but uses nearest-neighbor matching.
 
             Instead of requiring pre-matched pairs, this finds the nearest catalog star for each
@@ -920,7 +1262,7 @@ class Platepar(object):
                 Sum of squared angular separations to nearest catalog star for each detected star
             """
             # Set distortion parameters
-            pp_copy = copy.deepcopy(platepar)
+            pp_copy = copy.copy(platepar)
 
             # Unpack pointing parameters and assign to the copy of platepar used for the fit
             ra_ref, dec_ref, pos_angle_ref, F_scale = params[:4]
@@ -929,7 +1271,7 @@ class Platepar(object):
             pp_copy.RA_d = (360 * ra_ref) % (360)
             pp_copy.dec_d = -90 + (90 * dec_ref + 90) % (180.000001)
             pp_copy.pos_angle_ref = (360 * pos_angle_ref) % (360)
-            pp_copy.F_scale = abs(F_scale)
+            pp_copy.F_scale = f_scale_fixed if fixed_scale else abs(F_scale)
 
             # Assign distortion parameters
             pp_copy.x_poly_fwd = np.array(params[4:])
@@ -939,18 +1281,24 @@ class Platepar(object):
             # Convert detected image positions to sky coordinates
             ra_det, dec_det = getPairedStarsSkyPositions(img_x, img_y, jd, pp_copy)
 
-            # Catalog is pre-filtered to FOV by caller - no need to re-filter here
-            ra_catalog, dec_catalog, _ = catalog_stars.T
+            if cat_tree is not None:
+                # Fast path: query a prebuilt KD-tree of catalog unit vectors. Same nearest
+                # neighbour as the matrix below, but O(N log M) instead of O(N*M) per eval.
+                chord_dist, _ = cat_tree.query(_raDecToUnitVectors(ra_det, dec_det), k=1)
+                nn_distances = 2.0*np.arcsin(np.clip(chord_dist/2.0, 0.0, 1.0))  # chord -> angle
+            else:
+                # Catalog is pre-filtered to FOV by caller - no need to re-filter here
+                ra_catalog, dec_catalog, _ = catalog_stars.T
 
-            # Vectorized NN: compute NxM angular separation matrix, then take row-wise min
-            ra_det_rad = np.radians(ra_det)[:, np.newaxis]  # (N, 1)
-            dec_det_rad = np.radians(dec_det)[:, np.newaxis]  # (N, 1)
-            ra_cat_rad = np.radians(ra_catalog)[np.newaxis, :]  # (1, M)
-            dec_cat_rad = np.radians(dec_catalog)[np.newaxis, :]  # (1, M)
+                # Vectorized NN: compute NxM angular separation matrix, then take row-wise min
+                ra_det_rad = np.radians(ra_det)[:, np.newaxis]  # (N, 1)
+                dec_det_rad = np.radians(dec_det)[:, np.newaxis]  # (N, 1)
+                ra_cat_rad = np.radians(ra_catalog)[np.newaxis, :]  # (1, M)
+                dec_cat_rad = np.radians(dec_catalog)[np.newaxis, :]  # (1, M)
 
-            # angularSeparation broadcasts to (N, M) separation matrix
-            sep_matrix = angularSeparation(ra_det_rad, dec_det_rad, ra_cat_rad, dec_cat_rad)
-            nn_distances = np.min(sep_matrix, axis=1)  # (N,)
+                # angularSeparation broadcasts to (N, M) separation matrix
+                sep_matrix = angularSeparation(ra_det_rad, dec_det_rad, ra_cat_rad, dec_cat_rad)
+                nn_distances = np.min(sep_matrix, axis=1)  # (N,)
             total_cost = np.sum(nn_distances ** 2)
 
             return total_cost
@@ -964,6 +1312,19 @@ class Platepar(object):
         # print('DIS_Y', _calcImageResidualsDistortion(self.y_poly_rev,  catalog_stars, \
         #     img_stars, 'y'))
 
+        # The distortion is fitted below unless only the pointing is fitted, or there are too few stars for it
+        min_fit_stars = self.poly_length + 1
+        fit_distortion = (len(img_stars) >= min_fit_stars) and (not fit_only_pointing)
+
+        # The fit models the aberration, whatever the plate had absorbed before: the flag is turned on below
+        #   where the pointing is fitted. The flag before the fit is kept for the fits that stop without a
+        #   result
+        aberration_prev = self.aberration
+
+        # What this fit changes, for the fit record at the end (the RANSAC fit records it in its final fit)
+        pointing_fitted = False
+        distortion_fitted = False
+
         ### ASTROMETRIC PARAMETERS FIT ###
 
         # Fit the pointing parameters (RA, Dec, rotation, scale)
@@ -974,16 +1335,35 @@ class Platepar(object):
             or fit_only_pointing
         ) and not use_nn_cost:
 
-            self.fitPointing(jd, img_stars, catalog_stars, fixed_scale=fixed_scale)
+            # The pointing is fitted with the aberration modelled
+            self.aberration = True
+
+            # With the exact reverse, the polynomial models first go through their usual sequence, which needs
+            #   the reverse polynomial (see the refinement after the forward fit). A fit of the pointing alone
+            #   (also with too few stars for the distortion) goes through the mapping of the platepar
+            if getattr(self, "exact_reverse", False) and self.distortion_type.startswith("poly") \
+                and fit_distortion:
+
+                self._withReverseProjection(self.fitPointing, jd, img_stars, catalog_stars, fixed_scale=fixed_scale,
+                    fit_by=fit_by)
+
+            else:
+                self.fitPointing(jd, img_stars, catalog_stars, fixed_scale=fixed_scale, fit_by=fit_by)
+            pointing_fitted = True
 
         ### ###
 
         ### DISTORTION FIT ###
 
         # Fit the polynomial distortion parameters if there are enough picked stars
-        min_fit_stars = self.poly_length + 1
+        if fit_distortion:
 
-        if (len(img_stars) >= min_fit_stars) and (not fit_only_pointing):
+            # The distortion, and with the radial models the pointing as well, is fitted with the aberration
+            #   modelled
+            self.aberration = True
+            distortion_fitted = True
+            if not self.distortion_type.startswith("poly"):
+                pointing_fitted = True
 
             # Fit the polynomial distortion
             if self.distortion_type.startswith("poly"):
@@ -991,24 +1371,22 @@ class Platepar(object):
                 ### REVERSE MAPPING FIT ###
 
                 # Fit distortion parameters in X direction, reverse mapping
-                res = scipy.optimize.minimize(
-                    _calcImageResidualsDistortion,
+                res = self._withReverseProjection(
+                    _lstsqFit,
+                    _calcImageResidualsDistortionVect,
                     self.x_poly_rev,
-                    args=(self, jd, catalog_stars, img_stars, 'x'),
-                    method='Nelder-Mead',
-                    options={'maxiter': 10000, 'adaptive': True},
+                    (self, jd, catalog_stars, img_stars, 'x'),
                 )
 
                 # Extract fitted X polynomial
                 self.x_poly_rev = res.x
 
                 # Fit distortion parameters in Y direction, reverse mapping
-                res = scipy.optimize.minimize(
-                    _calcImageResidualsDistortion,
+                res = self._withReverseProjection(
+                    _lstsqFit,
+                    _calcImageResidualsDistortionVect,
                     self.y_poly_rev,
-                    args=(self, jd, catalog_stars, img_stars, 'y'),
-                    method='Nelder-Mead',
-                    options={'maxiter': 10000, 'adaptive': True},
+                    (self, jd, catalog_stars, img_stars, 'y'),
                 )
 
                 # Extract fitted Y polynomial
@@ -1016,37 +1394,86 @@ class Platepar(object):
 
                 ### ###
 
-                # If this is the first fit of the distortion, set the forward parameters to be equal to the reverse
-                if first_platepar_fit:
-
-                    self.x_poly_fwd = np.array(self.x_poly_rev)
-                    self.y_poly_fwd = np.array(self.y_poly_rev)
+                # Always seed the forward fit from the freshly-fit reverse polynomial. The reverse
+                # fit is robust (pixel residual) and forward ~ reverse for the distortion, so this
+                # is a good starting point. Seeding from a stale/garbage x_poly_fwd (e.g. on a
+                # manual re-fit, or after a distortion-type change) can leave the forward fit stuck
+                # far from the solution because the sky-residual objective saturates -- producing a
+                # broken forward mapping (catalog overlay far off) while the reverse, and the RMSD,
+                # still look fine.
+                self.x_poly_fwd = np.array(self.x_poly_rev)
+                self.y_poly_fwd = np.array(self.y_poly_rev)
 
                 ### FORWARD MAPPING FIT ###
 
                 # Fit distortion parameters in X direction, forward mapping
-                res = scipy.optimize.minimize(
-                    _calcSkyResidualsDistortion,
+                res = _lstsqFit(
+                    _calcSkyResidualsDistortionVect,
                     self.x_poly_fwd,
-                    args=(self, jd, catalog_stars, img_stars, 'x'),
-                    method='Nelder-Mead',
-                    options={'maxiter': 10000, 'adaptive': True},
+                    (self, jd, catalog_stars, img_stars, 'x'),
                 )
 
                 # Extract fitted X polynomial
                 self.x_poly_fwd = res.x
 
                 # Fit distortion parameters in Y direction, forward mapping
-                res = scipy.optimize.minimize(
-                    _calcSkyResidualsDistortion,
+                res = _lstsqFit(
+                    _calcSkyResidualsDistortionVect,
                     self.y_poly_fwd,
-                    args=(self, jd, catalog_stars, img_stars, 'y'),
-                    method='Nelder-Mead',
-                    options={'maxiter': 10000, 'adaptive': True},
+                    (self, jd, catalog_stars, img_stars, 'y'),
                 )
 
                 # IMPORTANT NOTE - the X polynomial is used to store the fit parameters
                 self.y_poly_fwd = res.x
+
+                # With the exact reverse, the pointing above was fitted through the reverse polynomial. Fit it
+                #   through the exact inverse, and the forward polynomial on the sky with it, in turn until
+                #   neither moves: the two then describe one mapping
+                if getattr(self, "exact_reverse", False):
+
+                    for _ in range(10):
+
+                        prev = np.concatenate([[self.RA_d, self.dec_d, self.pos_angle_ref],
+                            self.x_poly_fwd, self.y_poly_fwd])
+
+                        self.fitPointing(jd, img_stars, catalog_stars, fixed_scale=fixed_scale)
+
+                        res = _lstsqFit(
+                            _calcSkyResidualsDistortionVect,
+                            self.x_poly_fwd,
+                            (self, jd, catalog_stars, img_stars, 'x'),
+                        )
+                        self.x_poly_fwd = res.x
+
+                        res = _lstsqFit(
+                            _calcSkyResidualsDistortionVect,
+                            self.y_poly_fwd,
+                            (self, jd, catalog_stars, img_stars, 'y'),
+                        )
+                        self.y_poly_fwd = res.x
+
+                        change = np.max(np.abs(np.concatenate([[self.RA_d, self.dec_d, self.pos_angle_ref],
+                            self.x_poly_fwd, self.y_poly_fwd]) - prev))
+                        if change < 1e-9:
+                            break
+
+                    # Refit the reverse polynomial to the final pointing, as it is fitted without the option, for
+                    #   readers that do not know it (the pointing moved since the reverse fit above)
+                    res = self._withReverseProjection(
+                        _lstsqFit,
+                        _calcImageResidualsDistortionVect,
+                        self.x_poly_rev,
+                        (self, jd, catalog_stars, img_stars, 'x'),
+                    )
+                    self.x_poly_rev = res.x
+
+                    res = self._withReverseProjection(
+                        _lstsqFit,
+                        _calcImageResidualsDistortionVect,
+                        self.y_poly_rev,
+                        (self, jd, catalog_stars, img_stars, 'y'),
+                    )
+                    self.y_poly_rev = res.x
 
                 ### ###
 
@@ -1066,6 +1493,11 @@ class Platepar(object):
 
                 # Fitting the pointing direction below! - if used, it should be put BEFORE the reverse fit!
                 # Initial parameters for the pointing and distortion fit (normalize to the 0-1 range)
+                # Hold F_scale when fixed_scale is set. The radial joint fit below otherwise carries F_scale
+                # as a free parameter; the patched residual functions make the objective independent of it,
+                # and every extraction/temporary below reads this held value instead of the (drifting under
+                # Nelder-Mead) parameter. fixed_scale is forwarded through the recursive matched-pair fit too.
+                f_scale_fixed = abs(self.F_scale)
                 p0 = [self.RA_d / 360, self.dec_d / 90, self.pos_angle_ref / 360, abs(self.F_scale)]
                 p0 += self.x_poly_fwd.tolist()
 
@@ -1130,10 +1562,12 @@ class Platepar(object):
                     if len(img_stars) < min_stars_required:
                         print("    -> Not enough detected stars ({} < {}), skipping NN fit".format(
                             len(img_stars), min_stars_required))
+                        self.aberration = aberration_prev
                         return None
                     if n_catalog_fov < min_stars_required:
                         print("    -> Not enough catalog stars in FOV ({} < {}), skipping NN fit".format(
                             n_catalog_fov, min_stars_required))
+                        self.aberration = aberration_prev
                         return None
 
                     print("    RANSAC outlier detection: 21 iterations")
@@ -1194,7 +1628,7 @@ class Platepar(object):
                                 self.RA_d = (360 * ra_ref) % (360)
                                 self.dec_d = -90 + (90 * dec_ref + 90) % (180.000001)
                                 self.pos_angle_ref = (360 * pos_angle_ref) % (360)
-                                self.F_scale = abs(F_scale)
+                                self.F_scale = f_scale_fixed if fixed_scale else abs(F_scale)
                                 # Update x_poly_fwd with best radial3-odd coefficients
                                 self.x_poly_fwd = np.array(best_res.x[4:])
                                 self.x_poly_rev = self.x_poly_fwd.copy()
@@ -1226,7 +1660,7 @@ class Platepar(object):
                                 self.RA_d = (360 * ra_ref) % (360)
                                 self.dec_d = -90 + (90 * dec_ref + 90) % (180.000001)
                                 self.pos_angle_ref = (360 * pos_angle_ref) % (360)
-                                self.F_scale = abs(F_scale)
+                                self.F_scale = f_scale_fixed if fixed_scale else abs(F_scale)
                                 # Update x_poly_fwd with best radial5-odd coefficients
                                 self.x_poly_fwd = np.array(best_res.x[4:])
                                 self.x_poly_rev = self.x_poly_fwd.copy()
@@ -1305,7 +1739,7 @@ class Platepar(object):
                         pp_filter.RA_d = (360 * start_params[0]) % 360
                         pp_filter.dec_d = -90 + (90 * start_params[1] + 90) % (180.000001)
                         pp_filter.pos_angle_ref = (360 * start_params[2]) % 360
-                        pp_filter.F_scale = abs(start_params[3])
+                        pp_filter.F_scale = f_scale_fixed if fixed_scale else abs(start_params[3])
                         ra_cat_all, dec_cat_all, _ = catalog_stars.T
                         cat_x, cat_y = RMS.Astrometry.ApplyAstrometry.raDecToXYPP(
                             ra_cat_all, dec_cat_all, jd, pp_filter
@@ -1327,9 +1761,17 @@ class Platepar(object):
                             ransac_opts = opt_options_ransac_r5
                         else:
                             ransac_opts = opt_options_ransac_r7
+                        # Kept on Nelder-Mead: the NN cost is non-smooth (nearest-neighbour
+                        # assignment jumps as params move), so a gradient/least-squares method
+                        # is unreliable here. The smooth matched-pair paths use _lstsqFit.
+                        # Speedup: build a catalog KD-tree once per iteration so each NN cost
+                        # eval is O(N log M) instead of rebuilding an N×M matrix (~80x fewer
+                        # ops/eval, identical nearest-neighbour result).
+                        ra_cat_fov, dec_cat_fov, _ = catalog_stars_fov.T
+                        cat_tree = cKDTree(_raDecToUnitVectors(ra_cat_fov, dec_cat_fov))
                         res = scipy.optimize.minimize(
                             cost_func, start_params,
-                            args=(self, jd, catalog_stars_fov, img_stars_subset),
+                            args=(self, jd, catalog_stars_fov, img_stars_subset, cat_tree),
                             method='Nelder-Mead', options=ransac_opts,
                         )
 
@@ -1344,7 +1786,7 @@ class Platepar(object):
                         pp_temp.RA_d = (360 * ra_ref) % (360)
                         pp_temp.dec_d = -90 + (90 * dec_ref + 90) % (180.000001)
                         pp_temp.pos_angle_ref = (360 * pos_angle_ref) % (360)
-                        pp_temp.F_scale = abs(F_scale)
+                        pp_temp.F_scale = f_scale_fixed if fixed_scale else abs(F_scale)
                         pp_temp.x_poly_fwd = np.array(res.x[4:])
 
                         img_x, img_y, _ = img_stars.T
@@ -1412,7 +1854,7 @@ class Platepar(object):
                             pp_iter.RA_d = iter_ra
                             pp_iter.dec_d = iter_dec
                             pp_iter.pos_angle_ref = (360 * res.x[2]) % 360
-                            pp_iter.F_scale = abs(res.x[3])
+                            pp_iter.F_scale = f_scale_fixed if fixed_scale else abs(res.x[3])
                             if len(res.x) > 4:
                                 pp_iter.x_poly_fwd = np.array(res.x[4:])
                                 pp_iter.x_poly_rev = np.array(res.x[4:])
@@ -1462,6 +1904,7 @@ class Platepar(object):
                     if best_cost > max_rmsd_arcmin:
                         print("    -> RMSD too large ({:.2f}' > {:.0f}'), skipping final fit".format(
                             best_cost, max_rmsd_arcmin))
+                        self.aberration = aberration_prev
                         return None
 
                     # Apply best RANSAC params to platepar
@@ -1469,7 +1912,7 @@ class Platepar(object):
                     self.RA_d = (360 * ra_ref) % (360)
                     self.dec_d = -90 + (90 * dec_ref + 90) % (180.000001)
                     self.pos_angle_ref = (360 * pos_angle_ref) % (360)
-                    self.F_scale = abs(F_scale)
+                    self.F_scale = f_scale_fixed if fixed_scale else abs(F_scale)
                     self.x_poly_fwd = np.array(best_res.x[4:])  # Ensure numpy array
                     self.x_poly_rev = np.array(self.x_poly_fwd)  # Sync reverse with forward!
                     self.updateRefAltAz()
@@ -1496,7 +1939,28 @@ class Platepar(object):
                     dec_cat_rad = np.radians(dec_catalog)[np.newaxis, :]  # (1, M)
                     sep_matrix = angularSeparation(ra_det_rad, dec_det_rad, ra_cat_rad, dec_cat_rad)
                     nearest_indices = np.argmin(sep_matrix, axis=1)  # (N,)
-                    matched_catalog = catalog_stars_fov[nearest_indices]
+                    nearest_sep = np.min(sep_matrix, axis=1)         # (N,)
+
+                    # Enforce one-to-one matching. argmin is per-detection and non-injective, so two
+                    #   detected stars can claim the same catalog star (a duplicate) - which then
+                    #   shows up as a gross residual and inflates the RMSD. Resolve conflicts by
+                    #   keeping, for each catalog star, only the closest detection; drop the rest.
+                    keep_mask = np.zeros(len(nearest_indices), dtype=bool)
+                    seen_catalog = set()
+                    for det_i in np.argsort(nearest_sep):
+                        cat_i = int(nearest_indices[det_i])
+                        if cat_i in seen_catalog:
+                            continue
+                        seen_catalog.add(cat_i)
+                        keep_mask[det_i] = True
+
+                    n_dupes = int(np.sum(~keep_mask))
+                    if n_dupes > 0:
+                        print("    Dropped {} duplicate matches (multiple detections -> one catalog "
+                              "star)".format(n_dupes))
+
+                    img_stars_clean = img_stars_clean[keep_mask]
+                    matched_catalog = catalog_stars_fov[nearest_indices[keep_mask]]
 
                     # Restore original distortion type for final matched-pair fit
                     self.setDistortionType(original_dist_type, reset_params=False)
@@ -1505,7 +1969,8 @@ class Platepar(object):
                     print("    Final fit on {} matched stars with {} (recursive call)...".format(
                         len(img_stars_clean), original_dist_type))
                     self.fitAstrometry(jd, img_stars_clean, matched_catalog,
-                                       first_platepar_fit=False, use_nn_cost=False)
+                                       first_platepar_fit=False, use_nn_cost=False, fixed_scale=fixed_scale,
+                                       fit_by=fit_by)
 
                     # Return the actual matched pairs from RANSAC
                     return (img_stars_clean, matched_catalog)
@@ -1522,21 +1987,25 @@ class Platepar(object):
                         prev_x_poly_rev = self.x_poly_rev.copy()
 
                         ### FORWARD MAPPING FIT ###
-                        res = scipy.optimize.minimize(
-                            cost_func,
+                        # Prototype: Levenberg-Marquardt least-squares on the vector residual.
+                        # Converges in far fewer evals than Nelder-Mead and lands on the same
+                        # (or lower-residual) least-squares minimum.
+                        res = _lstsqFit(
+                            _calcSkyResidualsAstroAndDistortionRadialVect,
                             p0,
-                            args=(self, jd, catalog_stars, img_stars),
-                            method='Nelder-Mead',
-                            options=opt_options_final,
+                            (self, jd, catalog_stars, img_stars),
                         )
-                        fwd_status = "maxiter" if res.nit >= opt_options_final['maxiter'] else "converged"
+                        fwd_status = "converged" if res.success else "stopped"
 
                         # Update fitted astrometric parameters (Unnormalize the pointing parameters)
                         ra_ref, dec_ref, pos_angle_ref, F_scale = res.x[:4]
                         self.RA_d = (360 * ra_ref) % (360)
                         self.dec_d = -90 + (90 * dec_ref + 90) % (180.000001)
                         self.pos_angle_ref = (360 * pos_angle_ref) % (360)
-                        self.F_scale = abs(F_scale)
+                        # Hold the scale when fixed_scale is set. The patched residual makes the fit
+                        # objective independent of the F_scale parameter, so LM leaves res.x[3] at its
+                        # seed; read the held value explicitly rather than relying on that.
+                        self.F_scale = f_scale_fixed if fixed_scale else abs(F_scale)
 
                         self.updateRefAltAz()
 
@@ -1554,15 +2023,13 @@ class Platepar(object):
                         # cameras with extreme distortion center offset where the optimizer
                         # can diverge when starting from zeros
                         rev_init = self.x_poly_fwd.copy()
-                        rev_maxiter = 10000
-                        res_rev = scipy.optimize.minimize(
-                            _calcImageResidualsDistortion,
+                        res_rev = self._withReverseProjection(
+                            _lstsqFit,
+                            _calcImageResidualsDistortionVect,
                             rev_init,
-                            args=(self, jd, catalog_stars, img_stars, 'radial'),
-                            method='Nelder-Mead',
-                            options={'maxiter': rev_maxiter, 'adaptive': True},
+                            (self, jd, catalog_stars, img_stars, 'radial'),
                         )
-                        rev_status = "maxiter" if res_rev.nit >= rev_maxiter else "converged"
+                        rev_status = "converged" if res_rev.success else "stopped"
 
                         self.x_poly_rev = res_rev.x
 
@@ -1577,6 +2044,66 @@ class Platepar(object):
                             if fwd_rev_iter > 0:
                                 print("    Converged after {} iterations".format(fwd_rev_iter + 1))
                             break
+
+                    # Final refinement: fit pointing + reverse distortion jointly on the IMAGE
+                    # (pixel) residual -- the metric reported to users. The fwd-rev loop fits the
+                    # forward mapping on SKY angular separation, whose optimum can leave the
+                    # pointing slightly off for the pixel residual (forward/reverse mappings are
+                    # not exact inverses), which showed up as a worse RMSD with least_squares.
+                    # This recovers the old Nelder-Mead pixel accuracy while keeping the speedup.
+                    # With the exact reverse the image residual goes through the forward distortion, and the
+                    #   reverse polynomial plays no part in it: only the pointing is refined
+                    exact_reverse = getattr(self, "exact_reverse", False)
+                    rev_fixed = self.x_poly_rev.tolist()
+
+                    def _calcImageResidualsAstroVect(params, *args):
+                        res = _calcImageResidualsAstroAndDistortionRadialVect(list(params) + rev_fixed, *args)
+
+                        # A catalog star with no image (beyond the reach of the exact inverse) counts as off by
+                        #   the image diagonal, as in the pointing fit, so the residuals stay finite for least
+                        #   squares
+                        res[~np.isfinite(res)] = np.hypot(self.X_res, self.Y_res)/np.sqrt(2)
+
+                        return res
+
+                    p_final = [self.RA_d/360.0, self.dec_d/90.0, self.pos_angle_ref/360.0,
+                               abs(self.F_scale)] + ([] if exact_reverse else self.x_poly_rev.tolist())
+                    res_final = _lstsqFit(
+                        _calcImageResidualsAstroVect if exact_reverse
+                            else _calcImageResidualsAstroAndDistortionRadialVect,
+                        p_final,
+                        (self, jd, catalog_stars, img_stars),
+                    )
+                    xf = np.concatenate([res_final.x, rev_fixed]) if exact_reverse else res_final.x
+                    self.RA_d = (360*xf[0]) % 360
+                    self.dec_d = -90 + (90*xf[1] + 90) % (180.000001)
+                    self.pos_angle_ref = (360*xf[2]) % 360
+                    # Hold the scale when fixed_scale is set (see fwd-rev loop note above).
+                    self.F_scale = f_scale_fixed if fixed_scale else abs(xf[3])
+                    self.x_poly_rev = np.array(xf[4:])
+                    self.updateRefAltAz()
+
+                    # The joint fit above moved the pointing, which leaves the forward distortion
+                    # (fit to the previous pointing) stale -- the forward and reverse mappings
+                    # would disagree (broken image<->sky round-trip). Re-fit the forward
+                    # distortion to the refined pointing so the two mappings stay consistent.
+                    res_fwd = _lstsqFit(
+                        _calcSkyResidualsDistortionVect,
+                        self.x_poly_fwd,
+                        (self, jd, catalog_stars, img_stars, 'radial'),
+                    )
+                    self.x_poly_fwd = res_fwd.x
+
+                    # With the exact reverse, refit the reverse polynomial to the final pointing, as it is fitted
+                    #   without the option, for readers that do not know it
+                    if exact_reverse:
+                        res_rev = self._withReverseProjection(
+                            _lstsqFit,
+                            _calcImageResidualsDistortionVect,
+                            self.x_poly_fwd.copy(),
+                            (self, jd, catalog_stars, img_stars, 'radial'),
+                        )
+                        self.x_poly_rev = res_rev.x
 
                 ### ###
 
@@ -1597,6 +2124,10 @@ class Platepar(object):
         # Set the flag to indicate that the platepar was manually fitted
         self.auto_check_fit_refined = False
         self.auto_recalibrated = False
+
+        # Record what was fitted (one entry for the distortion and the pointing of a full fit)
+        if pointing_fitted or distortion_fitted:
+            self.recordFit(pointing=pointing_fitted, distortion=distortion_fitted, fit_by=fit_by)
 
         ### ###
 
@@ -1676,7 +2207,7 @@ class Platepar(object):
             index_offset += 2
 
         result = {'x0': 0.0, 'y0': 0.0, 'xy': 0.0, 'a1': 0.0, 'a2': 0.0,
-                  'k1': 0.0, 'k2': 0.0, 'k3': 0.0, 'k4': 0.0}
+                  'k1': 0.0, 'k2': 0.0, 'k3': 0.0, 'k4': 0.0, 'p1': 0.0, 'p2': 0.0, 'p3': 0.0, 'p4': 0.0}
 
         # Extract coefficients based on current flags
         idx = 0
@@ -1706,20 +2237,37 @@ class Platepar(object):
             idx += 1
 
         # Radial distortion coefficients (k1, k2, k3, k4)
-        # Number depends on distortion type: radial3-odd has k1, radial5-odd has k1,k2, etc.
-        if idx < len(x_poly):
-            result['k1'] = x_poly[idx]
-        idx += 1
-        if idx < len(x_poly):
-            result['k2'] = x_poly[idx]
-        idx += 1
-        if idx < len(x_poly):
-            result['k3'] = x_poly[idx]
-        idx += 1
-        if idx < len(x_poly):
-            result['k4'] = x_poly[idx]
+        # Number depends on distortion type: radial3-odd has k1, radial5-odd has k1,k2, etc. With the decentering
+        #   correction only the radial coefficients of the type are read, the decentering coefficients follow them
+        n_radial = self.radialTermCount() if self.decentering_corr else 4
+        for i, key in enumerate(('k1', 'k2', 'k3', 'k4')[:n_radial]):
+            if idx + i < len(x_poly):
+                result[key] = x_poly[idx + i]
+
+        # Decentering coefficients (p1, p2, p3, p4), after the radial ones
+        if self.decentering_corr:
+            for i, key in enumerate(('p1', 'p2', 'p3', 'p4')):
+                if idx + n_radial + i < len(x_poly):
+                    result[key] = x_poly[idx + n_radial + i]
 
         return result
+
+    def radialTermCount(self, dist_type=None):
+        """Number of the radial distortion coefficients (k1, k2, ...) of a radial distortion type.
+
+        Arguments:
+            dist_type: [str] Radial distortion type. None by default (the current distortion type).
+
+        Returns:
+            int: Number of the radial coefficients: the full length of the type without the distortion centre
+                (2), the aspect (1) and the asymmetry (2) parameters.
+        """
+        # The current distortion type by default
+        if dist_type is None:
+            dist_type = self.distortion_type
+
+        # The full length of the type, without the centre, the aspect and the asymmetry parameters
+        return self.distortion_type_poly_length[self.distortion_type_list.index(dist_type)] - 5
 
     def buildRadialCoeffs(self, coeffs_dict, target_dist_type=None):
         """Build a coefficient array from logical radial distortion coefficients.
@@ -1754,18 +2302,15 @@ class Platepar(object):
             result.append(coeffs_dict.get('a1', 0.0))
             result.append(coeffs_dict.get('a2', 0.0))
 
-        # Radial distortion coefficients - number depends on target type
-        result.append(coeffs_dict.get('k1', 0.0))
+        # Radial distortion coefficients - number depends on target type (radial3-odd has k1, radial5-odd and
+        #   radial3-all have k1, k2, etc.)
+        for key in ('k1', 'k2', 'k3', 'k4')[:self.radialTermCount(target_dist_type)]:
+            result.append(coeffs_dict.get(key, 0.0))
 
-        if target_dist_type in ["radial5-odd", "radial7-odd", "radial9-odd",
-                                "radial4-all", "radial5-all"]:
-            result.append(coeffs_dict.get('k2', 0.0))
-
-        if target_dist_type in ["radial7-odd", "radial9-odd", "radial5-all"]:
-            result.append(coeffs_dict.get('k3', 0.0))
-
-        if target_dist_type in ["radial9-odd"]:
-            result.append(coeffs_dict.get('k4', 0.0))
+        # The decentering coefficients follow the radial ones
+        if self.decentering_corr:
+            for key in ('p1', 'p2', 'p3', 'p4'):
+                result.append(coeffs_dict.get(key, 0.0))
 
         return np.array(result)
 
@@ -1857,11 +2402,54 @@ class Platepar(object):
 
         return True
 
+    def __setstate__(self, state):
+        """ Restore a pickled platepar (e.g. from a SkyFit2 state file). A platepar pickled before an option existed
+            gets its default, and the reference hour angle is recomputed from the reference time, as when a
+            platepar file is loaded (see loadFromDict).
+
+        Arguments:
+            state: [dict] The attributes of the pickled platepar.
+        """
+
+        self.__dict__.update(state)
+
+        # The reference hour angle is a function of the reference time only, so it is recomputed as in
+        #   loadFromDict: a platepar pickled with the mean sidereal time keeps pointing where it was fitted, and
+        #   gives the same coordinates as the same calibration loaded from its platepar file
+        if 'JD' in self.__dict__:
+            self.Ho = JD2HourAngle(self.JD)
+
+        # The decentering correction (platepars pickled before it existed have none)
+        if 'decentering_corr' not in self.__dict__:
+            self.decentering_corr = False
+
+        # The exact reverse mapping (platepars pickled before it existed have none)
+        if 'exact_reverse' not in self.__dict__:
+            self.exact_reverse = False
+
+        # The aberration flag: a platepar pickled before it existed was fitted without the aberration modelled
+        #   and has absorbed it, as when a platepar file without the flag is loaded
+        if 'aberration' not in self.__dict__:
+            self.aberration = False
+
+        # The fit record: a platepar pickled before it existed has none, its fits are not known
+        self.fit_record = normalFitRecord(self.__dict__.get('fit_record'))
+
     def loadFromDict(self, platepar_dict, use_flat=None):
         """Load the platepar from a dictionary."""
 
         # Parse JSON into an object with attributes corresponding to dict keys
         self.__dict__ = platepar_dict
+
+        # The height above the ellipsoid follows from the station coordinates (see height_wgs84), a value in
+        #   the file is not taken
+        self.__dict__.pop('height_wgs84', None)
+
+        # The reference hour angle is a function of the reference time only, so it is recomputed rather
+        #   than taken from the file: this way a platepar written with an older definition of the sidereal
+        #   time (e.g. without the equation of the equinoxes) keeps pointing where it was fitted
+        if 'JD' in self.__dict__:
+            self.Ho = JD2HourAngle(self.JD)
 
         # Add the version if it was not in the platepar (v1 platepars didn't have a version)
         if not 'version' in self.__dict__:
@@ -1870,6 +2458,14 @@ class Platepar(object):
         # If the refraction was not used for the fit, assume it is disabled
         if not 'refraction' in self.__dict__:
             self.refraction = False
+
+        # A platepar without the flag was fitted before the aberration was modelled, so it has absorbed it
+        if not 'aberration' in self.__dict__:
+            self.aberration = False
+
+        # The fit record: a platepar from before it existed has none, its fits are not known and it was
+        #   fitted with the astrometric model 1 (see astrometryModel)
+        self.fit_record = normalFitRecord(self.__dict__.get('fit_record'))
 
         # If the measurement correction for refraction (if it was not taken into account during calibration)
         #   is not present, assume it's false
@@ -1883,6 +2479,14 @@ class Platepar(object):
         # Add asymmetry correction
         if not 'asymmetry_corr' in self.__dict__:
             self.asymmetry_corr = False
+
+        # Add the decentering correction (platepars from before it existed have none)
+        if not 'decentering_corr' in self.__dict__:
+            self.decentering_corr = False
+
+        # Add the exact reverse mapping (platepars from before it existed have none)
+        if not 'exact_reverse' in self.__dict__:
+            self.exact_reverse = False
 
         # Add forcing distortion centre to image center
         if not 'force_distortion_centre' in self.__dict__:
@@ -2060,6 +2664,13 @@ class Platepar(object):
                 # Read station code
                 self.station_code = f.readline().replace('\r', '').replace('\n', '')
 
+                # The CMN format has no aberration flag: such a plate was fitted to the catalog directions as
+                #   they are and has absorbed the aberration
+                self.aberration = False
+
+                # Nor a fit record: its fits are not known
+                self.fit_record = emptyFitRecord()
+
         # Add a default vignetting coefficient if it already doesn't exist
         self.addVignettingCoeff(use_flat)
 
@@ -2077,6 +2688,10 @@ class Platepar(object):
         self2.y_poly_fwd = self.y_poly_fwd.tolist()
         self2.y_poly_rev = self.y_poly_rev.tolist()
         del self2.time
+
+        # The height above the ellipsoid is derived from the station coordinates, an assigned value is not
+        #   written
+        self2.__dict__.pop('height_wgs84', None)
 
         # For compatibility with old procedures, write the forward distortion parameters as x, y
         self2.x_poly = self.x_poly_fwd.tolist()
@@ -2188,44 +2803,46 @@ class Platepar(object):
 
         return fmt
 
-    def updateRefAltAz(self):
-        """Update the reference apparent azimuth and altitude from the reference RA and Dec."""
+    def computeRefAltAz(self):
+        """Apparent azimuth and altitude (deg) of the reference pointing, from RA_d/dec_d. No side effects.
 
-        # Compute reference Alt/Az to apparent coordinates, epoch of date
-        az_centre, alt_centre = cyTrueRaDec2ApparentAltAz(
-            np.radians(self.RA_d),
-            np.radians(self.dec_d),
-            self.JD,
-            np.radians(self.lat),
-            np.radians(self.lon),
-            self.refraction,
+        RA_d/dec_d are the true (unrefracted) equatorial coordinates of the reference point in the epoch of
+        date of the platepar JD: pointingCorrection shifts them by sidereal time and precesses them to J2000
+        itself, so that is the frame the star fit defines them in. They are therefore converted without any
+        precession; the J2000 converters would put the centre ~20 arcmin (the precession since 2000) away
+        from where the camera points.
+
+        Return:
+            (az_centre, alt_centre): [tuple of floats] Apparent azimuth (+E of N) and altitude (deg).
+        """
+
+        return trueOfDateRaDec2ApparentAltAz(
+            self.RA_d, self.dec_d, self.JD, self.lat, self.lon, refraction=self.refraction,
+            refraction_scale=refractionScale(self.elev)
         )
-        self.az_centre, self.alt_centre = np.degrees(az_centre), np.degrees(alt_centre)
+
+    def updateRefAltAz(self):
+        """Update the reference apparent azimuth and altitude from the reference RA and Dec (see
+        computeRefAltAz for the epoch convention), and the rotation wrt horizon."""
+
+        self.az_centre, self.alt_centre = self.computeRefAltAz()
 
         # Update the rotation wrt horizon
         self.rotation_from_horiz = RMS.Astrometry.ApplyAstrometry.rotationWrtHorizon(self)
 
     def updateRefRADec(self, skip_rot_update=False, preserve_rotation=False):
-        """Update the reference RA and Dec (true in J2000) from Alt/Az (apparent in epoch of date)."""
+        """Update the reference RA and Dec (true of date) from Alt/Az (apparent in epoch of date)."""
 
         if (not skip_rot_update) and (not preserve_rotation):
 
             # Save the current rotation w.r.t horizon value
             self.rotation_from_horiz = RMS.Astrometry.ApplyAstrometry.rotationWrtHorizon(self)
 
-        # Convert the reference apparent Alt/Az in the epoch of date to true RA/Dec in J2000
-        ra, dec = cyApparentAltAz2TrueRADec(
-            np.radians(self.az_centre),
-            np.radians(self.alt_centre),
-            self.JD,
-            np.radians(self.lat),
-            np.radians(self.lon),
-            self.refraction,
+        # Convert the reference apparent Alt/Az to a true-of-date RA/Dec, the frame of RA_d/dec_d
+        self.RA_d, self.dec_d = apparentAltAz2TrueOfDateRaDec(
+            self.az_centre, self.alt_centre, self.JD, self.lat, self.lon, refraction=self.refraction,
+            refraction_scale=refractionScale(self.elev)
         )
-
-        # Assign the computed RA/Dec to platepar
-        self.RA_d = np.degrees(ra)
-        self.dec_d = np.degrees(dec)
 
         if not skip_rot_update:
 
@@ -2254,12 +2871,30 @@ class Platepar(object):
         # Compute the rotation of the camera wrt horizon
         return RMS.Astrometry.ApplyAstrometry.rotationWrtHorizon(self)
 
+    @property
+    def height_wgs84(self):
+        """ Height of the station above the WGS84 ellipsoid (m). Derived from the height above sea level (elev)
+            through the EGM96 geoid, so that it follows any change of the station coordinates. A value
+            assigned to it takes precedence; it is not written into the platepar file.
+        """
+
+        # An assigned value is kept in the instance dictionary under the name of the property
+        if self.__dict__.get('height_wgs84') is not None:
+            return self.__dict__['height_wgs84']
+
+        # Otherwise the height above sea level is taken to the ellipsoid
+        return mslToWGS84Height(np.radians(self.lat), np.radians(self.lon), self.elev)
+
+    @height_wgs84.setter
+    def height_wgs84(self, value):
+        """ Assign the height of the station above the WGS84 ellipsoid (m), None to derive it again. """
+
+        self.__dict__['height_wgs84'] = value
+
     def __repr__(self):
 
         # Compute alt/az pointing
-        azim, elev = trueRaDec2ApparentAltAz(
-            self.RA_d, self.dec_d, self.JD, self.lat, self.lon, refraction=self.refraction
-        )
+        azim, elev = self.computeRefAltAz()
 
         out_str = "Platepar\n"
         out_str += "--------\n"
@@ -2271,7 +2906,7 @@ class Platepar(object):
             *RMS.Astrometry.ApplyAstrometry.computeFOVSize(self)
         )
         out_str += "    Img res   = {:6d} x {:6d} px\n".format(self.X_res, self.Y_res)
-        out_str += "Reference pointing - equatorial (J2000):\n"
+        out_str += "Reference pointing - equatorial (true of date):\n"
         out_str += "    JD      = {:.10f} \n".format(self.JD)
         out_str += "    RA      = {:11.6f} deg\n".format(self.RA_d)
         out_str += "    Dec     = {:+11.6f} deg\n".format(self.dec_d)
@@ -2310,7 +2945,11 @@ class Platepar(object):
             if self.asymmetry_corr:
                 out_str += "      a1, a2 (deg), "
 
-            out_str += "      k1,       k2,       k3,       k4\n"
+            # The radial coefficients, followed by the decentering ones if they are used
+            if self.decentering_corr:
+                out_str += "      k1, ..., p1, p2, p3, p4 (decentering)\n"
+            else:
+                out_str += "      k1,       k2,       k3,       k4\n"
 
             dist_string = ""
 
