@@ -388,9 +388,6 @@ def plotAstrometryXiEta(plot_data):
 
     star_name, obs, stations_list = plot_data
 
-
-
-
     stations_text = stationsText(obs, stations_list)
     ra_cat, dec_cat = float(obs["ra_cat"][0]), float(obs["dec_cat"][0])
 
