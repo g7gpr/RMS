@@ -442,7 +442,7 @@ if __name__ == "__main__":
             plotAstrometryRaDec(query_response)
             plotAstrometryXiEta(query_response)
 
-            time.sleep(60)
+        time.sleep(60)
 
 
     star_to_plot = "HD 23480"
