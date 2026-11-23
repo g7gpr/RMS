@@ -415,21 +415,23 @@ if __name__ == "__main__":
     arg_parser.add_argument("-s", "--single", action="store_true", help="Do not use despatcher")
 
 
-    print("Test encode offset")
-
-    print("Test tangential")
-    # Test Alcyone at ra,dec 56.87740, 24.1062
-    # Against Meope at ra,dec, 56.58783, 23.9492
-
-    alcyone_ra, alcyone_dec = 56.87740, 24.1062
-    meope_ra, meope_dec = 56.58783, 23.9492
-    _x, _y = encodeOffSetTangential(alcyone_ra, alcyone_dec, meope_ra, meope_dec)
-    print(f"Encoded offset: {_x}, {_y}")
-    ra_decoded, dec_decoded = decodeOffsetTangential(meope_ra, meope_dec, _x, _y)
-    ang_sep = angularSeparationDeg(alcyone_ra, alcyone_dec, ra_decoded, dec_decoded)
-    print(f"regenerated from offset: {ra_decoded}, {dec_decoded} - angular separtion deg: {ang_sep}")
 
     if False:
+
+        print("Test encode offset")
+
+        print("Test tangential")
+        # Test Alcyone at ra,dec 56.87740, 24.1062
+        # Against Meope at ra,dec, 56.58783, 23.9492
+
+        alcyone_ra, alcyone_dec = 56.87740, 24.1062
+        meope_ra, meope_dec = 56.58783, 23.9492
+        _x, _y = encodeOffSetTangential(alcyone_ra, alcyone_dec, meope_ra, meope_dec)
+        print(f"Encoded offset: {_x}, {_y}")
+        ra_decoded, dec_decoded = decodeOffsetTangential(meope_ra, meope_dec, _x, _y)
+        ang_sep = angularSeparationDeg(alcyone_ra, alcyone_dec, ra_decoded, dec_decoded)
+        print(f"regenerated from offset: {ra_decoded}, {dec_decoded} - angular separtion deg: {ang_sep}")
+
         # Going over the declination, so around ra
         s1_ra, s1_dec = 29.49906, 89.7957
         s2_ra, s2_dec = 320.10718, 89.8860
