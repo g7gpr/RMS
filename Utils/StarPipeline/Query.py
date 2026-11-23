@@ -264,6 +264,20 @@ def plotAstrometryRaDec(plot_data):
     plt.legend()
     plt.grid(True)
     plt.gca().set_box_aspect(1)
+
+    ra_centre = np.mean(obs["ra_cat"])
+    dec_centre = np.mean(obs["dec_cat"])
+
+    r = max(
+        np.max(np.abs(obs["ra_obs"] - ra_centre)),
+        np.max(np.abs(obs["dec_obs"] - dec_centre))
+    )
+
+    r *= 1.1  # 10% margin
+
+    plt.xlim(ra_centre - r, ra_centre + r)
+    plt.ylim(dec_centre - r, dec_centre + r)
+
     plt.tight_layout()
     safe_name = star_name.replace("/", "_").replace(" ", "_")
     filename = f"{safe_name}_astrometry_radec.png"
