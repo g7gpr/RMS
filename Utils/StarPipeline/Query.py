@@ -268,7 +268,7 @@ def plotAstrometryRaDec(plot_data):
     filename = f"{safe_name}_astrometry_radec.png"
     filepath = "/archive/plots"
     os.makedirs(filepath, exist_ok=True)
-    plt.savefig(os.path.join(filepath, filename), dpi=150, bbox_inches="tight"))
+    plt.savefig(os.path.join(filepath, filename), dpi=150, bbox_inches="tight")
     plt.close()
 
     print(f"Saved {filename}")
@@ -316,30 +316,11 @@ def plotAstrometryXiEta(plot_data):
 
     plt.colorbar(label="Obs - Cat Magnitude")
 
-    plt.axhline(
-        0,
-        color="red",
-        alpha=0.25,
-        linewidth=1
-    )
+    plt.axhline(0, color="red",alpha=0.25, linewidth=1)
 
-    plt.axvline(
-        0,
-        color="red",
-        alpha=0.25,
-        linewidth=1
-    )
+    plt.axvline(0,color="red",alpha=0.25,linewidth=1)
 
-    plt.scatter(
-        0,
-        0,
-        color="red",
-        marker="+",
-        s=80,
-        linewidths=1,
-        alpha=0.5,
-        label="Catalog"
-    )
+    plt.scatter(0,0, color="red",marker="+",s=80, linewidths=1, alpha=0.5,label="Catalog")
 
     plt.xlabel("Xi (deg)")
     plt.ylabel("Eta (deg)")
@@ -349,10 +330,7 @@ def plotAstrometryXiEta(plot_data):
     plt.grid(True)
 
 
-    r = max(
-        np.max(np.abs(obs["xi"])),
-        np.max(np.abs(obs["eta"]))
-    )
+    r = max(np.max(np.abs(obs["xi"])), np.max(np.abs(obs["eta"])))
 
     # Add 10% margin
     r *= 1.1
