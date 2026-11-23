@@ -210,72 +210,28 @@ def stationsText(obs, stations_list):
 def simpleMagnitudeScatterPlot(plot_data):
 
     star_name, obs, stations_list = plot_data
-
     stations_text = stationsText(obs, stations_list)
-
     plt.figure(figsize=(12, 6))
-
     ax1 = plt.gca()
-
-    #
-    # Title + station list
-    #
     plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
-
-
     ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
-
-    ax1.set_title(
-        f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",
-        fontsize=8,
-        color="gray"
-    )
-
-
-    #
-    # Magnitude scatter coloured by station
-    #
+    ax1.set_title(f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}", fontsize=8, color="gray")
 
     for station in stations_list:
         mask = obs["station"] == station
+        ax1.scatter(obs["jd"][mask], obs["obs_mag"][mask], s=5, label=station)
 
-        ax1.scatter(
-            obs["jd"][mask],
-            obs["obs_mag"][mask],
-            s=5,
-            label=station
-        )
-
-    ax1.axhline(
-        y=obs["cat_mag"][0],
-        color="red",
-        linestyle=":",
-        linewidth=1,
-        alpha=0.5
-    )
+    ax1.axhline(y=obs["cat_mag"][0], color="red", linestyle=":", linewidth=1, alpha=0.5)
 
     ax1.invert_yaxis()
 
     ax1.set_xlabel("Julian Date")
     ax1.set_ylabel("Magnitude")
 
-    plt.ticklabel_format(
-        axis="x",
-        style="plain",
-        useOffset=False
-    )
-
-
+    plt.ticklabel_format(axis="x", style="plain", useOffset=False)
     ax1.grid(True)
 
-    #
-    # Save
-    #
-    safe_name = (
-        star_name
-        .replace("/", "_")
-        .replace(" ", "_")
-    )
+    safe_name = star_name.replace("/", "_").replace(" ", "_")
 
     filename = f"{safe_name}_light_curves.png"
 
@@ -283,11 +239,7 @@ def simpleMagnitudeScatterPlot(plot_data):
 
     os.makedirs(filepath, exist_ok=True)
 
-    plt.savefig(
-        os.path.join(filepath, filename),
-        dpi=150,
-        bbox_inches="tight"
-    )
+    plt.savefig(os.path.join(filepath, filename), dpi=150, bbox_inches="tight")
 
     plt.close()
 
@@ -296,88 +248,27 @@ def simpleMagnitudeScatterPlot(plot_data):
 def plotAstrometryRaDec(plot_data):
 
     star_name, obs, stations_list = plot_data
-
     stations_text = stationsText(obs, stations_list)
-
     plt.figure(figsize=(12, 6))
-
     ax1 = plt.gca()
-
-    #
-    # Title + station list
-    #
-    plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
-
-
     ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
-
-    ax1.set_title(
-        f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",
-        fontsize=8,
-        color="gray"
-    )
-
-
     residual = obs["obs_mag"] - obs["cat_mag"]
-
-
-    plt.scatter(
-        obs["ra_obs"],
-        obs["dec_obs"],
-        c=residual,
-        s=2,
-        cmap="coolwarm",
-        vmin=np.percentile(residual, 5),
-        vmax=np.percentile(residual, 95)
-    )
-
-
+    plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
+    ax1.set_title(f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",fontsize=8,color="gray")
+    plt.scatter(obs["ra_obs"], obs["dec_obs"], c=residual, s=2, cmap="coolwarm", vmin=np.percentile(residual, 5), vmax=np.percentile(residual, 95))
     plt.colorbar(label="Obs - Cat Magnitude")
-
-    plt.scatter(
-        obs["ra_cat"][0],
-        obs["dec_cat"][0],
-        color="red",
-        marker="+",
-        s=80,
-        linewidths=1,
-        alpha=0.5,
-        label="Catalog"
-    )
-
+    plt.scatter(obs["ra_cat"][0], obs["dec_cat"][0], color="red", marker="+", s=80, linewidths=1, alpha=0.5, label="Catalog")
     plt.xlabel("RA (deg)")
     plt.ylabel("Dec (deg)")
-
-    plt.title(star_name)
-
     plt.legend()
-
     plt.grid(True)
-
     plt.gca().set_box_aspect(1)
-
     plt.tight_layout()
-
-    safe_name = (
-        star_name
-        .replace("/", "_")
-        .replace(" ", "_")
-    )
-
-
-
+    safe_name = star_name.replace("/", "_").replace(" ", "_")
     filename = f"{safe_name}_astrometry_radec.png"
-
     filepath = "/archive/plots"
-
     os.makedirs(filepath, exist_ok=True)
-
-    plt.savefig(
-        os.path.join(filepath, filename),
-        dpi=150,
-        bbox_inches="tight"
-    )
-
+    plt.savefig(os.path.join(filepath, filename), dpi=150, bbox_inches="tight"))
     plt.close()
 
     print(f"Saved {filename}")
