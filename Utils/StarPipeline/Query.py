@@ -272,7 +272,7 @@ def simpleMagnitudeScatterPlot(plot_data):
     #
     plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
 
-    plt.set_title(
+    ax1.set_title(
         f"Ra:{ra_cat}deg Dec:{dec_cat}deg\n{stations_text}",
         fontsize=8,
         color="gray"
