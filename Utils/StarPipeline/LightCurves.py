@@ -228,8 +228,11 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
         # We could improve this by picking the nearest platepar
         if pp_recal_json is not None:
             if fits_file in pp_recal_json:
-                if not recalibrated_platepar_loaded:
+                if recalibrated_platepar_loaded:
+                    print(f"Loaded recalibrated platepar for : {fits_file}")
+                else:
                     print(f"Loaded first recalibrated platepar for : {fits_file}")
+
                 recalibrated_platepar_loaded = True
                 pp.loadFromDict(pp_recal_json[fits_file])
 
