@@ -208,8 +208,9 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
     print(f"Filter {len(fits_files_from_calstar_list)} fits files for astronomical night list")
     astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
     print(f"Filter {len(astronomical_night_list)} fits files to find files without the moon")
-    fits_files_to_process = detectMoon(astronomical_night_list, pp, obs_con)
-    print(f"Starting to process {len(fits_files_to_process)} fits - astronomical night and no moon")
+    fits_files_to_process_list = detectMoon(astronomical_night_list, pp, obs_con)
+    fits_files_to_process = len(fits_files_to_process_list)
+    print(f"Starting to process {fits_files_to_process} fits files - astronomical night and no moon")
 
     counter = 0
     recalibrated_platepar_loaded = False
@@ -222,14 +223,14 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
         if star_count < 80:
             continue
 
-        if fits_file not in fits_files_to_process:
+        if fits_file not in fits_files_to_process_list:
             continue
 
         # We could improve this by picking the nearest platepar
         if pp_recal_json is not None:
             if fits_file in pp_recal_json:
                 if recalibrated_platepar_loaded:
-                    print(f"Loaded recalibrated platepar for : {fits_file}")
+                    print(f"Loaded recalibrated platepar for : {fits_file} {counter}/{fits_files_to_process}")
                 else:
                     print(f"Loaded first recalibrated platepar for : {fits_file}")
 
