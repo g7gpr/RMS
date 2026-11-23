@@ -267,10 +267,11 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
                     name = names_array[nearest_idx]
                     ra_cat, dec_cat = ra_array[nearest_idx], dec_array[nearest_idx]
                     xi, eta = encodeOffsetGnomonic(ra_obs, dec_obs, ra_cat, dec_cat)
-                    xi_test, eta_test = int(xi * 10000) / 10000, int(eta * 10000) / 10000
-                    ra_decoded, dec_decoded = decodeOffsetGnomonic(ra_cat, dec_cat, xi_test, eta_test)
-                    error = angularSeparationDeg(ra_decoded, dec_decoded, ra_obs, dec_obs)
-                    print(f"Small angle encoding error {error} degrees")
+                    if False:
+                        xi_test, eta_test = int(xi * 10000) / 10000, int(eta * 10000) / 10000
+                        ra_decoded, dec_decoded = decodeOffsetGnomonic(ra_cat, dec_cat, xi_test, eta_test)
+                        error = angularSeparationDeg(ra_decoded, dec_decoded, ra_obs, dec_obs)
+                        print(f"Small angle encoding error {error} degrees")
 
                     if name not in light_curves:
                         light_curves[name] = {}
@@ -279,6 +280,8 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
                     light_curves[name][jd] = {}
                     light_curves[name][jd]['obs'] = mag_obs
                     light_curves[name][jd]['cat'] = mag_array[nearest_idx]
+                    light_curves[name][jd]['ra_cat'] = ra_cat
+                    light_curves[name][jd]['dec_cat'] = dec_cat
                     light_curves[name][jd]['level'] = star[2]
                     light_curves[name][jd]['amplitude'] = star[3]
                     light_curves[name][jd]['fwhm'] = star[4]
@@ -370,15 +373,16 @@ def process(path_to_job, cat):
                                                             data['snr'] * 100,
                                                             data['saturated_count'],
                                                             data['star_count'],
-                                                            data['xi'] * 10000,
-                                                            data['eta'] * 10000,
+                                                            data['xi'] * 100000,
+                                                            data['eta'] * 100000,
                                                             ])
 
                     for session, records in daily_data.items():
+                        cat_ra, cat_dec = data['cat_ra'], data['cat_dec']
                         dirname = Path("/archive/light_curves/") / star_name / obs_con.stationID
                         dirname.mkdir(parents=True, exist_ok=True)
 
-                        filename = dirname / f"{session}_{int(data['cat'] * 1e6)}_{int(round(pp.F_scale * 1000))}.npy"
+                        filename = dirname / f"{session}_{int(data['cat'] * 1e6)}_{int(cat_ra * 1e6)}_{int(cat_dec* 1e6)}_{int(round(pp.F_scale * 1000))}.npy"
                         array_to_save = np.array(records, dtype=np.int16)
                         np.save(filename, array_to_save)
 
