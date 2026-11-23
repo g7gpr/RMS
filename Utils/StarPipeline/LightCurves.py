@@ -343,7 +343,7 @@ def process(path_to_job, cat):
             pp_path = os.path.join(working_dir, obs_con.platepar_name)
             pp.read(pp_path)
             calstars_filename = f"CALSTARS_{observation_dir}.txt"
-            print(f"Reading CALSTARS file {calstars_filename}")
+            print(f"Reading {calstars_filename}")
             calstar = readCALSTARS(working_dir, calstars_filename)
             video_file = f"{observation_dir}_timelapse.mp4"
             video_path = os.path.join(os.path.expanduser(config.data_dir), video_file)
