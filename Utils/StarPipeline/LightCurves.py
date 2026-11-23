@@ -205,11 +205,11 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
 
     print("Building fits file list")
     fits_files_from_calstar_list = [calstar_entry[0] for calstar_entry in calstar]
-    print("Filter for astronmical night list")
+    print(f"Filter {len(fits_files_from_calstar_list)} fits files for astronomical night list")
     astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
-    print("Filter for without the moon list")
+    print(f"Filter {len(astronomical_night_list)} fits files to find files without the moon")
     fits_files_to_process = detectMoon(astronomical_night_list, pp, obs_con)
-    print(f"Starting to process {len(fits_files_to_process)} fits")
+    print(f"Starting to process {len(fits_files_to_process)} fits - astronomical night and no moon")
 
     counter = 0
     recalibrated_platepar_loaded = False
