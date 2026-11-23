@@ -253,14 +253,9 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
 
         img_stars = np.column_stack([x, y, arr_obs_mag])
         catalog_stars = np.column_stack([ra_array, dec_array, mag_array])
-        print(f"Before fit {pp.az_centre}, {pp.alt_centre}")
-        fitPointingStart = time.time()
         res_success, res_fun, inlier_fraction, inlier_rmsd = pp.fitPointingNN(jd, img_stars, catalog_stars)
-
-
-        fitPointingEnd = time.time()
-        print(f"After fit  {pp.az_centre}, {pp.alt_centre} taking {fitPointingEnd - fitPointingStart} seconds")
-        print(f"Returned {res_success}, {res_fun}, {inlier_fraction}, {inlier_rmsd}")
+        if not res_success:
+            continue
 
         # Filter catalog return so we do not try to match against faint stars
 
