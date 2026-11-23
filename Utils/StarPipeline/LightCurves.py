@@ -208,7 +208,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
 
     counter = 0
     recalibrated_platepar_loaded = False
-    for fits_file, star_list in tqdm.tqdm(calstar):
+    for fits_file, star_list in calstar:
 
         if counter > 10 and debug_mode:
             break
