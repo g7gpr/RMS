@@ -33,6 +33,7 @@ import random
 import socket
 import cv2
 import ephem
+import tqdm
 
 
 from RMS.Astrometry.Conversions import datetime2JD, jd2Date
@@ -201,7 +202,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
     astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
 
     counter = 0
-    for fits_file, star_list in calstar:
+    for fits_file, star_list in tqdm.tqdm(calstar):
 
         if counter > 10 and debug_mode:
             break
@@ -378,7 +379,7 @@ def process(path_to_job, cat):
                                                             ])
 
                     for session, records in daily_data.items():
-                        cat_ra, cat_dec = data['cat_ra'], data['cat_dec']
+                        cat_ra, cat_dec = data['ra_cat'], data['dec_cat']
                         dirname = Path("/archive/light_curves/") / star_name / obs_con.stationID
                         dirname.mkdir(parents=True, exist_ok=True)
 
