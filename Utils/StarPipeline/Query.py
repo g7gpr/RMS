@@ -294,27 +294,30 @@ def plotAstrometryRaDec(plot_data):
 
     star_name, obs, stations_list = plot_data
 
+    residual = obs["obs_mag"] - obs["cat_mag"]
+
     plt.figure(figsize=(8, 8))
 
     plt.scatter(
         obs["ra_obs"],
         obs["dec_obs"],
-        c=-obs["obs_mag"],
+        c=residual,
         s=2,
-        cmap="viridis"
+        cmap="coolwarm",
+        vmin=np.percentile(residual, 5),
+        vmax=np.percentile(residual, 95)
     )
 
-    plt.colorbar(label="Observed Magnitude")
-
-
+    plt.colorbar(label="Obs - Cat Magnitude")
 
     plt.scatter(
         obs["ra_cat"][0],
         obs["dec_cat"][0],
         color="red",
         marker="+",
-        s=200,
-        linewidths=2,
+        s=80,
+        linewidths=1,
+        alpha=0.5,
         label="Catalog"
     )
 
@@ -351,44 +354,61 @@ def plotAstrometryRaDec(plot_data):
 
     print(f"Saved {filename}")
 
-
 def plotAstrometryXiEta(plot_data):
 
     star_name, obs, stations_list = plot_data
 
+    residual = obs["obs_mag"] - obs["cat_mag"]
 
     plt.figure(figsize=(8, 8))
 
     plt.scatter(
         obs["xi"],
         obs["eta"],
-        c=obs["obs_mag"],
+        c=residual,
         s=2,
-        cmap="viridis"
+        cmap="coolwarm",
+        vmin=np.percentile(residual, 5),
+        vmax=np.percentile(residual, 95)
     )
 
+    plt.colorbar(label="Obs - Cat Magnitude")
 
-    plt.colorbar(label="Observed Magnitude")
+    plt.axhline(
+        0,
+        color="red",
+        alpha=0.25,
+        linewidth=1
+    )
 
-    plt.axhline(0, color="red", alpha=0.3)
-    plt.axvline(0, color="red", alpha=0.3)
+    plt.axvline(
+        0,
+        color="red",
+        alpha=0.25,
+        linewidth=1
+    )
 
-    plt.axhline(0, color="red", alpha=0.5)
-    plt.axvline(0, color="red", alpha=0.5)
+    plt.scatter(
+        0,
+        0,
+        color="red",
+        marker="+",
+        s=80,
+        linewidths=1,
+        alpha=0.5,
+        label="Catalog"
+    )
 
     plt.xlabel("Xi (deg)")
     plt.ylabel("Eta (deg)")
-    plt.title(star_name)
+
+    plt.title(f"{star_name} astrometry in xi, eta")
 
     plt.grid(True)
-    plt.gca().set_aspect("equal")
-    plt.title(f"{star_name} astrometry in xi, eta")
 
     plt.legend()
 
-    plt.grid(True)
-
-    plt.axis('square')
+    plt.gca().set_box_aspect(1)
 
     safe_name = (
         star_name
