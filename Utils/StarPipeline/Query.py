@@ -184,6 +184,10 @@ def simpleMagnitudeScatterPlot(plot_data):
     star_name, obs, stations_list = plot_data
 
     stations_text = ", ".join(sorted(stations_list))
+    number_of_observations = len(obs)
+    number_of_stations = len(stations_list)
+    if number_of_stations > 10:
+        stations_text = f"Observed by {len(stations_list)} stations with {number_of_observations} individual observations"
 
     plt.figure(figsize=(12, 6))
 
@@ -295,7 +299,7 @@ if __name__ == "__main__":
 
 
 
-    if True:
+    while True:
 
         star_list = getStars()
         star_sessions = []
@@ -305,15 +309,17 @@ if __name__ == "__main__":
 
         star_sessions.sort(key=lambda x: x[0], reverse=True)
 
+        for star in star_sessions:
+            observation_count, star_to_plot = star[0], star[1]
+            if observation_count < 30:
+                continue
+            print(f"Querying for {star_to_plot}")
+            query_response = getStarObservations(star_to_plot)
+            print(f"Plotting {star_to_plot}")
+            simpleMagnitudeScatterPlot(query_response)
 
-        session, most_observed_star = star_sessions[0]
 
-        print(f"Querying the star with the most observation sessions ({session}), {most_observed_star}")
-        star_file_list = getStarFiles(most_observed_star)
-        star_to_plot =  most_observed_star
-
-
-
+    star_to_plot = "HD 23480"
     print("Query started")
     query_response = getStarObservations(star_to_plot)
     print("Query completed")
