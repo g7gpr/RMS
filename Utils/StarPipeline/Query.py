@@ -249,13 +249,13 @@ def plotAstrometryRaDec(plot_data):
 
     star_name, obs, stations_list = plot_data
     stations_text = stationsText(obs, stations_list)
-    fig, ax = plt.subplots(figsize=(8, 8))
+    plt.figure(figsize=(12, 6))
 
     ax1 = plt.gca()
     ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
     residual = obs["obs_mag"] - obs["cat_mag"]
-    fig.suptitle(f"{star_name} magnitude plot", fontsize=14)
-    ax.set_title(f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",fontsize=8,color="gray")
+    plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
+    ax1.set_title(f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",fontsize=8,color="gray")
     plt.scatter(obs["ra_obs"], obs["dec_obs"], c=residual, s=2, cmap="coolwarm", vmin=np.percentile(residual, 5), vmax=np.percentile(residual, 95))
     plt.colorbar(label="Obs - Cat Magnitude")
     plt.scatter(obs["ra_cat"][0], obs["dec_cat"][0], color="red", marker="+", s=80, linewidths=1, alpha=0.5, label="Catalog")
