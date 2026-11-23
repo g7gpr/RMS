@@ -298,10 +298,16 @@ def plotAstrometryRaDec(plot_data):
     plt.figure(figsize=(8, 8))
 
     plt.scatter(
-        obs["ra_obs"],
-        obs["dec_obs"],
-        s=2
+        obs["xi"],
+        obs["eta"],
+        c=-obs["obs_mag"],
+        s=2,
+        cmap="viridis"
     )
+
+    plt.colorbar(label="Observed Magnitude")
+
+
 
     plt.scatter(
         obs["ra_cat"][0],
@@ -357,8 +363,16 @@ def plotAstrometryXiEta(plot_data):
     plt.scatter(
         obs["xi"],
         obs["eta"],
-        s=2
+        c=obs["obs_mag"],
+        s=2,
+        cmap="viridis"
     )
+
+
+    plt.colorbar(label="Observed Magnitude")
+
+    plt.axhline(0, color="red", alpha=0.3)
+    plt.axvline(0, color="red", alpha=0.3)
 
     plt.axhline(0, color="red", alpha=0.5)
     plt.axvline(0, color="red", alpha=0.5)
