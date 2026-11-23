@@ -64,7 +64,7 @@ from RMS.Formats.CALSTARS import readCALSTARS
 from RMS.Astrometry.Conversions import datetime2JD, geo2Cartesian, altAz2RADec, vectNorm, raDec2Vector, raDec2AltAz
 from RMS.Astrometry.Conversions import latLonAlt2ECEF, AER2LatLonAlt, AEH2Range, ECEF2AltAz, ecef2LatLonAlt, jd2Date
 from RMS.Astrometry.ApplyAstrometry import raDecToXYPP
-from RMS.Logger import getLogger
+from RMS.Logger import getLogger, getLoggingQueue, initChildProcess
 from RMS.Math import angularSeparationVect, angularSeparationDeg
 from RMS.Formats.FFfile import convertFRNameToFF
 from RMS.Formats.Platepar import Platepar
@@ -73,14 +73,13 @@ from Utils.StackFFs import stackFFs
 from Utils.FRbinViewer import view
 from Utils.BatchFFtoImage import batchFFtoImage
 from RMS.CaptureDuration import captureDuration
-from RMS.Misc import sanitise, RmsDateTime, getRmsRootDir, mkdirP
+from RMS.Misc import sanitise, RmsDateTime, getRmsRootDir, mkdirP, AtomicFlag
 from RMS.Formats.FFfile import read
 from matplotlib.dates import DateFormatter
 
 # Import Cython functions
 import pyximport
 pyximport.install(setup_args={'include_dirs':[np.get_include()]})
-from RMS.Astrometry.CyFunctions import cyTrueRaDec2ApparentAltAz
 
 log = getLogger("rmslogger")
 EM_RAISE = False
@@ -765,12 +764,31 @@ class EventMonitor(multiprocessing.Process):
         self.db_conn = self.getConnectionToEventMonitorDB()
         self.upgradeDB(self.db_conn)
         self.check_interval = self.syscon.event_monitor_check_interval
-        self.exit = multiprocessing.Event()
+        self.exit = AtomicFlag()
+
+        # Grab the logging queue on the parent side so the child can re-attach logging
+        # under the 'forkserver'/'spawn' start methods (handlers are not inherited there)
+        self.logging_queue = getLoggingQueue()
 
         log.info("EventMonitor is starting")
         log.info("Monitoring {} ".format(self.syscon.event_monitor_webpage))
         log.info("At {:05.1f} minute intervals".format(self.syscon.event_monitor_check_interval))
         log.info("Reporting data to {}/{}".format(self.syscon.hostname, self.syscon.event_monitor_remote_dir))
+
+    def __getstate__(self):
+        """ Return a picklable representation of the monitor.
+
+        Required under the 'forkserver'/'spawn' start methods (the default on Linux from
+        Python 3.14), where .start() pickles self and sends it to the child. A
+        sqlite3.Connection is not picklable (and must not be shared across processes
+        anyway), so the connections are dropped here; run() opens fresh connections on the
+        child side. Under 'fork' no pickling occurs, so this is never called and the child
+        inherits the connections as before.
+        """
+        state = self.__dict__.copy()
+        state['conn'] = None
+        state['db_conn'] = None
+        return state
 
     def createDB(self):
 
@@ -2455,7 +2473,10 @@ class EventMonitor(multiprocessing.Process):
     def stop(self):
         """ Stops the EventMonitor. """
 
-        self.db_conn.close()
+        # The parent may not hold a live connection (the child owns its own under
+        # 'forkserver'/'spawn'); guard the close accordingly.
+        if getattr(self, 'db_conn', None) is not None:
+            self.db_conn.close()
         time.sleep(2)
         self.exit.set()
         self.join()
@@ -2511,6 +2532,15 @@ class EventMonitor(multiprocessing.Process):
         No further randomisation is applied, as this is a congestion, not contention problem.
 
         """
+
+        # Re-establish logging and signal handling in the child (no-op under 'fork')
+        initChildProcess(self.logging_queue, self.config)
+
+        # Open a sqlite connection owned by this (child) process. Under 'forkserver'/'spawn'
+        # the connection from __init__ is not inherited (it was dropped during pickling);
+        # under 'fork' this replaces the inherited connection with a process-local one,
+        # avoiding a connection shared across the fork.
+        self.db_conn = self.getConnectionToEventMonitorDB()
 
         # Delay to allow capture to check existing folders - keep the logs tidy
 
@@ -3328,9 +3358,11 @@ def calstarRaDecToDict(data_dir_path, config, pp, pp_recal_json, r_target, d_tar
         # Convert to arrays
         jd_arr, x_data, y_data, level_data = np.array(jd_list), np.array(x_list), np.array(y_list), np.array(intens_sum_list)
 
-        # Process data into RaDec and apply magnitude corrections
+        # Process data into RaDec and apply magnitude corrections. The CALSTARS entries are stars, so they go
+        #   through the star path (catalog directions, like the target they are compared with and the image
+        #   coordinates computed back from them below)
         jd, ra, dec, mag_arr = xyToRaDecPP(jd_arr, x_data, y_data, level_data, pp,
-                                       jd_time=True, extinction_correction=True, measurement=True)
+                                       jd_time=True, extinction_correction=True)
 
         for j, x, y, intens_sum, r, d, bg, amp, FWHM, mag, x_cs, y_cs, snr, NSatPX in zip(jd, x_list, y_list,
                                                                 intens_sum_list, ra, dec, bg_lvl_list,
@@ -4266,13 +4298,8 @@ def platepar2AltAz(rp):
 
     """
 
-    RA_d = np.radians(rp.RA_d)
-    dec_d = np.radians(rp.dec_d)
-    JD = rp.JD
-    lat = np.radians(rp.lat)
-    lon = np.radians(rp.lon)
-
-    return np.degrees(cyTrueRaDec2ApparentAltAz(RA_d, dec_d, JD, lat, lon))
+    # RA_d/dec_d are epoch-of-date coordinates, see Platepar.computeRefAltAz
+    return np.array(rp.computeRefAltAz())
 
 def angDif(a1, a2):
 

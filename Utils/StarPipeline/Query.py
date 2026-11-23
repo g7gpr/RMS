@@ -35,7 +35,7 @@ import cv2
 import ephem
 import tqdm
 
-from RMS.Astrometry.Conversions import datetime2JD, jd2Date
+from RMS.Astrometry.Conversions import datetime2JD
 from RMS.Formats.FFfile import getMiddleTimeFF
 from RMS.Misc import mkdirP
 from pathlib import Path
