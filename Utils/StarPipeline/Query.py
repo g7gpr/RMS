@@ -351,7 +351,7 @@ def plotAstrometryXiEta(plot_data):
 
     star_name, obs, stations_list = plot_data
 
-    plt.figure(figsize=(8, 8))
+
     plt.figure(figsize=(8, 8))
 
     plt.scatter(
