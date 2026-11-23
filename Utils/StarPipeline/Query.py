@@ -47,6 +47,7 @@ from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP, raDec2AltAz
 from Utils.Flux import detectMoon
 
 from Utils.StarPipeline.CacheBuilder import ARCHIVE, sortFilesByTime
+from Utils.StarPipeline.LightCurves import decodeOffsetGnomonic
 import matplotlib.pyplot as plt
 
 
@@ -120,15 +121,21 @@ def loadObservationFile(filename):
         ("snr", np.float32),
         ("saturated_count", np.int32),
         ("star_count", np.int16),
-        ("obs_ra", np.float32),
-        ("obs_dec", np.float32)
+        ("xi", np.float32),
+        ("eta", np.float32),
+        ("ra_cat", np.float32),
+        ("dec_cat", np.float32),
+        ("ra_obs", np.float32),
+        ("dec_obs", np.float32)
     ])
 
     filename = Path(filename)
     stem = filename.stem
-    station, date_str, time_str, usec_str, cat_mag_str, scale_str = stem.split("_")
+    station, date_str, time_str, usec_str, cat_mag_str, cat_ra_str, cat_dec_str, scale_str = stem.split("_")
     session_date = datetime.datetime.strptime(f"{date_str}_{time_str}_{usec_str}","%Y%m%d_%H%M%S_%f")
     cat_mag = int(cat_mag_str) / 1e6
+    cat_ra = int(cat_ra_str) / 1e6
+    cat_dec = int(cat_dec_str) / 1e6
     pixel_scale = int(scale_str) / 1000
 
 
@@ -145,11 +152,9 @@ def loadObservationFile(filename):
 
     observations["station"] = station
     observations["jd"] = session_jd +  offset.astype(np.float64) / 10000.0
-
     observations["obs_mag"] = cat_mag + residual / 100.0
     observations["cat_mag"] = cat_mag
     observations["pixel_scale"] = pixel_scale
-
     observations["level"] = data[:, 2]
     observations["amplitude"] = data[:, 3]
     observations["fwhm"] = data[:, 4] / 100.0
@@ -157,8 +162,13 @@ def loadObservationFile(filename):
     observations["snr"] = data[:, 6] / 100.0
     observations["saturated_count"] = data[:, 7]
     observations["star_count"] = data[:, 8]
-    observations["obs_ra"] = data[:, 9]  / 90
-    observations["obs_dec"] = data[:, 10] / 300
+    observations['ra_cat']  = cat_ra
+    observations['dec_cat'] = cat_dec
+    observations["xi"] = data[:, 9]  / 10000
+    observations["eta"] = data[:, 10] / 10000
+    ra_obs, dec_obs = decodeOffsetGnomonic(cat_ra, cat_dec, observations["xi"], observations["eta"])
+    observations["ra_obs"] = ra_obs
+    observations["dec_obs"] = dec_obs
 
     return observations
 
@@ -197,7 +207,7 @@ def simpleMagnitudeScatterPlot(plot_data):
     # Magnitude scatter coloured by station
     #
 
-    obs_ra, obs_dec = np.mean(obs['obs_ra']), np.mean(obs['obs_dec'])
+    ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
 
     for station in stations_list:
         mask = obs["station"] == station
@@ -246,10 +256,10 @@ def simpleMagnitudeScatterPlot(plot_data):
     #
     # Title + station list
     #
-    plt.suptitle(f"{star_name}", fontsize=14)
+    plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
 
     ax1.set_title(
-        f"Ra:{obs_ra:.2f}deg Dec:{obs_dec:.2f}deg\n{stations_text}",
+        f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",
         fontsize=8,
         color="gray"
     )
@@ -265,7 +275,7 @@ def simpleMagnitudeScatterPlot(plot_data):
         .replace(" ", "_")
     )
 
-    filename = f"{safe_name}.png"
+    filename = f"{safe_name}_light_curves.png"
 
     filepath = "/archive/plots"
 
@@ -280,6 +290,115 @@ def simpleMagnitudeScatterPlot(plot_data):
     plt.close()
 
     print(f"Saved {filename}")
+
+def plotAstrometryRaDec(plot_data):
+
+    star_name, obs, stations_list = plot_data
+
+    plt.figure(figsize=(8, 8))
+
+    plt.scatter(
+        obs["ra_obs"],
+        obs["dec_obs"],
+        s=2
+    )
+
+    plt.scatter(
+        obs["ra_cat"][0],
+        obs["dec_cat"][0],
+        color="red",
+        marker="+",
+        s=200,
+        linewidths=2,
+        label="Catalog"
+    )
+
+    plt.xlabel("RA (deg)")
+    plt.ylabel("Dec (deg)")
+
+    plt.title(star_name)
+
+    plt.legend()
+
+    plt.grid(True)
+
+    plt.gca().set_aspect('equal')
+
+    safe_name = (
+        star_name
+        .replace("/", "_")
+        .replace(" ", "_")
+    )
+
+    filename = f"{safe_name}_astrometry_radec.png"
+
+    filepath = "/archive/plots"
+
+    os.makedirs(filepath, exist_ok=True)
+
+    plt.savefig(
+        os.path.join(filepath, filename),
+        dpi=150,
+        bbox_inches="tight"
+    )
+
+    plt.close()
+
+    print(f"Saved {filename}")
+
+
+def plotAstrometryXiEta(plot_data):
+
+    star_name, obs, stations_list = plot_data
+
+    plt.figure(figsize=(8, 8))
+    plt.figure(figsize=(8, 8))
+
+    plt.scatter(
+        obs["xi"],
+        obs["eta"],
+        s=2
+    )
+
+    plt.axhline(0, color="red", alpha=0.5)
+    plt.axvline(0, color="red", alpha=0.5)
+
+    plt.xlabel("Xi (deg)")
+    plt.ylabel("Eta (deg)")
+    plt.title(star_name)
+
+    plt.grid(True)
+    plt.gca().set_aspect("equal")
+    plt.title(f"{star_name} astrometry in xi, eta")
+
+    plt.legend()
+
+    plt.grid(True)
+
+    plt.gca().set_aspect('equal')
+
+    safe_name = (
+        star_name
+        .replace("/", "_")
+        .replace(" ", "_")
+    )
+
+    filename = f"{safe_name}_astrometry_xi_eta.png"
+
+    filepath = "/archive/plots"
+
+    os.makedirs(filepath, exist_ok=True)
+
+    plt.savefig(
+        os.path.join(filepath, filename),
+        dpi=150,
+        bbox_inches="tight"
+    )
+
+    plt.close()
+
+    print(f"Saved {filename}")
+
 
 if __name__ == "__main__":
 
@@ -311,13 +430,14 @@ if __name__ == "__main__":
 
         for star in star_sessions:
             observation_count, star_to_plot = star[0], star[1]
-            if observation_count < 30:
+            if observation_count < 1:
                 continue
             print(f"Querying for {star_to_plot}")
             query_response = getStarObservations(star_to_plot)
             print(f"Plotting {star_to_plot}")
             simpleMagnitudeScatterPlot(query_response)
-
+            plotAstrometryRaDec(query_response)
+            plotAstrometryXiEta(query_response)
 
     star_to_plot = "HD 23480"
     print("Query started")

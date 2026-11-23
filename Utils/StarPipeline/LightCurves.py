@@ -179,6 +179,8 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
     light_curves = {}
     produce_debug_timelapse = False
 
+
+    # Test to see if recal file is available
     if os.path.exists(platepars_all_recalibrated_path):
         try:
             with open(platepars_all_recalibrated_path, 'r') as fh:
@@ -191,6 +193,9 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
         print(f"No file {os.path.basename(platepars_all_recalibrated_path)}`")
         pp_recal_json = None
 
+    # If not then reject this observation session
+    if pp_recal_json is None:
+        return
 
     if video_path is not None:
         produce_debug_timelapse = True
@@ -202,6 +207,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
     astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
 
     counter = 0
+    recalibrated_platepar_loaded = False
     for fits_file, star_list in tqdm.tqdm(calstar):
 
         if counter > 10 and debug_mode:
@@ -219,9 +225,16 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
             #print(f"Skipping {fits_file} - not astronomical night")
             continue
 
+        # We could improve this by picking the nearest platepar
         if pp_recal_json is not None:
             if fits_file in pp_recal_json:
+                recalibrated_platepar_loaded = True
                 pp.loadFromDict(pp_recal_json[fits_file])
+
+
+        # Throw away observations until we have our first recalibrated platepar
+        if not recalibrated_platepar_loaded:
+            continue
 
         jd = datetime2JD(getMiddleTimeFF(fits_file, obs_con.fps, dt_obj=True))
         p, ra_array, dec_array, x_array, y_array, mag_array, names_array = cat.queryPlatepar(pp, jd, n_brightest=5*len(star_list))
