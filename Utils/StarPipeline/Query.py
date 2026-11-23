@@ -388,19 +388,24 @@ def plotAstrometryXiEta(plot_data):
 
     star_name, obs, stations_list = plot_data
 
+
+
+
+    stations_text = stationsText(obs, stations_list)
+    ra_cat, dec_cat = float(obs["ra_cat"][0]), float(obs["dec_cat"][0])
+
     plt.suptitle(
         f"{star_name} astrometry in xi, eta",
         fontsize=14
     )
 
-    stations_text = stationsText(obs, stations_list)
-    ra_cat, dec_cat = float(obs["ra_cat"][0]), float(obs["dec_cat"][0])
-
     plt.title(
         f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",
         fontsize=8,
-        color="gray"
+        color="gray",
+        pad=10
     )
+
 
     residual = obs["obs_mag"] - obs["cat_mag"]
 
