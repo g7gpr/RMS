@@ -297,19 +297,20 @@ def plotAstrometryRaDec(plot_data):
 
     star_name, obs, stations_list = plot_data
 
-    residual = obs["obs_mag"] - obs["cat_mag"]
-
-    plt.figure(figsize=(8, 8))
-    ax1 = plt.gca()
-
-    plt.suptitle(
-        f"{star_name} astrometry in RA, Dec",
-        fontsize=14
-    )
-
     stations_text = stationsText(obs, stations_list)
 
-    ra_cat, dec_cat = float(obs["ra_cat"][0]), float(obs["dec_cat"][0])
+    plt.figure(figsize=(12, 6))
+
+    ax1 = plt.gca()
+
+    #
+    # Title + station list
+    #
+    plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
+
+
+    ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
+
     ax1.set_title(
         f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",
         fontsize=8,
@@ -317,6 +318,7 @@ def plotAstrometryRaDec(plot_data):
     )
 
 
+    residual = obs["obs_mag"] - obs["cat_mag"]
 
 
     plt.scatter(
@@ -328,6 +330,7 @@ def plotAstrometryRaDec(plot_data):
         vmin=np.percentile(residual, 5),
         vmax=np.percentile(residual, 95)
     )
+
 
     plt.colorbar(label="Obs - Cat Magnitude")
 
@@ -381,25 +384,29 @@ def plotAstrometryRaDec(plot_data):
 
 def plotAstrometryXiEta(plot_data):
 
+
     star_name, obs, stations_list = plot_data
 
     stations_text = stationsText(obs, stations_list)
-    ra_cat, dec_cat = float(obs["ra_cat"][0]), float(obs["dec_cat"][0])
 
-    plt.figure(figsize=(8, 8))
+    plt.figure(figsize=(12, 6))
+
     ax1 = plt.gca()
 
-    plt.suptitle(
-        f"{star_name} astrometry in xi, eta",
-        fontsize=14
-    )
+    #
+    # Title + station list
+    #
+    plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
+
+
+    ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
 
     ax1.set_title(
         f"Ra:{ra_cat:.2f}deg Dec:{dec_cat:.2f}deg\n{stations_text}",
         fontsize=8,
-        color="gray",
-        pad=10
+        color="gray"
     )
+
 
 
     residual = obs["obs_mag"] - obs["cat_mag"]
