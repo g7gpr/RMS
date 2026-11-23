@@ -188,15 +188,30 @@ def starSummary(star_name):
 
     return message
 
+def stationsText(obs, stations_list):
+
+
+    ra_cat = np.mean(obs['ra_cat'])
+    dec_cat = np.mean(obs['dec_cat'])
+
+    stations_text = ", ".join(sorted(stations_list))
+
+    number_of_observations = len(obs)
+    number_of_stations = len(stations_list)
+
+    if number_of_stations > 10:
+        stations_text = (
+            f"Observed by {number_of_stations} stations "
+            f"with {number_of_observations} individual observations"
+        )
+
+    return stations_text
+
 def simpleMagnitudeScatterPlot(plot_data):
 
     star_name, obs, stations_list = plot_data
 
-    stations_text = ", ".join(sorted(stations_list))
-    number_of_observations = len(obs)
-    number_of_stations = len(stations_list)
-    if number_of_stations > 10:
-        stations_text = f"Observed by {len(stations_list)} stations with {number_of_observations} individual observations"
+    stations_text = stationsText(obs, stations_list)
 
     plt.figure(figsize=(12, 6))
 
@@ -296,6 +311,20 @@ def plotAstrometryRaDec(plot_data):
 
     residual = obs["obs_mag"] - obs["cat_mag"]
 
+    plt.suptitle(
+        f"{star_name} astrometry in RA, Dec",
+        fontsize=14
+    )
+
+    stations_text = stationsText(obs, stations_list)
+
+    plt.title(
+        f"Ra:{obs['ra_cat']:.2f}deg Dec:{obs['dec_cat']:.2f}deg\n{stations_text}",
+        fontsize=8,
+        color="gray"
+    )
+
+
     plt.figure(figsize=(8, 8))
 
     plt.scatter(
@@ -357,6 +386,19 @@ def plotAstrometryRaDec(plot_data):
 def plotAstrometryXiEta(plot_data):
 
     star_name, obs, stations_list = plot_data
+
+    plt.suptitle(
+        f"{star_name} astrometry in xi, eta",
+        fontsize=14
+    )
+
+    stations_text = stationsText(obs, stations_list)
+
+    plt.title(
+        f"Ra:{obs['ra_cat']:.2f}deg Dec:{obs['dec_cat']:.2f}deg\n{stations_text}",
+        fontsize=8,
+        color="gray"
+    )
 
     residual = obs["obs_mag"] - obs["cat_mag"]
 
