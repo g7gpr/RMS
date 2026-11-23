@@ -195,6 +195,7 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
 
     # If not then reject this observation session
     if pp_recal_json is None:
+        print("No recalibration file found, discarding session")
         return
 
     if video_path is not None:
