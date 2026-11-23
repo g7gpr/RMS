@@ -270,6 +270,9 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
 
         star_count = len(star_list)
         for observation_index, star in enumerate(star_list):
+
+            counter += 1
+
             if len(star) == 8:
                 obs_x, obs_y = star[1], star[0]
                 ra_obs, dec_obs, mag_obs = arr_obs_ra[observation_index], arr_obs_dec[observation_index], arr_obs_mag[observation_index]
@@ -311,8 +314,6 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
                     light_curves[name][jd]['star_count'] = star_count
                     light_curves[name][jd]['xi'] = xi
                     light_curves[name][jd]['eta'] = eta
-
-                    counter += 1
 
 
         if produce_debug_timelapse:
