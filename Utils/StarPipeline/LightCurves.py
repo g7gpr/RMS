@@ -222,7 +222,8 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
         if pp_recal_json is not None:
             if fits_file in pp_recal_json:
                 if recalibrated_platepar_loaded:
-                    print(f"Loaded recalibrated platepar for : {fits_file} {counter}/{fits_files_to_process}")
+                    pass
+                    #print(f"Loaded recalibrated platepar for : {fits_file} {counter}/{fits_files_to_process}")
                 else:
                     print(f"Loaded first recalibrated platepar for : {fits_file}")
 
