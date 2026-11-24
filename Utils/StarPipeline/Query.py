@@ -96,7 +96,8 @@ def getStarObservations(star_name):
     arrays = []
     stations = set()
 
-    for filename in getStarFiles(star_name):
+    archived_stars = getStarFiles(star_name)
+    for filename in archived_stars:
 
         arrays.append(loadObservationFile(filename))
         stations.add(filename.parent.name)
@@ -403,11 +404,19 @@ if __name__ == "__main__":
 
     arg_parser.add_argument("-c", "--continuous", action="store_true", help="Build all the plots for all stars in the background")
 
+    arg_parser.add_argument("-s", "--star",  type=str, help="Plot the light curve for this star")
+
+
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
 
-    continuous = cml_args.continuous
+    if cml_args.star is None:
+        continuous = cml_args.continuous
+    else:
+        continuous = False
+        star_to_plot = cml_args.star
+
 
 
 
@@ -437,8 +446,8 @@ if __name__ == "__main__":
             time.sleep(10)
 
 
-    star_to_plot = "HD 23480"
-    print("Query started")
+
+    print(f"Query started for {star_to_plot}")
     query_response = getStarObservations(star_to_plot)
     print("Query completed")
     simpleMagnitudeScatterPlot(query_response)
