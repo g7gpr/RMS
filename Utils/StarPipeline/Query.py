@@ -140,6 +140,21 @@ def loadObservationFile(filename):
 
     data = np.load(filename)
 
+
+    # Force everything to be NxM - to avoid single row returns causing vectors
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+
+    data = np.load(filename)
+
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+
+    if data.ndim != 2:
+        raise ValueError(
+            f"Unexpected array shape {data.shape} in {filename}"
+        )
+
     offset = data[:, 0]
     residual = data[:, 1]
 
