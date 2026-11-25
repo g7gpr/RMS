@@ -230,6 +230,8 @@ def getRemoteFilesSet(station_coordinates_json_url=None,
         country_code = ""
 
     stations_set = getStationSet(station_coordinates_json_url, country_code=country_code)
+    log.info(f"Retrieving file lists for {len(stations_set)} stations")
+
     remote_paths_set = getRemotePathsSet(stations_set, remote_path_template=remote_path_template)
 
     remote_files_set = set()
@@ -308,6 +310,7 @@ def buildRemoteFileJson(remote_file_json_path=None,
 
     if country_code is None:
         country_code = ""
+
 
     remote_file_set = getRemoteFilesSet(
                             station_coordinates_json_url=station_coordinates_json_url,
