@@ -1,0 +1,436 @@
+# RPi Meteor Station
+# Copyright (C) 2026 David Rollinson
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+from __future__ import print_function, division, absolute_import
+
+import os
+import numpy as np
+import requests
+import tempfile
+import uuid
+import subprocess
+import json
+import tqdm
+import datetime
+
+from pathlib import Path
+from RMS.Logger import LoggingManager, getLogger, checkLoggingHealth
+from Utils.StarPipeline.CacheBuilder import sortFilesByTime
+
+# Constants
+
+# urls
+STATION_COORDINATES_JSON_URL = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
+
+# Paths
+REMOTE_PATH_TEMPLATE = "analysis@gmn.uwo.ca:/home/stationID/files/processed"
+LOCAL_PATH_TEMPLATE = "/archive/cache/date"
+REMOTE_FILE_JSON_PATH = "/archive/cache/remote_files.json"
+
+# Suffixes
+MINIMAL_ARCHIVE_END = "_min.tar.bz2"
+
+log = getLogger("rmslogger")
+
+
+
+
+
+def parseFilename(file_name):
+
+    part_list = file_name.split("_")
+    first_numeric = 0
+
+    for p, part in enumerate(part_list):
+        if part.isnumeric():
+            first_numeric = p
+            break
+
+    station_id = part_list[first_numeric - 1]
+    date_field = part_list[first_numeric]
+    time_field = part_list[first_numeric + 1]
+    sub_time_field = part_list[first_numeric + 2]
+
+    start = "_".join(part_list[0:first_numeric-1])
+    end = "_".join(part_list[first_numeric+3:])
+
+    return start, station_id, date_field, time_field, sub_time_field, end
+
+def buildFilename(station_id, date_field, time_field, sub_time_field, start="", end="" ):
+
+    file_name = f"{station_id}_{date_field}_{time_field}_{sub_time_field}"
+
+    if start != "":
+        file_name = f"{start}_{file_name}"
+    if end != "":
+        file_name = f"{file_name}_{end}"
+
+    return file_name
+
+def filenameToRemotePath(file_name, remote_path_template):
+
+    start, station_id, date_field, time_field, sub_time_field, end = parseFilename(file_name)
+    file_name = buildFilename(station_id, date_field, time_field, sub_time_field, start=start, end=end)
+    remote_path = os.path.join(remote_path_template.replace("stationID", station_id.lower()), file_name)
+
+    return remote_path
+
+def stationIDToRemotePath(station_id, remote_path_template):
+
+    remote_path = remote_path_template.replace("stationID", station_id.lower())
+
+    return remote_path
+
+def filenameToLocalPath(file_name, local_path_template):
+
+    start, station_id, date_field, time_field, sub_time_field, end = parseFilename(file_name)
+    file_name = buildFilename(station_id, date_field, time_field, sub_time_field, start=start, end=MINIMAL_ARCHIVE_END)
+
+    local_path = local_path_template.replace("date", date_field)
+    local_path = os.path.join(local_path, file_name)
+
+    return local_path
+
+def parseServerFileTimestamp(file_name):
+
+    parts = file_name.split("_")
+    if len(parts) < 4:
+        return None
+
+    date_str = parts[1]
+    time_str = parts[2]
+
+    try:
+        dt = datetime.datetime.strptime(date_str + time_str, "%Y%m%d%H%M%S")
+        return dt.replace(tzinfo=datetime.timezone.utc)
+    except Exception:
+        return None
+
+def sortFilesByTime(files):
+    return sorted(files, key=parseServerFileTimestamp)
+
+
+def getStationSet(url=None, country_code=None):
+
+    if url is None:
+        url = STATION_COORDINATES_JSON_URL
+
+    response = requests.get(url)
+    response.raise_for_status()  # fail fast if the JSON is unreachable
+
+    stations_dict = response.json()
+    station_list = []
+
+    for station in stations_dict.keys():
+        station_lower = station.lower()
+
+        if country_code is None:
+            station_list.append(station)
+        else:
+            if station_lower.startswith(country_code.lower()):
+                station_list.append(station)
+
+    return sorted(station_list)
+
+def getLocalFilesSet(local_path=None):
+
+
+    if local_path is None:
+        local_path = LOCAL_PATH_TEMPLATE
+
+    local_path = os.path.dirname(local_path)
+    local_files_set = {f for f in Path(local_path).rglob("*") if f.is_file()}
+
+    return local_files_set
+
+
+
+
+def lsRemote(remote_path, port=22):
+    """Return: list of filenames in remote directory, or empty list if directory does not exist."""
+
+    files_set = set()
+    cmd = [
+        "rsync",
+        "--list-only",
+        "-z",
+        "-e", "ssh -o BatchMode=yes -o StrictHostKeyChecking=no -p {}".format(port),
+        remote_path + "/",
+        "."
+    ]
+
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    # Directory does not exist
+    if result.returncode != 0:
+        stderr = result.stderr.lower()
+        if "no such file" in stderr or "failed to open" in stderr:
+            return files_set
+        else:
+            log.info(f"Returned {stderr}")
+
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if parts:
+            files_set.add(parts[-1])
+
+
+    return files_set
+
+def getRemotePathsSet(stations_set, remote_path_template=None):
+
+    if remote_path_template is None:
+        remote_path_template = REMOTE_PATH_TEMPLATE
+
+    remote_path_set = set()
+    for station_id in stations_set:
+        remote_path = stationIDToRemotePath(station_id, remote_path_template)
+        remote_path_set.add(remote_path)
+        pass
+
+    return remote_path_set
+
+def filterRemoteFiles(files_set):
+    # Filter valid tars
+
+    valid_tars_set = set()
+    for file_name in files_set:
+        if file_name.endswith("tar.bz2") and len(file_name.split("_")) == 5 and "imgdata" not in file_name:
+            valid_tars_set.add(file_name)
+
+    return valid_tars_set
+
+
+def getRemoteFilesSet(station_coordinates_json_url=None,
+                      remote_path_template=None,
+                      country_code=None):
+
+    log.info(f"Downloading station coordinates from {station_coordinates_json_url}")
+    if station_coordinates_json_url is None:
+        station_coordinates_json_url = STATION_COORDINATES_JSON_URL
+
+    if remote_path_template is None:
+        remote_path_template = REMOTE_PATH_TEMPLATE
+
+    if country_code is None:
+        country_code = ""
+
+    stations_set = getStationSet(station_coordinates_json_url, country_code=country_code)
+    remote_paths_set = getRemotePathsSet(stations_set, remote_path_template=remote_path_template)
+
+    remote_files_set = set()
+    for remote_path in tqdm.tqdm(remote_paths_set):
+        ls_return = filterRemoteFiles(lsRemote(remote_path))
+        remote_files_set = remote_files_set | ls_return
+
+
+    return remote_files_set
+
+def loadRemoteFileJson(remote_file_json_path=None):
+
+    if remote_file_json_path is None:
+        remote_file_json_path = REMOTE_FILE_JSON_PATH
+
+    if not os.path.exists(remote_file_json_path):
+        return set()
+
+    with open(remote_file_json_path) as f:
+        return set(json.load(f))
+
+
+
+def testCode():
+
+    test_file_name = "ZA000C_20240101_183212_060136_min.tar.bz2"
+    start, station_id, date_field, time_field, sub_time_field, end = parseFilename(test_file_name)
+
+    file_name = buildFilename(station_id, date_field, time_field, sub_time_field, start=start, end=end)
+    file_name = "AU0004_20261124_114737_183207_metadata.tar.bz2"
+    remote_path = filenameToRemotePath(file_name, REMOTE_PATH_TEMPLATE)
+    print(remote_path)
+    local_path = filenameToLocalPath(file_name, LOCAL_PATH_TEMPLATE)
+    print(local_path)
+
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(temp_dir)
+        files_created_set = set()
+
+        for _ in range(100):
+            filename = Path(os.path.join(temp_dir, f"{uuid.uuid4()}.tmp"))
+            filename.touch()
+            files_created_set.add(filename)
+
+        found_files = getLocalFilesSet(filename)
+
+        if found_files == files_created_set:
+            print("Good")
+        else:
+            print("Bad")
+
+        filename.unlink()
+
+        found_files = getLocalFilesSet(filename)
+
+        if found_files == files_created_set:
+            print("Bad")
+        else:
+            print("Good")
+
+def buildRemoteFileJson(remote_file_json_path=None,
+                        station_coordinates_json_url=None,
+                        remote_path_template=None,
+                        country_code=None):
+
+
+    if remote_file_json_path is None:
+        remote_file_json_path = REMOTE_FILE_JSON_PATH
+
+    if station_coordinates_json_url is None:
+        station_coordinates_json_url = STATION_COORDINATES_JSON_URL
+
+    if remote_path_template is None:
+        remote_path_template = REMOTE_PATH_TEMPLATE
+
+    if country_code is None:
+        country_code = ""
+
+    remote_file_set = getRemoteFilesSet(
+                            station_coordinates_json_url=station_coordinates_json_url,
+                            remote_path_template=remote_path_template,
+                            country_code=country_code)
+
+    os.makedirs(os.path.dirname(remote_file_json_path), exist_ok=True)
+
+    with open(remote_file_json_path, "w") as f:
+        json.dump(sortFilesByTime(remote_file_set), f)
+
+    return remote_file_set
+
+
+
+
+
+if __name__ == "__main__":
+
+    import argparse
+
+    arg_parser = argparse.ArgumentParser(description="""Download minimal cache of GMN raw data \
+        """, formatter_class=argparse.RawTextHelpFormatter)
+
+    arg_parser.add_argument(
+        '--remote-path-template',
+        default=None,
+        help="Remote path template"
+    )
+
+    arg_parser.add_argument(
+        '--local-path-template',
+        default=None,
+        help="Local cache path template"
+    )
+
+    arg_parser.add_argument(
+        '--minimal-archive-end',
+        default=None,
+        help="Archive filename suffix"
+    )
+
+    arg_parser.add_argument(
+        '--station-coordinates-json-url',
+        default=None,
+        help="Station coordinates JSON URL"
+    )
+
+    arg_parser.add_argument(
+        '--remote-file-json-path',
+        default=None,
+        help="Path to cached remote file manifest"
+    )
+
+    arg_parser.add_argument(
+        '--country-code',
+        default=None,
+        help="Country code to retrieve"
+    )
+
+    arg_parser.add_argument(
+        '-s',
+        '--scan_remote_file_store',
+        dest='scan_remote_file_store',
+        default=False,
+        action='store_true',
+        help='Scan the remote file store'
+    )
+
+    cml_args = arg_parser.parse_args()
+
+    remote_path_template = (
+            cml_args.remote_path_template
+            or REMOTE_PATH_TEMPLATE
+    )
+
+    local_path_template = (
+            cml_args.local_path_template
+            or LOCAL_PATH_TEMPLATE
+    )
+
+    minimal_archive_end = (
+            cml_args.minimal_archive_end
+            or MINIMAL_ARCHIVE_END
+    )
+
+    station_coordinates_json_url = (
+            cml_args.station_coordinates_json_url
+            or STATION_COORDINATES_JSON_URL
+    )
+
+    remote_file_json_path = (
+            cml_args.remote_file_json_path
+            or REMOTE_FILE_JSON_PATH
+    )
+
+    country_code = cml_args.country_code or ""
+
+    scan_remote_file_store = False
+
+    if cml_args.scan_remote_file_store:
+        log.info("Scanning remote file store.")
+        scan_remote_file_store = True
+
+    if not os.path.exists(remote_file_json_path):
+        log.info("No local copy of files in remote file store, scanning.")
+        scan_remote_file_store = True
+
+
+    if scan_remote_file_store:
+        remote_file_set = buildRemoteFileJson(remote_file_json_path=remote_file_json_path,
+                            station_coordinates_json_url=station_coordinates_json_url,
+                            remote_path_template=remote_path_template,
+                            country_code=country_code)
+
+    else:
+        try:
+            remote_file_set = loadRemoteFileJson(remote_file_json_path=remote_file_json_path)
+        except:
+            log.info(f"Unable to load {remote_file_json_path}, rebuilding.")
+            remote_file_set = buildRemoteFileJson(remote_file_json_path=remote_file_json_path,
+                                                  station_coordinates_json_url=station_coordinates_json_url,
+                                                  remote_path_template=remote_path_template,
+                                                  country_code=country_code)
+
+    remote_file_list = sortFilesByTime(remote_file_set)
