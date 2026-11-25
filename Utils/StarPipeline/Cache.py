@@ -25,6 +25,8 @@ import subprocess
 import json
 import tqdm
 import datetime
+import random
+import time
 
 from pathlib import Path
 from RMS.Logger import LoggingManager, getLogger, checkLoggingHealth
@@ -163,30 +165,35 @@ def lsRemote(remote_path, port=22):
     """Return: list of filenames in remote directory, or empty list if directory does not exist."""
 
     files_set = set()
-    cmd = [
-        "rsync",
-        "--list-only",
-        "-z",
-        "-e", "ssh -o BatchMode=yes -o StrictHostKeyChecking=no -p {}".format(port),
-        remote_path + "/",
-        "."
-    ]
 
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    while not files_set:
+        cmd = [
+            "rsync",
+            "--list-only",
+            "-z",
+            "-e", "ssh -o BatchMode=yes -o StrictHostKeyChecking=no -p {}".format(port),
+            remote_path + "/",
+            "."
+        ]
 
-    # Directory does not exist
-    if result.returncode != 0:
-        stderr = result.stderr.lower()
-        if "no such file" in stderr or "failed to open" in stderr:
-            return files_set
-        else:
-            log.info(f"Returned {stderr}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
 
-    for line in result.stdout.splitlines():
-        parts = line.split()
-        if parts:
-            files_set.add(parts[-1])
+        # Directory does not exist
+        if result.returncode != 0:
+            stderr = result.stderr.lower()
+            if "no such file" in stderr or "failed to open" in stderr:
+                return files_set
+
+            elif "connection refused":
+                log.info("Connect refused, waiting")
+                time.sleep(600)
+                continue
+
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if parts:
+                files_set.add(parts[-1])
 
 
     return files_set
@@ -236,8 +243,7 @@ def getRemoteFilesSet(station_coordinates_json_url=None,
 
     remote_files_set = set()
     for remote_path in tqdm.tqdm(remote_paths_set):
-        ls_return = filterRemoteFiles(lsRemote(remote_path))
-        remote_files_set = remote_files_set | ls_return
+        remote_files_set = remote_files_set | filterRemoteFiles(lsRemote(remote_path))
 
 
     return remote_files_set
@@ -326,6 +332,46 @@ def buildRemoteFileJson(remote_file_json_path=None,
 
 
 
+
+
+def createLocalArchive(file_name, local_path_template=None, remote_path_template=None, max_tries=3):
+
+
+
+    download_count = 0
+
+    with tempfile.TemporaryDirectory() as t:
+        local_path = filenameToLocalPath(file_name, local_path_template)
+        remote_path = filenameToRemotePath(file_name, remote_path_template)
+        temp_path = os.path.join(t, file_name)
+        while not os.path.exists(local_path) and download_count < max_tries:
+            try:
+                result = subprocess.run(['rsync', '-z', remote_path], capture_output=True, text=True)
+                if "No such file or directory" in result.stderr:
+                    return
+                else:
+                    cmd = [
+                        'rsync',
+                        '--partial',
+                        '--partial-dir=.rsync-partial',
+                    ]
+
+                cmd.extend([remote_path, local_path])
+
+                result = subprocess.run(cmd, capture_output=True, text=True)
+
+            except:
+
+                delay = random.randint(600, 900)
+                resume_time = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=delay)).isoformat()
+                print(f"Waiting {delay/60:.1f} minutes until {resume_time} for {file_name}")
+                time.sleep(delay)
+
+
+
+
+
+    return False
 
 
 if __name__ == "__main__":
@@ -437,3 +483,8 @@ if __name__ == "__main__":
                                                   country_code=country_code)
 
     remote_file_list = sortFilesByTime(remote_file_set)
+
+
+    for remote_file in remote_file_list:
+        local_path = createLocalArchive(remote_file, remote_path_template=remote_path_template)
+
