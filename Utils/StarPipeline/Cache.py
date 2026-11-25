@@ -96,7 +96,10 @@ def stationIDToRemotePath(station_id, remote_path_template):
 
     return remote_path
 
-def filenameToLocalPath(file_name, local_path_template):
+def filenameToLocalPath(file_name, local_path_template=None):
+
+
+    local_path_template = local_path_template or LOCAL_PATH_TEMPLATE
 
     start, station_id, date_field, time_field, sub_time_field, end = parseFilename(file_name)
     file_name = buildFilename(station_id, date_field, time_field, sub_time_field, start=start, end=MINIMAL_ARCHIVE_END)
@@ -270,7 +273,7 @@ def testCode():
     file_name = "AU0004_20261124_114737_183207_metadata.tar.bz2"
     remote_path = filenameToRemotePath(file_name, REMOTE_PATH_TEMPLATE)
     print(remote_path)
-    local_path = filenameToLocalPath(file_name, LOCAL_PATH_TEMPLATE)
+    local_path = filenameToLocalPath(file_name, local_path_template=LOCAL_PATH_TEMPLATE)
     print(local_path)
 
 
@@ -299,7 +302,7 @@ def testCode():
         else:
             print("Good")
 
-def buildRemoteFileJson(remote_file_json_path=None,
+def     buildRemoteFileJson(remote_file_json_path=None,
                         station_coordinates_json_url=None,
                         remote_path_template=None,
                         country_code=None):
@@ -326,7 +329,7 @@ def buildRemoteFileJson(remote_file_json_path=None,
     os.makedirs(os.path.dirname(remote_file_json_path), exist_ok=True)
 
     with open(remote_file_json_path, "w") as f:
-        json.dump(sortFilesByTime(remote_file_set), f)
+        json.dump(sortFilesByTime(remote_file_set), f, indent=4 )
 
     return remote_file_set
 
@@ -341,7 +344,7 @@ def createLocalArchive(file_name, local_path_template=None, remote_path_template
     download_count = 0
 
     with tempfile.TemporaryDirectory() as t:
-        local_path = filenameToLocalPath(file_name, local_path_template)
+        local_path = filenameToLocalPath(file_name, local_path_template=local_path_template)
         remote_path = filenameToRemotePath(file_name, remote_path_template)
         temp_path = os.path.join(t, file_name)
         while not os.path.exists(local_path) and download_count < max_tries:
@@ -356,7 +359,7 @@ def createLocalArchive(file_name, local_path_template=None, remote_path_template
                         '--partial-dir=.rsync-partial',
                     ]
 
-                cmd.extend([remote_path, local_path])
+                cmd.extend([remote_path, temp_path])
 
                 result = subprocess.run(cmd, capture_output=True, text=True)
 
