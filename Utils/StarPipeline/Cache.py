@@ -43,7 +43,7 @@ from RMS.ConfigReader import parse
 STATION_COORDINATES_JSON_URL = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
 
 # Paths
-REMOTE_PATH_TEMPLATE = "gmn@192.168.217.241:/home/stationID/files/"
+REMOTE_PATH_TEMPLATE = "analysis@gmn.uwo.ca:/home/stationID/files/processed"
 LOCAL_PATH_TEMPLATE = "/archive/cache/date"
 REMOTE_FILE_JSON_PATH = "/archive/cache/remote_files.json"
 
