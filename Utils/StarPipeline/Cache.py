@@ -350,7 +350,7 @@ def downloadFilenameTo(file_name, target_directory, remote_path_template=None, m
     remote_path = filenameToRemotePath(file_name, remote_path_template=remote_path_template)
     local_path = os.path.join(target_directory, file_name)
 
-    log.info(f"Downloading {file_name} from {remote_path} to {target_directory}")
+    #log.info(f"Downloading {file_name} from {remote_path} to {target_directory}")
 
     download_count = 0
 
@@ -400,7 +400,8 @@ def extractTo(file_path, target_directory):
         return None
 
     file_name = os.path.basename(file_path)
-    log.info(f"Extracting {file_name} to {target_directory}")
+    #log.info(f"Extracting {file_name} to {target_directory}")
+
     with tarfile.open(file_path, 'r:bz2') as tar:
         try:
             tar.extractall(path=target_directory, filter="fully_trusted")
@@ -410,7 +411,7 @@ def extractTo(file_path, target_directory):
     return target_directory
 def copyToMinimalArchiveDirectory(file_name, source_path, destination_path):
 
-    log.info(f"Copying minimal archive files for {file_name} from {source_path} to {destination_path}")
+    #log.info(f"Copying minimal archive files for {file_name} from {source_path} to {destination_path}")
 
     config_file_path = os.path.join(source_path, ".config")
     archive_config = parse(config_file_path)
@@ -427,7 +428,7 @@ def copyToMinimalArchiveDirectory(file_name, source_path, destination_path):
 
     archive_name = os.path.basename(filenameToLocalPath(file_name, minimal_archive_suffix=""))
     destination_path = os.path.join(destination_path, archive_name)
-    log.info(f"Destination path is {destination_path}")
+    #log.info(f"Destination path is {destination_path}")
     os.makedirs(destination_path, exist_ok=True)
 
     for file_to_copy in file_to_copy_set:
@@ -447,10 +448,10 @@ def makeMinimalArchive(filename, archive_preparation_directory, minimal_archived
     cached_archive_path = filenameToLocalPath(filename, minimal_archive_suffix=minimal_archive_suffix)
 
     archive_name = os.path.basename(cached_archive_path)
-    log.info(f"Making {archive_name}")
+    #log.info(f"Making {archive_name}")
     archive_path = os.path.join(archive_preparation_directory, archive_name)
 
-    log.info(f"Making an archive from directory {minimal_archived_files_directory_path} in {archive_path}")
+    #log.info(f"Making an archive from directory {minimal_archived_files_directory_path} in {archive_path}")
     with tarfile.open(archive_path, "w:bz2") as tar:
         cached_archive_name = os.path.basename(filenameToLocalPath(filename, minimal_archive_suffix=""))
         tar.add(minimal_archived_files_directory_path, arcname=cached_archive_name)
@@ -464,7 +465,7 @@ def moveToCache(file_name, archive_path, local_path_template=None):
         local_path_template = LOCAL_PATH_TEMPLATE
 
     local_cache_path = filenameToLocalPath(file_name, local_path_template=local_path_template)
-    log.info(f"Moving archive from {archive_path} to {local_cache_path}")
+    #log.info(f"Moving archive from {archive_path} to {local_cache_path}")
     os.makedirs(os.path.dirname(local_cache_path), exist_ok=True)
     shutil.move(archive_path, local_cache_path)
 
@@ -596,6 +597,7 @@ if __name__ == "__main__":
         else:
             files_to_download_set.add(file_name)
 
-    for file_to_download in files_to_download_set:
+    for file_to_download in sorted(list(files_to_download_set)):
+        log.info(f"Downloading {file_to_download}")
         local_path = createMinimalArchive(file_to_download, remote_path_template=remote_path_template, local_path_template=local_path_template)
 
