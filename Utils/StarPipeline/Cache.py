@@ -256,7 +256,7 @@ def getRemoteFilesSet(station_coordinates_json_url=None,
     remote_paths_set = getRemotePathsSet(stations_set, remote_path_template=remote_path_template)
 
     remote_files_set = set()
-    for remote_path in remote_paths_set:
+    for remote_path in tqdm.tqdm(remote_paths_set):
         remote_files_set = remote_files_set | filterRemoteFiles(lsRemote(remote_path))
 
     return remote_files_set
