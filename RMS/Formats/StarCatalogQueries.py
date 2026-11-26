@@ -42,7 +42,7 @@ from scipy.spatial import cKDTree
 from RMS.Astrometry.ApplyAstrometry import raDecToXYPP, xyToRaDecPP
 from RMS.Astrometry.AstrometryNet import astrometryNetSolveLocal
 from RMS.ConfigReader import loadConfigFromDirectory
-from RMS.Formats.FFfile import getMiddleTimeFF
+from RMS.Formats.FFfile import getMiddleTimeFF, read as readFF
 from RMS.Formats.Platepar import Platepar
 from RMS.Formats.StarCatalog import readStarCatalog
 from RMS.Astrometry.Conversions import date2JD, datetime2JD, raDec2AltAz, vector2RaDec
@@ -516,8 +516,6 @@ class Catalog:
 
 
 ### TEST CODE START ###
-
-import csv
 
 
 def writeCSV(filename, column_names, columns):

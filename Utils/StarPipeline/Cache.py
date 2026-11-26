@@ -17,6 +17,8 @@
 from __future__ import print_function, division, absolute_import
 
 import os
+import shutil
+
 import numpy as np
 import requests
 import tempfile
@@ -27,10 +29,13 @@ import tqdm
 import datetime
 import random
 import time
+import tarfile
+import shutil
 
 from pathlib import Path
 from RMS.Logger import LoggingManager, getLogger, checkLoggingHealth
 from Utils.StarPipeline.CacheBuilder import sortFilesByTime
+from RMS.ConfigReader import parse
 
 # Constants
 
@@ -38,12 +43,12 @@ from Utils.StarPipeline.CacheBuilder import sortFilesByTime
 STATION_COORDINATES_JSON_URL = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
 
 # Paths
-REMOTE_PATH_TEMPLATE = "analysis@gmn.uwo.ca:/home/stationID/files/processed"
+REMOTE_PATH_TEMPLATE = "gmn@192.168.217.241:/home/stationID/files/"
 LOCAL_PATH_TEMPLATE = "/archive/cache/date"
 REMOTE_FILE_JSON_PATH = "/archive/cache/remote_files.json"
 
 # Suffixes
-MINIMAL_ARCHIVE_END = "_min.tar.bz2"
+MINIMAL_ARCHIVE_SUFFIX = "minimal.tar.bz2"
 
 log = getLogger("rmslogger")
 
@@ -78,7 +83,10 @@ def buildFilename(station_id, date_field, time_field, sub_time_field, start="", 
     if start != "":
         file_name = f"{start}_{file_name}"
     if end != "":
-        file_name = f"{file_name}_{end}"
+        if end[0] == ".":
+            file_name = f"{file_name}{end}"
+        else:
+            file_name = f"{file_name}_{end}"
 
     return file_name
 
@@ -96,13 +104,16 @@ def stationIDToRemotePath(station_id, remote_path_template):
 
     return remote_path
 
-def filenameToLocalPath(file_name, local_path_template=None):
+def filenameToLocalPath(file_name, local_path_template=None, minimal_archive_suffix=None):
 
 
     local_path_template = local_path_template or LOCAL_PATH_TEMPLATE
 
+    if minimal_archive_suffix is None:
+        minimal_archive_suffix = MINIMAL_ARCHIVE_SUFFIX
+
     start, station_id, date_field, time_field, sub_time_field, end = parseFilename(file_name)
-    file_name = buildFilename(station_id, date_field, time_field, sub_time_field, start=start, end=MINIMAL_ARCHIVE_END)
+    file_name = buildFilename(station_id, date_field, time_field, sub_time_field, start=start, end=minimal_archive_suffix)
 
     local_path = local_path_template.replace("date", date_field)
     local_path = os.path.join(local_path, file_name)
@@ -157,7 +168,7 @@ def getLocalFilesSet(local_path=None):
         local_path = LOCAL_PATH_TEMPLATE
 
     local_path = os.path.dirname(local_path)
-    local_files_set = {f for f in Path(local_path).rglob("*") if f.is_file()}
+    local_files_set = {f for f in Path(local_path).rglob("*.tar.bz2") if f.is_file()}
 
     return local_files_set
 
@@ -248,7 +259,6 @@ def getRemoteFilesSet(station_coordinates_json_url=None,
     for remote_path in tqdm.tqdm(remote_paths_set):
         remote_files_set = remote_files_set | filterRemoteFiles(lsRemote(remote_path))
 
-
     return remote_files_set
 
 def loadRemoteFileJson(remote_file_json_path=None):
@@ -302,7 +312,7 @@ def testCode():
         else:
             print("Good")
 
-def     buildRemoteFileJson(remote_file_json_path=None,
+def buildRemoteFileJson(remote_file_json_path=None,
                         station_coordinates_json_url=None,
                         remote_path_template=None,
                         country_code=None):
@@ -334,48 +344,152 @@ def     buildRemoteFileJson(remote_file_json_path=None,
     return remote_file_set
 
 
+def downloadFilenameTo(file_name, target_directory, remote_path_template=None, max_tries=3):
 
+    remote_path_template = remote_path_template or REMOTE_PATH_TEMPLATE
+    remote_path = filenameToRemotePath(file_name, remote_path_template=remote_path_template)
+    local_path = os.path.join(target_directory, file_name)
 
-
-def createLocalArchive(file_name, local_path_template=None, remote_path_template=None, max_tries=3):
-
-
+    log.info(f"Downloading {file_name} from {remote_path} to {target_directory}")
 
     download_count = 0
 
-    with tempfile.TemporaryDirectory() as t:
-        local_path = filenameToLocalPath(file_name, local_path_template=local_path_template)
-        remote_path = filenameToRemotePath(file_name, remote_path_template)
-        temp_path = os.path.join(t, file_name)
-        while not os.path.exists(local_path) and download_count < max_tries:
-            try:
-                result = subprocess.run(['rsync', '-z', remote_path], capture_output=True, text=True)
-                if "No such file or directory" in result.stderr:
-                    return
-                else:
-                    cmd = [
-                        'rsync',
-                        '--partial',
-                        '--partial-dir=.rsync-partial',
-                    ]
+    while not os.path.exists(local_path) and download_count < max_tries:
+        try:
+            # Check whether the file exists
+            result = subprocess.run(['rsync', '-z', remote_path], capture_output=True, text=True)
+            if "No such file or directory" in result.stderr:
+                return None
 
-                cmd.extend([remote_path, temp_path])
+            elif "connection refused" in result.stderr:
+                time.sleep(600)
 
-                result = subprocess.run(cmd, capture_output=True, text=True)
+            else:
+                cmd = [
+                    'rsync',
+                    '--partial',
+                    '--partial-dir=.rsync-partial',
+                ]
 
-            except:
+            cmd.extend([remote_path, target_directory])
 
-                delay = random.randint(600, 900)
-                resume_time = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=delay)).isoformat()
-                print(f"Waiting {delay/60:.1f} minutes until {resume_time} for {file_name}")
-                time.sleep(delay)
+            # Make the download
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != "0":
+                break
+
+        except:
+
+            delay = random.randint(600, 900)
+            resume_time = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=delay)).isoformat()
+            print(f"Waiting {delay/60:.1f} minutes until {resume_time} for {file_name}")
+            time.sleep(delay)
+            return None
+
+
+    downloaded_path = os.path.join(target_directory, file_name)
+
+
+    return downloaded_path
+
+def extractTo(file_path, target_directory):
 
 
 
+    if file_path is None:
+        return None
+
+    file_name = os.path.basename(file_path)
+    log.info(f"Extracting {file_name} to {target_directory}")
+    with tarfile.open(file_path, 'r:bz2') as tar:
+        try:
+            tar.extractall(path=target_directory, filter="fully_trusted")
+        except:
+            tar.extractall(path=target_directory)
+
+    return target_directory
+def copyToMinimalArchiveDirectory(file_name, source_path, destination_path):
+
+    log.info(f"Copying minimal archive files for {file_name} from {source_path} to {destination_path}")
+
+    config_file_path = os.path.join(source_path, ".config")
+    archive_config = parse(config_file_path)
+    start, stationID, date_field, time_field, sub_time_field, end = parseFilename(file_name)
+
+    file_to_copy_set = set()
+    file_to_copy_set.add(config_file_path)
+    file_to_copy_set.add(archive_config.mask_file)
+    file_to_copy_set.add(archive_config.platepar_name)
+    file_to_copy_set.add(archive_config.platepars_recalibrated_name)
+    file_to_copy_set.add(archive_config.platepar_flux_recalibrated_name)
+    file_to_copy_set.add(buildFilename(stationID, date_field, time_field, sub_time_field, start="CALSTARS", end=".txt"))
+    file_to_copy_set.add(buildFilename(stationID, date_field, time_field, sub_time_field, start="FTPdetectinfo", end=".txt"))
+
+    archive_name = os.path.basename(filenameToLocalPath(file_name, minimal_archive_suffix=""))
+    destination_path = os.path.join(destination_path, archive_name)
+    log.info(f"Destination path is {destination_path}")
+    os.makedirs(destination_path, exist_ok=True)
+
+    for file_to_copy in file_to_copy_set:
+        path_to_copy = os.path.join(source_path, file_to_copy)
+        if os.path.exists(path_to_copy):
+            shutil.copy2(path_to_copy, destination_path)
+        else:
+            log.info(f"{path_to_copy} does not exist")
+
+    return destination_path
+
+def makeMinimalArchive(filename, archive_preparation_directory, minimal_archived_files_directory_path, minimal_archive_suffix=None):
+
+    if minimal_archive_suffix is None:
+        minimal_archive_suffix = MINIMAL_ARCHIVE_SUFFIX
+
+    cached_archive_path = filenameToLocalPath(filename, minimal_archive_suffix=minimal_archive_suffix)
+
+    archive_name = os.path.basename(cached_archive_path)
+    log.info(f"Making {archive_name}")
+    archive_path = os.path.join(archive_preparation_directory, archive_name)
+
+    log.info(f"Making an archive from directory {minimal_archived_files_directory_path} in {archive_path}")
+    with tarfile.open(archive_path, "w:bz2") as tar:
+        cached_archive_name = os.path.basename(filenameToLocalPath(filename, minimal_archive_suffix=""))
+        tar.add(minimal_archived_files_directory_path, arcname=cached_archive_name)
 
 
-    return False
+    return archive_path
 
+def moveToCache(file_name, archive_path, local_path_template=None):
+
+    if local_path_template is None:
+        local_path_template = LOCAL_PATH_TEMPLATE
+
+    local_cache_path = filenameToLocalPath(file_name, local_path_template=local_path_template)
+    log.info(f"Moving archive from {archive_path} to {local_cache_path}")
+    os.makedirs(os.path.dirname(local_cache_path), exist_ok=True)
+    shutil.move(archive_path, local_cache_path)
+
+    return local_cache_path
+
+def createMinimalArchive(file_name, local_path_template=None, remote_path_template=None, minimal_archive_suffix=None):
+
+    local_path_template = local_path_template or LOCAL_PATH_TEMPLATE
+    remote_path_template = remote_path_template or REMOTE_PATH_TEMPLATE
+    minimal_archive_suffix = minimal_archive_suffix or MINIMAL_ARCHIVE_SUFFIX
+    cached_path = None
+
+    with tempfile.TemporaryDirectory() as temp_download_directory:
+        temp_downloaded_path = downloadFilenameTo(file_name, temp_download_directory, remote_path_template=remote_path_template)
+        if temp_downloaded_path is None:
+            return None
+        with tempfile.TemporaryDirectory() as temp_extract_directory:
+            temp_extracted_path = extractTo(temp_downloaded_path, temp_extract_directory)
+            with tempfile.TemporaryDirectory() as minimal_archive_files_directory:
+                minimal_archived_files_directory_path = copyToMinimalArchiveDirectory(file_name, temp_extracted_path, minimal_archive_files_directory)
+                with tempfile.TemporaryDirectory() as archive_preparation_directory:
+                    archive_path = makeMinimalArchive(file_name, archive_preparation_directory, minimal_archived_files_directory_path, minimal_archive_suffix)
+                    cached_path = moveToCache(file_name, archive_path, local_path_template=local_path_template)
+
+    return cached_path
 
 if __name__ == "__main__":
 
@@ -397,7 +511,7 @@ if __name__ == "__main__":
     )
 
     arg_parser.add_argument(
-        '--minimal-archive-end',
+        '--minimal-archive-suffix',
         default=None,
         help="Archive filename suffix"
     )
@@ -431,30 +545,15 @@ if __name__ == "__main__":
 
     cml_args = arg_parser.parse_args()
 
-    remote_path_template = (
-            cml_args.remote_path_template
-            or REMOTE_PATH_TEMPLATE
-    )
+    remote_path_template = cml_args.remote_path_template or REMOTE_PATH_TEMPLATE
 
-    local_path_template = (
-            cml_args.local_path_template
-            or LOCAL_PATH_TEMPLATE
-    )
+    local_path_template = cml_args.local_path_template or LOCAL_PATH_TEMPLATE
 
-    minimal_archive_end = (
-            cml_args.minimal_archive_end
-            or MINIMAL_ARCHIVE_END
-    )
+    minimal_archive_suffix = cml_args.minimal_archive_suffix or MINIMAL_ARCHIVE_SUFFIX
 
-    station_coordinates_json_url = (
-            cml_args.station_coordinates_json_url
-            or STATION_COORDINATES_JSON_URL
-    )
+    station_coordinates_json_url = cml_args.station_coordinates_json_url or STATION_COORDINATES_JSON_URL
 
-    remote_file_json_path = (
-            cml_args.remote_file_json_path
-            or REMOTE_FILE_JSON_PATH
-    )
+    remote_file_json_path = cml_args.remote_file_json_path or REMOTE_FILE_JSON_PATH
 
     country_code = cml_args.country_code or ""
 
@@ -485,9 +584,18 @@ if __name__ == "__main__":
                                                   remote_path_template=remote_path_template,
                                                   country_code=country_code)
 
+
+
     remote_file_list = sortFilesByTime(remote_file_set)
+    files_to_download_set = set()
 
+    for file_name in remote_file_list:
+        local_path = filenameToLocalPath(file_name, local_path_template=local_path_template)
+        if os.path.exists(local_path):
+            log.info(f"{file_name} already exists, skip download.")
+        else:
+            files_to_download_set.add(file_name)
 
-    for remote_file in remote_file_list:
-        local_path = createLocalArchive(remote_file, remote_path_template=remote_path_template)
+    for file_to_download in files_to_download_set:
+        local_path = createMinimalArchive(file_to_download, remote_path_template=remote_path_template, local_path_template=local_path_template)
 
