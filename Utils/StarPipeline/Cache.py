@@ -568,7 +568,7 @@ if __name__ == "__main__":
         scan_remote_file_store = True
 
     if not os.path.exists(remote_file_json_path):
-        log.info("No local copy of files in remote file store, scanning.")
+        log.info(f"No local copy of files in {remote_file_json_path}, scanning.")
         scan_remote_file_store = True
 
 
