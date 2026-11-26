@@ -597,7 +597,7 @@ if __name__ == "__main__":
         else:
             files_to_download_set.add(file_name)
 
-    for file_to_download in sorted(list(files_to_download_set)):
+    for file_to_download in sortFilesByTime(list(files_to_download_set)):
         log.info(f"Downloading {file_to_download}")
         local_path = createMinimalArchive(file_to_download, remote_path_template=remote_path_template, local_path_template=local_path_template)
 
