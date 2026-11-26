@@ -467,7 +467,7 @@ def moveToCache(file_name, archive_path, local_path_template=None):
     #log.info(f"Moving archive from {archive_path} to {local_cache_path}")
     local_cache_path_dir = os.path.dirname(local_cache_path)
     os.makedirs(local_cache_path_dir, exist_ok=True)
-    os.chmod(local_cache_path_dir, 0o666)
+    os.chmod(local_cache_path_dir, 0775)
 
     shutil.move(archive_path, local_cache_path)
     os.chmod(local_cache_path, 0o666)
