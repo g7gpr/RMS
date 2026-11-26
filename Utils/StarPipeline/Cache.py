@@ -456,7 +456,6 @@ def makeMinimalArchive(filename, archive_preparation_directory, minimal_archived
         cached_archive_name = os.path.basename(filenameToLocalPath(filename, minimal_archive_suffix=""))
         tar.add(minimal_archived_files_directory_path, arcname=cached_archive_name)
 
-
     return archive_path
 
 def moveToCache(file_name, archive_path, local_path_template=None):
@@ -466,8 +465,12 @@ def moveToCache(file_name, archive_path, local_path_template=None):
 
     local_cache_path = filenameToLocalPath(file_name, local_path_template=local_path_template)
     #log.info(f"Moving archive from {archive_path} to {local_cache_path}")
-    os.makedirs(os.path.dirname(local_cache_path), exist_ok=True)
+    local_cache_path_dir = os.path.dirname(local_cache_path)
+    os.makedirs(local_cache_path_dir, exist_ok=True)
+    os.chmod(local_cache_path_dir, 0o666)
+
     shutil.move(archive_path, local_cache_path)
+    os.chmod(local_cache_path, 0o666)
 
     return local_cache_path
 
