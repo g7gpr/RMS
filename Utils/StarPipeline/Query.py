@@ -148,8 +148,8 @@ def loadObservationFile(filename):
     observations["star_count"] = data[:, 8]
     observations['ra_cat']  = cat_ra
     observations['dec_cat'] = cat_dec
-    observations["xi"] = data[:, 9] / 3600
-    observations["eta"] = data[:, 10] / 3600
+    observations["xi"] = data[:, 9]
+    observations["eta"] = data[:, 10]
     ra_obs, dec_obs = decodeOffsetGnomonic(cat_ra, cat_dec, observations["xi"], observations["eta"])
     observations["ra_obs"] = ra_obs
     observations["dec_obs"] = dec_obs
