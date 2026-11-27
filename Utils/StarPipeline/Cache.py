@@ -909,7 +909,16 @@ if __name__ == "__main__":
         else:
             files_to_download_set.add(file_name)
 
+    total_files_to_download = len(files_to_download_set)
+    downloaded_files = 0
+    download_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
+    downloaded_count = 0
+    forecast_completion_time = datetime.datetime.now(tz=datetime.timezone.utc) + (datetime.timedelta(seconds=total_files_to_download * 300))
     for file_to_download in sortFilesByTime(list(files_to_download_set)):
-        log.info(f"Downloading {file_to_download}")
+        log.info(f"Downloading {file_to_download} forecast completion at {forecast_completion_time:%H:%M:%S}")
         local_path = createMinimalArchive(file_to_download, remote_path_template=remote_path_template, local_path_template=local_path_template)
-
+        downloaded_count +=1
+        time_now = datetime.datetime.now(tz=datetime.timezone.utc)
+        elapsed_time = time_now - download_start_time
+        time_per_download = elapsed_time.total_seconds() / total_files_to_download
+        forecast_completion_time = datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(seconds=time_per_download) * (total_files_to_download - downloaded_count)
