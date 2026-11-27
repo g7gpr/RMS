@@ -36,17 +36,8 @@ import ephem
 import tqdm
 
 from RMS.Astrometry.Conversions import datetime2JD
-from RMS.Formats.FFfile import getMiddleTimeFF
-from RMS.Misc import mkdirP
 from pathlib import Path
-from Utils.StarPipeline.CacheBuilder import sortFilesByTime
-from RMS.Formats.Platepar import Platepar
-from RMS.Formats.StarCatalogQueries import Catalog, renderStarsGaussian
-from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP, raDec2AltAz
-from Utils.Flux import detectMoon
-
-from Utils.StarPipeline.CacheBuilder import ARCHIVE, sortFilesByTime
-from Utils.StarPipeline.LightCurves import decodeOffsetGnomonic
+from Utils.StarPipeline.LightCurves import decodeOffsetGnomonic, LIGHT_CURVE_TEMPLATE_PATH
 import matplotlib.pyplot as plt
 
 
@@ -56,16 +47,13 @@ import uuid
 # Local directories
 ARCHIVE = "/archive"
 CALSTARS_DATA_DIR = "CALSTARS"
-QUEUES = "/archive/despatcher/queues"
-REGISTRATIONS = "/archive/despatcher/registrations"
-PROCESSED_SESSIONS_FILE = "/archive/processed_sessions.txt"
-LIGHT_CURVES = Path(Path(ARCHIVE) / "light_curves")
+
 
 from pathlib import Path
 
 def getStars():
 
-    root = Path(LIGHT_CURVES)
+    root = Path(LIGHT_CURVE_TEMPLATE_PATH)
 
     return sorted(
         d.name
@@ -75,13 +63,13 @@ def getStars():
 
 def getSessionCount(star_name):
 
-    star_dir = Path(LIGHT_CURVES) / star_name
+    star_dir = Path(LIGHT_CURVE_TEMPLATE_PATH) / star_name
 
     return len(list(star_dir.rglob("*.npy")))
 
 def getStarFiles(star_name):
 
-    star_dir = Path(LIGHT_CURVES) / star_name
+    star_dir = Path(LIGHT_CURVE_TEMPLATE_PATH) / star_name
 
     if not star_dir.exists():
         return []
@@ -179,8 +167,8 @@ def loadObservationFile(filename):
     observations["star_count"] = data[:, 8]
     observations['ra_cat']  = cat_ra
     observations['dec_cat'] = cat_dec
-    observations["xi"] = data[:, 9]  / 10000
-    observations["eta"] = data[:, 10] / 10000
+    observations["xi"] = data[:, 9]
+    observations["eta"] = data[:, 10]
     ra_obs, dec_obs = decodeOffsetGnomonic(cat_ra, cat_dec, observations["xi"], observations["eta"])
     observations["ra_obs"] = ra_obs
     observations["dec_obs"] = dec_obs
@@ -349,8 +337,8 @@ def plotAstrometryXiEta(plot_data):
 
     plt.scatter(0,0, color="red",marker="+",s=80, linewidths=1, alpha=0.5,label="Catalog")
 
-    plt.xlabel("Xi (deg)")
-    plt.ylabel("Eta (deg)")
+    plt.xlabel("Xi (arcseconds)")
+    plt.ylabel("Eta (arseconds)")
 
 
     plt.grid(True)
@@ -378,7 +366,7 @@ def plotAstrometryXiEta(plot_data):
 
     filename = f"{safe_name}_astrometry_xi_eta.png"
 
-    filepath = "/archive/plots"
+    filepath = "/archive/lightcurves/plots"
 
     os.makedirs(filepath, exist_ok=True)
 

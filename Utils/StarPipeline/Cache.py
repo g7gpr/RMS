@@ -893,7 +893,7 @@ if __name__ == "__main__":
 
     for file_to_download in sortFilesByTime(list(files_to_download_set)):
         files_to_download = total_files_to_download - downloaded_count
-        log.info(f"Downloading {file_to_download} archives forecast completion at {forecast_completion_time:%Y-%m-%d %H:%M:%S} {files_to_download} archives remaining at {time_per_download} seconds per archive.")
+        log.info(f"Downloading {file_to_download} archives forecast completion at {forecast_completion_time:%Y-%m-%d %H:%M:%S} {files_to_download} archives remaining at {time_per_download:.0f} seconds per archive.")
         local_path = createMinimalArchive(file_to_download, remote_path_template=remote_path_template, local_path_template=local_path_template)
         downloaded_count +=1
         time_now = datetime.datetime.now(tz=datetime.timezone.utc)
