@@ -35,8 +35,8 @@ import uuid
 
 QUEUES = "/srv/despatcher/lightcurve/queues/"
 REGISTRATIONS = "/srv/despatcher/lightcurve/registrations/"
-PROCESSED_SESSIONS_FILE = "/srv/lightcurve/statusfiles/processed_sessions.txt"
-
+PROCESSED_SESSIONS_FILE = "/srv/despatcher/lightcurve/statusfiles/processed_sessions.txt"
+LIGHT_CURVE_TEMPLATE_PATH = "/srv/lightcurves/data/stars/star"
 
 def showQueueStatus():
     """Display the current status of all worker queues.

@@ -650,6 +650,8 @@ def copyToMinimalArchiveDirectory(file_name,
 
     file_to_copy_set = set()
     file_to_copy_set.add(config_file_path)
+
+
     if hasattr(archive_config, "mask_file"):
         file_to_copy_set.add(archive_config.mask_file)
 

@@ -1,5 +1,5 @@
 # RPi Meteor Station
-# Copyright (C) 2026 David Rollinson Kristen Felker
+# Copyright (C) 2026 David Rollinson
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,6 +19,8 @@ from __future__ import print_function, division, absolute_import
 import os
 import tempfile
 import tarfile
+from typing import Any
+
 import numpy as np
 import json
 import RMS.ConfigReader as cr
@@ -26,10 +28,10 @@ import datetime
 import time
 import cv2
 import ephem
+import tqdm
 
 from RMS.Astrometry.Conversions import datetime2JD, jd2Date
 from RMS.Formats.FFfile import getMiddleTimeFF
-from RMS.Math import angularSeparationDeg
 from pathlib import Path
 from RMS.Formats.CALSTARS import readCALSTARS
 from RMS.Formats.Platepar import Platepar
@@ -37,12 +39,38 @@ from RMS.Formats.StarCatalogQueries import Catalog, renderStarsGaussian
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP
 from Utils.Flux import detectMoon
 from Utils.StarPipeline.Despatcher import getWorkerID, registerWorker, waitForQueue, getJob , getArchiveList, jobCompleted
-from Utils.StarPipeline.Cache import filenameToLocalPath, LOCAL_PATH_TEMPLATE
+from Utils.StarPipeline.Cache import filenameToLocalPath
 
+# CONSTANTS
+
+LIGHT_CURVES_PATH = "/srv/lightcurves/stars/byobservationsession"
+from Utils.StarPipeline.Cache import LOCAL_PATH_TEMPLATE, MINIMAL_ARCHIVE_SUFFIX
 
 
 
 def encodeOffSetTangential(ra1, dec1, ra2, dec2):
+    """Encode a small angular offset using a tangential approximation.
+
+    Arguments:
+        ra1: [float]
+            Observation right ascension in degrees.
+
+        dec1: [float]
+            Observation declination in degrees.
+
+        ra2: [float]
+            Reference right ascension in degrees.
+
+        dec2: [float]
+            Reference declination in degrees.
+
+    Return:
+        _x: [float]
+            Tangential right ascension offset in arcseconds.
+
+        _y: [float]
+            Tangential declination offset in arcseconds.
+    """
 
     # _ denotes delta
     _ra = ((ra1 - ra2 + 180) % 360) - 180
@@ -52,7 +80,28 @@ def encodeOffSetTangential(ra1, dec1, ra2, dec2):
     return _x / 3600, _y / 3600
 
 def decodeOffsetTangential(ra1, dec1, _x, _y):
+    """Reconstruct celestial coordinates from tangential offsets.
 
+    Arguments:
+        ra1: [float]
+            Reference right ascension in degrees.
+
+        dec1: [float]
+            Reference declination in degrees.
+
+        _x: [float]
+            Tangential right ascension offset in arcseconds.
+
+        _y: [float]
+            Tangential declination offset in arcseconds.
+
+    Return:
+        ra2: [float]
+            Reconstructed right ascension in degrees.
+
+        dec2: [float]
+            Reconstructed declination in degrees.
+    """
 
 
     dec2 = dec1 + _y * 3600
@@ -63,7 +112,28 @@ def decodeOffsetTangential(ra1, dec1, _x, _y):
 
 
 def encodeOffsetGnomonic(ra1, dec1, ra2, dec2):
+    """Encode a celestial offset using a gnomonic projection.
 
+    Arguments:
+        ra1: [float]
+            Observation right ascension in degrees.
+
+        dec1: [float]
+            Observation declination in degrees.
+
+        ra2: [float]
+            Reference right ascension in degrees.
+
+        dec2: [float]
+            Reference declination in degrees.
+
+    Return:
+        xi: [float]
+            Gnomonic projection offset in arcseconds.
+
+        eta: [float]
+            Gnomonic projection offset in arcseconds.
+    """
     ra1 = np.radians(ra1)
     dec1 = np.radians(dec1)
 
@@ -83,7 +153,28 @@ def encodeOffsetGnomonic(ra1, dec1, ra2, dec2):
 
 
 def decodeOffsetGnomonic(ra2, dec2, xi, eta):
+    """Reconstruct celestial coordinates from gnomonic offsets.
 
+    Arguments:
+        ra2: [float]
+            Reference right ascension in degrees.
+
+        dec2: [float]
+            Reference declination in degrees.
+
+        xi: [float]
+            Gnomonic projection offset in arcseconds.
+
+        eta: [float]
+            Gnomonic projection offset in arcseconds.
+
+    Return:
+        ra1: [float]
+            Reconstructed right ascension in degrees.
+
+        dec1: [float]
+            Reconstructed declination in degrees.
+    """
     ra2 = np.radians(ra2)
     dec2 = np.radians(dec2)
 
@@ -101,8 +192,36 @@ def decodeOffsetGnomonic(ra2, dec2, xi, eta):
 
 
 
-def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
+def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=10):
+    """Filter FITS files based on Solar altitude.
 
+    Arguments:
+        fits_file_list: [list]
+            List of FITS filenames.
+
+        c: [Config]
+            RMS station configuration.
+
+    Keyword arguments:
+        sun_angle: [float]
+            Solar altitude threshold in degrees.
+
+        chunk_size: [int]
+            Number of frames between Solar altitude calculations.
+
+    Return:
+        astronomical_night_list: [list]
+            FITS files recorded with the Sun below the threshold.
+
+        angle_list: [ndarray]
+            Solar altitude in degrees for each FITS file.
+
+        setting_count: [int]
+            Number of frames for which the Sun was setting.
+
+        rising_count: [int]
+            Number of frames for which the Sun was rising.
+    """
     if not len(fits_file_list):
         return [], np.array([]), 0, 0
 
@@ -124,7 +243,7 @@ def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
             sun.compute(o)
             sun_alt_deg = np.degrees(float(sun.alt))
 
-            last_sun_alt = sun_alt_deg
+            last_sun_alt_deg = sun_alt_deg
         angle_list.append(sun_alt_deg)
 
         if sun_alt_deg < sun_angle:
@@ -141,12 +260,17 @@ def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
     return astronomical_night_list, np.array(angle_list), setting_count, rising_count
 
 
+def getFitsFilesToProcess(calstar, obs_con, pp):
 
 
-def calstarToLightCurves(sys_con, cat, obs_con, pp, calstar, platepars_all_recalibrated_path, video_path=None, debug_mode=False):
 
-    light_curves = {}
-    produce_debug_timelapse = False
+    fits_files_from_calstar_list = [calstar_entry[0] for calstar_entry in calstar]
+    astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(
+        fits_files_from_calstar_list, obs_con, sun_angle=-18)
+    fits_files_to_process_list = detectMoon(astronomical_night_list, pp, obs_con)
+    return fits_files_to_process_list
+
+def getRecalibratedPlatepars(platepars_all_recalibrated_path):
 
 
     # Test to see if recal file is available
@@ -154,59 +278,281 @@ def calstarToLightCurves(sys_con, cat, obs_con, pp, calstar, platepars_all_recal
         try:
             with open(platepars_all_recalibrated_path, 'r') as fh:
                 pp_recal_json = json.load(fh)
-                #log.info(f"Read {os.path.basename(local_recal_path)}")
+                # log.info(f"Read {os.path.basename(local_recal_path)}")
         except:
             pp_recal_json = None
             print(f"{platepars_all_recalibrated_path} was corrupted")
     else:
         print(f"No file {os.path.basename(platepars_all_recalibrated_path)}`")
         pp_recal_json = None
+    return pp_recal_json
+
+def filterCatalogByMagnitude(limiting_mag, ra_array, dec_array, mag_array, x_array, y_array, names_array):
+    """Filter catalog stars by limiting magnitude.
+
+    Remove catalog stars fainter than the specified limiting
+    magnitude while preserving alignment between all catalog arrays.
+
+    Arguments:
+        limiting_mag: [float]
+            Faintest catalog magnitude to include.
+
+        ra_array: [ndarray]
+            Catalog right ascensions in degrees.
+
+        dec_array: [ndarray]
+            Catalog declinations in degrees.
+
+        mag_array: [ndarray]
+            Catalog magnitudes.
+
+        x_array: [ndarray]
+            Catalog X image coordinates.
+
+        y_array: [ndarray]
+            Catalog Y image coordinates.
+
+        names_array: [ndarray]
+            Catalog star identifiers.
+
+    Return:
+        ra_array: [ndarray]
+            Filtered catalog right ascensions.
+
+        dec_array: [ndarray]
+            Filtered catalog declinations.
+
+        mag_array: [ndarray]
+            Filtered catalog magnitudes.
+
+        x_array: [ndarray]
+            Filtered catalog X coordinates.
+
+        y_array: [ndarray]
+            Filtered catalog Y coordinates.
+
+        names_array: [ndarray]
+            Filtered catalog star identifiers.
+    """
+
+
+    include = mag_array <= limiting_mag
+    x_array, y_array = x_array[include], y_array[include]
+    ra_array, dec_array = ra_array[include], dec_array[include]
+    mag_array = mag_array[include]
+    names_array = names_array[include]
+
+    return ra_array, dec_array, mag_array, x_array, y_array, names_array
+
+def alignPlatePar(arr_obs_mag, dec_array, jd, mag_array, pp, ra_array, x, y):
+    """Align a platepar using observed and catalog stars.
+
+    Build star lists in image and celestial coordinates and
+    attempt to refine the platepar pointing solution.
+
+    Arguments:
+        arr_obs_mag: [ndarray]
+            Observed stellar magnitudes.
+
+        dec_array: [ndarray]
+            Catalog declinations in degrees.
+
+        jd: [float]
+            Observation Julian date.
+
+        mag_array: [ndarray]
+            Catalog magnitudes.
+
+        pp: [Platepar]
+            Platepar object to align.
+
+        ra_array: [ndarray]
+            Catalog right ascensions in degrees.
+
+        x: [ndarray]
+            Observed star X coordinates.
+
+        y: [ndarray]
+            Observed star Y coordinates.
+
+    Return:
+        res_success: [bool]
+            True if the platepar alignment was successful.
+    """
+
+    # Image stars in image coordinates
+    img_stars = np.column_stack([x, y, arr_obs_mag])
+
+    # Catalog stars in sky coordinates
+    catalog_stars = np.column_stack([ra_array, dec_array, mag_array])
+
+    # Align pointing
+    res_success, res_fun, inlier_fraction, inlier_rmsd = pp.fitPointingNN(jd, img_stars, catalog_stars)
+    return res_success
+
+def populateLightCurves(jd, star, light_curves, arr_obs_ra, arr_obs_dec, arr_obs_mag, ra_array, dec_array, mag_array,
+                        names_array, x_array, y_array, observation_index, star_count):
+    """Associate an observation with a catalog star and store it.
+
+    Find catalog candidates near an observed star, select the
+    brightest candidate within the matching radius, calculate
+    astrometric offsets, and store the resulting light-curve
+    measurement.
+
+    Arguments:
+        jd: [float]
+            Observation Julian date.
+
+        star: [tuple]
+            CALSTARS observation entry.
+
+        light_curves: [dict]
+            Light curve dictionary to update.
+
+        arr_obs_ra: [ndarray]
+            Observed right ascensions in degrees.
+
+        arr_obs_dec: [ndarray]
+            Observed declinations in degrees.
+
+        arr_obs_mag: [ndarray]
+            Observed magnitudes.
+
+        ra_array: [ndarray]
+            Catalog right ascensions in degrees.
+
+        dec_array: [ndarray]
+            Catalog declinations in degrees.
+
+        mag_array: [ndarray]
+            Catalog magnitudes.
+
+        names_array: [ndarray]
+            Catalog star identifiers.
+
+        x_array: [ndarray]
+            Catalog X image coordinates.
+
+        y_array: [ndarray]
+            Catalog Y image coordinates.
+
+        observation_index: [int]
+            Index of the observed star within the frame.
+
+        star_count: [int]
+            Number of stars detected in the frame.
+
+    Return:
+        None
+
+    Notes:
+        Catalog stars are matched to observations using a
+        two-pixel search radius. If multiple catalog stars are
+        found within this radius, the brightest candidate is
+        selected.
+    """
+
+    if len(star) == 8:
+        obs_x, obs_y = star[1], star[0]
+        ra_obs, dec_obs, mag_obs = arr_obs_ra[observation_index], arr_obs_dec[observation_index], arr_obs_mag[
+            observation_index]
+        img_dist = (x_array - obs_x) ** 2 + (y_array - obs_y) ** 2
+
+        # Find the stars within 2 pixels
+        candidates = np.where(img_dist <= 2 ** 2)[0]
+
+        if len(candidates):
+
+            # Find the brightest star within the limit
+            brightest_idx = candidates[np.argmin(mag_array[candidates])]
+
+            name = names_array[brightest_idx]
+            ra_cat, dec_cat = ra_array[brightest_idx], dec_array[brightest_idx]
+            xi, eta = encodeOffsetGnomonic(ra_obs, dec_obs, ra_cat, dec_cat)
+
+            if name not in light_curves:
+                light_curves[name] = {}
+
+            light_curves[name][jd] = {}
+            light_curves[name][jd]['obs'] = mag_obs
+            light_curves[name][jd]['cat'] = mag_array[brightest_idx]
+            light_curves[name][jd]['ra_cat'] = ra_cat
+            light_curves[name][jd]['dec_cat'] = dec_cat
+            light_curves[name][jd]['level'] = star[2]
+            light_curves[name][jd]['amplitude'] = star[3]
+            light_curves[name][jd]['fwhm'] = star[4]
+            light_curves[name][jd]['background'] = star[5]
+            light_curves[name][jd]['snr'] = star[6]
+            light_curves[name][jd]['saturated_count'] = star[7]
+            light_curves[name][jd]['star_count'] = star_count
+            light_curves[name][jd]['xi'] = xi
+            light_curves[name][jd]['eta'] = eta
+
+def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_path, min_star_count=80):
+    """Convert CALSTARS observations into stellar light curves.
+
+    Load recalibrated platepars, reject observations affected by
+    daylight or moonlight, match observed stars against a catalog,
+    and generate per-star photometric measurements.
+
+    Arguments:
+        cat: [Catalog]
+            Stellar catalog.
+
+        obs_con: [Config]
+            Observation configuration.
+
+        pp: [Platepar]
+            Initial platepar.
+
+        calstar: [list]
+            CALSTARS observations.
+
+        platepars_all_recalibrated_path: [str]
+            Path to the recalibrated platepar JSON file.
+
+    Keyword arguments:
+        min_star_count: Optional, default: 80. Minimum number of stars for a frame to be accepted
+
+    Return:
+        light_curves: [dict]
+            Light curve measurements indexed by star name and
+            Julian date.
+
+        None:
+            Returned if the observation session cannot be
+            recalibrated.
+    """
+
+    light_curves = {}
+
+    pp_recal_json = getRecalibratedPlatepars(platepars_all_recalibrated_path)
 
     # If not then reject this observation session
     if pp_recal_json is None:
         print("No recalibration file found, discarding session")
         return
 
-    if video_path is not None:
-        produce_debug_timelapse = True
-        video = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*"mp4v"),
-                                30, (pp.X_res * 2, pp.Y_res), isColor=False)
+    fits_files_to_process_list = getFitsFilesToProcess(calstar, obs_con, pp)
 
-    print("Building fits file list")
-    fits_files_from_calstar_list = [calstar_entry[0] for calstar_entry in calstar]
-    print(f"Filter {len(fits_files_from_calstar_list)} fits files for astronomical night list")
-    astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(fits_files_from_calstar_list, obs_con, sun_angle=-18)
-    print(f"Filter {len(astronomical_night_list)} fits files to find files without the moon")
-    fits_files_to_process_list = detectMoon(astronomical_night_list, pp, obs_con)
-    fits_files_to_process = len(fits_files_to_process_list)
-    print(f"Starting to process {fits_files_to_process} fits files - astronomical night and no moon")
-
-    counter = 0
     recalibrated_platepar_loaded = False
-    print("Starting to iterate through fits_files")
+
+    # Iterate over the fits files
     for fits_file, star_list in calstar:
-        counter += 1
-        if counter > 10 and debug_mode:
-            break
+
         star_count = len(star_list)
-        if star_count < 80:
+        if star_count < min_star_count:
             continue
 
         if fits_file not in fits_files_to_process_list:
             continue
 
-        # We could improve this by picking the nearest platepar
+
         if pp_recal_json is not None:
             if fits_file in pp_recal_json:
-                if recalibrated_platepar_loaded:
-                    pass
-                    #print(f"Loaded recalibrated platepar for : {fits_file} {counter}/{fits_files_to_process}")
-                else:
-                    print(f"Loaded first recalibrated platepar for : {fits_file}")
 
                 recalibrated_platepar_loaded = True
                 pp.loadFromDict(pp_recal_json[fits_file])
-
 
         # Throw away observations until we have our first recalibrated platepar
         if not recalibrated_platepar_loaded:
@@ -214,90 +560,57 @@ def calstarToLightCurves(sys_con, cat, obs_con, pp, calstar, platepars_all_recal
 
         jd = datetime2JD(getMiddleTimeFF(fits_file, obs_con.fps, dt_obj=True))
 
-
+        # Get the stars in the platepar
         p, ra_array, dec_array, x_array, y_array, mag_array, names_array = cat.queryPlatepar(pp, jd, n_brightest=5*len(star_list))
 
+        # Get individual variables from the star list extracted from the calstar file.
         y, x, level, amplitude, fwhm, background, snr, saturated_count = zip(*star_list)
+
+        # Create a list of julian dates the same shape as the other parameters
         jd_list = [jd] * len(star_list)
         _arr_jd, arr_obs_ra, arr_obs_dec, arr_obs_mag = xyToRaDecPP(jd_list, list(x), list(y), list(level), pp,
                                                                     jd_time=True, measurement=True,
                                                                     precompute_pointing_corr=True,
                                                                     extinction_correction=True)
 
-        img_stars = np.column_stack([x, y, arr_obs_mag])
-        catalog_stars = np.column_stack([ra_array, dec_array, mag_array])
-        res_success, res_fun, inlier_fraction, inlier_rmsd = pp.fitPointingNN(jd, img_stars, catalog_stars)
-        if not res_success:
+        # If we could get a successful alignment, then discard only this frame
+        if not alignPlatePar(arr_obs_mag, dec_array, jd, mag_array, pp, ra_array, x, y):
             continue
 
-        # Filter catalog return so we do not try to match against faint stars
-
+        # Get a magnitude slightly fainter than the faintest observation
         limiting_mag = np.max(arr_obs_mag) + 0.5
-        good = mag_array <= limiting_mag
-        x_array, y_array = x_array[good], y_array[good]
-        ra_array, dec_array = ra_array[good], dec_array[good]
-        mag_array = mag_array[good]
-        names_array = names_array[good]
 
-        if produce_debug_timelapse:
-            query_img, agc_level = renderStarsGaussian(x_array, y_array, mag_array, (pp.Y_res, pp.X_res))
-            calstar_img, agc_level = renderStarsGaussian(list(x), list(y), arr_obs_mag, (pp.Y_res, pp.X_res))
-            combined_img = np.hstack((query_img, calstar_img))
-            video.write(combined_img)
+        ra_array, dec_array, mag_array, x_array, y_array, names_array = filterCatalogByMagnitude(limiting_mag,
+                                                                                                 ra_array, dec_array, mag_array,
+                                                                                                 x_array, y_array, names_array)
 
-        star_count = len(star_list)
         for observation_index, star in enumerate(star_list):
-
-            if len(star) == 8:
-                obs_x, obs_y = star[1], star[0]
-                ra_obs, dec_obs, mag_obs = arr_obs_ra[observation_index], arr_obs_dec[observation_index], arr_obs_mag[observation_index]
-                img_dist = (x_array - obs_x) ** 2 + (y_array - obs_y) ** 2
-
-                candidates = np.where(img_dist <= 2 ** 2)[0]
-
-                if len(candidates):
-
-                    brightest_idx = candidates[
-                        np.argmin(mag_array[candidates])
-                    ]
-
-                    nearest_idx = brightest_idx
-                    name = names_array[nearest_idx]
-                    ra_cat, dec_cat = ra_array[nearest_idx], dec_array[nearest_idx]
-                    xi, eta = encodeOffsetGnomonic(ra_obs, dec_obs, ra_cat, dec_cat)
-                    if False:
-                        xi_test, eta_test = int(xi * 10000) / 10000, int(eta * 10000) / 10000
-                        ra_decoded, dec_decoded = decodeOffsetGnomonic(ra_cat, dec_cat, xi_test, eta_test)
-                        error = angularSeparationDeg(ra_decoded, dec_decoded, ra_obs, dec_obs)
-                        print(f"Small angle encoding error {error} degrees")
-
-                    if name not in light_curves:
-                        light_curves[name] = {}
-
-
-                    light_curves[name][jd] = {}
-                    light_curves[name][jd]['obs'] = mag_obs
-                    light_curves[name][jd]['cat'] = mag_array[nearest_idx]
-                    light_curves[name][jd]['ra_cat'] = ra_cat
-                    light_curves[name][jd]['dec_cat'] = dec_cat
-                    light_curves[name][jd]['level'] = star[2]
-                    light_curves[name][jd]['amplitude'] = star[3]
-                    light_curves[name][jd]['fwhm'] = star[4]
-                    light_curves[name][jd]['background'] = star[5]
-                    light_curves[name][jd]['snr'] = star[6]
-                    light_curves[name][jd]['saturated_count'] = star[7]
-                    light_curves[name][jd]['star_count'] = star_count
-                    light_curves[name][jd]['xi'] = xi
-                    light_curves[name][jd]['eta'] = eta
-
-
-    if produce_debug_timelapse:
-        video.release()
+            populateLightCurves(jd, star, light_curves, arr_obs_ra, arr_obs_dec, arr_obs_mag, ra_array, dec_array, mag_array,
+                                names_array, x_array, y_array, observation_index, star_count)
 
     return light_curves
 
-def process(sys_con, path_to_job, cat):
 
+
+def process(sys_con, path_to_job, cat, cache_path):
+    """Process a cached observation archive.
+
+    Extract a minimal archive, load calibration products, generate
+    light curves, and save per-star observation files.
+
+    Arguments:
+        sys_con: [Config]
+            Processing system configuration.
+
+        path_to_job: [str]
+            Path to the cached observation archive.
+
+        cat: [Catalog]
+            Stellar catalog.
+
+    Return:
+        None
+    """
 
     print(f"Processing {path_to_job}")
 
@@ -336,7 +649,7 @@ def process(sys_con, path_to_job, cat):
             if len(calstar) == 2:
 
                 print(f"Starting light curve work")
-                light_curves = calstarToLightCurves(sys_con, cat, obs_con, pp, calstar[0], platepars_all_recalibrated_path, video_path=None)
+                light_curves = calstarToLightCurves(cat, obs_con, pp, calstar[0], platepars_all_recalibrated_path, video_path=None)
                 if light_curves is None:
                     return
 
@@ -347,6 +660,13 @@ def process(sys_con, path_to_job, cat):
                 for star_name, observations in light_curves.items():
 
                     observation_data = {}
+
+                    if not observations:
+                        continue
+
+                    value = next(iter(observations.values()))
+                    cat_ra, cat_dec = value['ra_cat'], value['dec_cat']
+                    cat_mag = value['cat']
 
                     for jd_str, data in observations.items():
 
@@ -376,15 +696,17 @@ def process(sys_con, path_to_job, cat):
                                                             data['eta'] * 10000,
                                                             ])
 
+
+
                     for session, records in observation_data.items():
-                        cat_ra, cat_dec = data['ra_cat'], data['dec_cat']
-                        dirname = Path("/archive/light_curves/") / star_name / obs_con.stationID
+
+                        dirname = Path(cache_path) / star_name / obs_con.stationID
                         dirname.mkdir(parents=True, exist_ok=True)
 
-                        filename = dirname / f"{session}_{int(data['cat'] * 1e6)}_{int(cat_ra * 1e6)}_{int(cat_dec* 1e6)}_{int(round(pp.F_scale * 1000))}.npy"
+                        filename = dirname / f"{session}_{int(cat_mag * 1e6)}_{int(cat_ra * 1e6)}_{int(cat_dec* 1e6)}_{int(round(pp.F_scale * 1000))}.npy"
                         array_to_save = np.array(records, dtype=np.int16)
+                        print(f"Saving to {filename}")
                         np.save(filename, array_to_save)
-    print("Completed")
 
 
 if __name__ == "__main__":
@@ -400,182 +722,29 @@ if __name__ == "__main__":
 
 
 
-    if False:
-
-        print("Test encode offset")
-
-        print("Test tangential")
-        # Test Alcyone at ra,dec 56.87740, 24.1062
-        # Against Meope at ra,dec, 56.58783, 23.9492
-
-        alcyone_ra, alcyone_dec = 56.87740, 24.1062
-        meope_ra, meope_dec = 56.58783, 23.9492
-        _x, _y = encodeOffSetTangential(alcyone_ra, alcyone_dec, meope_ra, meope_dec)
-        print(f"Encoded offset: {_x}, {_y}")
-        ra_decoded, dec_decoded = decodeOffsetTangential(meope_ra, meope_dec, _x, _y)
-        ang_sep = angularSeparationDeg(alcyone_ra, alcyone_dec, ra_decoded, dec_decoded)
-        print(f"regenerated from offset: {ra_decoded}, {dec_decoded} - angular separtion deg: {ang_sep}")
-
-        # Going over the declination, so around ra
-        s1_ra, s1_dec = 29.49906, 89.7957
-        s2_ra, s2_dec = 320.10718, 89.8860
-        _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
-        print(f"Encoded offset: {_x}, {_y}")
-        ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
-        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
-
-        # Going over the declination, so around ra
-        s1_ra, s1_dec = 29.49906, 89.7957
-        s2_ra, s2_dec = 320.10718, 89.8860
-        _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
-        print(f"Encoded offset: {_x}, {_y}")
-        ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
-        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
-
-        # Ra Wrp
-        s1_ra, s1_dec = 359.40511, 73.8707
-        s2_ra, s2_dec = 0.42559, 73.6172
-        _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
-        print(f"Encoded offset: {_x}, {_y}")
-        ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
-        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
-
-        # Going over the declination, so around ra
-        s1_ra, s1_dec = 29.49906, 89.7957
-        s2_ra, s2_dec = 320.10718, 89.8860
-        _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
-        print(f"Encoded offset: {_x}, {_y}")
-        ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
-        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
-
-        # Ra Wrp
-        s1_ra, s1_dec = 359.40511, 73.8707
-        s2_ra, s2_dec = 0.42559, 73.6172
-        _x, _y = encodeOffSetTangential(s1_ra, s1_dec, s2_ra, s2_dec)
-        print(f"Encoded offset: {_x}, {_y}")
-        ra_orig, dec_orig = decodeOffsetTangential(s2_ra, s2_dec, _x, _y)
-        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
-
-        print("Test gnomonic")
-
-        # Test Alcyone at ra,dec 56.87740, 24.1062
-        # Against Meope at ra,dec, 56.58783, 23.9492
-
-        alcyone_ra, alcyone_dec = 56.87740, 24.1062
-        meope_ra, meope_dec = 56.58783, 23.9492
-        xi, eta = encodeOffsetGnomonic(alcyone_ra, alcyone_dec, meope_ra, meope_dec)
-        print(f"Encoded offset: {xi}, {eta}")
-        ra_decoded, dec_decoded = decodeOffsetGnomonic(meope_ra, meope_dec, xi, eta)
-        ang_sep = angularSeparationDeg(alcyone_ra, alcyone_dec, ra_decoded, dec_decoded)
-        print(f"regenerated from offset: {ra_decoded}, {dec_decoded} - angular separtion deg: {ang_sep}")
-
-        # Going over the declination, so around ra
-        s1_ra, s1_dec = 29.49906, 89.7957
-        s2_ra, s2_dec = 320.10718, 89.8860
-        xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
-        print(f"Encoded offset: {xi}, {eta}")
-        ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
-        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
-
-        # Going over the declination, so around ra
-        s1_ra, s1_dec = 29.49906, 89.7957
-        s2_ra, s2_dec = 320.10718, 89.8860
-        xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
-        print(f"Encoded offset: {xi}, {eta}")
-        ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
-        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
-
-        # Ra Wrp
-        s1_ra, s1_dec = 359.40511, 73.8707
-        s2_ra, s2_dec = 0.42559, 73.6172
-        xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
-        print(f"Encoded offset: {xi}, {eta}")
-        ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
-        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
-
-        # Going over the declination, so around ra
-        s1_ra, s1_dec = 29.49906, 89.7957
-        s2_ra, s2_dec = 320.10718, 89.8860
-        xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
-        print(f"Encoded offset: {xi}, {eta}")
-        ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
-        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
-
-        # Ra Wrp
-        s1_ra, s1_dec = 359.40511, 73.8707
-        s2_ra, s2_dec = 0.42559, 73.6172
-        xi, eta = encodeOffsetGnomonic(s1_ra, s1_dec, s2_ra, s2_dec)
-        print(f"Encoded offset: {xi}, {eta}")
-        ra_orig, dec_orig = decodeOffsetGnomonic(s2_ra, s2_dec, xi, eta)
-        ang_sep = angularSeparationDeg(ra_orig, dec_orig, s1_ra, s1_dec)
-        print(f"regenerated from offset: {ra_orig}, {dec_orig} - angular separation deg: {ang_sep}")
-
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
     sys_con = cr.parse(os.path.join(os.getcwd(),".config"))
 
 
-    cache_path = os.path.basename(LOCAL_PATH_TEMPLATE)
+    cache_path = os.path.dirname(LOCAL_PATH_TEMPLATE)
     os.makedirs(cache_path, exist_ok=True)
 
 
 
-    print("Loading catalog")
     cat = Catalog(sys_con)
-    print("Catalog loaded")
+    worker_id = getWorkerID()
+    registerWorker(worker_id)
 
-    if cml_args.single:
-
-        open("/archive/processed_sessions.txt", "a").close()
-
-        with open("/archive/processed_sessions.txt") as f:
-            processed_sessions = {
-                line.strip()
-                for line in f
-                if line.strip()
-            }
-
-        work_list = getArchiveList(cache_path)
-        if cml_args.reverse:
-            work_list.reverse()
-
-
-
-        for path_to_job in work_list:
-            job = os.path.basename(path_to_job)
-            if job not in processed_sessions:
-                process(sys_con, path_to_job, cat)
-                processed_sessions.add(job)
-                with open("/archive/processed_sessions.txt", "a") as f:
-                    f.write(job + "\n")
-            else:
-                print(f"{job} already processed")
-
-    else:
-
-        print("Running using despatcher")
-
-        worker_id = getWorkerID()
-        registerWorker(worker_id)
-
-        while True:
-            waitForQueue(worker_id)
-            job = getJob(worker_id)
-            if job is None:
-                print("Queue empty")
-                time.sleep(10)
-            else:
-                # Re-register with the same id to show despatch we are still alive
-                registerWorker(worker_id)
-                path_to_job = filenameToLocalPath(job)
-                process(sys_con, path_to_job, cat)
-                jobCompleted(worker_id, job)
+    while True:
+        waitForQueue(worker_id)
+        job = getJob(worker_id)
+        if job is None:
+            print("Queue empty")
+            time.sleep(10)
+        else:
+            # Re-register with the same id to show despatch we are still alive
+            registerWorker(worker_id)
+            path_to_job = filenameToLocalPath(job, local_path_template=LOCAL_PATH_TEMPLATE, minimal_archive_suffix=MINIMAL_ARCHIVE_SUFFIX)
+            process(sys_con, path_to_job, cat, LIGHT_CURVES_PATH)
+            jobCompleted(worker_id, job)
