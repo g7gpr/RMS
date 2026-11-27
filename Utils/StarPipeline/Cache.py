@@ -573,7 +573,11 @@ def downloadFilenameTo(file_name, target_directory,
 
             # Make the download
             result = subprocess.run(cmd, capture_output=True, text=True)
-            log.info(f"rysnc returned {result}")
+            file_exists = os.path.exists(local_path)
+            if "connection refused" in result.stderr:
+                log.info("Connection refused, retry counter set to 0")
+                download_count = 0
+            log.info(f"rysnc returned {result.returncode} on try {download_count} and file_exists {file_exists}")
 
 
         except:
