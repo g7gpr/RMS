@@ -883,7 +883,7 @@ if __name__ == "__main__":
             files_to_download_set.add(file_name)
 
     if files_found:
-        log.info(f"Found {files_found} archives already in cache, f{len(files_to_download_set)} will be downloaded.")
+        log.info(f"Found {files_found} archives already in cache, {len(files_to_download_set)} will be downloaded.")
 
     downloaded_count = 0
     total_files_to_download = len(files_to_download_set)
