@@ -39,8 +39,8 @@ STATION_COORDINATES_JSON_URL = "https://globalmeteornetwork.org/data/kml_fov/GMN
 
 # Paths
 REMOTE_PATH_TEMPLATE = "analysis@gmn.uwo.ca:/home/stationID/files/processed"
-LOCAL_PATH_TEMPLATE = "/srv/cache/gmn/data/date"
-REMOTE_FILE_JSON_PATH = "/srv/cache/gmn/index/remote_files.json"
+LOCAL_PATH_TEMPLATE = "/archive/cache/gmn/data/date"
+REMOTE_FILE_JSON_PATH = "/archive/cache/gmn/index/remote_files.json"
 
 # Suffixes
 MINIMAL_ARCHIVE_SUFFIX = "minimal.tar.bz2"

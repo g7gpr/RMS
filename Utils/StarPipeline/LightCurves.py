@@ -42,9 +42,9 @@ from RMS.Logger import LoggingManager, getLogger
 
 # CONSTANTS
 
-LIGHT_CURVES_PATH = "/srv/lightcurves/stars/byobservationsession"
-from Utils.StarPipeline.Cache import LOCAL_PATH_TEMPLATE, MINIMAL_ARCHIVE_SUFFIX
 
+from Utils.StarPipeline.Cache import LOCAL_PATH_TEMPLATE, MINIMAL_ARCHIVE_SUFFIX
+from Utils.StarPipeline.Despatcher import LIGHT_CURVE_TEMPLATE_PATH
 
 
 def encodeOffSetTangential(ra1, dec1, ra2, dec2):
@@ -746,5 +746,5 @@ if __name__ == "__main__":
             # Re-register with the same id to show despatch we are still alive
             registerWorker(worker_id)
             path_to_job = filenameToLocalPath(job, local_path_template=LOCAL_PATH_TEMPLATE, minimal_archive_suffix=MINIMAL_ARCHIVE_SUFFIX)
-            process(sys_con, path_to_job, cat, LIGHT_CURVES_PATH)
+            process(sys_con, path_to_job, cat, LIGHT_CURVE_TEMPLATE_PATH)
             jobCompleted(worker_id, job)
