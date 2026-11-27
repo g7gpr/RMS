@@ -26,9 +26,7 @@ import json
 import RMS.ConfigReader as cr
 import datetime
 import time
-import cv2
 import ephem
-import tqdm
 
 from RMS.Astrometry.Conversions import datetime2JD, jd2Date
 from RMS.Formats.FFfile import getMiddleTimeFF
@@ -40,6 +38,7 @@ from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP
 from Utils.Flux import detectMoon
 from Utils.StarPipeline.Despatcher import getWorkerID, registerWorker, waitForQueue, getJob , getArchiveList, jobCompleted
 from Utils.StarPipeline.Cache import filenameToLocalPath
+from RMS.Logger import LoggingManager, getLogger
 
 # CONSTANTS
 
@@ -726,6 +725,12 @@ if __name__ == "__main__":
     cml_args = arg_parser.parse_args()
     sys_con = cr.parse(os.path.join(os.getcwd(),".config"))
 
+    # Initialize the logger
+    log_manager = LoggingManager()
+    log_manager.initLogging(sys_con)
+
+    # Get the logger handle
+    log = getLogger("rmslogger")
 
     cache_path = os.path.dirname(LOCAL_PATH_TEMPLATE)
     os.makedirs(cache_path, exist_ok=True)
