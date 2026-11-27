@@ -431,9 +431,12 @@ if __name__ == "__main__":
         createJobQueues()
         last_queue_cleanup = cleanupQueues(last_queue_cleanup)
         waiting_jobs, issued_jobs = populateJobQueues(work_list, processed_sessions, queue_depth=5)
-        if issued_jobs:
+
+        # If we have issued jobs to workers, or the work_list is empty, try and get more work
+        if issued_jobs or waiting_jobs == 0:
             work_list = getArchiveList(cache_path)
             if cml_args.reverse:
                 work_list.reverse()
+
         updateProcessedSessions(processed_sessions)
         time.sleep(10)
