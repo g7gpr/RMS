@@ -811,76 +811,41 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="""Download minimal cache of GMN raw data \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
-    arg_parser.add_argument(
-        '--remote-path-template',
-        default=None,
-        help="Remote path template"
-    )
+    arg_parser.add_argument('--remote-path-template', default=None, help="Remote path template")
 
-    arg_parser.add_argument(
-        '--local-path-template',
-        default=None,
-        help="Local cache path template"
-    )
+    arg_parser.add_argument('--local-path-template', default=None, help="Local cache path template")
 
-    arg_parser.add_argument(
-        '--minimal-archive-suffix',
-        default=None,
-        help="Archive filename suffix"
-    )
+    arg_parser.add_argument('--minimal-archive-suffix', default=None, help="Archive filename suffix")
 
-    arg_parser.add_argument(
-        '--station-coordinates-json-url',
-        default=None,
-        help="Station coordinates JSON URL"
-    )
+    arg_parser.add_argument('--station-coordinates-json-url', default=None, help="Station coordinates JSON URL")
 
-    arg_parser.add_argument(
-        '--remote-file-json-path',
-        default=None,
-        help="Path to cached remote file manifest"
-    )
+    arg_parser.add_argument('--remote-file-json-path', default=None, help="Path to cached remote file manifest")
 
-    arg_parser.add_argument(
-        '--country-code',
-        default=None,
-        help="Country code to retrieve"
-    )
+    arg_parser.add_argument('--country-code', default=None, help="Country code to retrieve")
 
-    arg_parser.add_argument(
-        '-s',
-        '--scan_remote_file_store',
-        dest='scan_remote_file_store',
-        default=False,
-        action='store_true',
-        help='Scan the remote file store'
-    )
+    arg_parser.add_argument('-s', '--scan_remote_file_store', dest='scan_remote_file_store',
+                            default=False, action='store_true', help='Scan the remote file store')
 
     cml_args = arg_parser.parse_args()
 
-    remote_path_template = cml_args.remote_path_template or REMOTE_PATH_TEMPLATE
-
-    local_path_template = cml_args.local_path_template or LOCAL_PATH_TEMPLATE
-
-    minimal_archive_suffix = cml_args.minimal_archive_suffix or MINIMAL_ARCHIVE_SUFFIX
-
-    station_coordinates_json_url = cml_args.station_coordinates_json_url or STATION_COORDINATES_JSON_URL
-
-    remote_file_json_path = cml_args.remote_file_json_path or REMOTE_FILE_JSON_PATH
 
     country_code = cml_args.country_code or ""
 
     scan_remote_file_store = False
 
     if cml_args.scan_remote_file_store:
-        log.info("Scanning remote file store because of .")
+        log.info("Scanning remote file store because of command line argument.")
         scan_remote_file_store = True
 
+
+    station_coordinates_json_url = cml_args.station_coordinates_json_url or STATION_COORDINATES_JSON_URL
+    remote_file_json_path = cml_args.remote_file_json_path or REMOTE_FILE_JSON_PATH
     if not os.path.exists(remote_file_json_path):
-        log.info(f"No local copy of files in {remote_file_json_path}, scanning.")
+        log.info(f"No local copy of files in {remote_file_json_path}, scanning remote file store.")
         scan_remote_file_store = True
 
 
+    remote_path_template = cml_args.remote_path_template or REMOTE_PATH_TEMPLATE
     if scan_remote_file_store:
         remote_file_set = buildRemoteFileJson(remote_file_json_path=remote_file_json_path,
                             station_coordinates_json_url=station_coordinates_json_url,
@@ -902,26 +867,35 @@ if __name__ == "__main__":
     remote_file_list = sortFilesByTime(remote_file_set)
     files_to_download_set = set()
 
+    local_path_template = cml_args.local_path_template or LOCAL_PATH_TEMPLATE
+    minimal_archive_suffix = cml_args.minimal_archive_suffix or MINIMAL_ARCHIVE_SUFFIX
+
+    files_found = 0
+
     for file_name in remote_file_list:
         local_path = filenameToLocalPath(file_name, local_path_template=local_path_template)
-        files_found = 0
         if os.path.exists(local_path):
             files_found += 1
         else:
             files_to_download_set.add(file_name)
+
     if files_found:
         log.info(f"Found {files_found} already in cache")
 
-    total_files_to_download = len(files_to_download_set)
-    downloaded_files = 0
-    download_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
     downloaded_count = 0
+    total_files_to_download = len(files_to_download_set)
+    download_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
     forecast_completion_time = datetime.datetime.now(tz=datetime.timezone.utc) + (datetime.timedelta(seconds=total_files_to_download * 300))
+
     for file_to_download in sortFilesByTime(list(files_to_download_set)):
+
         log.info(f"Downloading {file_to_download} forecast completion at {forecast_completion_time:%Y-%m-%d %H:%M:%S}")
         local_path = createMinimalArchive(file_to_download, remote_path_template=remote_path_template, local_path_template=local_path_template)
         downloaded_count +=1
         time_now = datetime.datetime.now(tz=datetime.timezone.utc)
         elapsed_time = time_now - download_start_time
         time_per_download = elapsed_time.total_seconds() / total_files_to_download
-        forecast_completion_time = datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(seconds=time_per_download) * (total_files_to_download - downloaded_count)
+
+        forecast_completion_time = (datetime.datetime.now(tz=datetime.timezone.utc) +
+                                    datetime.timedelta(seconds=time_per_download) *
+                                    (total_files_to_download - downloaded_count))
