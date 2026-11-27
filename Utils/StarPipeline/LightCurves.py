@@ -649,7 +649,7 @@ def process(sys_con, path_to_job, cat, cache_path):
             if len(calstar) == 2:
 
                 print(f"Starting light curve work")
-                light_curves = calstarToLightCurves(cat, obs_con, pp, calstar[0], platepars_all_recalibrated_path, video_path=None)
+                light_curves = calstarToLightCurves(cat, obs_con, pp, calstar[0], platepars_all_recalibrated_path)
                 if light_curves is None:
                     return
 
