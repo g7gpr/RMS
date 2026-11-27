@@ -618,11 +618,26 @@ def extractTo(file_path, target_directory):
     file_name = os.path.basename(file_path)
     #log.info(f"Extracting {file_name} to {target_directory}")
 
-    with tarfile.open(file_path, 'r:bz2') as tar:
-        try:
-            tar.extractall(path=target_directory, filter="fully_trusted")
-        except:
-            tar.extractall(path=target_directory)
+    while not os.path.exists(file_path):
+        log.info(f"{file_name} does not exist, waiting for file system to sync")
+        time.sleep(20)
+
+    extract_success = False
+
+    while not extract_success:
+        with tarfile.open(file_path, 'r:bz2') as tar:
+            # Following try / except is to handle earlier library versions which do not have filter keyword
+            try:
+                tar.extractall(path=target_directory, filter="fully_trusted")
+                extract_success = True
+            except:
+                try:
+                    tar.extractall(path=target_directory)
+                    extract_success = True
+                except:
+                    extract_success = False
+        log.info(f"Failed extract for {file_name}")
+        time.sleep(10)
 
     return target_directory
 
