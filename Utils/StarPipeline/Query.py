@@ -263,8 +263,6 @@ def plotAstrometryRaDec(plot_data):
     x_low, x_high = ra_centre - r, ra_centre + r
     y_low, y_high = dec_centre - r, dec_centre + r
 
-    print(f"{x_low}, {y_low}, {x_high}, {y_high}")
-
     plt.xlim(x_low, x_high)
     plt.ylim(y_low, y_high)
 
