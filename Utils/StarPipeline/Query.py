@@ -197,6 +197,7 @@ def simpleMagnitudeScatterPlot(plot_data):
     star_name, obs, stations_list = plot_data
     stations_text = stationsText(obs, stations_list)
     plt.figure(figsize=(12, 6))
+    plt.style.use("dark_background")
     ax1 = plt.gca()
     plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
     ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
@@ -236,7 +237,6 @@ def plotAstrometryRaDec(plot_data):
     stations_text = stationsText(obs, stations_list)
     plt.figure(figsize=(12, 6))
     plt.style.use("dark_background")
-
     ax1 = plt.gca()
     ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
     residual = obs["obs_mag"] - obs["cat_mag"]
@@ -287,11 +287,6 @@ def plotAstrometryXiEta(plot_data):
     plt.figure(figsize=(12, 6))
     plt.style.use("dark_background")
     ax1 = plt.gca()
-
-    #
-    # Title + station list
-    #
-
 
 
     ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
