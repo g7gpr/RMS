@@ -272,7 +272,7 @@ def populateJobQueues(work_list, processed_sessions, queue_depth=3):
 
         print(f"{jobs_added} jobs dispatched to workers, {waiting_jobs_count} jobs waiting.")
 
-    return waiting_jobs_count
+    return waiting_jobs_count, jobs_added
 
 
 
@@ -430,6 +430,10 @@ if __name__ == "__main__":
     while True:
         createJobQueues()
         last_queue_cleanup = cleanupQueues(last_queue_cleanup)
-        waiting_jobs = populateJobQueues(work_list, processed_sessions, queue_depth=5)
+        waiting_jobs, issued_jobs = populateJobQueues(work_list, processed_sessions, queue_depth=5)
+        if issued_jobs:
+            work_list = getArchiveList(cache_path)
+            if cml_args.reverse:
+                work_list.reverse()
         updateProcessedSessions(processed_sessions)
         time.sleep(10)
