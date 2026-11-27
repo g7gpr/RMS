@@ -17,39 +17,20 @@
 from __future__ import print_function, division, absolute_import
 
 import os
-import tempfile
-import tarfile
 import numpy as np
-
-import subprocess
-import json
-import requests
-import RMS.ConfigReader as cr
-import shutil
-import sys
 import datetime
 import time
-import random
-import socket
-import cv2
-import ephem
-import tqdm
 
-from RMS.Astrometry.Conversions import datetime2JD
-from pathlib import Path
-from Utils.StarPipeline.LightCurves import decodeOffsetGnomonic, LIGHT_CURVE_TEMPLATE_PATH
 import matplotlib.pyplot as plt
 
-
-import uuid
-
-# Local directories
-# Local directories
-ARCHIVE = "/archive"
-CALSTARS_DATA_DIR = "CALSTARS"
-
+import RMS.ConfigReader as cr
 
 from pathlib import Path
+from RMS.Astrometry.Conversions import datetime2JD
+from Utils.StarPipeline.LightCurves import decodeOffsetGnomonic, LIGHT_CURVE_TEMPLATE_PATH
+
+
+
 
 def getStars():
 
