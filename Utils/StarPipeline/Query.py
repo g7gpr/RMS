@@ -235,6 +235,7 @@ def plotAstrometryRaDec(plot_data):
     star_name, obs, stations_list = plot_data
     stations_text = stationsText(obs, stations_list)
     plt.figure(figsize=(12, 6))
+    plt.style.use("dark_background")
 
     ax1 = plt.gca()
     ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
@@ -284,7 +285,7 @@ def plotAstrometryXiEta(plot_data):
     stations_text = stationsText(obs, stations_list)
 
     plt.figure(figsize=(12, 6))
-
+    plt.style.use("dark_background")
     ax1 = plt.gca()
 
     #
