@@ -547,7 +547,6 @@ def downloadFilenameTo(file_name, target_directory,
     remote_path = filenameToRemotePath(file_name, remote_path_template=remote_path_template)
     local_path = os.path.join(target_directory, file_name)
 
-    #log.info(f"Downloading {file_name} from {remote_path} to {target_directory}")
 
     download_count = 0
 
@@ -574,8 +573,7 @@ def downloadFilenameTo(file_name, target_directory,
 
             # Make the download
             result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                break
+
 
         except:
 
