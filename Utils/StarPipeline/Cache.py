@@ -44,8 +44,8 @@ STATION_COORDINATES_JSON_URL = "https://globalmeteornetwork.org/data/kml_fov/GMN
 
 # Paths
 REMOTE_PATH_TEMPLATE = "analysis@gmn.uwo.ca:/home/stationID/files/processed"
-LOCAL_PATH_TEMPLATE = "/archive/cache/date"
-REMOTE_FILE_JSON_PATH = "/archive/cache/remote_files.json"
+LOCAL_PATH_TEMPLATE = "/srv/cache/gmn/data/"
+REMOTE_FILE_JSON_PATH = "/srv/cache/gmn/index/remote_files.json"
 
 # Suffixes
 MINIMAL_ARCHIVE_SUFFIX = "minimal.tar.bz2"
@@ -564,7 +564,7 @@ if __name__ == "__main__":
     scan_remote_file_store = False
 
     if cml_args.scan_remote_file_store:
-        log.info("Scanning remote file store.")
+        log.info("Scanning remote file store because of .")
         scan_remote_file_store = True
 
     if not os.path.exists(remote_file_json_path):
