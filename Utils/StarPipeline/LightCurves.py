@@ -639,7 +639,6 @@ def process(sys_con, path_to_job, cat, cache_path):
             pp_path = os.path.join(working_dir, obs_con.platepar_name)
             pp.read(pp_path)
             calstars_filename = f"CALSTARS_{observation_dir}.txt"
-            print(f"Reading {calstars_filename}")
             calstar = readCALSTARS(working_dir, calstars_filename)
             video_file = f"{observation_dir}_timelapse.mp4"
             video_path = os.path.join(os.path.expanduser(sys_con.data_dir), video_file)
@@ -647,7 +646,6 @@ def process(sys_con, path_to_job, cat, cache_path):
 
             if len(calstar) == 2:
 
-                print(f"Starting light curve work")
                 light_curves = calstarToLightCurves(cat, obs_con, pp, calstar[0], platepars_all_recalibrated_path)
                 if light_curves is None:
                     return
@@ -655,7 +653,7 @@ def process(sys_con, path_to_job, cat, cache_path):
                 station, date_str, time_str, us_str = observation_dir.split('_')
                 session_date = datetime.datetime.strptime(f"{date_str}_{time_str}_{us_str}", "%Y%m%d_%H%M%S_%f")
                 session_jd = datetime2JD(session_date)
-                print(f"Starting filing work for {len(light_curves)} stars")
+
                 for star_name, observations in light_curves.items():
 
                     observation_data = {}
@@ -678,8 +676,6 @@ def process(sys_con, path_to_job, cat, cache_path):
                         offset = int((observation_jd - session_jd) * 10000)
 
                         if not np.isfinite(data['obs']):
-                            print(f"Skipping observation of {star_name}")
-
                             continue
 
                         observation_data[observation_dir].append([offset,
@@ -704,7 +700,6 @@ def process(sys_con, path_to_job, cat, cache_path):
 
                         filename = dirname / f"{session}_{int(cat_mag * 1e6)}_{int(cat_ra * 1e6)}_{int(cat_dec* 1e6)}_{int(round(pp.F_scale * 1000))}.npy"
                         array_to_save = np.array(records, dtype=np.int16)
-                        print(f"Saving to {filename}")
                         np.save(filename, array_to_save)
 
 
