@@ -321,8 +321,8 @@ def plotAstrometryXiEta(plot_data):
 
     plt.scatter(0,0, color="red",marker="+",s=80, linewidths=1, alpha=0.5,label="Catalog")
 
-    plt.xlabel("Xi (degrees)")
-    plt.ylabel("Eta (degrees)")
+    plt.xlabel("Xi (arcseoncds)")
+    plt.ylabel("Eta (arcseconds)")
 
 
     plt.grid(True)
