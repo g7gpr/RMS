@@ -20,40 +20,26 @@ import os
 import tempfile
 import tarfile
 import numpy as np
-
-import subprocess
 import json
-import requests
 import RMS.ConfigReader as cr
-import shutil
-import sys
 import datetime
 import time
-import random
-import socket
 import cv2
 import ephem
-import tqdm
-
 
 from RMS.Astrometry.Conversions import datetime2JD, jd2Date
 from RMS.Formats.FFfile import getMiddleTimeFF
 from RMS.Math import angularSeparationDeg
-from RMS.Misc import mkdirP
 from pathlib import Path
-from Utils.StarPipeline.CacheBuilder import sortFilesByTime
 from RMS.Formats.CALSTARS import readCALSTARS
 from RMS.Formats.Platepar import Platepar
 from RMS.Formats.StarCatalogQueries import Catalog, renderStarsGaussian
-from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP, raDec2AltAz
+from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP
 from Utils.Flux import detectMoon
-from Utils.StarPipeline.Despatcher import getWorkerID, registerWorker, waitForQueue, getJob, jobToPath, getWorkList, jobCompleted
+from Utils.StarPipeline.Despatcher import getWorkerID, registerWorker, waitForQueue, getJob , getArchiveList, jobCompleted
+from Utils.StarPipeline.Cache import filenameToLocalPath, LOCAL_PATH_TEMPLATE
 
-# Local directories
-ARCHIVE = "/archive"
-CALSTARS_DATA_DIR = "CALSTARS"
-QUEUES = "/archive/despatcher/queues"
-REGISTRATIONS = "/archive/despatcher/registrations"
+
 
 
 def encodeOffSetTangential(ra1, dec1, ra2, dec2):
@@ -63,17 +49,17 @@ def encodeOffSetTangential(ra1, dec1, ra2, dec2):
     _x = _ra * np.cos(np.radians(dec2))
     _y = dec1 - dec2
 
-    return _x, _y
+    return _x / 3600, _y / 3600
 
 def decodeOffsetTangential(ra1, dec1, _x, _y):
 
-    dec2 = dec1 + _y
-    ra2 = ra1  + _x / np.cos(np.radians(dec1))
+
+
+    dec2 = dec1 + _y * 3600
+    ra2 = ra1  + (_x * 3600) / np.cos(np.radians(dec1))
     ra2 %= 360
 
     return ra2, dec2
-
-import numpy as np
 
 
 def encodeOffsetGnomonic(ra1, dec1, ra2, dec2):
@@ -92,7 +78,7 @@ def encodeOffsetGnomonic(ra1, dec1, ra2, dec2):
 
     eta = (np.cos(dec2) * np.sin(dec1) - np.sin(dec2) * np.cos(dec1) * np.cos(dra)) / cos_c
 
-    return np.degrees(xi), np.degrees(eta)
+    return np.degrees(xi) / 3600, np.degrees(eta) / 3600
 
 
 
@@ -101,21 +87,12 @@ def decodeOffsetGnomonic(ra2, dec2, xi, eta):
     ra2 = np.radians(ra2)
     dec2 = np.radians(dec2)
 
-    xi = np.radians(xi)
-    eta = np.radians(eta)
+    xi = np.radians(xi * 3600)
+    eta = np.radians(eta * 3600)
 
-    ra1 = ra2 + np.arctan2(
-        xi,
-        np.cos(dec2) - eta * np.sin(dec2)
-    )
+    ra1 = ra2 + np.arctan2(xi, np.cos(dec2) - eta * np.sin(dec2))
 
-    dec1 = np.arctan2(
-        np.sin(dec2) + eta * np.cos(dec2),
-        np.sqrt(
-            (np.cos(dec2) - eta * np.sin(dec2))**2
-            + xi**2
-        )
-    )
+    dec1 = np.arctan2(np.sin(dec2) + eta * np.cos(dec2), np.sqrt((np.cos(dec2) - eta * np.sin(dec2))**2 + xi**2))
 
     ra1 = np.degrees(ra1) % 360.0
     dec1 = np.degrees(dec1)
@@ -166,7 +143,7 @@ def minSunBelowHorizon(fits_file_list, c, sun_angle=-18, chunk_size=1):
 
 
 
-def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_path, video_path=None, debug_mode=False):
+def calstarToLightCurves(sys_con, cat, obs_con, pp, calstar, platepars_all_recalibrated_path, video_path=None, debug_mode=False):
 
     light_curves = {}
     produce_debug_timelapse = False
@@ -239,10 +216,6 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
 
 
         p, ra_array, dec_array, x_array, y_array, mag_array, names_array = cat.queryPlatepar(pp, jd, n_brightest=5*len(star_list))
-
-
-
-        limiting_mag = np.max(mag_array) + 0.5
 
         y, x, level, amplitude, fwhm, background, snr, saturated_count = zip(*star_list)
         jd_list = [jd] * len(star_list)
@@ -318,12 +291,12 @@ def calstarToLightCurves(cat, obs_con, pp, calstar, platepars_all_recalibrated_p
                     light_curves[name][jd]['eta'] = eta
 
 
-        if produce_debug_timelapse:
-            video.release()
+    if produce_debug_timelapse:
+        video.release()
 
     return light_curves
 
-def process(path_to_job, cat):
+def process(sys_con, path_to_job, cat):
 
 
     print(f"Processing {path_to_job}")
@@ -342,10 +315,10 @@ def process(path_to_job, cat):
                 tar.extractall(temp_dir)
 
             working_dir = os.path.join(temp_dir, observation_dir)
-            config_path = os.path.join(working_dir, ".config")
+            obs_con_path = os.path.join(working_dir, ".config")
 
-            if os.path.isfile(config_path):
-                obs_con = cr.parse(config_path)
+            if os.path.isfile(obs_con_path):
+                obs_con = cr.parse(obs_con_path)
             else:
                 print(f"No config file for {observation_dir}")
                 return
@@ -357,13 +330,13 @@ def process(path_to_job, cat):
             print(f"Reading {calstars_filename}")
             calstar = readCALSTARS(working_dir, calstars_filename)
             video_file = f"{observation_dir}_timelapse.mp4"
-            video_path = os.path.join(os.path.expanduser(config.data_dir), video_file)
+            video_path = os.path.join(os.path.expanduser(sys_con.data_dir), video_file)
             platepars_all_recalibrated_path = os.path.join(working_dir, "platepars_all_recalibrated.json")
 
             if len(calstar) == 2:
 
                 print(f"Starting light curve work")
-                light_curves = calstarToLightCurves(cat, config, pp, calstar[0], platepars_all_recalibrated_path, video_path=None)
+                light_curves = calstarToLightCurves(sys_con, cat, obs_con, pp, calstar[0], platepars_all_recalibrated_path, video_path=None)
                 if light_curves is None:
                     return
 
@@ -373,15 +346,15 @@ def process(path_to_job, cat):
                 print(f"Starting filing work for {len(light_curves)} stars")
                 for star_name, observations in light_curves.items():
 
-                    daily_data = {}
+                    observation_data = {}
 
                     for jd_str, data in observations.items():
 
                         observation_jd = float(jd_str)
 
 
-                        if observation_dir not in daily_data:
-                            daily_data[observation_dir] = []
+                        if observation_dir not in observation_data:
+                            observation_data[observation_dir] = []
 
                         offset = int((observation_jd - session_jd) * 10000)
 
@@ -390,7 +363,7 @@ def process(path_to_job, cat):
 
                             continue
 
-                        daily_data[observation_dir].append([offset,
+                        observation_data[observation_dir].append([offset,
                                                             int(round(100 * (data['obs'] - data['cat']))),
                                                             data['level'],
                                                             data['amplitude'],
@@ -403,7 +376,7 @@ def process(path_to_job, cat):
                                                             data['eta'] * 10000,
                                                             ])
 
-                    for session, records in daily_data.items():
+                    for session, records in observation_data.items():
                         cat_ra, cat_dec = data['ra_cat'], data['dec_cat']
                         dirname = Path("/archive/light_curves/") / star_name / obs_con.stationID
                         dirname.mkdir(parents=True, exist_ok=True)
@@ -548,16 +521,16 @@ if __name__ == "__main__":
 
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
-    config = cr.parse(os.path.join(os.getcwd(),".config"))
+    sys_con = cr.parse(os.path.join(os.getcwd(),".config"))
 
-    os.makedirs(ARCHIVE, exist_ok=True)
-    calstars_directory_path = os.path.join(ARCHIVE, CALSTARS_DATA_DIR)
-    os.makedirs(calstars_directory_path, exist_ok=True)
+
+    cache_path = os.path.basename(LOCAL_PATH_TEMPLATE)
+    os.makedirs(cache_path, exist_ok=True)
 
 
 
     print("Loading catalog")
-    cat = Catalog(config)
+    cat = Catalog(sys_con)
     print("Catalog loaded")
 
     if cml_args.single:
@@ -571,7 +544,7 @@ if __name__ == "__main__":
                 if line.strip()
             }
 
-        work_list = getWorkList(calstars_directory_path)
+        work_list = getArchiveList(cache_path)
         if cml_args.reverse:
             work_list.reverse()
 
@@ -580,7 +553,7 @@ if __name__ == "__main__":
         for path_to_job in work_list:
             job = os.path.basename(path_to_job)
             if job not in processed_sessions:
-                process(path_to_job, cat)
+                process(sys_con, path_to_job, cat)
                 processed_sessions.add(job)
                 with open("/archive/processed_sessions.txt", "a") as f:
                     f.write(job + "\n")
@@ -603,6 +576,6 @@ if __name__ == "__main__":
             else:
                 # Re-register with the same id to show despatch we are still alive
                 registerWorker(worker_id)
-                path_to_job = jobToPath(job)
-                process(path_to_job, cat)
+                path_to_job = filenameToLocalPath(job)
+                process(sys_con, path_to_job, cat)
                 jobCompleted(worker_id, job)

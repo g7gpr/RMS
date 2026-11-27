@@ -17,12 +17,8 @@
 from __future__ import print_function, division, absolute_import
 
 import os
-import shutil
-
-import numpy as np
 import requests
 import tempfile
-import uuid
 import subprocess
 import json
 import tqdm
@@ -33,8 +29,7 @@ import tarfile
 import shutil
 
 from pathlib import Path
-from RMS.Logger import LoggingManager, getLogger, checkLoggingHealth
-from Utils.StarPipeline.CacheBuilder import sortFilesByTime
+from RMS.Logger import getLogger
 from RMS.ConfigReader import parse
 
 # Constants
@@ -53,18 +48,43 @@ MINIMAL_ARCHIVE_SUFFIX = "minimal.tar.bz2"
 log = getLogger("rmslogger")
 
 
-
-
-
 def parseFilename(file_name):
+    """Parse a GMN archive filename into its component fields.
+
+    Arguments:
+        file_name: [str]
+            GMN archive filename.
+
+    Return:
+        start: [str]
+            Filename prefix before the station identifier.
+
+        station_id: [str]
+            Station identifier.
+
+        date_field: [str]
+            Observation date in YYYYMMDD format.
+
+        time_field: [str]
+            Observation time in HHMMSS format.
+
+        sub_time_field: [str]
+            Sub-second timestamp field.
+
+        end: [str]
+            Filename suffix following the timestamp fields.
+    """
 
     part_list = file_name.split("_")
-    first_numeric = 0
+    first_numeric = None
 
     for p, part in enumerate(part_list):
         if part.isnumeric():
             first_numeric = p
             break
+
+    if first_numeric is None:
+        raise ValueError(f"Unable to parse filename: {file_name}")
 
     station_id = part_list[first_numeric - 1]
     date_field = part_list[first_numeric]
@@ -77,6 +97,33 @@ def parseFilename(file_name):
     return start, station_id, date_field, time_field, sub_time_field, end
 
 def buildFilename(station_id, date_field, time_field, sub_time_field, start="", end="" ):
+
+    """Construct a GMN archive filename from component fields.
+
+    Arguments:
+        station_id: [str]
+            Station identifier.
+
+        date_field: [str]
+            Observation date in YYYYMMDD format.
+
+        time_field: [str]
+            Observation time in HHMMSS format.
+
+        sub_time_field: [str]
+            Sub-second timestamp field.
+
+    Keyword arguments:
+        start: [str]
+            Optional filename prefix.
+
+        end: [str]
+            Optional filename suffix.
+
+    Return:
+        file_name: [str]
+            Constructed filename.
+    """
 
     file_name = f"{station_id}_{date_field}_{time_field}_{sub_time_field}"
 
@@ -91,6 +138,19 @@ def buildFilename(station_id, date_field, time_field, sub_time_field, start="", 
     return file_name
 
 def filenameToRemotePath(file_name, remote_path_template):
+    """Convert a filename into a remote GMN archive path.
+
+    Arguments:
+        file_name: [str]
+            GMN archive filename.
+
+        remote_path_template: [str]
+            Template used to construct the remote station path.
+
+    Return:
+        remote_path: [str]
+            Full remote path to the archive file.
+    """
 
     start, station_id, date_field, time_field, sub_time_field, end = parseFilename(file_name)
     file_name = buildFilename(station_id, date_field, time_field, sub_time_field, start=start, end=end)
@@ -99,12 +159,42 @@ def filenameToRemotePath(file_name, remote_path_template):
     return remote_path
 
 def stationIDToRemotePath(station_id, remote_path_template):
+    """Construct the remote archive directory path for a station.
 
+    Arguments:
+        station_id: [str]
+            Station identifier.
+
+        remote_path_template: [str]
+            Template used to construct the remote station path.
+
+    Return:
+        remote_path: [str]
+            Remote path for the station archive directory.
+    """
     remote_path = remote_path_template.replace("stationID", station_id.lower())
 
     return remote_path
 
 def filenameToLocalPath(file_name, local_path_template=None, minimal_archive_suffix=None):
+
+    """Convert a GMN filename into a local cache path.
+
+        Arguments:
+            file_name: [str]
+                GMN archive filename.
+
+        Keyword arguments:
+            local_path_template: [str]
+                Template used to construct the local cache path.
+
+            minimal_archive_suffix: [str]
+                Suffix used for cached minimal archives.
+
+        Return:
+            local_path: [str]
+                Local cache path for the archive.
+        """
 
 
     local_path_template = local_path_template or LOCAL_PATH_TEMPLATE
@@ -121,7 +211,19 @@ def filenameToLocalPath(file_name, local_path_template=None, minimal_archive_suf
     return local_path
 
 def parseServerFileTimestamp(file_name):
+    """Extract the observation timestamp from a GMN filename.
 
+    Arguments:
+        file_name: [str]
+            GMN archive filename.
+
+    Return:
+        timestamp: [datetime]
+            UTC timestamp extracted from the filename.
+
+        None:
+            Returned if the filename cannot be parsed.
+    """
     parts = file_name.split("_")
     if len(parts) < 4:
         return None
@@ -136,10 +238,32 @@ def parseServerFileTimestamp(file_name):
         return None
 
 def sortFilesByTime(files):
+    """Sort filenames by observation timestamp.
+
+    Arguments:
+        files: [list]
+            Collection of GMN archive filenames.
+
+    Return:
+        sorted_files: [list]
+            Filenames sorted by observation time.
+    """
     return sorted(files, key=parseServerFileTimestamp)
 
-
 def getStationSet(url=None, country_code=None):
+    """Retrieve the list of GMN stations.
+
+    Keyword arguments:
+        url: [str]
+            URL of the station coordinates JSON file.
+
+        country_code: [str]
+            Optional country code filter.
+
+    Return:
+        station_list: [list]
+            Sorted list of station identifiers.
+    """
 
     if url is None:
         url = STATION_COORDINATES_JSON_URL
@@ -150,7 +274,7 @@ def getStationSet(url=None, country_code=None):
     stations_dict = response.json()
     station_list = []
 
-    for station in stations_dict.keys():
+    for station in stations_dict:
         station_lower = station.lower()
 
         if country_code is None:
@@ -162,7 +286,16 @@ def getStationSet(url=None, country_code=None):
     return sorted(station_list)
 
 def getLocalFilesSet(local_path=None):
+    """Retrieve the set of cached archive files.
 
+    Keyword arguments:
+        local_path: [str]
+            Path template used to locate the cache directory.
+
+    Return:
+        local_files_set: [set]
+            Set of archive file paths found in the local cache.
+    """
 
     if local_path is None:
         local_path = LOCAL_PATH_TEMPLATE
@@ -172,11 +305,23 @@ def getLocalFilesSet(local_path=None):
 
     return local_files_set
 
-
-
-
 def lsRemote(remote_path, port=22):
-    """Return: list of filenames in remote directory, or empty list if directory does not exist."""
+    """List files in a remote archive directory.
+
+    Arguments:
+        remote_path: [str]
+            Remote directory path.
+
+    Keyword arguments:
+        port: [int]
+            SSH port used for the rsync connection.
+
+    Return:
+        files_set: [set]
+            Set of filenames present in the remote directory.
+
+            An empty set is returned if the directory does not exist.
+    """
 
     files_set = set()
 
@@ -199,7 +344,7 @@ def lsRemote(remote_path, port=22):
             if "no such file" in stderr or "failed to open" in stderr:
                 return files_set
 
-            elif "connection refused":
+            elif "connection refused" in stderr:
                 log.info("Connect refused, waiting")
                 time.sleep(600)
                 continue
@@ -213,7 +358,20 @@ def lsRemote(remote_path, port=22):
     return files_set
 
 def getRemotePathsSet(stations_set, remote_path_template=None):
+    """Build remote archive paths for a collection of stations.
 
+    Arguments:
+        stations_set: [set]
+            Set of station identifiers.
+
+    Keyword arguments:
+        remote_path_template: [str]
+            Template used to construct station archive paths.
+
+    Return:
+        remote_path_set: [set]
+            Set of remote archive directory paths.
+    """
     if remote_path_template is None:
         remote_path_template = REMOTE_PATH_TEMPLATE
 
@@ -221,13 +379,20 @@ def getRemotePathsSet(stations_set, remote_path_template=None):
     for station_id in stations_set:
         remote_path = stationIDToRemotePath(station_id, remote_path_template)
         remote_path_set.add(remote_path)
-        pass
 
     return remote_path_set
 
 def filterRemoteFiles(files_set):
-    # Filter valid tars
+    """Filter valid GMN archive files from a filename collection.
 
+    Arguments:
+        files_set: [set]
+            Collection of filenames.
+
+    Return:
+        valid_tars_set: [set]
+            Set of valid GMN archive filenames.
+    """
     valid_tars_set = set()
     for file_name in files_set:
         if file_name.endswith("tar.bz2") and len(file_name.split("_")) == 5 and "imgdata" not in file_name:
@@ -235,12 +400,28 @@ def filterRemoteFiles(files_set):
 
     return valid_tars_set
 
-
 def getRemoteFilesSet(station_coordinates_json_url=None,
                       remote_path_template=None,
                       country_code=None):
+    """Retrieve the set of archive files available on the GMN server.
 
-    log.info(f"Downloading station coordinates from {station_coordinates_json_url}")
+    Keyword arguments:
+        station_coordinates_json_url: [str]
+            URL of the station coordinates JSON file.
+
+        remote_path_template: [str]
+            Template used to construct station archive paths.
+
+        country_code: [str]
+            Optional country code filter.
+
+    Return:
+        remote_files_set: [set]
+            Set of remote archive filenames.
+    """
+
+
+
     if station_coordinates_json_url is None:
         station_coordinates_json_url = STATION_COORDINATES_JSON_URL
 
@@ -250,6 +431,7 @@ def getRemoteFilesSet(station_coordinates_json_url=None,
     if country_code is None:
         country_code = ""
 
+    log.info(f"Downloading station coordinates from {station_coordinates_json_url}")
     stations_set = getStationSet(station_coordinates_json_url, country_code=country_code)
     log.info(f"Retrieving file lists for {len(stations_set)} stations")
 
@@ -262,6 +444,16 @@ def getRemoteFilesSet(station_coordinates_json_url=None,
     return remote_files_set
 
 def loadRemoteFileJson(remote_file_json_path=None):
+    """Load a cached remote archive manifest.
+
+    Keyword arguments:
+        remote_file_json_path: [str]
+            Path to the cached remote file manifest.
+
+    Return:
+        remote_file_set: [set]
+            Set of archive filenames contained in the manifest.
+    """
 
     if remote_file_json_path is None:
         remote_file_json_path = REMOTE_FILE_JSON_PATH
@@ -272,50 +464,29 @@ def loadRemoteFileJson(remote_file_json_path=None):
     with open(remote_file_json_path) as f:
         return set(json.load(f))
 
-
-
-def testCode():
-
-    test_file_name = "ZA000C_20240101_183212_060136_min.tar.bz2"
-    start, station_id, date_field, time_field, sub_time_field, end = parseFilename(test_file_name)
-
-    file_name = buildFilename(station_id, date_field, time_field, sub_time_field, start=start, end=end)
-    file_name = "AU0004_20261124_114737_183207_metadata.tar.bz2"
-    remote_path = filenameToRemotePath(file_name, REMOTE_PATH_TEMPLATE)
-    print(remote_path)
-    local_path = filenameToLocalPath(file_name, local_path_template=LOCAL_PATH_TEMPLATE)
-    print(local_path)
-
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        print(temp_dir)
-        files_created_set = set()
-
-        for _ in range(100):
-            filename = Path(os.path.join(temp_dir, f"{uuid.uuid4()}.tmp"))
-            filename.touch()
-            files_created_set.add(filename)
-
-        found_files = getLocalFilesSet(filename)
-
-        if found_files == files_created_set:
-            print("Good")
-        else:
-            print("Bad")
-
-        filename.unlink()
-
-        found_files = getLocalFilesSet(filename)
-
-        if found_files == files_created_set:
-            print("Bad")
-        else:
-            print("Good")
-
 def buildRemoteFileJson(remote_file_json_path=None,
                         station_coordinates_json_url=None,
                         remote_path_template=None,
                         country_code=None):
+    """Build a manifest of files available on the GMN archive server.
+
+    Keyword arguments:
+        remote_file_json_path: [str]
+            Path where the generated manifest will be written.
+
+        station_coordinates_json_url: [str]
+            URL of the station coordinates JSON file.
+
+        remote_path_template: [str]
+            Template used to construct station archive paths.
+
+        country_code: [str]
+            Optional country code filter.
+
+    Return:
+        remote_file_set: [set]
+            Set of remote archive filenames written to the manifest.
+    """
 
 
     if remote_file_json_path is None:
@@ -343,9 +514,32 @@ def buildRemoteFileJson(remote_file_json_path=None,
 
     return remote_file_set
 
+def downloadFilenameTo(file_name, target_directory,
+                       remote_path_template=None,
+                       max_tries=3):
+    """Download an archive from the GMN server.
 
-def downloadFilenameTo(file_name, target_directory, remote_path_template=None, max_tries=3):
+    Arguments:
+        file_name: [str]
+            GMN archive filename.
 
+        target_directory: [str]
+            Directory where the archive will be downloaded.
+
+    Keyword arguments:
+        remote_path_template: [str]
+            Template used to construct station archive paths.
+
+        max_tries: [int]
+            Maximum number of download attempts.
+
+    Return:
+        downloaded_path: [str]
+            Path to the downloaded archive.
+
+        None:
+            Returned if the archive could not be downloaded.
+    """
     remote_path_template = remote_path_template or REMOTE_PATH_TEMPLATE
     remote_path = filenameToRemotePath(file_name, remote_path_template=remote_path_template)
     local_path = os.path.join(target_directory, file_name)
@@ -357,7 +551,9 @@ def downloadFilenameTo(file_name, target_directory, remote_path_template=None, m
     while not os.path.exists(local_path) and download_count < max_tries:
         try:
             # Check whether the file exists
+            download_count += 1
             result = subprocess.run(['rsync', '-z', remote_path], capture_output=True, text=True)
+
             if "No such file or directory" in result.stderr:
                 return None
 
@@ -375,7 +571,7 @@ def downloadFilenameTo(file_name, target_directory, remote_path_template=None, m
 
             # Make the download
             result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != "0":
+            if result.returncode != 0:
                 break
 
         except:
@@ -393,8 +589,22 @@ def downloadFilenameTo(file_name, target_directory, remote_path_template=None, m
     return downloaded_path
 
 def extractTo(file_path, target_directory):
+    """Extract a compressed archive.
 
+    Arguments:
+        file_path: [str]
+            Path to the archive file.
 
+        target_directory: [str]
+            Directory where the archive contents will be extracted.
+
+    Return:
+        target_directory: [str]
+            Directory containing the extracted archive contents.
+
+        None:
+            Returned if the input file path is None.
+    """
 
     if file_path is None:
         return None
@@ -409,13 +619,34 @@ def extractTo(file_path, target_directory):
             tar.extractall(path=target_directory)
 
     return target_directory
-def copyToMinimalArchiveDirectory(file_name, source_path, destination_path):
 
-    #log.info(f"Copying minimal archive files for {file_name} from {source_path} to {destination_path}")
+def copyToMinimalArchiveDirectory(file_name,
+                                  source_path,
+                                  destination_path):
+    """Copy files required for a minimal archive.
+
+    Extract the calibration and metadata files required by the
+    StarPipeline from a full GMN archive and copy them into a
+    minimal archive directory.
+
+    Arguments:
+        file_name: [str]
+            GMN archive filename.
+
+        source_path: [str]
+            Path to the extracted archive contents.
+
+        destination_path: [str]
+            Directory where the minimal archive files will be copied.
+
+    Return:
+        destination_path: [str]
+            Directory containing the minimal archive contents.
+    """
 
     config_file_path = os.path.join(source_path, ".config")
     archive_config = parse(config_file_path)
-    start, stationID, date_field, time_field, sub_time_field, end = parseFilename(file_name)
+    start, station_id, date_field, time_field, sub_time_field, end = parseFilename(file_name)
 
     file_to_copy_set = set()
     file_to_copy_set.add(config_file_path)
@@ -423,8 +654,8 @@ def copyToMinimalArchiveDirectory(file_name, source_path, destination_path):
     file_to_copy_set.add(archive_config.platepar_name)
     file_to_copy_set.add(archive_config.platepars_recalibrated_name)
     file_to_copy_set.add(archive_config.platepar_flux_recalibrated_name)
-    file_to_copy_set.add(buildFilename(stationID, date_field, time_field, sub_time_field, start="CALSTARS", end=".txt"))
-    file_to_copy_set.add(buildFilename(stationID, date_field, time_field, sub_time_field, start="FTPdetectinfo", end=".txt"))
+    file_to_copy_set.add(buildFilename(station_id, date_field, time_field, sub_time_field, start="CALSTARS", end=".txt"))
+    file_to_copy_set.add(buildFilename(station_id, date_field, time_field, sub_time_field, start="FTPdetectinfo", end=".txt"))
 
     archive_name = os.path.basename(filenameToLocalPath(file_name, minimal_archive_suffix=""))
     destination_path = os.path.join(destination_path, archive_name)
@@ -440,7 +671,30 @@ def copyToMinimalArchiveDirectory(file_name, source_path, destination_path):
 
     return destination_path
 
-def makeMinimalArchive(filename, archive_preparation_directory, minimal_archived_files_directory_path, minimal_archive_suffix=None):
+def makeMinimalArchive(filename,
+                       archive_preparation_directory,
+                       minimal_archived_files_directory_path,
+                       minimal_archive_suffix=None):
+    """Create a compressed minimal archive.
+
+    Arguments:
+        filename: [str]
+            GMN archive filename.
+
+        archive_preparation_directory: [str]
+            Directory where the archive will be created.
+
+        minimal_archived_files_directory_path: [str]
+            Directory containing the files to archive.
+
+    Keyword arguments:
+        minimal_archive_suffix: [str]
+            Suffix used for minimal archive filenames.
+
+    Return:
+        archive_path: [str]
+            Path to the generated minimal archive.
+    """
 
     if minimal_archive_suffix is None:
         minimal_archive_suffix = MINIMAL_ARCHIVE_SUFFIX
@@ -458,8 +712,25 @@ def makeMinimalArchive(filename, archive_preparation_directory, minimal_archived
 
     return archive_path
 
-def moveToCache(file_name, archive_path, local_path_template=None):
+def moveToCache(file_name, archive_path,
+                local_path_template=None):
+    """Move a minimal archive into the local cache.
 
+    Arguments:
+        file_name: [str]
+            GMN archive filename.
+
+        archive_path: [str]
+            Path to the generated minimal archive.
+
+    Keyword arguments:
+        local_path_template: [str]
+            Template used to construct local cache paths.
+
+    Return:
+        local_cache_path: [str]
+            Final path of the cached archive.
+    """
     if local_path_template is None:
         local_path_template = LOCAL_PATH_TEMPLATE
 
@@ -468,14 +739,42 @@ def moveToCache(file_name, archive_path, local_path_template=None):
     local_cache_path_dir = os.path.dirname(local_cache_path)
     os.makedirs(local_cache_path_dir, exist_ok=True)
     os.chmod(local_cache_path_dir, 0o775)
-
     shutil.move(archive_path, local_cache_path)
     os.chmod(local_cache_path, 0o666)
 
     return local_cache_path
 
-def createMinimalArchive(file_name, local_path_template=None, remote_path_template=None, minimal_archive_suffix=None):
+def createMinimalArchive(file_name,
+                         local_path_template=None,
+                         remote_path_template=None,
+                         minimal_archive_suffix=None):
+    """Create and cache a minimal archive.
 
+    Download a full GMN archive, extract the files required by the
+    StarPipeline, create a minimal archive, and store it in the
+    local cache.
+
+    Arguments:
+        file_name: [str]
+            GMN archive filename.
+
+    Keyword arguments:
+        local_path_template: [str]
+            Template used to construct local cache paths.
+
+        remote_path_template: [str]
+            Template used to construct remote archive paths.
+
+        minimal_archive_suffix: [str]
+            Suffix used for minimal archive filenames.
+
+    Return:
+        cached_path: [str]
+            Path to the cached minimal archive.
+
+        None:
+            Returned if archive creation fails.
+    """
     local_path_template = local_path_template or LOCAL_PATH_TEMPLATE
     remote_path_template = remote_path_template or REMOTE_PATH_TEMPLATE
     minimal_archive_suffix = minimal_archive_suffix or MINIMAL_ARCHIVE_SUFFIX

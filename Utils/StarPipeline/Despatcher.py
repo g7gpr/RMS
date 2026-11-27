@@ -1,5 +1,5 @@
 # RPi Meteor Station
-# Copyright (C) 2026 David Rollinson Kristen Felker
+# Copyright (C) 2026 David Rollinson
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,52 +17,36 @@
 from __future__ import print_function, division, absolute_import
 
 import os
-import tempfile
-import tarfile
-import numpy as np
-
-import subprocess
-import json
-import requests
-import RMS.ConfigReader as cr
 import shutil
-import sys
 import datetime
 import time
-import random
-import socket
-import cv2
-import ephem
-import tqdm
 
-from RMS.Astrometry.Conversions import datetime2JD, jd2Date
-from RMS.Formats.FFfile import getMiddleTimeFF
-from RMS.Misc import mkdirP
+from Utils.StarPipeline.Cache import sortFilesByTime
+from Utils.StarPipeline.Cache import LOCAL_PATH_TEMPLATE
 from pathlib import Path
-from Utils.StarPipeline.CacheBuilder import sortFilesByTime
-from RMS.Formats.CALSTARS import readCALSTARS
-from RMS.Formats.Platepar import Platepar
-from RMS.Formats.StarCatalogQueries import Catalog, renderStarsGaussian
-from RMS.Astrometry.ApplyAstrometry import geoHt2XY, xyToRaDecPP, raDec2AltAz
-from Utils.Flux import detectMoon
-
-from Utils.StarPipeline.CacheBuilder import ARCHIVE, sortFilesByTime
 
 
 import uuid
 
-# Local directories
-# Local directories
-ARCHIVE = "/archive"
-CALSTARS_DATA_DIR = "CALSTARS"
-QUEUES = "/archive/despatcher/queues"
-REGISTRATIONS = "/archive/despatcher/registrations"
-PROCESSED_SESSIONS_FILE = "/archive/processed_sessions.txt"
 
+# Constants
+
+
+
+QUEUES = "/srv/despatcher/lightcurve/queues/"
+REGISTRATIONS = "/srv/despatcher/lightcurve/registrations/"
+PROCESSED_SESSIONS_FILE = "/srv/lightcurve/statusfiles/processed_sessions.txt"
 
 
 def showQueueStatus():
+    """Display the current status of all worker queues.
 
+    Print the contents of each worker queue along with the age of
+    queued and completed jobs.
+
+    Return:
+        None
+    """
     print("\033[2J\033[H", end="")
     print("Queue Status")
     print("=" * 62)
@@ -78,21 +62,12 @@ def showQueueStatus():
         if not queue_dir.is_dir():
             continue
 
-        queued = 0
-        completed = 0
-
         jobs = sorted(queue_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
-
-
         print(f"{queue_dir.name:40s}")
 
         for item in jobs:
-
-
             age = (now.timestamp() - item.stat().st_mtime)
-
             age_minutes = int(age / 60)
-
             if item.name.endswith(".completed"):
                 print(f"    [DONE] {item.name} {age_minutes}m")
             else:
@@ -100,11 +75,19 @@ def showQueueStatus():
 
         print()
 
-def getWorkList(archive):
+def getArchiveList(cache_path):
+    """Retrieve the list of archives available for processing.
 
+    Arguments:
+        cache_path: [str]
+            Path to the cache directory.
 
-    print(f"Working through {archive}")
-    paths_to_files = Path(archive).rglob("*.tar.bz2")
+    Return:
+        work_list: [list]
+            List of archive paths sorted by observation time.
+    """
+
+    paths_to_files = Path(cache_path).rglob("*.tar.bz2")
 
 
 
@@ -112,12 +95,25 @@ def getWorkList(archive):
 
 
 def getWorkerID():
+    """Generate a unique worker identifier.
 
+    Return:
+        worker_id: [str]
+            Unique identifier for a worker process.
+    """
     return str(uuid.uuid4())
 
-from pathlib import Path
 
 def registerWorker(worker_id):
+    """Register a worker with the dispatcher.
+
+    Arguments:
+        worker_id: [str]
+            Unique worker identifier.
+
+    Return:
+        None
+    """
 
     registrations_dir = Path(REGISTRATIONS)
 
@@ -129,6 +125,16 @@ def registerWorker(worker_id):
     (registrations_dir / worker_id).touch()
 
 def waitForQueue(worker_id):
+    """Wait for a queue to be created for a worker.
+
+    Arguments:
+        worker_id: [str]
+            Unique worker identifier.
+
+    Return:
+        queue_dir: [Path]
+            Path to the worker queue directory.
+    """
 
     queue_dir = Path(QUEUES) / worker_id
 
@@ -139,6 +145,19 @@ def waitForQueue(worker_id):
     return queue_dir
 
 def getJob(worker_id):
+    """Retrieve the next available job for a worker.
+
+    Arguments:
+        worker_id: [str]
+            Unique worker identifier.
+
+    Return:
+        job_name: [str]
+            Name of the next available job.
+
+        None:
+            Returned if no jobs are available.
+    """
 
     queue_dir = Path(QUEUES) / worker_id
 
@@ -159,17 +178,14 @@ def getJob(worker_id):
 
     return jobs[0].name
 
-def jobToPath(job):
-
-
-    parts = job.split('_')
-
-    date_str = parts[1]
-
-    return Path(ARCHIVE) / Path(CALSTARS_DATA_DIR) / date_str / job
-
 def createJobQueues():
+    """Create queues for all registered workers.
 
+    Ensure a queue directory exists for every registered worker.
+
+    Return:
+        None
+    """
 
     registrations_dir = Path(REGISTRATIONS)
     queues_dir = Path(QUEUES)
@@ -190,6 +206,26 @@ def createJobQueues():
 
 
 def populateJobQueues(work_list, processed_sessions, queue_depth=3):
+    """Populate worker queues with available jobs.
+
+    Assign unprocessed archives to worker queues until each queue
+    reaches the configured depth.
+
+    Arguments:
+        work_list: [list]
+            List of available archive files.
+
+        processed_sessions: [set]
+            Set of previously completed archive filenames.
+
+    Keyword arguments:
+        queue_depth: [int]
+            Target number of jobs to maintain in each worker queue.
+
+    Return:
+        None
+    """
+
     queued_jobs = set()
 
     # Find every job currently queued
@@ -218,20 +254,44 @@ def populateJobQueues(work_list, processed_sessions, queue_depth=3):
         if not queue_dir.is_dir():
             continue
 
-        queue_depth = len(list(queue_dir.iterdir()))
+        actual_queue_depth = len(list(queue_dir.iterdir()))
 
-        while queue_depth < 3 and job_idx < len(available_jobs):
+        while actual_queue_depth < queue_depth and job_idx < len(available_jobs):
             (queue_dir / available_jobs[job_idx]).touch()
             print(f"Added {available_jobs[job_idx]} for worker {os.path.basename(queue_dir)}")
-            queue_depth += 1
+            actual_queue_depth += 1
             job_idx += 1
 
 def jobCompleted(worker_id, job):
+    """Mark a job as completed.
+
+    Arguments:
+        worker_id: [str]
+            Unique worker identifier.
+
+        job: [str]
+            Job filename.
+
+    Return:
+        None
+    """
 
     queue_dir = Path(QUEUES) / worker_id
     (queue_dir / f"{job}.completed").touch()
 
 def updateProcessedSessions(processed_sessions):
+    """Update the list of completed sessions.
+
+    Scan worker queues for completed jobs and record them in the
+    processed sessions file.
+
+    Arguments:
+        processed_sessions: [set]
+            Set of completed session filenames.
+
+    Return:
+        None
+    """
 
     queues_dir = Path(QUEUES)
 
@@ -262,7 +322,26 @@ def updateProcessedSessions(processed_sessions):
 
     return
 
-def cleanupQueues(last_queue_cleanup, hours=12, force=False):
+def cleanupQueues(last_queue_cleanup,
+                  hours=12,
+                  force=False):
+    """Remove stale worker registrations and queues.
+
+    Arguments:
+        last_queue_cleanup: [datetime]
+            Timestamp of the previous cleanup operation.
+
+    Keyword arguments:
+        hours: [float]
+            Maximum worker inactivity period before cleanup.
+
+        force: [bool]
+            Force cleanup regardless of elapsed time.
+
+    Return:
+        cleanup_time: [datetime]
+            Timestamp of the completed cleanup operation.
+    """
 
     now = datetime.datetime.now(tz=datetime.timezone.utc)
 
@@ -309,25 +388,25 @@ if __name__ == "__main__":
 
     arg_parser.add_argument("-r", "--reverse", action="store_true", help="Process newest jobs first")
 
-    cwd = os.getcwd()
+    cache_path = os.path.dirname(LOCAL_PATH_TEMPLATE)
+    processed_sessions_file = PROCESSED_SESSIONS_FILE
+
     cml_args = arg_parser.parse_args()
-    config = cr.parse(os.path.join(os.getcwd(),".config"))
 
-    os.makedirs(ARCHIVE, exist_ok=True)
-    calstars_directory_path = os.path.join(ARCHIVE, CALSTARS_DATA_DIR)
-    os.makedirs(calstars_directory_path, exist_ok=True)
+    os.makedirs(cache_path, exist_ok=True)
+    os.makedirs(os.path.dirname(processed_sessions_file), exist_ok=True)
 
 
-    open("/archive/processed_sessions.txt", "a").close()
+    open(processed_sessions_file, "a").close()
 
-    with open("/archive/processed_sessions.txt") as f:
+    with open(processed_sessions_file) as f:
         processed_sessions = {
             line.strip()
             for line in f
             if line.strip()
         }
 
-    work_list = getWorkList(calstars_directory_path)
+    work_list = getArchiveList(cache_path)
     if cml_args.reverse:
         work_list.reverse()
 
