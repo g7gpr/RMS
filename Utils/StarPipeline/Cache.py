@@ -880,12 +880,12 @@ if __name__ == "__main__":
             files_to_download_set.add(file_name)
 
     if files_found:
-        log.info(f"Found {files_found} already in cache")
+        log.info(f"Found {files_found} archives already in cache, f{len(files_to_download_set)} will be downloaded.")
 
     downloaded_count = 0
     total_files_to_download = len(files_to_download_set)
     download_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-    forecast_completion_time = datetime.datetime.now(tz=datetime.timezone.utc) + (datetime.timedelta(seconds=total_files_to_download * 300))
+    forecast_completion_time = datetime.datetime.now(tz=datetime.timezone.utc) + (datetime.timedelta(seconds=total_files_to_download * 60))
 
     for file_to_download in sortFilesByTime(list(files_to_download_set)):
 
