@@ -611,7 +611,7 @@ def process(sys_con, path_to_job, cat, cache_path):
         None
     """
 
-    print(f"Processing {path_to_job}")
+    log.info(f"Processing {path_to_job}")
 
     observation_dir = os.path.basename(path_to_job).split("_min")[0]
 
@@ -687,8 +687,8 @@ def process(sys_con, path_to_job, cat, cache_path):
                                                             data['snr'] * 100,
                                                             data['saturated_count'],
                                                             data['star_count'],
-                                                            data['xi'] * 10000,
-                                                            data['eta'] * 10000,
+                                                            data['xi'],
+                                                            data['eta'],
                                                             ])
 
 
