@@ -904,10 +904,13 @@ if __name__ == "__main__":
 
     for file_name in remote_file_list:
         local_path = filenameToLocalPath(file_name, local_path_template=local_path_template)
+        files_found = 0
         if os.path.exists(local_path):
-            log.info(f"{file_name} already exists, skip download.")
+            files_found += 1
         else:
             files_to_download_set.add(file_name)
+    if files_found:
+        log.info(f"Found {files_found} already in cache")
 
     total_files_to_download = len(files_to_download_set)
     downloaded_files = 0
@@ -915,7 +918,7 @@ if __name__ == "__main__":
     downloaded_count = 0
     forecast_completion_time = datetime.datetime.now(tz=datetime.timezone.utc) + (datetime.timedelta(seconds=total_files_to_download * 300))
     for file_to_download in sortFilesByTime(list(files_to_download_set)):
-        log.info(f"Downloading {file_to_download} forecast completion at {forecast_completion_time:%H:%M:%S}")
+        log.info(f"Downloading {file_to_download} forecast completion at {forecast_completion_time:%Y-%m-%d %H:%M:%S}")
         local_path = createMinimalArchive(file_to_download, remote_path_template=remote_path_template, local_path_template=local_path_template)
         downloaded_count +=1
         time_now = datetime.datetime.now(tz=datetime.timezone.utc)
