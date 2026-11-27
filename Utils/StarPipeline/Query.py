@@ -220,7 +220,7 @@ def simpleMagnitudeScatterPlot(plot_data):
 
     filename = f"{safe_name}_light_curves.png"
 
-    filepath = "/archive/plots"
+    filepath = "/archive/lightcurves/plots"
 
     os.makedirs(filepath, exist_ok=True)
 
@@ -266,7 +266,7 @@ def plotAstrometryRaDec(plot_data):
     plt.tight_layout()
     safe_name = star_name.replace("/", "_").replace(" ", "_")
     filename = f"{safe_name}_astrometry_radec.png"
-    filepath = "/archive/plots"
+    filepath = "/archive/lightcurves/plots"
     os.makedirs(filepath, exist_ok=True)
     plt.savefig(os.path.join(filepath, filename), dpi=150, bbox_inches="tight")
     plt.close()
