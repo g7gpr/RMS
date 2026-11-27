@@ -1028,7 +1028,7 @@ def computeClearSkyTimeIntervals(cloud_ratio_dict, ratio_threshold=0.5, time_gap
     return intervals
 
 
-def detectMoon(file_list, platepar, config):
+def detectMoon(file_list, platepar, config,log_skips=False):
     """ If moon is within 25 degrees of the FOV and the phase of the moon is above 25% then the moon
     is visible in view, and a picture with the moon in it will not be used
 
@@ -1037,8 +1037,14 @@ def detectMoon(file_list, platepar, config):
         platepar: [platepar object]
         config: [config object]
 
+
+    Keyword aguments:
+        log_skips:[bool] Optional, default True, log moon in the FoV
+
     Returns:
         new_file_list: [list] FF file list which don't have a moon in it
+
+
     """
 
     # Minimum distance between the Moon and the camera FOV
@@ -1135,7 +1141,8 @@ def detectMoon(file_list, platepar, config):
                 new_file_list.append(filename)
                 continue
 
-        log.debug("Skipping {:s}, Moon in the FOV!".format(filename))
+        if log_skips:
+            log.debug("Skipping {:s}, Moon in the FOV!".format(filename))
 
     return new_file_list
 

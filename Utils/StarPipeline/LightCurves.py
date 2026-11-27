@@ -267,7 +267,7 @@ def getFitsFilesToProcess(calstar, obs_con, pp):
     fits_files_from_calstar_list = [calstar_entry[0] for calstar_entry in calstar]
     astronomical_night_list, sun_below_horizon_angle_list, setting_count, rising_count = minSunBelowHorizon(
         fits_files_from_calstar_list, obs_con, sun_angle=-18)
-    fits_files_to_process_list = detectMoon(astronomical_night_list, pp, obs_con)
+    fits_files_to_process_list = detectMoon(astronomical_night_list, pp, obs_con, log_skips=False)
     return fits_files_to_process_list
 
 def getRecalibratedPlatepars(platepars_all_recalibrated_path):
