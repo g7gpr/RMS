@@ -660,7 +660,7 @@ def copyToMinimalArchiveDirectory(file_name,
         file_to_copy_set.add(archive_config.platepars_recalibrated_name)
 
     if hasattr(archive_config, "platepars_flux_recalibrated_name"):
-        file_to_copy_set.add(archive_config.platepar_flux_recalibrated_name)
+        file_to_copy_set.add(archive_config.platepars_flux_recalibrated_name)
 
     file_to_copy_set.add(buildFilename(station_id, date_field, time_field, sub_time_field, start="CALSTARS", end=".txt"))
     file_to_copy_set.add(buildFilename(station_id, date_field, time_field, sub_time_field, start="FTPdetectinfo", end=".txt"))
