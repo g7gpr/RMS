@@ -636,7 +636,8 @@ def extractTo(file_path, target_directory):
                     extract_success = True
                 except:
                     extract_success = False
-        log.info(f"Failed extract for {file_name}")
+        if not extract_success:
+            log.info(f"Failed extract for {file_name}")
         time.sleep(10)
 
     return target_directory
