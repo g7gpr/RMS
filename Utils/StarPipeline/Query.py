@@ -260,8 +260,13 @@ def plotAstrometryRaDec(plot_data):
 
     r *= 1.1  # 10% margin
 
-    plt.xlim(ra_centre - r, ra_centre + r)
-    plt.ylim(dec_centre - r, dec_centre + r)
+    x_low, x_high = ra_centre - r, ra_centre + r
+    y_low, y_high = dec_centre - r, dec_centre + r
+
+    print(f"{x_low}, {y_low}, {x_high}, {y_high}")
+
+    plt.xlim(x_low, x_high)
+    plt.ylim(y_low, y_high)
 
     plt.tight_layout()
     safe_name = star_name.replace("/", "_").replace(" ", "_")
@@ -420,5 +425,7 @@ if __name__ == "__main__":
     query_response = getStarObservations(star_to_plot)
     print("Query completed")
     simpleMagnitudeScatterPlot(query_response)
+    plotAstrometryRaDec(query_response)
+    plotAstrometryXiEta(query_response)
 
     pass

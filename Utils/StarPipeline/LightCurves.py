@@ -76,7 +76,7 @@ def encodeOffSetTangential(ra1, dec1, ra2, dec2):
     _x = _ra * np.cos(np.radians(dec2))
     _y = dec1 - dec2
 
-    return _x / 3600, _y / 3600
+    return _x * 3600, _y * 3600
 
 def decodeOffsetTangential(ra1, dec1, _x, _y):
     """Reconstruct celestial coordinates from tangential offsets.
@@ -103,8 +103,8 @@ def decodeOffsetTangential(ra1, dec1, _x, _y):
     """
 
 
-    dec2 = dec1 + _y * 3600
-    ra2 = ra1  + (_x * 3600) / np.cos(np.radians(dec1))
+    dec2 = dec1 + _y / 3600
+    ra2 = ra1  + (_x / 3600) / np.cos(np.radians(dec1))
     ra2 %= 360
 
     return ra2, dec2
@@ -147,7 +147,7 @@ def encodeOffsetGnomonic(ra1, dec1, ra2, dec2):
 
     eta = (np.cos(dec2) * np.sin(dec1) - np.sin(dec2) * np.cos(dec1) * np.cos(dra)) / cos_c
 
-    return np.degrees(xi) / 3600, np.degrees(eta) / 3600
+    return np.degrees(xi) * 3600, np.degrees(eta) * 3600
 
 
 
@@ -177,8 +177,8 @@ def decodeOffsetGnomonic(ra2, dec2, xi, eta):
     ra2 = np.radians(ra2)
     dec2 = np.radians(dec2)
 
-    xi = np.radians(xi * 3600)
-    eta = np.radians(eta * 3600)
+    xi = np.radians(xi / 3600)
+    eta = np.radians(eta / 3600)
 
     ra1 = ra2 + np.arctan2(xi, np.cos(dec2) - eta * np.sin(dec2))
 
@@ -640,8 +640,6 @@ def process(sys_con, path_to_job, cat, cache_path):
             pp.read(pp_path)
             calstars_filename = f"CALSTARS_{observation_dir}.txt"
             calstar = readCALSTARS(working_dir, calstars_filename)
-            video_file = f"{observation_dir}_timelapse.mp4"
-            video_path = os.path.join(os.path.expanduser(sys_con.data_dir), video_file)
             platepars_all_recalibrated_path = os.path.join(working_dir, "platepars_all_recalibrated.json")
 
             if len(calstar) == 2:
