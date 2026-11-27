@@ -38,7 +38,10 @@ from RMS.ConfigReader import parse
 STATION_COORDINATES_JSON_URL = "https://globalmeteornetwork.org/data/kml_fov/GMN_station_coordinates_public.json"
 
 # Paths
+
+# stationID will be substitued by the station to download
 REMOTE_PATH_TEMPLATE = "analysis@gmn.uwo.ca:/home/stationID/files/processed"
+
 LOCAL_PATH_TEMPLATE = "/archive/cache/gmn/data/date"
 REMOTE_FILE_JSON_PATH = "/archive/cache/gmn/index/remote_files.json"
 
@@ -885,17 +888,17 @@ if __name__ == "__main__":
     downloaded_count = 0
     total_files_to_download = len(files_to_download_set)
     download_start_time = datetime.datetime.now(tz=datetime.timezone.utc)
-    forecast_completion_time = datetime.datetime.now(tz=datetime.timezone.utc) + (datetime.timedelta(seconds=total_files_to_download * 60))
+    time_per_download = 30
+    forecast_completion_time = datetime.datetime.now(tz=datetime.timezone.utc) + (datetime.timedelta(seconds=total_files_to_download * time_per_download))
 
     for file_to_download in sortFilesByTime(list(files_to_download_set)):
-
-        log.info(f"Downloading {file_to_download} forecast completion at {forecast_completion_time:%Y-%m-%d %H:%M:%S}")
+        files_to_download = total_files_to_download - downloaded_count
+        log.info(f"Downloading {file_to_download} archives forecast completion at {forecast_completion_time:%Y-%m-%d %H:%M:%S} {files_to_download} archives remaining at {time_per_download} seconds per archive.")
         local_path = createMinimalArchive(file_to_download, remote_path_template=remote_path_template, local_path_template=local_path_template)
         downloaded_count +=1
         time_now = datetime.datetime.now(tz=datetime.timezone.utc)
         elapsed_time = time_now - download_start_time
-        time_per_download = elapsed_time.total_seconds() / total_files_to_download
+        time_per_download = elapsed_time.total_seconds() / downloaded_count
 
         forecast_completion_time = (datetime.datetime.now(tz=datetime.timezone.utc) +
-                                    datetime.timedelta(seconds=time_per_download) *
-                                    (total_files_to_download - downloaded_count))
+                                    datetime.timedelta(seconds=time_per_download * files_to_download))
