@@ -36,7 +36,7 @@ from RMS.Formats.Platepar import Platepar
 from RMS.Formats.StarCatalogQueries import Catalog, renderStarsGaussian
 from RMS.Astrometry.ApplyAstrometry import xyToRaDecPP
 from Utils.Flux import detectMoon
-from Utils.StarPipeline.Despatcher import getWorkerID, registerWorker, waitForQueue, getJob , getArchiveList, jobCompleted
+from Utils.StarPipeline.Dispatcher import getWorkerID, registerWorker, waitForQueue, getJob , getArchiveList, jobCompleted
 from Utils.StarPipeline.Cache import filenameToLocalPath
 from RMS.Logger import LoggingManager, getLogger
 
@@ -44,7 +44,7 @@ from RMS.Logger import LoggingManager, getLogger
 
 
 from Utils.StarPipeline.Cache import LOCAL_PATH_TEMPLATE, MINIMAL_ARCHIVE_SUFFIX
-from Utils.StarPipeline.Despatcher import LIGHT_CURVE_TEMPLATE_PATH
+from Utils.StarPipeline.Dispatcher import LIGHT_CURVE_TEMPLATE_PATH
 
 
 def encodeOffSetTangential(ra1, dec1, ra2, dec2):

@@ -33,9 +33,9 @@ import uuid
 
 
 
-QUEUES = "/archive/despatcher/lightcurve/queues/"
-REGISTRATIONS = "/archive/despatcher/lightcurve/registrations/"
-PROCESSED_SESSIONS_FILE = "/archive/despatcher/lightcurve/statusfiles/processed_sessions.txt"
+QUEUES = "/archive/dispatcher/lightcurve/queues/"
+REGISTRATIONS = "/archive/dispatcher/lightcurve/registrations/"
+PROCESSED_SESSIONS_FILE = "/archive/dispatcher/lightcurve/statusfiles/processed_sessions.txt"
 LIGHT_CURVE_TEMPLATE_PATH = "/archive/lightcurves/data/stars/star"
 
 def showQueueStatus():
@@ -240,15 +240,17 @@ def populateJobQueues(work_list, processed_sessions, queue_depth=3):
                 queued_jobs.add(job.name)
 
     # Filter out completed and already queued jobs
-    available_jobs = [
+    available_jobs_list = [
         Path(job).name
         for job in work_list
         if Path(job).name not in processed_sessions
            and Path(job).name not in queued_jobs
     ]
 
+    waiting_jobs_count = len(available_jobs_list)
     job_idx = 0
 
+    jobs_added = 0
     for queue_dir in Path(QUEUES).iterdir():
 
         if not queue_dir.is_dir():
@@ -256,11 +258,23 @@ def populateJobQueues(work_list, processed_sessions, queue_depth=3):
 
         actual_queue_depth = len(list(queue_dir.iterdir()))
 
-        while actual_queue_depth < queue_depth and job_idx < len(available_jobs):
-            (queue_dir / available_jobs[job_idx]).touch()
-            print(f"Added {available_jobs[job_idx]} for worker {os.path.basename(queue_dir)}")
+
+
+        while actual_queue_depth < queue_depth and job_idx < len(available_jobs_list):
+            (queue_dir / available_jobs_list[job_idx]).touch()
+            print(f"Added {available_jobs_list[job_idx]} for worker {os.path.basename(queue_dir)}")
             actual_queue_depth += 1
             job_idx += 1
+            jobs_added += 1
+
+    if jobs_added > 0:
+        waiting_jobs_count -= jobs_added
+
+        print(f"{jobs_added} jobs dispatched to workers. {waiting_jobs_count} jobs waiting.")
+
+    return waiting_jobs_count
+
+
 
 def jobCompleted(worker_id, job):
     """Mark a job as completed.
@@ -383,7 +397,7 @@ if __name__ == "__main__":
 
     import argparse
 
-    arg_parser = argparse.ArgumentParser(description="""Despatch start curve processing jobs \
+    arg_parser = argparse.ArgumentParser(description="""Dispatch start curve processing jobs \
         """, formatter_class=argparse.RawTextHelpFormatter)
 
     arg_parser.add_argument("-r", "--reverse", action="store_true", help="Process newest jobs first")
