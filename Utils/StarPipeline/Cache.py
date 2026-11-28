@@ -560,7 +560,9 @@ def downloadFilenameTo(file_name, target_directory,
                 return None
 
             elif "connection refused" in result.stderr:
+                log.info("Connection refused, retry counter set to 0 and waiting")
                 time.sleep(600)
+                download_count = 0
 
             else:
                 cmd = [
