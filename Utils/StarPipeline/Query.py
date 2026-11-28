@@ -137,6 +137,7 @@ def loadObservationFile(filename):
     observations["station"] = station
     observations["jd"] = session_jd +  offset.astype(np.float64) / 10000.0
     observations["obs_mag"] = cat_mag + residual / 100.0
+
     observations["cat_mag"] = cat_mag
     observations["pixel_scale"] = pixel_scale
     observations["level"] = data[:, 2]
@@ -146,10 +147,14 @@ def loadObservationFile(filename):
     observations["snr"] = data[:, 6] / 100.0
     observations["saturated_count"] = data[:, 7]
     observations["star_count"] = data[:, 8]
+
     observations['ra_cat']  = cat_ra
     observations['dec_cat'] = cat_dec
+
     observations["xi"] = data[:, 9]
     observations["eta"] = data[:, 10]
+
+
     ra_obs, dec_obs = decodeOffsetGnomonic(cat_ra, cat_dec, observations["xi"], observations["eta"])
     observations["ra_obs"] = ra_obs
     observations["dec_obs"] = dec_obs
@@ -197,7 +202,7 @@ def simpleMagnitudeScatterPlot(plot_data):
     star_name, obs, stations_list = plot_data
     stations_text = stationsText(obs, stations_list)
     plt.figure(figsize=(12, 6))
-    plt.style.use("dark_background")
+
     ax1 = plt.gca()
     plt.suptitle(f"{star_name} magnitude plot", fontsize=14)
     ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
@@ -236,7 +241,7 @@ def plotAstrometryRaDec(plot_data):
     star_name, obs, stations_list = plot_data
     stations_text = stationsText(obs, stations_list)
     plt.figure(figsize=(12, 6))
-    plt.style.use("dark_background")
+
     ax1 = plt.gca()
     ra_cat, dec_cat = np.mean(obs['ra_cat']), np.mean(obs['dec_cat'])
     residual = obs["obs_mag"] - obs["cat_mag"]
@@ -285,7 +290,7 @@ def plotAstrometryXiEta(plot_data):
     stations_text = stationsText(obs, stations_list)
 
     plt.figure(figsize=(12, 6))
-    plt.style.use("dark_background")
+
     ax1 = plt.gca()
 
 
