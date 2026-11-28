@@ -1324,22 +1324,17 @@ def plotDifferentialEnsemble(
 
     plt.tight_layout()
 
-    filename = os.path.join(
-        os.path.expanduser(output_dir),
-        target_name.replace(" ", "_")
-        + "_differential_phase.png"
-    )
+    output_dir = os.path.expanduser(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
 
-    plt.savefig(
-        filename,
-        dpi=150,
-    )
+    filename = os.path.join(output_dir, f"{target_name}_differential_phase.png")
+
+
+    plt.savefig(filename, dpi=150,)
 
     plt.close()
 
-    print(
-        f"Saved {filename}"
-    )
+    print(f"Saved {filename}")
 
 
 if __name__ == "__main__":
@@ -1374,10 +1369,10 @@ if __name__ == "__main__":
 
     frame_dict, target_name = getDifferentialData(cat, 119.56549, -49.2409)
 
-    plotDifferentialEnsemble(frame_dict, target_name, 1.454485, output_dir="/archive/lightcurves/plots")
+    plotDifferentialEnsemble(frame_dict, target_name, 1.454485, output_dir="/archive/lightcurves/plots/differential")
 
     frame_dict, target_name = getDifferentialData(cat, 78.858, 32.6880)
-    plotDifferentialEnsemble(frame_dict, target_name, 0.88088, output_dir="/archive/lightcurves/plots")
+    plotDifferentialEnsemble(frame_dict, target_name, 0.88088, output_dir="/archive/lightcurves/plots/differential")
 
 
     if False:
