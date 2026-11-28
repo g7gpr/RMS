@@ -399,6 +399,15 @@ def getDifferentialData(cat, target_ra, target_dec, frame_json_path=None):
 
     target_name = names[0]
 
+    names, ra, dec, mags, thetas, b, v, r = zip(
+        *cat.queryRaDec(
+            target_ra,
+            target_dec,
+            radius_deg=10,
+            n_brightest=30,
+        )[0]
+    )
+
     names = np.array(names)
     mags = np.array(mags)
 
@@ -546,47 +555,49 @@ if __name__ == "__main__":
 
     star_data = getDifferentialData(cat, 78.858, 32.6880, "/archive/lightcurves/json/kw_aur.json")
 
-    if cml_args.star is None:
-        continuous = cml_args.continuous
-    else:
-        continuous = False
-        star_to_plot = cml_args.star
+    if False:
+
+        if cml_args.star is None:
+            continuous = cml_args.continuous
+        else:
+            continuous = False
+            star_to_plot = cml_args.star
 
 
 
 
 
 
-    while continuous:
+        while continuous:
 
-        star_list = getStars()
-        star_sessions = []
-        for star in star_list:
-            session_count = getSessionCount(star)
-            star_sessions.append([session_count, star])
+            star_list = getStars()
+            star_sessions = []
+            for star in star_list:
+                session_count = getSessionCount(star)
+                star_sessions.append([session_count, star])
 
-        star_sessions.sort(key=lambda x: x[0], reverse=True)
+            star_sessions.sort(key=lambda x: x[0], reverse=True)
 
-        for star in star_sessions:
-            observation_count, star_to_plot = star[0], star[1]
-            if observation_count < 1:
-                continue
-            print(f"Querying for {star_to_plot}")
-            query_response = getStarObservations(star_to_plot)
-            print(f"Plotting {star_to_plot}")
-            simpleMagnitudeScatterPlot(query_response)
-            plotAstrometryRaDec(query_response)
-            plotAstrometryXiEta(query_response)
+            for star in star_sessions:
+                observation_count, star_to_plot = star[0], star[1]
+                if observation_count < 1:
+                    continue
+                print(f"Querying for {star_to_plot}")
+                query_response = getStarObservations(star_to_plot)
+                print(f"Plotting {star_to_plot}")
+                simpleMagnitudeScatterPlot(query_response)
+                plotAstrometryRaDec(query_response)
+                plotAstrometryXiEta(query_response)
 
-            time.sleep(10)
+                time.sleep(10)
 
 
 
-    print(f"Query started for {star_to_plot}")
-    query_response = getStarObservations(star_to_plot)
-    print("Query completed")
-    simpleMagnitudeScatterPlot(query_response)
-    plotAstrometryRaDec(query_response)
-    plotAstrometryXiEta(query_response)
+        print(f"Query started for {star_to_plot}")
+        query_response = getStarObservations(star_to_plot)
+        print("Query completed")
+        simpleMagnitudeScatterPlot(query_response)
+        plotAstrometryRaDec(query_response)
+        plotAstrometryXiEta(query_response)
 
-    pass
+        pass
