@@ -535,7 +535,7 @@ def getDifferentialData(cat, target_ra, target_dec, frame_json_path=None):
 
     os.remove(json_filename)
 
-    return frame_dict
+    return frame_dict, target_name
 
 
 def buildBinnedLightCurves(frame_dict, bin_seconds=60):
@@ -1311,9 +1311,10 @@ def plotDifferentialEnsemble(
 
     plt.title(
         f"{target_name}\n"
-        f"Total of ={query_metadata['observation_count']} "
+        
         f"RA={query_metadata['target_ra']:.4f} "
-        f"Dec={query_metadata['target_dec']:.4f}\n {query_metadata['reference_count']} reference stars"
+        f"Dec={query_metadata['target_dec']:.4f}\n{query_metadata['reference_count']} reference stars"
+        f"{query_metadata['observation_count']} observations "
 
     )
 
@@ -1371,12 +1372,12 @@ if __name__ == "__main__":
 
     #frame_dict = loadFrameDict("HD 33959A.tar.bz2")
 
-    frame_dict = getDifferentialData(cat, 119.56549, -49.2409)
+    frame_dict, target_name = getDifferentialData(cat, 119.56549, -49.2409)
 
-    plotDifferentialEnsemble(frame_dict, "HD 65818", 1.454485, output_dir="/archive/lightcurves/plots")
+    plotDifferentialEnsemble(frame_dict, target_name, 1.454485, output_dir="/archive/lightcurves/plots")
 
-    frame_dict = getDifferentialData(cat, 78.858, 32.6880)
-    plotDifferentialEnsemble(frame_dict, "HD 33959A", 0.88088, output_dir="/archive/lightcurves/plots")
+    frame_dict, target_name = getDifferentialData(cat, 78.858, 32.6880)
+    plotDifferentialEnsemble(frame_dict, target_name, 0.88088, output_dir="/archive/lightcurves/plots")
 
 
     if False:
