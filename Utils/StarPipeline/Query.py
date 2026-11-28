@@ -538,6 +538,807 @@ def getDifferentialData(cat, target_ra, target_dec, frame_json_path=None):
     return frame_dict
 
 
+def buildBinnedLightCurves(frame_dict, bin_seconds=60):
+
+    bin_days = bin_seconds / 86400.0
+
+    stars = {}
+
+    for jd, stations in frame_dict.items():
+
+        jd = float(jd)
+
+        for station_data in stations.values():
+
+            for star_name, star_data in station_data.items():
+
+                stars.setdefault(star_name, [])
+
+                stars[star_name].append(
+                    (
+                        jd,
+                        star_data["obs_mag"],
+                    )
+                )
+
+    binned_stars = {}
+
+    for star_name, points in stars.items():
+
+        points.sort()
+
+        jd_array = np.array([p[0] for p in points])
+        mag_array = np.array([p[1] for p in points])
+
+        jd0 = jd_array.min()
+
+        bin_index = np.floor(
+            (jd_array - jd0) / bin_days
+        ).astype(int)
+
+        unique_bins = np.unique(bin_index)
+
+        binned_jd = []
+        binned_mag = []
+
+        for b in unique_bins:
+
+            mask = (bin_index == b)
+
+            binned_jd.append(
+                np.mean(jd_array[mask])
+            )
+
+            binned_mag.append(
+                np.mean(mag_array[mask])
+            )
+
+        binned_stars[star_name] = (
+            np.array(binned_jd),
+            np.array(binned_mag)
+        )
+
+    return binned_stars
+
+
+def plotAllStars(frame_dict):
+
+    stars = {}
+
+    for jd, stations in frame_dict.items():
+
+        jd = float(jd)
+
+        for station, station_data in stations.items():
+
+            for star_name, star_data in station_data.items():
+
+                stars.setdefault(star_name, {
+                    "jd": [],
+                    "mag": [],
+                })
+
+                stars[star_name]["jd"].append(jd)
+                stars[star_name]["mag"].append(
+                    star_data["obs_mag"]
+                )
+
+    plt.figure(figsize=(16, 10))
+
+    for star_name, data in stars.items():
+
+        plt.scatter(
+            data["jd"],
+            data["mag"],
+            s=1,
+            alpha=0.5,
+            label=star_name,
+        )
+
+    plt.gca().invert_yaxis()
+
+    plt.xlabel("Julian Date")
+    plt.ylabel("Observed Magnitude")
+    plt.title("All Stars")
+
+    plt.legend(fontsize="small")
+
+    plt.tight_layout()
+    plt.show()
+
+
+def saveBinnedPlots(binned_stars):
+
+    for star_name, (jd, mag) in binned_stars.items():
+
+        plt.figure(figsize=(12, 6))
+
+        plt.plot(
+            jd,
+            mag,
+            ".",
+            markersize=2,
+        )
+
+        plt.gca().invert_yaxis()
+
+        plt.xlabel("Julian Date")
+        plt.ylabel("Observed Magnitude")
+        plt.title(star_name)
+
+        filename = (
+            star_name
+            .replace(" ", "_")
+            .replace("/", "_")
+            + ".png"
+        )
+
+        file_path = os.path.expanduser("~/RMS_data/plots")
+        os.makedirs(file_path, exist_ok=True)
+        filename = os.path.join(file_path, filename)
+
+        plt.tight_layout()
+        plt.savefig(filename, dpi=150)
+        plt.close()
+
+
+
+
+
+def extractStar(frame_dict, target_star):
+
+    jd_list = []
+    mag_list = []
+
+    for jd, stations in frame_dict.items():
+
+        jd = float(jd)
+
+        for station_data in stations.values():
+
+            if target_star not in station_data:
+                continue
+
+            star = station_data[target_star]
+
+            jd_list.append(jd)
+
+            mag_list.append(
+                star["obs_mag"]
+            )
+
+    jd = np.array(jd_list)
+    mag = np.array(mag_list)
+
+    order = np.argsort(jd)
+
+    return jd[order], mag[order]
+
+def phaseFold(jd, mag, period, epoch=None, bin_seconds=60):
+
+    if epoch is None:
+        epoch = np.min(jd)
+
+    phase = ((jd - epoch) / period) % 1.0
+
+    phase[phase > 0.5] -= 1.0
+
+    phase = np.concatenate([
+        phase - 1.0,
+        phase,
+        phase + 1.0,
+    ])
+
+    mag = np.concatenate([
+        mag,
+        mag,
+        mag,
+    ])
+
+    return phase, mag, epoch
+
+def binLightCurve(jd, mag, bin_seconds=60):
+
+    bin_days = bin_seconds / 86400.0
+
+    jd0 = np.min(jd)
+
+    bin_index = np.floor(
+        (jd - jd0) / bin_days
+    ).astype(int)
+
+    unique_bins = np.unique(bin_index)
+
+    binned_jd = []
+    binned_mag = []
+
+    for b in unique_bins:
+
+        mask = bin_index == b
+
+        binned_jd.append(
+            np.mean(jd[mask])
+        )
+
+        binned_mag.append(
+            np.mean(mag[mask])
+        )
+
+    return (
+        np.array(binned_jd),
+        np.array(binned_mag),
+    )
+
+
+import numpy as np
+
+
+def differentialEnsemble(
+    frame_dict,
+    target_name,
+    min_references=3,
+):
+    """
+    Simple ensemble differential photometry.
+
+    For each frame:
+
+        target_differential =
+            target_residual
+            -
+            mean(reference_residuals)
+
+    Returns:
+
+        jd
+        differential_mag
+        reference_mean
+        reference_std
+        reference_count
+    """
+
+    jd_list = []
+    differential_list = []
+    reference_mean_list = []
+    reference_std_list = []
+    reference_count_list = []
+
+    for jd, stations in frame_dict.items():
+
+        jd = float(jd)
+
+        for station, frame in stations.items():
+
+            #
+            # Target must exist in this frame
+            #
+
+            if target_name not in frame:
+                continue
+
+            target = frame[target_name]
+
+            reference_residuals = []
+
+            for star_name, star_data in frame.items():
+
+                if star_name == target_name:
+                    continue
+
+                reference_residuals.append(
+                    star_data["residual"]
+                )
+
+            if len(reference_residuals) < min_references:
+                continue
+
+            reference_residuals = np.array(
+                reference_residuals
+            )
+
+            reference_mean = np.mean(
+                reference_residuals
+            )
+
+            reference_std = np.std(
+                reference_residuals
+            )
+
+            differential = (
+                target["residual"]
+                - reference_mean
+            )
+
+            jd_list.append(jd)
+
+            differential_list.append(
+                differential
+            )
+
+            reference_mean_list.append(
+                reference_mean
+            )
+
+            reference_std_list.append(
+                reference_std
+            )
+
+            reference_count_list.append(
+                len(reference_residuals)
+            )
+
+    order = np.argsort(jd_list)
+
+    return (
+        np.array(jd_list)[order],
+        np.array(differential_list)[order],
+        np.array(reference_mean_list)[order],
+        np.array(reference_std_list)[order],
+        np.array(reference_count_list)[order],
+    )
+
+
+def plotPhaseFoldedStar(
+    frame_dict,
+    star_name,
+    period_days,
+    epoch=None,
+    phase_bins=100,
+    output_dir=".",
+):
+
+    #
+    # Extract star
+    #
+
+    jd_list = []
+    mag_list = []
+
+    for jd, stations in frame_dict.items():
+
+        jd = float(jd)
+
+        for station_data in stations.values():
+
+            if star_name not in station_data:
+                continue
+
+            jd_list.append(jd)
+
+            mag_list.append(
+                station_data[star_name]["obs_mag"]
+            )
+
+    if len(jd_list) == 0:
+        raise RuntimeError(
+            f"No observations found for {star_name}"
+        )
+
+    jd = np.array(jd_list)
+    mag = np.array(mag_list)
+
+    #
+    # Sort by JD
+    #
+
+    order = np.argsort(jd)
+
+    jd = jd[order]
+    mag = mag[order]
+
+    #
+    # Fold
+    #
+
+    if epoch is None:
+        epoch = np.min(jd)
+
+    phase = ((jd - epoch) / period_days) % 1.0
+
+    phase[phase > 0.5] -= 1.0
+
+    #
+    # Bin the central cycle only
+    #
+
+    edges = np.linspace(
+        -0.5,
+         0.5,
+         phase_bins + 1
+    )
+
+    phase_bin = []
+    mag_bin = []
+
+    for i in range(phase_bins):
+
+        mask = (
+            (phase >= edges[i]) &
+            (phase < edges[i + 1])
+        )
+
+        if not np.any(mask):
+            continue
+
+        phase_bin.append(
+            0.5 * (
+                edges[i]
+                + edges[i + 1]
+            )
+        )
+
+        mag_bin.append(
+            np.mean(mag[mask])
+        )
+
+    phase_bin = np.array(phase_bin)
+    mag_bin = np.array(mag_bin)
+
+    #
+    # Duplicate left and right
+    #
+
+    phase_plot = np.concatenate([
+        phase_bin - 1.0,
+        phase_bin,
+        phase_bin + 1.0,
+    ])
+
+    mag_plot = np.concatenate([
+        mag_bin,
+        mag_bin,
+        mag_bin,
+    ])
+
+    #
+    # Plot
+    #
+
+    plt.figure(figsize=(12, 6))
+
+    plt.plot(
+        phase_plot,
+        mag_plot,
+        "o-",
+        markersize=3,
+        linewidth=1,
+    )
+
+    plt.gca().invert_yaxis()
+
+    plt.xlabel("Phase")
+    plt.ylabel("Magnitude")
+
+    plt.title(
+        f"{star_name}\n"
+        f"Period = {period_days:.6f} d\n"
+        f"Bins = {phase_bins}"
+    )
+
+    plt.xlim(-1, 1)
+
+    plt.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    filename = os.path.join(
+        os.path.expanduser(output_dir),
+        star_name.replace(" ", "_") + "_phase.png"
+    )
+
+    plt.savefig(
+        filename,
+        dpi=150,
+    )
+
+    plt.close()
+
+    print(f"Saved {filename}")
+
+def binLightCurve(jd, mag, bin_seconds=60):
+
+    bin_days = bin_seconds / 86400.0
+
+    jd0 = np.min(jd)
+
+    bin_index = np.floor(
+        (jd - jd0) / bin_days
+    ).astype(int)
+
+    unique_bins = np.unique(bin_index)
+
+    binned_jd = []
+    binned_mag = []
+
+    for b in unique_bins:
+
+        mask = bin_index == b
+
+        binned_jd.append(
+            np.mean(jd[mask])
+        )
+
+        binned_mag.append(
+            np.mean(mag[mask])
+        )
+
+    return (
+        np.array(binned_jd),
+        np.array(binned_mag),
+    )
+
+
+def loadFrameDict(filename):
+
+    with tarfile.open(filename, "r:bz2") as tar:
+        member = tar.getmembers()[0]
+        with tar.extractfile(member) as f:
+            return json.load(f)
+
+def getQueryMetadata(frame_dict, target_name):
+
+    cat_mag = None
+    ra_cat = None
+    dec_cat = None
+
+    observation_count = 0
+
+    reference_stars = set()
+
+    for stations in frame_dict.values():
+
+        for frame in stations.values():
+
+            if target_name not in frame:
+                continue
+
+            observation_count += 1
+
+            target = frame[target_name]
+
+            if cat_mag is None:
+
+                cat_mag = target["cat_mag"]
+                ra_cat = target["ra_cat"]
+                dec_cat = target["dec_cat"]
+
+            for star_name in frame:
+
+                if star_name != target_name:
+                    reference_stars.add(star_name)
+
+    if cat_mag is None:
+        raise RuntimeError(
+            f"Could not find {target_name}"
+        )
+
+    return {
+        "target_name": target_name,
+        "target_ra": ra_cat,
+        "target_dec": dec_cat,
+        "target_mag": cat_mag,
+        "observation_count": observation_count,
+        "reference_count": len(reference_stars),
+        "reference_stars": sorted(reference_stars),
+    }
+
+
+def binPhaseCurve(phase, mag, n_bins=100):
+
+    edges = np.linspace(
+        -0.5,
+         0.5,
+         n_bins + 1,
+    )
+
+    centres = []
+    mean_mag = []
+    counts = []
+
+    for i in range(n_bins):
+
+        mask = (
+            (phase >= edges[i]) &
+            (phase <  edges[i + 1])
+        )
+
+        if not np.any(mask):
+            continue
+
+        centres.append(
+            0.5 * (
+                edges[i] +
+                edges[i + 1]
+            )
+        )
+
+        mean_mag.append(
+            np.mean(mag[mask])
+        )
+
+        counts.append(
+            np.sum(mask)
+        )
+
+    return (
+        np.array(centres),
+        np.array(mean_mag),
+        np.array(counts),
+    )
+
+
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+def plotDifferentialEnsemble(
+    frame_dict,
+    target_name,
+    period_days,
+    epoch=None,
+    phase_bins=100,
+    output_dir=".",
+    min_references=3,
+):
+
+    # Get catalog data
+
+    query_metadata = getQueryMetadata(frame_dict, target_name)
+
+    #
+    # Build differential light curve
+    #
+
+    jd, diff_mag, _, _, _ = differentialEnsemble(
+        frame_dict,
+        target_name,
+        min_references=min_references,
+    )
+
+    if len(jd) == 0:
+        raise RuntimeError(f"No differential data for {target_name}")
+
+    #
+    # Fold
+    #
+
+    phase, diff_mag, epoch = phaseFold(
+        jd,
+        diff_mag,
+        period_days,
+        epoch,
+    )
+
+    #
+    # Use only central cycle for binning
+    #
+
+    mask = (
+        (phase >= -0.5)
+        &
+        (phase <= 0.5)
+    )
+
+    phase = phase[mask]
+    diff_mag = diff_mag[mask]
+
+    #
+    # Phase bins
+    #
+
+    edges = np.linspace(
+        -0.5,
+         0.5,
+         phase_bins + 1,
+    )
+
+    phase_bin = []
+    mag_bin = []
+    count_bin = []
+
+    for i in range(phase_bins):
+
+        mask = (
+            (phase >= edges[i])
+            &
+            (phase < edges[i + 1])
+        )
+
+        if not np.any(mask):
+            continue
+
+        phase_bin.append(
+            0.5 * (
+                edges[i]
+                + edges[i + 1]
+            )
+        )
+
+        mag_bin.append(
+            np.mean(
+                diff_mag[mask]
+            )
+        )
+
+        count_bin.append(
+            np.sum(mask)
+        )
+
+    phase_bin = np.array(phase_bin)
+    mag_bin = np.array(mag_bin)
+    count_bin = np.array(count_bin)
+
+    #
+    # Create -1..+1 display
+    #
+
+    phase_plot = np.concatenate([
+        phase_bin - 1.0,
+        phase_bin,
+        phase_bin + 1.0,
+    ])
+
+    mag_plot = np.concatenate([
+        mag_bin,
+        mag_bin,
+        mag_bin,
+    ])
+
+    #
+    # Plot
+    #
+
+    plt.figure(figsize=(12, 6))
+    plt.gca().invert_yaxis()
+    plt.plot(
+        phase_plot,
+        mag_plot,
+        "o-",
+        markersize=3,
+        linewidth=1,
+    )
+
+    plt.axvline(
+        0.0,
+        color="grey",
+        linestyle="--",
+        alpha=0.5,
+    )
+
+    plt.xlabel(f"Phase\n(given period of {period_days} days and {phase_bins} bins)")
+    plt.ylabel(f"Differential Residual against Mag={query_metadata['target_mag']:.3f}")
+
+    plt.title(
+        f"{target_name}\n"
+        f"Total of ={query_metadata['observation_count']} "
+        f"RA={query_metadata['target_ra']:.4f} "
+        f"Dec={query_metadata['target_dec']:.4f}\n {query_metadata['reference_count']} reference stars"
+
+    )
+
+    plt.xlim(-1.0, 1.0)
+
+    plt.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    filename = os.path.join(
+        os.path.expanduser(output_dir),
+        target_name.replace(" ", "_")
+        + "_differential_phase.png"
+    )
+
+    plt.savefig(
+        filename,
+        dpi=150,
+    )
+
+    plt.close()
+
+    print(
+        f"Saved {filename}"
+    )
 
 
 if __name__ == "__main__":
@@ -560,7 +1361,18 @@ if __name__ == "__main__":
 
     cat = Catalog(config)
 
-    star_data = getDifferentialData(cat, 78.858, 32.6880, "/archive/lightcurves/json/kw_aur.json")
+    #star_data = getDifferentialData(cat, 78.858, 32.6880, "/archive/lightcurves/json/kw_aur.json")
+
+    # frame_dict = loadFrameDict("HD 33959A.tar.bz2")
+    # plotAllStars(frame_dict)
+    # binned_light_curves = buildBinnedLightCurves(frame_dict, 240)
+    # saveBinnedPlots(binned_light_curves)
+    # plotPhaseFoldedStar(frame_dict, "HD 33959A", 0.88088, output_dir="~/RMS_data/plots/")
+
+    #frame_dict = loadFrameDict("HD 33959A.tar.bz2")
+    frame_dict = getDifferentialData(cat, 78.858, 32.6880)
+    plotDifferentialEnsemble(frame_dict, "HD 33959A", 0.88088, output_dir="/archive/lightcurves/plots")
+
 
     if False:
 
