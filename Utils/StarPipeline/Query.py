@@ -21,6 +21,7 @@ import numpy as np
 import datetime
 import time
 import json
+import tarfile
 
 import matplotlib.pyplot as plt
 
@@ -517,16 +518,22 @@ def getDifferentialData(cat, target_ra, target_dec, frame_json_path=None):
 
 
     if frame_json_path is not None:
+        json_path = os.path.dirname(frame_json_path)
+    else:
+        json_path = "/archive/lightcurves/json"
 
-        os.makedirs(os.path.dirname(frame_json_path), exist_ok=True)
+    os.makedirs(json_path, exist_ok=True)
+    json_filename = os.path.join(json_path, f"{target_name}.json")
 
-        with open(frame_json_path, "w") as f:
-            json.dump(
-                frame_dict,
-                f,
-                indent=4,
-                sort_keys=True,
-            )
+    with open(json_filename, "w") as f:
+        json.dump(frame_dict, f)
+
+    archive_filename = os.path.join(json_path, f"{target_name}.tar.bz2")
+
+    with tarfile.open(archive_filename, "w:bz2") as tar:
+        tar.add(json_filename)
+
+    os.remove(json_filename)
 
     return frame_dict
 
