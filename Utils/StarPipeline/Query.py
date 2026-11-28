@@ -20,6 +20,7 @@ import os
 import numpy as np
 import datetime
 import time
+import json
 
 import matplotlib.pyplot as plt
 
@@ -28,6 +29,7 @@ import RMS.ConfigReader as cr
 from pathlib import Path
 from RMS.Astrometry.Conversions import datetime2JD
 from Utils.StarPipeline.LightCurves import decodeOffsetGnomonic, LIGHT_CURVE_TEMPLATE_PATH
+from RMS.Formats.StarCatalogQueries import Catalog
 
 
 
@@ -48,28 +50,46 @@ def getSessionCount(star_name):
 
     return len(list(star_dir.rglob("*.npy")))
 
-def getStarFiles(star_name):
+def getStarFiles(star_name, stations_list=None):
 
     star_dir = Path(LIGHT_CURVE_TEMPLATE_PATH) / star_name
 
     if not star_dir.exists():
         return []
 
-    return sorted(
-        star_dir.rglob("*.npy")
-    )
+    if stations_list is None:
+        return sorted(
+            star_dir.rglob("*.npy")
+        )
 
+    files = []
 
-def getStarObservations(star_name):
+    for station_id in stations_list:
+
+        station_dir = star_dir / station_id
+
+        if not station_dir.exists():
+            continue
+
+        files.extend(
+            station_dir.rglob("*.npy")
+        )
+
+    return sorted(files)
+
+def getStarObservations(star_name, stations_list=None):
 
     arrays = []
     stations = set()
 
-    archived_stars = getStarFiles(star_name)
+    archived_stars = getStarFiles(star_name, stations_list)
     for filename in archived_stars:
 
         arrays.append(loadObservationFile(filename))
         stations.add(filename.parent.name)
+
+    if not len(arrays):
+        return None, arrays, []
 
     observations = np.concatenate(arrays)
 
@@ -114,8 +134,6 @@ def loadObservationFile(filename):
     # Force everything to be NxM - to avoid single row returns causing vectors
     if data.ndim == 1:
         data = data.reshape(1, -1)
-
-    data = np.load(filename)
 
     if data.ndim == 1:
         data = data.reshape(1, -1)
@@ -383,6 +401,80 @@ if __name__ == "__main__":
     cwd = os.getcwd()
     cml_args = arg_parser.parse_args()
     config = cr.parse(os.path.join(os.getcwd(),".config"))
+
+    cat = Catalog(config)
+
+
+    target_name = "HD 30836"
+    target_ra, target_dec = 72.80, 5.62
+
+    names, ra, dec, mags, thetas, b, v, r = zip(*cat.queryRaDec(target_ra, target_dec, 10, 50)[0])
+
+
+    names = np.array(names)
+    ra = np.array(ra)
+    dec = np.array(dec)
+    mags = np.array(mags)
+
+    target_mag = mags[names == target_name][0]
+
+    mask = (names != target_name)
+    names = names[mask]
+    ra = ra[mask]
+    dec = dec[mask]
+    mags = mags[mask]
+
+    target_star_name_returned, target_star_observations, target_star_stations = getStarObservations(target_name)
+    print(f"Target star {target_star_name_returned} catalog mag:{target_mag} has {len(target_star_observations)} observations from {len(target_star_stations)} stations")
+
+    target_star_dict_by_station = {}
+
+    # Create the dict of target star observations
+    for station in np.unique(target_star_stations):
+
+        target_star_dict_by_jd = {}
+        mask = target_star_observations['station'] == station
+        for obs in target_star_observations[mask]:
+            target_star_dict_by_jd[obs['jd']] = obs
+
+        target_star_dict_by_station[station] = target_star_dict_by_jd
+
+
+    # Create the dict of reference star observations
+    reference_stars_dict_per_star = {}
+    for star_name, mag in zip(names, mags):
+        if mag > target_mag +1:
+            continue
+        query_response = getStarObservations(star_name, stations_list=target_star_stations)
+        star_name_returned, observations, stations_returned_list = query_response
+        print(f"{star_name} mag:{mag} has {len(observations)} observations from {len(stations_returned_list)} stations")
+        pass
+
+        reference_stars_dict_per_station = {}
+
+        for station in stations_returned_list:
+            reference_stars_dict_per_jd = {}
+            mask = (observations['station'] == station)
+            observations_masked_by_station = observations[mask]
+
+            for obs in observations_masked_by_station:
+                reference_stars_dict_per_jd[obs['jd']] = obs
+
+            reference_stars_dict_per_station[station] = reference_stars_dict_per_jd
+
+    with open("target_star.json", "w") as f:
+        json.dump(
+            target_star_dict_by_station,
+            f,
+            indent=2
+        )
+
+    with open("reference_stars.json", "w") as f:
+        json.dump(
+            reference_stars_dict_per_star,
+            f,
+            indent=2
+        )
 
     if cml_args.star is None:
         continuous = cml_args.continuous

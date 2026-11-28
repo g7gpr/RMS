@@ -417,9 +417,6 @@ class Catalog:
 
         return p, ra_array, dec_array, x_array, y_array, mag_array, names_array
 
-
-
-
     def queryPlatepar(self, pp, jd, n_brightest=1000, az=None, el=None):
 
         """Query a platepar for the brightest stars visible within its field of
@@ -1034,7 +1031,6 @@ def loadIAUCSNCSV(filename):
 
     return names, np.array(coordinates)
 
-
 def loadIAUCSN(config, source_file_location=None, additional_fields = []):
     """
 
@@ -1109,8 +1105,6 @@ def loadIAUCSN(config, source_file_location=None, additional_fields = []):
 
     return star_data, mag_band, mag_band_ratios, extra_values_dict
 
-
-
 def renderIAUNames(config, pp, ra_array, dec_array, x_array, y_array, max_sep_deg=0.05, iau_csn=None):
     """Render IAU common star name labels.
 
@@ -1165,10 +1159,6 @@ def renderIAUNames(config, pp, ra_array, dec_array, x_array, y_array, max_sep_de
             0.4,255,1, cv2.LINE_AA)
 
     return label_img
-
-
-
-
 
 def renderConstellationLabels(config, pp, frame_time, intensity=150, constellation_centres=None, three_letter_names=False):
 
@@ -1315,7 +1305,6 @@ def renderConstellationLabels(config, pp, frame_time, intensity=150, constellati
         cv2.putText(img, name, (int(round(x)), int(round(y))), cv2.FONT_HERSHEY_SIMPLEX, 0.4, intensity, 1, cv2.LINE_AA)
 
     return img
-
 
 def renderConstellations(config, pp, frame_time, intensity=150, line_shortening=10, constellation_data=None):
 
@@ -1788,7 +1777,6 @@ def renderVideo(config, start_time, end_time, seconds_per_frame, fps, pp, output
     video.release()
 
     return output_file
-
 
 def testSyntheticPlateSolve(cat, az=None, el=None, n_brightest=100):
     """Generate synthetic sky images and validate accuracy.
