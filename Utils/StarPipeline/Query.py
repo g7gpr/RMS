@@ -1,5 +1,5 @@
 # RPi Meteor Station
-# Copyright (C) 2026 David Rollinson Kristen Felker
+# Copyright (C) 2026 David Rollinson
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -405,76 +405,139 @@ if __name__ == "__main__":
     cat = Catalog(config)
 
 
+
+
     target_name = "HD 30836"
     target_ra, target_dec = 72.80, 5.62
 
-    names, ra, dec, mags, thetas, b, v, r = zip(*cat.queryRaDec(target_ra, target_dec, 10, 50)[0])
+    frame_json = "/home/david/lc/frame_dict.json"
 
+    if not os.path.exists(frame_json):
 
-    names = np.array(names)
-    ra = np.array(ra)
-    dec = np.array(dec)
-    mags = np.array(mags)
-
-    target_mag = mags[names == target_name][0]
-
-    mask = (names != target_name)
-    names = names[mask]
-    ra = ra[mask]
-    dec = dec[mask]
-    mags = mags[mask]
-
-    target_star_name_returned, target_star_observations, target_star_stations = getStarObservations(target_name)
-    print(f"Target star {target_star_name_returned} catalog mag:{target_mag} has {len(target_star_observations)} observations from {len(target_star_stations)} stations")
-
-    target_star_dict_by_station = {}
-
-    # Create the dict of target star observations
-    for station in np.unique(target_star_stations):
-
-        target_star_dict_by_jd = {}
-        mask = target_star_observations['station'] == station
-        for obs in target_star_observations[mask]:
-            target_star_dict_by_jd[obs['jd']] = obs
-
-        target_star_dict_by_station[station] = target_star_dict_by_jd
-
-
-    # Create the dict of reference star observations
-    reference_stars_dict_per_star = {}
-    for star_name, mag in zip(names, mags):
-        if mag > target_mag +1:
-            continue
-        query_response = getStarObservations(star_name, stations_list=target_star_stations)
-        star_name_returned, observations, stations_returned_list = query_response
-        print(f"{star_name} mag:{mag} has {len(observations)} observations from {len(stations_returned_list)} stations")
-        pass
-
-        reference_stars_dict_per_station = {}
-
-        for station in stations_returned_list:
-            reference_stars_dict_per_jd = {}
-            mask = (observations['station'] == station)
-            observations_masked_by_station = observations[mask]
-
-            for obs in observations_masked_by_station:
-                reference_stars_dict_per_jd[obs['jd']] = obs
-
-            reference_stars_dict_per_station[station] = reference_stars_dict_per_jd
-
-    with open("/home/david/lc/target_star.json", "w") as f:
-        json.dump(
-            target_star_dict_by_station,
-            f,
-            indent=2
+        names, ra, dec, mags, thetas, b, v, r = zip(
+            *cat.queryRaDec(
+                target_ra,
+                target_dec,
+                radius_deg=10,
+                n_brightest=10,
+            )[0]
         )
 
-    with open("/home/david/lc/reference_stars.json", "w") as f:
-        json.dump(
-            reference_stars_dict_per_star,
-            f,
-            indent=2
-        )
+        names = np.array(names)
+        mags = np.array(mags)
+
+        target_mag = mags[names == target_name][0]
+
+        frame_dict = {}
+
+        #
+        # Build list of stars we want.
+        #
+        # Catalog is sorted by increasing magnitude.
+        #
+
+        selected_stars = [(target_name, target_mag)]
+
+        for star_name, mag in zip(names, mags):
+
+            if star_name == target_name:
+                continue
+
+            if mag < target_mag - 1:
+                continue
+
+            if mag > target_mag + 1:
+                break
+
+            selected_stars.append((star_name, mag))
+
+        #
+        # Load all stars into the same frame structure.
+        #
+
+        target_star_stations = None
+
+        for star_name, mag in selected_stars:
+
+            if target_star_stations is None:
+
+                (
+                    _,
+                    observations,
+                    target_star_stations,
+                ) = getStarObservations(star_name)
+
+            else:
+
+                (
+                    _,
+                    observations,
+                    _,
+                ) = getStarObservations(
+                    star_name,
+                    stations_list=target_star_stations,
+                )
+
+            print(
+                f"{star_name} "
+                f"mag:{mag} "
+                f"has {len(observations)} observations"
+            )
+
+            if len(observations) == 0:
+                continue
+
+            for obs in observations:
+
+                jd = float(obs["jd"])
+                station = str(obs["station"])
+
+                if jd not in frame_dict:
+                    frame_dict[jd] = {}
+
+                if station not in frame_dict[jd]:
+                    frame_dict[jd][station] = {}
+
+                frame_dict[jd][station][star_name] = {
+
+                    "cat_mag": float(obs["cat_mag"]),
+                    "obs_mag": float(obs["obs_mag"]),
+                    "residual": float(
+                        obs["obs_mag"] - obs["cat_mag"]
+                    ),
+
+                    "snr": float(obs["snr"]),
+                    "fwhm": float(obs["fwhm"]),
+                    "pixel_scale": float(obs["pixel_scale"]),
+
+                    "level": int(obs["level"]),
+                    "amplitude": int(obs["amplitude"]),
+                    "background": int(obs["background"]),
+
+                    "saturated_count": int(
+                        obs["saturated_count"]
+                    ),
+
+                    "star_count": int(obs["star_count"]),
+
+                    "xi": float(obs["xi"]),
+                    "eta": float(obs["eta"]),
+
+                    "ra_cat": float(obs["ra_cat"]),
+                    "dec_cat": float(obs["dec_cat"]),
+
+                    "ra_obs": float(obs["ra_obs"]),
+                    "dec_obs": float(obs["dec_obs"]),
+                }
+
+        with open(frame_json, "w") as f:
+            json.dump(
+                frame_dict,
+                f,
+                indent=4,
+                sort_keys=True,
+            )
+
 
     if cml_args.star is None:
         continuous = cml_args.continuous
