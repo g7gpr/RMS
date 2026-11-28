@@ -550,7 +550,7 @@ def downloadFilenameTo(file_name, target_directory,
 
     download_count = 0
 
-    while not os.path.exists(local_path) and download_count < max_tries:
+    while not os.path.exists(local_path):
         try:
             # Check whether the file exists
             download_count += 1
@@ -589,6 +589,8 @@ def downloadFilenameTo(file_name, target_directory,
             time.sleep(delay)
             return None
 
+        print("Retrying download")
+        time.sleep(600)
 
     downloaded_path = os.path.join(target_directory, file_name)
 
