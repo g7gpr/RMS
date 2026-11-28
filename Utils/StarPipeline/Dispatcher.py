@@ -321,6 +321,7 @@ def updateProcessedSessions(processed_sessions):
             if job_name not in processed_sessions:
 
                 processed_sessions.add(job_name)
+                print(f"Completed {job_name}")
 
                 with open(PROCESSED_SESSIONS_FILE, "a") as f:
                     f.write(job_name + "\n")
