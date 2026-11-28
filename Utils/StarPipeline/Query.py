@@ -462,14 +462,14 @@ if __name__ == "__main__":
 
             reference_stars_dict_per_station[station] = reference_stars_dict_per_jd
 
-    with open("target_star.json", "w") as f:
+    with open("/home/david/lc/target_star.json", "w") as f:
         json.dump(
             target_star_dict_by_station,
             f,
             indent=2
         )
 
-    with open("reference_stars.json", "w") as f:
+    with open("/home/david/lc/reference_stars.json", "w") as f:
         json.dump(
             reference_stars_dict_per_star,
             f,
