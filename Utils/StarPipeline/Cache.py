@@ -589,11 +589,15 @@ def downloadFilenameTo(file_name, target_directory,
             time.sleep(delay)
             return None
 
-        print("Retrying download")
-        time.sleep(600)
+        downloaded_path = os.path.join(target_directory, file_name)
+
+        if os.path.exists(downloaded_path):
+            break
+        else:
+            print("Retrying download")
+            time.sleep(600)
 
     downloaded_path = os.path.join(target_directory, file_name)
-
 
     return downloaded_path
 
