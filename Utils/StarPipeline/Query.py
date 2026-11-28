@@ -1370,11 +1370,13 @@ if __name__ == "__main__":
     # plotPhaseFoldedStar(frame_dict, "HD 33959A", 0.88088, output_dir="~/RMS_data/plots/")
 
     #frame_dict = loadFrameDict("HD 33959A.tar.bz2")
-    frame_dict = getDifferentialData(cat, 78.858, 32.6880)
-    plotDifferentialEnsemble(frame_dict, "HD 33959A", 0.88088, output_dir="/archive/lightcurves/plots")
 
     frame_dict = getDifferentialData(cat, 119.56549, -49.2409)
     plotDifferentialEnsemble(frame_dict, "V Puppis", 1.454485, output_dir="/archive/lightcurves/plots")
+
+    frame_dict = getDifferentialData(cat, 78.858, 32.6880)
+    plotDifferentialEnsemble(frame_dict, "HD 33959A", 0.88088, output_dir="/archive/lightcurves/plots")
+
 
     if False:
 
