@@ -384,6 +384,146 @@ def plotAstrometryXiEta(plot_data):
     print(f"Saved {filename}")
 
 
+
+
+def getDifferentialData(cat, target_ra, target_dec, frame_json_path=None):
+
+    names, ra, dec, mags, thetas, b, v, r = zip(
+        *cat.queryRaDec(
+            target_ra,
+            target_dec,
+            radius_deg=0.1,
+            n_brightest=1,
+        )[0]
+    )
+
+    target_name = names[0]
+
+    names = np.array(names)
+    mags = np.array(mags)
+
+    target_mag = mags[names == target_name][0]
+
+    frame_dict = {}
+
+    #
+    # Build list of stars we want.
+    #
+    # Catalog is sorted by increasing magnitude.
+    #
+
+    selected_stars = [(target_name, target_mag)]
+
+    for star_name, mag in zip(names, mags):
+
+        if star_name == target_name:
+            continue
+
+        if mag < target_mag - 1:
+            continue
+
+        if mag > target_mag + 1:
+            break
+
+        selected_stars.append((star_name, mag))
+
+    #
+    # Load all stars into the same frame structure.
+    #
+
+    target_star_stations = None
+
+    for star_name, mag in selected_stars:
+
+        if target_star_stations is None:
+
+            (
+                _,
+                observations,
+                target_star_stations,
+            ) = getStarObservations(star_name)
+
+        else:
+
+            (
+                _,
+                observations,
+                _,
+            ) = getStarObservations(
+                star_name,
+                stations_list=target_star_stations,
+            )
+
+        print(
+            f"{star_name} "
+            f"mag:{mag} "
+            f"has {len(observations)} observations"
+        )
+
+        if len(observations) == 0:
+            continue
+
+        for obs in observations:
+
+            jd = float(obs["jd"])
+            station = str(obs["station"])
+
+            if jd not in frame_dict:
+                frame_dict[jd] = {}
+
+            if station not in frame_dict[jd]:
+                frame_dict[jd][station] = {}
+
+            frame_dict[jd][station][star_name] = {
+
+                "cat_mag": float(obs["cat_mag"]),
+                "obs_mag": float(obs["obs_mag"]),
+                "residual": float(
+                    obs["obs_mag"] - obs["cat_mag"]
+                ),
+
+                "snr": float(obs["snr"]),
+                "fwhm": float(obs["fwhm"]),
+                "pixel_scale": float(obs["pixel_scale"]),
+
+                "level": int(obs["level"]),
+                "amplitude": int(obs["amplitude"]),
+                "background": int(obs["background"]),
+
+                "saturated_count": int(
+                    obs["saturated_count"]
+                ),
+
+                "star_count": int(obs["star_count"]),
+
+                "xi": float(obs["xi"]),
+                "eta": float(obs["eta"]),
+
+                "ra_cat": float(obs["ra_cat"]),
+                "dec_cat": float(obs["dec_cat"]),
+
+                "ra_obs": float(obs["ra_obs"]),
+                "dec_obs": float(obs["dec_obs"]),
+            }
+
+
+    if frame_json_path is not None:
+
+        os.makedirs(os.path.dirname(frame_json_path), exist_ok=True)
+
+        with open(frame_json_path, "w") as f:
+            json.dump(
+                frame_dict,
+                f,
+                indent=4,
+                sort_keys=True,
+            )
+
+    return frame_dict
+
+
+
+
 if __name__ == "__main__":
 
     import argparse
@@ -404,140 +544,7 @@ if __name__ == "__main__":
 
     cat = Catalog(config)
 
-
-
-
-    target_name = "HD 30836"
-    target_ra, target_dec = 72.80, 5.62
-
-    frame_json = "/home/david/lc/frame_dict.json"
-
-    if not os.path.exists(frame_json):
-
-        names, ra, dec, mags, thetas, b, v, r = zip(
-            *cat.queryRaDec(
-                target_ra,
-                target_dec,
-                radius_deg=10,
-                n_brightest=10,
-            )[0]
-        )
-
-        names = np.array(names)
-        mags = np.array(mags)
-
-        target_mag = mags[names == target_name][0]
-
-        frame_dict = {}
-
-        #
-        # Build list of stars we want.
-        #
-        # Catalog is sorted by increasing magnitude.
-        #
-
-        selected_stars = [(target_name, target_mag)]
-
-        for star_name, mag in zip(names, mags):
-
-            if star_name == target_name:
-                continue
-
-            if mag < target_mag - 1:
-                continue
-
-            if mag > target_mag + 1:
-                break
-
-            selected_stars.append((star_name, mag))
-
-        #
-        # Load all stars into the same frame structure.
-        #
-
-        target_star_stations = None
-
-        for star_name, mag in selected_stars:
-
-            if target_star_stations is None:
-
-                (
-                    _,
-                    observations,
-                    target_star_stations,
-                ) = getStarObservations(star_name)
-
-            else:
-
-                (
-                    _,
-                    observations,
-                    _,
-                ) = getStarObservations(
-                    star_name,
-                    stations_list=target_star_stations,
-                )
-
-            print(
-                f"{star_name} "
-                f"mag:{mag} "
-                f"has {len(observations)} observations"
-            )
-
-            if len(observations) == 0:
-                continue
-
-            for obs in observations:
-
-                jd = float(obs["jd"])
-                station = str(obs["station"])
-
-                if jd not in frame_dict:
-                    frame_dict[jd] = {}
-
-                if station not in frame_dict[jd]:
-                    frame_dict[jd][station] = {}
-
-                frame_dict[jd][station][star_name] = {
-
-                    "cat_mag": float(obs["cat_mag"]),
-                    "obs_mag": float(obs["obs_mag"]),
-                    "residual": float(
-                        obs["obs_mag"] - obs["cat_mag"]
-                    ),
-
-                    "snr": float(obs["snr"]),
-                    "fwhm": float(obs["fwhm"]),
-                    "pixel_scale": float(obs["pixel_scale"]),
-
-                    "level": int(obs["level"]),
-                    "amplitude": int(obs["amplitude"]),
-                    "background": int(obs["background"]),
-
-                    "saturated_count": int(
-                        obs["saturated_count"]
-                    ),
-
-                    "star_count": int(obs["star_count"]),
-
-                    "xi": float(obs["xi"]),
-                    "eta": float(obs["eta"]),
-
-                    "ra_cat": float(obs["ra_cat"]),
-                    "dec_cat": float(obs["dec_cat"]),
-
-                    "ra_obs": float(obs["ra_obs"]),
-                    "dec_obs": float(obs["dec_obs"]),
-                }
-
-        with open(frame_json, "w") as f:
-            json.dump(
-                frame_dict,
-                f,
-                indent=4,
-                sort_keys=True,
-            )
-
+    star_data = getDifferentialData(cat, 78.858, 32.6880, "/archive/lightcurves/json/kw_aur.json")
 
     if cml_args.star is None:
         continuous = cml_args.continuous
